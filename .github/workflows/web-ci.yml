@@ -61,10 +61,10 @@ jobs:
           pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Lint
-        run: pnpm --filter rally-web lint
+        run: pnpm --filter rova-web lint
 
       - name: Typecheck
-        run: pnpm --filter rally-web typecheck
+        run: pnpm --filter rova-web typecheck
 
   # ─────────────────────────────────────────────────────────────────────────
   # 2. Unit tests (no DB — pure component/hook/util tests)
@@ -100,7 +100,7 @@ jobs:
 
       - name: Unit tests (with coverage)
         if: steps.detect.outputs.has_tests == 'true'
-        run: pnpm --filter rally-web test:cov
+        run: pnpm --filter rova-web test:cov
 
       - name: Skip empty test suite
         if: steps.detect.outputs.has_tests != 'true'
@@ -155,8 +155,8 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
       DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
       REDIS_URL: redis://localhost:6379
-      JWT_ISSUER: rally-api
-      JWT_AUDIENCE: rally-web
+      JWT_ISSUER: rova-api
+      JWT_AUDIENCE: rova-web
       JWT_ACCESS_EXPIRY: 15m
       JWT_REFRESH_EXPIRY: 30d
       CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
@@ -226,10 +226,10 @@ jobs:
           PORT: '3000'
 
       - name: Install Playwright browsers
-        run: pnpm --filter rally-web exec playwright install --with-deps chromium
+        run: pnpm --filter rova-web exec playwright install --with-deps chromium
 
       - name: Run E2E
-        run: pnpm --filter rally-web exec playwright test --reporter=line
+        run: pnpm --filter rova-web exec playwright test --reporter=line
 
       - name: Upload Playwright report
         if: always()
@@ -266,7 +266,7 @@ jobs:
           pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Build
-        run: pnpm --filter rally-web build
+        run: pnpm --filter rova-web build
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7

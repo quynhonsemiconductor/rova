@@ -39,7 +39,7 @@ export default defineConfig({
       INVITATION_TTL_DAYS: '7',
       LOG_LEVEL: 'error',
       OTEL_ENABLED: 'false',
-      OTEL_SERVICE_NAME: 'rally-api-test',
+      OTEL_SERVICE_NAME: 'rova-api-test',
       OTEL_WORKER_SERVICE_NAME: 'rally-worker-test',
       APP_BASE_URL: 'http://localhost:5173',
       // Entra BFF OIDC — test-only placeholders. Never used for real auth.

@@ -327,7 +327,7 @@ async function seedScm(db: Db): Promise<void> {
       workspaceId: WORKSPACE_ID,
       installationId: SEED_SCM_INSTALLATION_ID,
       provider: 'github',
-      fullName: 'QNSC-VN/rally',
+      fullName: 'quynhonsemiconductor/rova',
       active: true,
     })
     .onConflictDoNothing();
@@ -344,7 +344,7 @@ async function seedScm(db: Db): Promise<void> {
         type: 'pull_request',
         externalId: '4821',
         name: 'feat(nx): upgrade to v21',
-        url: 'https://github.com/QNSC-VN/rally/pull/4821',
+        url: 'https://github.com/quynhonsemiconductor/rova/pull/4821',
         state: 'open',
       },
       {
@@ -355,7 +355,7 @@ async function seedScm(db: Db): Promise<void> {
         type: 'branch',
         externalId: 'fix/windows-ci-checkout',
         name: 'fix/windows-ci-checkout',
-        url: 'https://github.com/QNSC-VN/rally/tree/fix/windows-ci-checkout',
+        url: 'https://github.com/quynhonsemiconductor/rova/tree/fix/windows-ci-checkout',
       },
     ])
     .onConflictDoNothing();
@@ -369,8 +369,8 @@ async function seedScm(db: Db): Promise<void> {
       provider: 'github',
       revision: '9f2c1ab',
       name: 'feat(nx): bump workspace to v21',
-      uri: 'https://github.com/QNSC-VN/rally/commit/9f2c1ab',
-      repositoryFullName: 'QNSC-VN/rally',
+      uri: 'https://github.com/quynhonsemiconductor/rova/commit/9f2c1ab',
+      repositoryFullName: 'quynhonsemiconductor/rova',
       authorName: 'Nghia-VanTrong',
       committedAt: new Date('2026-06-24T11:02:00Z'),
       changes: [
