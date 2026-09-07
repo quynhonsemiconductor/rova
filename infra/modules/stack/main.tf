@@ -572,7 +572,7 @@ locals {
       auth_login_failure_rate = 0.15
       # 50 requests per 5m, ~0.17 rps — the SAME floor the CloudWatch
       # alb_latency alarm already uses (thresholds.alb_latency_min_requests in
-      # qnsc-tf-modules//modules/observability, default 50). Matched on purpose:
+      # tf-modules//modules/observability, default 50). Matched on purpose:
       # the two alarms watch the same latency on the same traffic from opposite
       # sides, and a reader who finds one gated at 50 and the other at some other
       # number has to work out which is right. Low enough that any environment
@@ -719,7 +719,7 @@ locals {
 #     The alert fired on one slow request and cleared on the next one.
 #
 # THIS ORGANISATION ALREADY DIAGNOSED AND FIXED THIS EXACT DEFECT ON THE
-# CLOUDWATCH SIDE. The alb_latency alarm in qnsc-tf-modules//modules/observability
+# CLOUDWATCH SIDE. The alb_latency alarm in tf-modules//modules/observability
 # carries the same finding in its own words — "On a pre-launch or low-traffic
 # environment (measured: 0-6 requests per 5-minute period) p95 IS effectively the
 # second-slowest single request, so ONE slow request held the alarm over the

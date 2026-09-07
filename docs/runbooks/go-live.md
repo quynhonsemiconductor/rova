@@ -1,4 +1,4 @@
-# Runbook — taking rally production live
+# Runbook — taking rova production live
 
 Production is deliberately idle: **zero tasks, RDS stopped, no cache node, no NAT, no
 ALB.** That posture costs ~$4/mo instead of ~$110, and every part of it is a flag.
@@ -27,7 +27,7 @@ idle — so the newest tag is *not* live, and nothing is. Pick deliberately; do 
    propagate.
 
 **Have ready:** AWS SSO session (`qnsc-admin`), a Cloudflare API token with Tunnel +
-DNS write, and access to both `quynhonsemiconductor/rally` and `quynhonsemiconductor/infra`.
+DNS write, and access to both `quynhonsemiconductor/rova` and `quynhonsemiconductor/infra`.
 
 ---
 
@@ -58,14 +58,14 @@ aws ec2 describe-instances --region ap-southeast-1 \
 
 ---
 
-## Step 2 — Restore the cache and the service floors (rally)
+## Step 2 — Restore the cache and the service floors (rova)
 
 These **must move together**. A `check` block in `infra/modules/stack/main.tf` enforces
 it: `cache.enabled = false` requires `min_count = 0` on both services, because a task
 that cannot reach its cache does not fail — it falls back to localhost and runs with the
 token denylist and rate limiter **failed open**.
 
-`rally/infra/live/prod/main.tf`:
+`rova infra live/prod/main.tf`:
 
 ```hcl
 cache = {
@@ -97,7 +97,7 @@ Apply.
 
 ## Step 3 — Remove the weekly stop, and start the database
 
-`rally/infra/live/prod/main.tf` — **delete** this line entirely:
+`rova infra live/prod/main.tf` — **delete** this line entirely:
 
 ```hcl
 idle_schedule = "cron(0 1 ? * SUN *)"
@@ -110,8 +110,8 @@ exactly the kind of leftover that becomes an outage nobody can explain.
 Apply, then start the database out of band (RDS run-state is not a Terraform concept):
 
 ```bash
-aws rds start-db-instance --db-instance-identifier rally-prod --region ap-southeast-1
-aws rds wait db-instance-available --db-instance-identifier rally-prod --region ap-southeast-1
+aws rds start-db-instance --db-instance-identifier rova-prod --region ap-southeast-1
+aws rds wait db-instance-available --db-instance-identifier rova-prod --region ap-southeast-1
 ```
 
 Takes 5–10 minutes.
@@ -151,12 +151,12 @@ curl -s "https://api.cloudflare.com/client/v4/accounts/69e52835cf2d08edde5b6ebd7
 # expect: healthy 4     (NOT "inactive 0")
 
 # 2. Does the public hostname answer?
-curl -s -o /dev/null -w "%{http_code}\n" https://rally-api.qnsc.vn/v1/healthz     # expect 200
-curl -s https://rally-api.qnsc.vn/v1/readyz                                       # expect postgres+valkey up
+curl -s -o /dev/null -w "%{http_code}\n" https://rova-api.qnsc.vn/v1/healthz     # expect 200
+curl -s https://rova-api.qnsc.vn/v1/readyz                                       # expect postgres+valkey up
 
 # 3. Does the real user path work?
-curl -s -o /dev/null -w "%{http_code}\n" https://rally.qnsc.vn/                    # SPA
-curl -s -o /dev/null -w "%{http_code}\n" https://rally.qnsc.vn/v1/healthz          # BFF proxy
+curl -s -o /dev/null -w "%{http_code}\n" https://rova.qnsc.vn/                    # SPA
+curl -s -o /dev/null -w "%{http_code}\n" https://rova.qnsc.vn/v1/healthz          # BFF proxy
 ```
 
 Then **log in through Entra SSO in a browser** and hold a page open for two minutes to
@@ -169,7 +169,7 @@ Only after all of this: announce.
 
 ## Step 6 — Restore outage alerting
 
-`rally/infra/live/prod/main.tf`:
+`rova infra live/prod/main.tf`:
 
 ```hcl
 monitor_target_health = true    # currently false
@@ -191,7 +191,7 @@ monitor_ingress = true    # currently false
 ```
 
 Apply. That recreates the health check, the us-east-1 alarm and its SNS topic, which
-probes `rally-api.qnsc.vn/v1/healthz` from outside AWS and pages `nghiavt@qnsc.vn`
+probes `rova-api.qnsc.vn/v1/healthz` from outside AWS and pages `nghiavt@qnsc.vn`
 (Route 53 publishes `HealthCheckStatus` only in us-east-1).
 
 Set it in the **same change** as `min_count` and before announcing. While tunnelled this
@@ -203,7 +203,7 @@ reports it.
 
 ```bash
 aws cloudwatch describe-alarms --region us-east-1 \
-  --alarm-names rally-prod-api-ingress-down \
+  --alarm-names rova-prod-api-ingress-down \
   --query 'MetricAlarms[].[AlarmName,StateValue]' --output text
 # expect: OK
 ```
@@ -219,7 +219,7 @@ Recovery is **25–30 minutes** and produces a **new ALB DNS name**. Order matte
 
 1. `platform/qnsc-infra/live/runtime-prod/main.tf`: `enable_alb = true`, and restore
    `enable_deletion_protection = true` in the `module "alb"` block. Apply. (~4 min.)
-2. `rally/infra/live/prod/main.tf`: `tunnel_enabled = false`. Apply.
+2. `rova infra live/prod/main.tf`: `tunnel_enabled = false`. Apply.
 3. Redeploy so the services roll onto a task definition with the ALB target group and no
    `cloudflared` sidecar.
 4. `dns_api` switches the CNAME back to the ALB automatically — allow for propagation.
@@ -243,7 +243,7 @@ reader:
 | file | flag | why |
 |---|---|---|
 | `qnsc-infra/live/runtime-prod` | `enable_alb = false` | correct while tunnelled — leave, but the comment says "pre-launch" |
-| `rally/infra/live/prod` | `secrets_recovery_window_days = 30` | fine, keep |
+| `rova infra live/prod` | `secrets_recovery_window_days = 30` | fine, keep |
 | `qnsc-infra/live/security-baseline` | `enable_config = false` | **turn on before any SOC 2 engagement** — history cannot be backfilled |
 
 ## Cost after go-live
