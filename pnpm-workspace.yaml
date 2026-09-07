@@ -12,7 +12,12 @@ packages:
 # FastifyInstance type NestFastifyApplication exposes (typed against 5.8.5) —
 # this is what broke `nest start --watch`'s type-check entirely.
 overrides:
-  fastify: "5.10.0"
+  # Two advisories, both fixed in 5.12.1: GHSA-3m5p-2c4r-xxw2 (X-Forwarded-* spoofing under a
+  # hop-count `trustProxy`, CVSS 6.1) and GHSA-w2qp-rph6-63g4 (schema validation bypass via a
+  # root primitive, CVSS 5.4). Raised 5.10.0 -> 5.12.3. Still an EXACT pin, for the reason the
+  # note below gives: the value's job is to keep ONE fastify copy in the tree, so a range here
+  # would reintroduce the two-copy type mismatch it exists to prevent.
+  fastify: "5.12.3"
   "esbuild@<0.25.0": ">=0.25.0"
   # GHSA-rgw5-rvv9-x895 — HIGH (CVSS 7.5) DoS via unbounded intermediate arrays,
   # vulnerable <5.0.9, fixed 5.0.9. It explicitly BYPASSES the CVE-2026-14257
@@ -34,20 +39,24 @@ overrides:
   # via fastify@5.10.0 / @nestjs/platform-fastify (declared range ^9.6.0, so
   # 9.7.0 is in-range). A newly published advisory that also affects main.
   "find-my-way@<9.7.0": "9.7.0"
-  # GHSA-4c8g-83qw-93j6 — host confusion via failed IDN canonicalization,
-  # fixed in 3.1.3. Only reachable as a deep transitive dep (ajv-formats →
-  # fast-json-stringify → fastify's ecosystem), so pinned via override rather
-  # than a direct package.json dependency bump.
+  # GHSA-4c8g-83qw-93j6, GHSA-7p8r-x3mc-p8w7 and now GHSA-5jgf-p345-68v8 /
+  # GHSA-f65p-4m7j-42xc / GHSA-fph4-wmhf-6fwf / GHSA-jqff-g426-hqxp (CVSS 7.5 each) — host
+  # confusion and SSRF in the same URI parser, six advisories running: failed IDN
+  # canonicalisation, a backslash authority introducer, malformed and repeated authority forms,
+  # and percent-encoded schemes. Fixed in 3.1.6 on the 3.x line.
   #
-  # SUPERSEDED by GHSA-7p8r-x3mc-p8w7 (CVSS 7.5) — host confusion again, this time
-  # via a backslash authority introducer, fixed in 3.1.5. The old `^3.1.4` floor
-  # resolved to exactly 3.1.4 and was therefore vulnerable. Same class of bug in the
-  # same parser two advisories running, so pin the FLOOR rather than a version:
-  # `>=3.1.5` lets the next patch land without another edit here.
+  # Reachable only as a deep transitive dep (fastify -> @fastify/ajv-compiler ->
+  # fast-json-stringify / ajv -> fast-uri), so pinned here rather than as a direct dependency.
+  # This one reaches PRODUCTION, unlike the undici pins below.
   #
-  # This one reaches PRODUCTION (fastify → @fastify/ajv-compiler → fast-uri), unlike
-  # the undici pins below.
-  "fast-uri@<3.1.5": ">=3.1.5"
+  # THE UPPER BOUND IS THE POINT, and its absence was a real defect. Every consumer in this tree
+  # declares `^3.0.0` or `^3.0.1` — nothing asks for 4.x — but the previous value was an
+  # unbounded `>=3.1.5`, so pnpm resolved the newest thing satisfying it and dragged the whole
+  # tree onto fast-uri 4.1.2, a major nobody declared. That is what osv-scanner then flagged on
+  # `main` under the four new advisories: an override written to CLOSE this parser's holes is
+  # what carried the tree into the unpatched major. Keep the floor inside the declared major, the
+  # way the undici pins below keep each consumer inside the major it asks for.
+  "fast-uri@<3.1.6": ">=3.1.6 <4.0.0"
   # GHSA-55q2-fjhq-7xh7 — DOMPurify, "IN_PLACE hook removal leaves a detached subtree
   # executable", fixed in 3.4.13. This one REACHES PRODUCTION and is a real XSS sink:
   # dompurify is a DIRECT dependency of apps/web (^3.4.12), used to sanitise rendered
@@ -84,6 +93,28 @@ overrides:
   # Transitive via the web build toolchain (vite / tailwind ecosystem). A newly
   # published advisory that also affects main; pinned via override.
   "postcss@<8.5.18": ">=8.5.18"
+  # GHSA-4mjr-xmp4-gh2g (DoS via an attacker-controlled `isBuffer`, CVSS 6.3) and
+  # GHSA-x5fp-wj9c-mxmx (array-limit bypass via bracket-key comma parsing, CVSS 6.3), both
+  # fixed in 6.16.0. DEV-ONLY: the sole path is supertest -> superagent -> qs, so nothing here
+  # ships in the runtime image — the API parses its own query strings through fastify, not qs.
+  # Pinned anyway because the scanner is `osv_blocking=true` and a lockfile it rejects blocks
+  # every unrelated PR.
+  "qs@<6.16.0": ">=6.16.0"
+  # GHSA-73wf-gq98-2v4g (uncaught crash / prototype write from an untrusted query) and
+  # GHSA-c83g-rgw3-j3cx (unbounded memory growth, no cache eviction), CVSS 7.5 each, both fixed
+  # in 4.28.7. DEV-ONLY and build-time: reached via @babel/helper-compilation-targets, webpack
+  # and update-browserslist-db, all of which read the browserslist config committed in this
+  # repo — the untrusted-input precondition does not exist here. Floor rather than a pin, since
+  # the consumers all declare `>= 4.21.0` and nothing depends on an exact patch.
+  "browserslist@<4.28.7": ">=4.28.7"
+  # GHSA-cp6q-959q-f8rh — `mergeAttributes()` turns an own `__proto__` key into inherited state
+  # (prototype pollution), CVSS 6.4, fixed in 3.30.4. This one REACHES PRODUCTION: tiptap is the
+  # SPA's rich-text editor (@tiptap/react + starter-kit + extensions, all direct deps of
+  # apps/web), and the editor renders user-authored comment content. apps/web's own `^3.28.0`
+  # ranges already admit the fix — the lockfile was simply resolved before the advisory
+  # published — so this floor exists to stop a fresh resolution going backwards, the same job
+  # the dompurify pin above does.
+  "@tiptap/core@<3.30.4": ">=3.30.4"
   # Five advisories against undici, the worst GHSA-4cwx-7wf7-3272 (CVSS 7.4,
   # cross-user information disclosure + parse-time crash via degenerate private
   # cache directives). Fixed in 7.29.0 and 8.9.0 respectively.
