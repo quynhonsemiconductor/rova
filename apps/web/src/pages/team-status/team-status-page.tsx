@@ -37,7 +37,14 @@ import { DataTableFrame, useDataTable, type ColumnSpec, rankColumn } from '@/sha
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
-import { WorkItemType } from '@/entities/work-item/model/types'
+import {
+  WorkItemType,
+  SIMPLIFIED_STATE_CONFIG,
+  SIMPLIFIED_STATE_LABEL,
+  SIMPLIFIED_STATE_ORDER,
+} from '@/entities/work-item/model/types'
+import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import type { StateStep } from '@/entities/work-item/ui/state-steps'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
@@ -45,6 +52,29 @@ import { TableTotalsRow } from '@/shared/ui/table-totals-row'
 import { memberProgressPercent } from '@/features/team-status/progress'
 
 const TEAM_TASK_STATES: TeamTaskState[] = ['Defined', 'In-Progress', 'Completed']
+
+/**
+ * Segmented-stepper steps for the Task State cell, in `TeamTaskState` terms.
+ *
+ * Derived from `SIMPLIFIED_STATE_ORDER` rather than re-listing the three states, so
+ * this control and the simplified stepper on Iteration Status / the Tasks tab can
+ * never disagree about order or colour. The bridge is exact and not a coincidence
+ * worth relying on silently: `SIMPLIFIED_STATE_LABEL`'s values ARE the three
+ * `TeamTaskState` strings, which is what lets the shared presentation data drive a
+ * control whose wire type is the Team Status one. `SIMPLIFIED_STATE_STEPS` itself
+ * cannot be reused — it emits a canonical `ScheduleState`, and this surface's PATCH
+ * takes `Defined | In-Progress | Completed` (P3-TS-FR-022).
+ *
+ * `letter` is deliberately EMPTY. The stepper prints it inside the active box, and
+ * SRS §5:87 / `P3-TS-FR-045` forbid the value collapsing to `D` / `P` / `C` — the
+ * full label is rendered beside the track instead (see the cell).
+ */
+const TEAM_TASK_STATE_STEPS: StateStep<TeamTaskState>[] = SIMPLIFIED_STATE_ORDER.map((s) => ({
+  value: SIMPLIFIED_STATE_LABEL[s] as TeamTaskState,
+  label: SIMPLIFIED_STATE_LABEL[s],
+  letter: '',
+  activeBg: SIMPLIFIED_STATE_CONFIG[s].activeBg,
+}))
 
 type ColKey =
   | 'rank'
@@ -65,7 +95,10 @@ const TEAM_STATUS_COLUMNS: ColumnSpec<TeamStatusTaskRow, unknown, ColKey>[] = [
   { key: 'name', label: 'Task Name', defaultWidth: 240, minWidth: 150, locked: true },
   { key: 'workProduct', label: 'Work Product', defaultWidth: 140 },
   { key: 'release', label: 'Release', defaultWidth: 96 },
-  { key: 'state', label: 'State', defaultWidth: 112 },
+  // 150, not 112: the cell is now the 48px segmented track plus a 6px gap plus the
+  // full state label, and "In-Progress" needs ~78px at 12px — at 112 the label that
+  // `P3-TS-FR-045` requires was the part that truncated.
+  { key: 'state', label: 'State', defaultWidth: 150, minWidth: 132 },
   {
     key: 'capacity',
     label: 'Capacity',
@@ -718,24 +751,35 @@ function TaskRow({
           <span className="text-ui-xs text-foreground-faint">{EMPTY_VALUE}</span>
         )}
       </div>
-      {/* State (P3-TS-FR-021 — inline editable). A dropdown (InlineSelect) keyed on
-          exactly Defined / In-Progress / Completed, not the segmented Schedule-State
-          stepper: this is a Task State control, and the dropdown renders the full
-          labels instead of the stepper's single letters (fixes TS-005/TS-007). */}
-      <div className="shrink-0 px-2" style={colStyles.state} onClick={(e) => e.stopPropagation()}>
-        <InlineSelect
+      {/* State (P3-TS-FR-021 — inline editable): the SHARED segmented stepper plus the
+          full label, never one or the other.
+
+          This used to be an `InlineSelect`, chosen when `GAP-P3-TS-007` was read as
+          requiring a dropdown. The rule it was actually protecting is narrower — SRS
+          §5:87 and `P3-TS-FR-045` forbid the value collapsing to `D` / `P` / `C`, and
+          the SRS field table has since been widened from "Dropdown with…" to "Inline
+          dropdown/control with full labels". So the constraint is on the LABEL, not on
+          the control type, and the stepper satisfies it as long as the label is
+          present: the track carries no letter (`TEAM_TASK_STATE_STEPS.letter` is empty
+          by construction) and the word sits beside it.
+
+          Reusing `StateStepper` is the point — Iteration Status and the Tasks tab
+          already render task state this way, and three grids hand-rolling one control
+          is how they drift. The label is what makes this surface's rendering different
+          from theirs, and it is required here. */}
+      <div
+        className="flex shrink-0 items-center gap-1.5 px-2"
+        style={colStyles.state}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <StateStepper<TeamTaskState>
+          steps={TEAM_TASK_STATE_STEPS}
           value={task.state}
-          aria-label="Task state"
-          disabled={!canEdit}
-          onChange={(e) => handleStateChange(e.target.value as TeamTaskState)}
-          className="w-auto"
-        >
-          {TEAM_TASK_STATES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </InlineSelect>
+          canEdit={canEdit}
+          onChange={handleStateChange}
+          ariaLabel="Task state"
+        />
+        <span className="truncate text-ui-xs text-foreground">{task.state}</span>
       </div>
       {/* Capacity (empty on task row — P3-TS-FR-024) */}
       <div className="shrink-0 px-2" style={colStyles.capacity} />

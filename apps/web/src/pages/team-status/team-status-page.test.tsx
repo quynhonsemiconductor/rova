@@ -184,9 +184,19 @@ describe('Team Status read-only fields', () => {
      */
     expect(container.querySelectorAll('.inline-edit-cell')).toHaveLength(3)
 
-    // The Task State dropdown stays (FR-021/AC-17); the Owner picker is gone (FR-027).
-    expect(screen.getAllByRole('combobox', { name: 'Task state' })).toHaveLength(2)
+    // The Task State control stays (FR-021/AC-17); the Owner picker is gone (FR-027).
+    // It is the shared segmented stepper now, so it is a `group`, not a `combobox`.
+    expect(screen.getAllByRole('group', { name: 'Task state' })).toHaveLength(2)
     expect(screen.queryByRole('combobox', { name: /owner/i })).toBeNull()
+
+    /**
+     * FR-045 / SRS §5:87 — the state must read as a FULL label, never as a bare `D` / `P` / `C`.
+     * Asserting the words is what pins the rule; asserting the control TYPE only pinned one way of
+     * satisfying it, which is what this test used to do. The two fixture tasks are Completed and
+     * Defined, so both labels must be on screen.
+     */
+    expect(screen.getByText('Completed')).toBeTruthy()
+    expect(screen.getByText('Defined')).toBeTruthy()
   })
 
   it('renders the hours as values, not inputs, and never as a zero it cannot prove', async () => {
@@ -287,9 +297,19 @@ describe('P3-TS-FR-039 — an Editor gets Team Status read-only', () => {
     // task rows. The class is what `InlineEditableCell` adds only when `canEdit`.
     expect(container.querySelectorAll('.inline-edit-cell')).toHaveLength(0)
     expect(screen.queryByRole('textbox', { name: 'Capacity' })).toBeNull()
-    // Task State is a `<select>`, so its read-only form is DISABLED rather than absent.
-    for (const control of screen.getAllByRole('combobox', { name: 'Task state' })) {
-      expect(control).toBeDisabled()
+    /**
+     * Task State is the shared segmented stepper. Its read-only form still RENDERS — the reader
+     * must be able to see the state they may not change — but it offers no control to press:
+     * `StateStepper` emits a `<span>` per segment when it cannot act, deliberately, so a read-only
+     * stepper does not put six dead buttons per row into the accessibility tree.
+     */
+    const steppers = screen.getAllByRole('group', { name: 'Task state' })
+    expect(steppers).toHaveLength(2)
+    for (const stepper of steppers) {
+      expect(stepper.querySelectorAll('button')).toHaveLength(0)
     }
+    // And the full label is still shown (FR-045), read-only or not.
+    expect(screen.getByText('Completed')).toBeTruthy()
+    expect(screen.getByText('Defined')).toBeTruthy()
   })
 })
