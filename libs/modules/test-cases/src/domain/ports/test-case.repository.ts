@@ -1,8 +1,31 @@
-import type { CursorPayload, PagedResult } from '@platform';
+import type { CursorPayload, DbExecutor, PagedResult } from '@platform';
 import type { TestCase } from '../test-case.types';
 import type { TeamReadScope } from '../team-read-scope';
 
 export const TEST_CASE_REPOSITORY = Symbol('TEST_CASE_REPOSITORY');
+
+/** One (project, live Type) row — the Create modal's dropdown, and BR2's "first selectable" source. */
+export interface TestCaseTypeOption {
+  id: string;
+  name: string;
+}
+
+export interface CreateTestCaseInput {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  teamId: string | null;
+  workItemId: string;
+  testCaseKey: string;
+  name: string;
+  type: string;
+  method: 'manual' | 'automated';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  ownerId: string | null;
+  assigneeId: string | null;
+  rank: string;
+  createdBy: string;
+}
 
 /**
  * `scope` is REQUIRED on the LIST-shaped reads, structurally — see `team-read-scope.ts` for why
@@ -28,4 +51,25 @@ export interface ITestCaseRepository {
   findById(id: string, workspaceId: string): Promise<TestCase | null>;
   /** Keys are workspace-unique — resolves across the workspace, like `IWorkItemRepository.findByKey`. */
   findByKey(testCaseKey: string, workspaceId: string): Promise<TestCase | null>;
+
+  // ── Writes (Phase B) ───────────────────────────────────────────────────────
+
+  /** `MAX(existing)+1` for this workspace's `TC-<n>` keys (D4) — not atomic; the service retries once. */
+  nextKeyNumber(workspaceId: string, executor?: DbExecutor): Promise<number>;
+  /**
+   * Serialise rank assignment for one Work Item's Test Case list (BR7: "after existing Test Cases
+   * of the same Work Item"). Call this first, then {@link findMaxRank} with the SAME executor —
+   * the read-modify-write shape every ranked create in this repo follows.
+   */
+  lockRankScope(workItemId: string, executor: DbExecutor): Promise<void>;
+  /** Highest existing rank among this Work Item's live Test Cases. Null if none exist. */
+  findMaxRank(
+    workItemId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<string | null>;
+  create(input: CreateTestCaseInput, executor: DbExecutor): Promise<TestCase>;
+
+  /** Live (non-archived) Types for a project, ordered for BR2's "first selectable" default. */
+  listSelectableTypes(projectId: string, workspaceId: string): Promise<TestCaseTypeOption[]>;
 }

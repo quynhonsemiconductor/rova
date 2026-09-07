@@ -342,6 +342,7 @@ export const ErrorCodes = {
   // Test Case & Test Result (Phase 7)
   TEST_CASE_NOT_FOUND: 'TEST_CASE_NOT_FOUND',
   TEST_RESULT_NOT_FOUND: 'TEST_RESULT_NOT_FOUND',
+  TEST_CASE_TYPE_NOT_SELECTABLE: 'TEST_CASE_TYPE_NOT_SELECTABLE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

@@ -1,15 +1,16 @@
 /**
- * Test Cases tab on Story/Defect detail (Phase 7, Phase A — AC1-AC4).
+ * Test Cases tab on Story/Defect detail (Phase 7, Phase A read path + Phase B create).
  *
- * Read path only: the list, in rank order, and the ID cell opens the Test Case's own detail
- * route. `Add New` renders DISABLED (AC3 requires the action be DISPLAYED, not functional yet —
- * Phase B ships the create modal).
+ * The list, in rank order, the ID cell opens the Test Case's own detail route, and `Add New`
+ * opens the create modal (`test_case:create`-gated — AC3/B4).
  */
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { ListChecks } from 'lucide-react'
 import { useTestCases } from '@/features/test-cases/api'
 import { testCaseColumns, type TestCaseCtx } from '@/features/test-cases/model/test-case-columns'
+import { CreateTestCaseModal } from '@/features/test-cases/ui/create-test-case-modal'
 import { listResource } from '@/shared/lib/query/resource'
 import { DataTableFrame, useDataTable } from '@/shared/ui/table'
 import { Button } from '@/shared/ui/button'
@@ -21,6 +22,7 @@ export function TestCasesTab({ workItemId, projectId }: { workItemId: string; pr
   const navigate = useNavigate()
   const { can } = useProjectPermissions(projectId)
   const canCreate = can('test_case:create')
+  const [creating, setCreating] = useState(false)
 
   const query = useTestCases(workItemId)
   const testCases = listResource(query)
@@ -36,11 +38,15 @@ export function TestCasesTab({ workItemId, projectId }: { workItemId: string; pr
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {creating && (
+        <CreateTestCaseModal workItemId={workItemId} onClose={() => setCreating(false)} />
+      )}
       <div className="flex items-center justify-end">
         <Button
           size="sm"
           disabled={!canCreate}
-          title={canCreate ? t('addNew.comingSoon') : t('addNew.noPermission')}
+          title={canCreate ? undefined : t('addNew.noPermission')}
+          onClick={() => setCreating(true)}
         >
           {t('addNew.label')}
         </Button>

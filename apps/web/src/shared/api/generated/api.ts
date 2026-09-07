@@ -2880,7 +2880,8 @@ export interface paths {
     /** List a Work Item's Test Cases, in rank order */
     get: operations['WorkItemTestCasesController_listByWorkItem']
     put?: never
-    post?: never
+    /** Create a Test Case under a Work Item */
+    post: operations['WorkItemTestCasesController_create']
     delete?: never
     options?: never
     head?: never
@@ -2913,6 +2914,23 @@ export interface paths {
     }
     /** Get a Test Case by ID */
     get: operations['TestCaseRecordsController_getById']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/projects/{id}/test-case-types': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List a project's selectable (non-archived) Test Case Types */
+    get: operations['TestCaseTypesController_listSelectableTypes']
     put?: never
     post?: never
     delete?: never
@@ -5791,6 +5809,23 @@ export interface components {
       createdAt: string
       /** Format: date-time */
       updatedAt: string
+    }
+    CreateTestCaseDto: {
+      name: string
+      type?: string
+      /** @enum {string} */
+      method?: 'manual' | 'automated'
+      /** @enum {string} */
+      priority?: 'low' | 'normal' | 'high' | 'urgent'
+      /** Format: uuid */
+      ownerId?: string
+      /** Format: uuid */
+      assigneeId?: string
+    }
+    TestCaseTypeOptionDto: {
+      /** Format: uuid */
+      id: string
+      name: string
     }
   }
   responses: never
@@ -15862,6 +15897,73 @@ export interface operations {
       }
     }
   }
+  WorkItemTestCasesController_create: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateTestCaseDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TestCaseResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Precondition Failed — the target is not in a state that allows this */
+      412: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   TestCaseRecordsController_getByKey: {
     parameters: {
       query?: never
@@ -15932,6 +16034,48 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestCaseTypesController_listSelectableTypes: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TestCaseTypeOptionDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }

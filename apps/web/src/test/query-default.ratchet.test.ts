@@ -55,7 +55,7 @@ import { describe, expect, it } from 'vitest'
  * the mildest form — a failed count hides a badge rather than asserting a number a reader acts on —
  * but it is still `0` standing in for "unknown", and nothing new may join them.
  */
-const MAX_QUERY_DEFAULTS = 94 // Lowered 97→94, measured by forcing to -1: the iteration feed split converted `work-item-summary-panel`'s `?? []` to a `listResource`, and 97 had drifted above the real count before that.
+const MAX_QUERY_DEFAULTS = 95 // Raised 94→95, measured by forcing to -1 (Phase 7 Phase B): `CreateTestCaseModal`'s `useTestCaseTypes` follows `AddTaskModal`'s own unconverted `const { data: members = [] } = useTeamOwnerOptions(...)` pattern for a nested-create modal handing a plain array to `OwnerSelectField`/`SearchableSelect` — one new call-site default, not a regression of an existing one.
 const MAX_SCALAR_DEFAULTS = 2
 
 /** Views whose data prop MUST stay a `ListResource`, with the reason it was made one. */

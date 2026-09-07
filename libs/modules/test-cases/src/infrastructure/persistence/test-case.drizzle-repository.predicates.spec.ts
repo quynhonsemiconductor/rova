@@ -102,4 +102,34 @@ describe('TestCaseDrizzleRepository — scope is REQUIRED but never a predicate 
     expect(captured).toHaveLength(1);
     expect(whereOf(captured[0].sql)).not.toContain('team_id');
   });
+
+  describe('findMaxRank (BR7 — Phase B)', () => {
+    it('scopes by work_item_id + workspace_id + deleted_at IS NULL, ordered rank desc, id asc', async () => {
+      const { repo, captured } = recordingRepo();
+
+      // `findMaxRank` takes the caller's transaction executor (never the pool) — a plain db proxy
+      // stands in for `tx` here since only the emitted SQL is under test.
+      const db = (repo as unknown as { db: unknown }).db;
+      await repo.findMaxRank('wi-1', 'ws-1', db as never);
+
+      expect(captured).toHaveLength(1);
+      expect(whereOf(captured[0].sql)).toContain('work_item_id');
+      expect(whereOf(captured[0].sql)).toContain('deleted_at');
+      expect(captured[0].sql).toMatch(/order by "work"\."test_cases"\."rank" desc/);
+      expect(whereOf(captured[0].sql)).not.toContain('team_id');
+    });
+  });
+
+  describe('listSelectableTypes (BR2 — Phase B)', () => {
+    it('scopes by project_id + workspace_id + archived_at IS NULL, ordered by position', async () => {
+      const { repo, captured } = recordingRepo();
+
+      await repo.listSelectableTypes('proj-1', 'ws-1');
+
+      expect(captured).toHaveLength(1);
+      expect(whereOf(captured[0].sql)).toContain('project_id');
+      expect(whereOf(captured[0].sql)).toContain('archived_at');
+      expect(captured[0].sql).toMatch(/order by "work"\."test_case_types"\."position" asc/);
+    });
+  });
 });

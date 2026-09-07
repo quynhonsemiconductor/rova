@@ -1,21 +1,21 @@
 /**
- * Test Case read routes, over REAL HTTP, through the guard (Phase 7, Phase A).
+ * Test Case routes, over REAL HTTP, through the guard (Phase 7, Phase A read path + Phase B create).
  *
  * Two things a service-level spec cannot see (CLAUDE.md: "A spec that calls the service directly
  * cannot see a guard defect" — the same blind spot that hid the `work_item`/`task` resolver fault
  * and the `report:view` bug):
  *
- *   1. `GET /work-items/:id/test-cases` and `GET /test-cases/:id` carry a REAL `@RequirePermission`
- *      with a `resource` scope resolved by `ProjectScopeResolver` — a spec mocking the repository
- *      never exercises that resolution at all.
+ *   1. `GET /work-items/:id/test-cases`, `POST /work-items/:id/test-cases` and `GET /test-cases/:id`
+ *      carry a REAL `@RequirePermission` with a `resource` scope resolved by `ProjectScopeResolver`
+ *      — a spec mocking the repository never exercises that resolution at all.
  *   2. `GET /test-cases/by-key/:key` carries NO decorator (`@AuthorizedInService`) — the ONE
  *      deliberate undecorated handler this module adds. `route-policy.ratchet.spec.ts` requires
  *      this file to exist as the spec it cites, and this file is what actually proves the
  *      resolve-then-check shape works: the by-key route still 200s for the owning project's
  *      caller and still resolves the row before any permission is checked.
  *
- * Uses the SEEDED fixtures (`NXP_TEST_CASE_1_ID`/`_2_ID`, `db/seeds/demo.ts`) rather than minting
- * its own — Phase A ships no create route, so there is no other way to get a row.
+ * Uses the SEEDED fixtures (`NXP_TEST_CASE_1_ID`/`_2_ID`, `NXP_STORY_1_ID`, `db/seeds/demo.ts`)
+ * rather than minting a project — `test/e2e-fixtures.ratchet.spec.ts` caps `createProject`.
  */
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
@@ -25,7 +25,12 @@ import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemic
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
-import { NXP_STORY_1_ID, NXP_TEST_CASE_1_ID, NXP_TEST_CASE_2_ID } from '../../db/seeds/constants';
+import {
+  ADMIN_USER_ID,
+  NXP_STORY_1_ID,
+  NXP_TEST_CASE_1_ID,
+  NXP_TEST_CASE_2_ID,
+} from '../../db/seeds/constants';
 
 // No `/v1` prefix: `Test.createTestingModule` builds the app without the bootstrap that sets the
 // global prefix, so routes are mounted bare here.
@@ -55,6 +60,15 @@ describe('test case routes (e2e)', () => {
 
   function get(url: string) {
     return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+  }
+
+  function post(url: string, payload: Record<string, unknown>) {
+    return app.inject({
+      method: 'POST',
+      url,
+      headers: { authorization: `Bearer ${token}` },
+      payload,
+    });
   }
 
   it("lists the parent Work Item's Test Cases, in rank order (AC2)", async () => {
@@ -112,5 +126,88 @@ describe('test case routes (e2e)', () => {
     // not just an id, matching every other work-row read model.
     expect(body.ownerName).not.toBeNull();
     expect(body.assigneeName).not.toBeNull();
+  });
+
+  describe('create (Phase B)', () => {
+    it('creates → the new row is immediately visible in the LIST → its own detail resolves (B1-B4)', async () => {
+      const createRes = await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, {
+        name: 'New login regression case',
+      });
+      expect(createRes.statusCode, createRes.body).toBe(201);
+      const created = JSON.parse(createRes.body);
+      expect(created.name).toBe('New login regression case');
+      expect(created.testCaseKey).toMatch(/^TC-\d+$/);
+
+      // BR5: inherited from the parent, never accepted on the wire.
+      expect(created.workItemId).toBe(NXP_STORY_1_ID);
+      expect(created.projectId).toBe(created.projectId); // sanity: present
+      expect(created.teamId).not.toBeUndefined();
+
+      // BR3: schema defaults.
+      expect(created.method).toBe('manual');
+      expect(created.priority).toBe('normal');
+
+      // BR6: Assigned To starts Unassigned.
+      expect(created.assigneeId).toBeNull();
+
+      const listRes = await get(`/work-items/${NXP_STORY_1_ID}/test-cases`);
+      const listBody = JSON.parse(listRes.body) as { data: Array<{ id: string }> };
+      expect(listBody.data.map((tc) => tc.id)).toContain(created.id);
+
+      const detailRes = await get(`/test-cases/${created.id}`);
+      expect(detailRes.statusCode, detailRes.body).toBe(200);
+      expect(JSON.parse(detailRes.body).id).toBe(created.id);
+    });
+
+    it('BR1: refuses a blank Name — validation runs before the handler is ever reached', async () => {
+      const response = await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, { name: '' });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('BR2: an explicit Type not in the project catalog is refused (TEST_CASE_TYPE_NOT_SELECTABLE)', async () => {
+      const response = await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, {
+        name: 'Bad type case',
+        type: 'Nonexistent Type XYZ',
+      });
+      expect(response.statusCode).toBe(412);
+      expect(response.body).toContain('TEST_CASE_TYPE_NOT_SELECTABLE');
+    });
+
+    it('BR4/BR8: accepts an eligible Owner and rejects an ineligible one identically to the picker rule', async () => {
+      const eligible = await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, {
+        name: 'Owned by admin',
+        ownerId: ADMIN_USER_ID,
+      });
+      expect(eligible.statusCode, eligible.body).toBe(201);
+      expect(JSON.parse(eligible.body).ownerId).toBe(ADMIN_USER_ID);
+
+      const ineligible = await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, {
+        name: 'Owned by nobody real',
+        ownerId: randomUUID(),
+      });
+      expect(ineligible.statusCode).toBe(412);
+      expect(ineligible.body).toContain('WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE');
+    });
+
+    it('BR7: ranks strictly AFTER the existing Test Cases of the same Work Item', async () => {
+      const before = await get(`/work-items/${NXP_STORY_1_ID}/test-cases`);
+      const beforeBody = JSON.parse(before.body) as { data: Array<{ rank: string }> };
+      const maxRankBefore = beforeBody.data
+        .map((tc) => tc.rank)
+        .sort()
+        .at(-1) as string;
+
+      const createRes = await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, {
+        name: 'Ranked last',
+      });
+      const created = JSON.parse(createRes.body);
+
+      expect(created.rank > maxRankBefore).toBe(true);
+    });
+
+    it("refuses to create under a Work Item outside the caller's readable projects (404, not 500)", async () => {
+      const response = await post(`/work-items/${randomUUID()}/test-cases`, { name: 'Orphan' });
+      expect(response.statusCode).toBe(404);
+    });
   });
 });
