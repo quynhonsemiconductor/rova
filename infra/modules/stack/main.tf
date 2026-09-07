@@ -484,7 +484,7 @@ module "otel_agent_worker" {
 # above exactly, for the same reason: logs, metrics and traces must agree on
 # which namespace/environment they belong to.
 module "firelens_agent_api" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.2"
 
   service_name     = "rova-api"
   product          = var.product
