@@ -2870,6 +2870,57 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/work-items/{id}/test-cases': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List a Work Item's Test Cases, in rank order */
+    get: operations['WorkItemTestCasesController_listByWorkItem']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/test-cases/by-key/{key}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get a Test Case by its workspace-unique key */
+    get: operations['TestCaseRecordsController_getByKey']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/test-cases/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get a Test Case by ID */
+    get: operations['TestCaseRecordsController_getById']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -5697,6 +5748,49 @@ export interface components {
       createdAt: string
       /** Format: uuid */
       userId: string
+    }
+    TestCaseResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      /** @description NULL = "Project backlog" (SRS §5). */
+      teamId: string | null
+      workItemId: string | null
+      /** @description TC-<n>, workspace-unique */
+      testCaseKey: string
+      name: string
+      description: string | null
+      objective: string | null
+      preconditions: string | null
+      validationInput: string | null
+      validationExpectedResult: string | null
+      postconditions: string | null
+      notes: string | null
+      /** @description Text snapshot of the Type name at the time it was set (D8, BR2). */
+      type: string
+      /** @enum {string} */
+      method: 'manual' | 'automated'
+      /** @enum {string} */
+      priority: 'low' | 'normal' | 'high' | 'urgent'
+      ownerId: string | null
+      ownerName: string | null
+      assigneeId: string | null
+      assigneeName: string | null
+      rank: string
+      /** @description Maintained by trg_test_case_last_result (D6). NULL renders "Not Run" (BR10). */
+      lastVerdict: ('pass' | 'fail' | 'blocked' | 'error' | 'inconclusive' | 'not_run') | null
+      /** @description YYYY-MM-DD. NULL renders "Not run yet" (BR10). */
+      lastRun: string | null
+      lastResultId: string | null
+      /** Format: uuid */
+      createdBy: string
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
     }
   }
   responses: never
@@ -15696,6 +15790,148 @@ export interface operations {
       }
       /** @description Forbidden — insufficient permissions */
       403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkItemTestCasesController_listByWorkItem: {
+    parameters: {
+      query?: {
+        limit?: number
+        cursor?: string
+        sort?: string
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['TestCaseResponseDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
+              total?: number
+            }
+          }
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestCaseRecordsController_getByKey: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TestCaseResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestCaseRecordsController_getById: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TestCaseResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
         headers: {
           [name: string]: unknown
         }

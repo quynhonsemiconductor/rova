@@ -55,6 +55,9 @@ import {
   capacityPlanStatusEnum,
   capacityPlanUnitEnum,
   capacityAllocationSourceEnum,
+  testCaseMethodEnum,
+  testCasePriorityEnum,
+  testVerdictEnum,
 } from './enums';
 import { files } from './storage';
 
@@ -1348,5 +1351,138 @@ export const projectSettings = workSchema.table(
   (t) => ({
     projectUq: uniqueIndex('uq_project_settings_project').on(t.projectId),
     workspaceIdx: index('ix_project_settings_workspace').on(t.workspaceId),
+  }),
+);
+
+// ── P7 test_case_types (per-project Type catalog, modelled on `labels`) ─────
+// SRS §3: Test Case Type is a per-PROJECT, admin-editable catalog (a declared divergence
+// from Rally's workspace-level dropdown). `archived_at` soft-hides a removed Type rather
+// than deleting it — a historical Test Case keeps its snapshot `type` value regardless
+// (BR2, BR17), so nothing here needs to cascade on archive.
+
+export const testCaseTypes = workSchema.table(
+  'test_case_types',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    name: varchar('name', { length: 60 }).notNull(),
+    position: integer('position').notNull().default(0),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectIdx: index('ix_test_case_types_project').on(t.projectId),
+    // Case-insensitive (SRS §3.3, BR16) — must match the service's own duplicate check.
+    uniqueName: uniqueIndex('uq_test_case_types_name').on(t.projectId, sql`lower(${t.name})`),
+  }),
+);
+
+// ── P7 test_cases ────────────────────────────────────────────────────────────
+// A Test Case is a project artifact, OPTIONALLY attached to one Work Item (D2:
+// `work_item_id` nullable — only work-item-scoped routes are exposed in Phase 7).
+// `last_verdict` / `last_run` / `last_result_id` are a denormalised mirror of the latest
+// live Result, maintained by `trg_test_case_last_result` (D6) — never written by the
+// service, same reason `trg_sync_accepted_date` is a trigger and not a service concern.
+
+export const testCases = workSchema.table(
+  'test_cases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    // Inherited, read-only (SRS §6.3); NULL = "Project backlog", same reading as
+    // `work_items.team_id` / `iterations.team_id`.
+    teamId: uuid('team_id'),
+    // NULLABLE (D2). No `ON DELETE cascade`: a Work Item delete is SOFT, so a cascade would
+    // never fire anyway (the same reason CLAUDE.md records for `work.tasks`) — Phase F
+    // decides whether a deleted Work Item's Test Cases follow it.
+    workItemId: uuid('work_item_id').references(() => workItems.id),
+    testCaseKey: varchar('test_case_key', { length: 30 }).notNull(),
+    name: varchar('name', { length: 500 }).notNull(),
+    description: text('description'),
+    objective: text('objective'),
+    preconditions: text('preconditions'),
+    validationInput: text('validation_input'),
+    validationExpectedResult: text('validation_expected_result'),
+    postconditions: text('postconditions'),
+    notes: text('notes'),
+    // Text SNAPSHOT of the Type name (D8, BR2) — a removed Type must still render on a
+    // historical Test Case, which a snapshot gives for free.
+    type: varchar('type', { length: 60 }).notNull(),
+    method: testCaseMethodEnum('method').notNull().default('manual'),
+    priority: testCasePriorityEnum('priority').notNull().default('normal'),
+    // No FK on owner_id / assignee_id, matching `work.tasks.assignee_id`: eligibility
+    // depends on project AND team (no constraint expresses that), and a user delete must
+    // not cascade into test history.
+    ownerId: uuid('owner_id'),
+    assigneeId: uuid('assignee_id'),
+    rank: varchar('rank', { length: 255 }).notNull().default(''),
+    // Maintained by trg_test_case_last_result (D6) — never written by the service.
+    lastVerdict: testVerdictEnum('last_verdict'),
+    lastRun: date('last_run'),
+    lastResultId: uuid('last_result_id'),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => ({
+    keyIdx: uniqueIndex('uq_test_case_key').on(t.workspaceId, t.testCaseKey),
+    workItemIdx: index('ix_test_cases_work_item')
+      .on(t.workItemId)
+      .where(sql`deleted_at IS NULL`),
+    projectIdx: index('ix_test_cases_project').on(t.projectId),
+    workspaceIdx: index('ix_test_cases_workspace').on(t.workspaceId),
+    workItemRankIdx: index('ix_test_cases_work_item_rank').on(t.workItemId, t.rank),
+  }),
+);
+
+// ── P7 test_results ──────────────────────────────────────────────────────────
+// Append-only (BR12): adding a Result never replaces an earlier one. `work_item_id` is a
+// SNAPSHOT of the Test Case's Work Product at result-entry time (Rally: "the work product
+// to which the test case result was associated when you entered the result") — not
+// editable, and not re-derived from the Test Case's current link.
+
+export const testResults = workSchema.table(
+  'test_results',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    testCaseId: uuid('test_case_id')
+      .notNull()
+      .references(() => testCases.id, { onDelete: 'cascade' }),
+    workItemId: uuid('work_item_id'),
+    testResultKey: varchar('test_result_key', { length: 30 }).notNull(),
+    build: varchar('build', { length: 255 }).notNull(),
+    // Named `run_date`, not `date` — reserved-word hygiene (plan §2.3).
+    runDate: date('run_date').notNull(),
+    verdict: testVerdictEnum('verdict').notNull(),
+    durationMinutes: integer('duration_minutes').notNull().default(0),
+    testerId: uuid('tester_id').notNull(),
+    notes: text('notes'),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => ({
+    keyIdx: uniqueIndex('uq_test_result_key').on(t.workspaceId, t.testResultKey),
+    // This IS the SRS §7 ordering (BR14) and the trigger's own "latest result" lookup —
+    // one index serves both.
+    caseRunDateIdx: index('ix_test_results_case_run_date').on(
+      t.testCaseId,
+      sql`${t.runDate} desc`,
+      sql`${t.createdAt} desc`,
+    ),
+    durationNonNegative: check(
+      'ck_test_results_duration_non_negative',
+      sql`${t.durationMinutes} >= 0`,
+    ),
+    // `not_run` is a Test Case-only concept (D6) — a Result records an outcome, never its
+    // absence. One enum, two audiences, one excluded member: see `testVerdictEnum`'s comment.
+    verdictNotNotRun: check('ck_test_results_verdict_not_not_run', sql`${t.verdict} <> 'not_run'`),
   }),
 );

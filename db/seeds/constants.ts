@@ -41,7 +41,7 @@ export const DEVELOPER_ID = '00000000-0000-7000-8000-000000000020';
 export const VIEWER_ID = '00000000-0000-7000-8000-000000000021';
 
 // ── Single end-to-end demo flow (NXP only) ───────────────────────────────────
-// Team Alpha (with members) → Story + Defect (team-linked) → 2 Tasks under the
+// Team Alpha (with members) → Story + Defect (team-linked) → 3 Tasks under the
 // Story (team/iteration inherited) → Iteration (contains Story + Defect) →
 // Release + Milestone (linked to each other and to the Story). Every FK below
 // resolves to a real, matching row — see demo.ts `seedFlow()`.
@@ -49,6 +49,13 @@ export const NXP_STORY_1_ID = '00000000-0000-7000-8000-000000000030';
 export const NXP_DEFECT_1_ID = '00000000-0000-7000-8000-000000000031';
 export const NXP_TASK_1_ID = '00000000-0000-7000-8000-000000000032';
 export const NXP_TASK_2_ID = '00000000-0000-7000-8000-000000000033';
+// A THIRD task, owned by the admin, carrying logged Actuals. The other two cannot
+// demonstrate the Team Status progress bar between them: TA-1 belongs to the
+// developer, and TA-2 is deliberately "planned but not started" (Actuals 0). With
+// only those, the admin — the principal every local session signs in as — has an
+// estimate but nothing logged against it, so `actual / estimate` is a truthful 0%
+// and the bar looks broken on a fresh database. See demo.ts.
+export const NXP_TASK_3_ID = '00000000-0000-7000-8000-000000000034';
 
 export const TEAM_ALPHA_ID = '00000000-0000-7000-8000-000000000040';
 
@@ -161,3 +168,18 @@ export const NXP_ACCEPTED_STORY_ID = '00000000-0000-7000-8000-0000000000a6';
 export const SEED_FILE_ID = '00000000-0000-7000-8000-0000000000e0';
 export const SEED_SCM_INSTALLATION_ID = '00000000-0000-7000-8000-0000000000e1';
 export const SEED_SCM_REPOSITORY_ID = '00000000-0000-7000-8000-0000000000e2';
+
+// ── Phase 7 (Test Case & Test Result) fixtures ───────────────────────────────
+/**
+ * NXP: two Test Cases under `NXP_STORY_1_ID` — one WITH Results (incl. a `fail`, so `Last
+ * Verdict`/`Last Run` are populated and non-trivial), one with NONE (so the tab's `Not Run` /
+ * `Not run yet` rendering has a case, BR10). PAY gets exactly one of each type, mirroring every
+ * other PAY fixture's "one row per entity type" rule.
+ */
+export const NXP_TEST_CASE_1_ID = '00000000-0000-7000-8000-0000000000f2';
+export const NXP_TEST_CASE_2_ID = '00000000-0000-7000-8000-0000000000f3';
+export const NXP_TEST_RESULT_1_ID = '00000000-0000-7000-8000-0000000000f4';
+export const NXP_TEST_RESULT_2_ID = '00000000-0000-7000-8000-0000000000f5';
+
+export const PAY_TEST_CASE_ID = '00000000-0000-7000-8000-0000000000f6';
+export const PAY_TEST_RESULT_ID = '00000000-0000-7000-8000-0000000000f7';

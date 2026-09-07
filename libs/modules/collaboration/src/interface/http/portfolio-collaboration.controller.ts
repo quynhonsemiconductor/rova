@@ -66,7 +66,11 @@ export class PortfolioCollaborationController {
       entityType: 'portfolio_item',
       entityId: id,
     });
-    return rows.map(toCommentDto);
+    // `Comment.entityType` widened to admit `test_case` / `test_result` when migration 0129
+    // widened `entity_ref_type` (Phase 7). This route only ever queries `entityType:
+    // 'portfolio_item'` above, so every row is provably one of `toCommentDto`'s two members; the
+    // refusal that keeps a test_case/test_result row from reaching this cast is Phase C's C7 task.
+    return rows.map((c) => toCommentDto(c as Parameters<typeof toCommentDto>[0]));
   }
 
   @Post('comments')
@@ -87,7 +91,8 @@ export class PortfolioCollaborationController {
       dto.parentId,
       dto.mentionedUserIds,
     );
-    return toCommentDto(comment);
+    // See the comment in `listComments` — this route only ever creates `entityType: 'portfolio_item'`.
+    return toCommentDto(comment as Parameters<typeof toCommentDto>[0]);
   }
 
   @Patch('comments/:commentId')
@@ -107,7 +112,9 @@ export class PortfolioCollaborationController {
     @Body() dto: UpdateCommentDto,
   ): Promise<CommentResponseDto> {
     const comment = await this.collaboration.updateComment(user, commentId, dto.body);
-    return toCommentDto(comment);
+    // This controller is mounted under `portfolio-items/:id` — every comment reached through it
+    // is a portfolio-item comment. See `listComments`'s comment for why this cast is narrowing.
+    return toCommentDto(comment as Parameters<typeof toCommentDto>[0]);
   }
 
   @Delete('comments/:commentId')

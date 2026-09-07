@@ -1,0 +1,58 @@
+{
+  "tabName": "Test Cases",
+  "addNew": {
+    "label": "Add New",
+    "comingSoon": "Creating a Test Case is coming in a later phase.",
+    "noPermission": "You do not have permission to create a Test Case."
+  },
+  "empty": {
+    "title": "No Test Cases yet",
+    "description": "Test Cases created against this item will appear here."
+  },
+  "error": {
+    "title": "Could not load Test Cases",
+    "description": "Something went wrong loading this list. Try again shortly."
+  },
+  "columns": {
+    "select": "",
+    "rank": "Rank",
+    "id": "ID",
+    "name": "Name",
+    "type": "Type",
+    "method": "Method",
+    "priority": "Priority",
+    "owner": "Owner",
+    "lastVerdict": "Last Verdict",
+    "lastRun": "Last Run"
+  },
+  "fields": {
+    "description": "Description",
+    "objective": "Objective",
+    "preconditions": "Preconditions",
+    "validationInput": "Input",
+    "validationExpectedResult": "Expected Result",
+    "postconditions": "Postconditions",
+    "notes": "Notes",
+    "project": "Project",
+    "team": "Team",
+    "projectBacklog": "Project backlog",
+    "workProduct": "Work Product",
+    "type": "Type",
+    "method": "Method",
+    "priority": "Priority",
+    "owner": "Owner",
+    "assignedTo": "Assigned To",
+    "lastVerdict": "Last Verdict",
+    "lastRun": "Last Run"
+  },
+  "detail": {
+    "tabs": {
+      "details": "Details"
+    },
+    "metadataTitle": "Details",
+    "back": "Back",
+    "notFound": "No Test Case found for \"{{key}}\"",
+    "notFoundHint": "Check the key and try again.",
+    "notRunYet": "Not run yet"
+  }
+}

@@ -54,7 +54,11 @@ export class CollaborationController {
       entityType: 'work_item',
       entityId: workItemId,
     });
-    return comments.map(toCommentDto);
+    // `Comment.entityType` widened to admit `test_case` / `test_result` when migration 0129
+    // widened `entity_ref_type` (Phase 7). This route only ever queries `entityType: 'work_item'`
+    // above, so every row here is provably one of `toCommentDto`'s two members; the refusal that
+    // keeps a test_case/test_result row from ever reaching this cast is Phase C's C7 task.
+    return comments.map((c) => toCommentDto(c as Parameters<typeof toCommentDto>[0]));
   }
 
   @Post('comments')
@@ -79,7 +83,8 @@ export class CollaborationController {
       dto.parentId,
       dto.mentionedUserIds,
     );
-    return toCommentDto(comment);
+    // See the comment in `listComments` — this route only ever creates `entityType: 'work_item'`.
+    return toCommentDto(comment as Parameters<typeof toCommentDto>[0]);
   }
 
   @Patch('comments/:commentId')
@@ -98,7 +103,10 @@ export class CollaborationController {
     @Body() dto: UpdateCommentDto,
   ): Promise<CommentResponseDto> {
     const comment = await this.collaborationService.updateComment(user, commentId, dto.body);
-    return toCommentDto(comment);
+    // This controller is mounted under `work-items/:workItemId` — every comment reached through it
+    // is a work-item comment. See `listComments`'s comment for why the cast is narrowing, not
+    // widening.
+    return toCommentDto(comment as Parameters<typeof toCommentDto>[0]);
   }
 
   @Delete('comments/:commentId')

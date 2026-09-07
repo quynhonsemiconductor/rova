@@ -65,7 +65,9 @@
       "@modules/scm": ["./libs/modules/scm/src/index"],
       "@modules/scm/*": ["./libs/modules/scm/src/*"],
       "@modules/api-tokens": ["./libs/modules/api-tokens/src/index"],
-      "@modules/api-tokens/*": ["./libs/modules/api-tokens/src/*"]
+      "@modules/api-tokens/*": ["./libs/modules/api-tokens/src/*"],
+      "@modules/test-cases": ["./libs/modules/test-cases/src/index"],
+      "@modules/test-cases/*": ["./libs/modules/test-cases/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "apps/web"]

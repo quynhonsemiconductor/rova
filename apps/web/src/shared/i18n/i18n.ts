@@ -20,6 +20,7 @@ import milestones from './locales/en/milestones.json'
 import settings from './locales/en/settings.json'
 import notifications from './locales/en/notifications.json'
 import errors from './locales/en/errors.json'
+import testCases from './locales/en/test-cases.json'
 
 export const defaultNS = 'common'
 
@@ -48,6 +49,7 @@ i18n.use(initReactI18next).init({
       settings,
       notifications,
       errors,
+      'test-cases': testCases,
     },
   },
   interpolation: { escapeValue: false },

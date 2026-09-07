@@ -338,6 +338,10 @@ export const ErrorCodes = {
 
   // Reporting
   REPORT_INVALID_DATE_RANGE: 'REPORT_INVALID_DATE_RANGE',
+
+  // Test Case & Test Result (Phase 7)
+  TEST_CASE_NOT_FOUND: 'TEST_CASE_NOT_FOUND',
+  TEST_RESULT_NOT_FOUND: 'TEST_RESULT_NOT_FOUND',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

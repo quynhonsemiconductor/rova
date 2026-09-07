@@ -137,6 +137,10 @@ export const activityEntityTypeEnum = pgEnum('activity_entity_type', [
   // Epics and Features. Added by 0079 — `activity_logs` was already polymorphic, so a new
   // Revision History subject costs one enum member and nothing else.
   'portfolio_item',
+  // Phase 7 (migration 0129). Activity-only widening — this enum has no spillover into
+  // comments/attachments/milestone_artifacts, unlike `entityRefTypeEnum` below.
+  'test_case',
+  'test_result',
 ]);
 
 /**
@@ -147,7 +151,19 @@ export const activityEntityTypeEnum = pgEnum('activity_entity_type', [
  * is logged against tasks and attachments too, and neither of those can own a comment.
  * This enum lists exactly the things that CAN own child records.
  */
-export const entityRefTypeEnum = pgEnum('entity_ref_type', ['work_item', 'portfolio_item']);
+/**
+ * Widened by migration 0129 (Phase 7) to `test_case` / `test_result`, so this enum now also
+ * decides comments' and milestone_artifacts' vocabulary — WIDENING IT IS NOT NEUTRAL.
+ * `CollaborationService` must refuse comments on both new members until the BA asks for
+ * them (SRS is silent — plan §2.6/C7); attachments get one new `UploadPolicy` descriptor
+ * per owner instead of an implicit yes.
+ */
+export const entityRefTypeEnum = pgEnum('entity_ref_type', [
+  'work_item',
+  'portfolio_item',
+  'test_case',
+  'test_result',
+]);
 
 // ── messaging ──────────────────────────────────────────────────────────────
 
@@ -365,6 +381,32 @@ export const capacityAllocationSourceEnum = pgEnum('capacity_allocation_source',
   'manual',
 ]);
 
+// ── P7 Test Case & Test Result ────────────────────────────────────────────
+
+export const testCaseMethodEnum = pgEnum('test_case_method', ['manual', 'automated']);
+
+export const testCasePriorityEnum = pgEnum('test_case_priority', [
+  'low',
+  'normal',
+  'high',
+  'urgent',
+]);
+
+/**
+ * Shared by `test_cases.last_verdict` AND `test_results.verdict`, but `not_run` is valid
+ * on the FORMER only — a Result records an outcome, never its absence (Phase 7 plan D6).
+ * `test_results.verdict` excludes it via a CHECK constraint (migration 0129), not by a
+ * second enum, so the two audiences of one vocabulary cannot silently drift apart.
+ */
+export const testVerdictEnum = pgEnum('test_verdict', [
+  'pass',
+  'fail',
+  'blocked',
+  'error',
+  'inconclusive',
+  'not_run',
+]);
+
 // ── TypeScript types (derived — never drift from DB) ──────────────────────
 
 export type UserStatus = (typeof userStatusEnum.enumValues)[number];
@@ -405,6 +447,9 @@ export type DefectResolution = (typeof defectResolutionEnum.enumValues)[number];
 export type DefectState = (typeof defectStateEnum.enumValues)[number];
 export type TaskState = (typeof taskStateEnum.enumValues)[number];
 export type WorkItemRelationType = (typeof workItemRelationTypeEnum.enumValues)[number];
+export type TestCaseMethod = (typeof testCaseMethodEnum.enumValues)[number];
+export type TestCasePriority = (typeof testCasePriorityEnum.enumValues)[number];
+export type TestVerdict = (typeof testVerdictEnum.enumValues)[number];
 
 // ── Semantic groupings (single source of truth for roll-up / progress logic) ──
 // Used by reporting, releases, milestones, quality and iteration-status so the
