@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { buildClientResponse, buildProxyRequest, buildUpstreamUrl, proxyToApi } from './proxy'
 
-const API_ORIGIN = 'https://rally-api-dev.qnsc.vn'
+const API_ORIGIN = 'https://rova-api-dev.qnsc.vn'
 
 describe('buildUpstreamUrl', () => {
   it('keeps the path and query while swapping the origin', () => {
@@ -9,12 +9,12 @@ describe('buildUpstreamUrl', () => {
       'https://rally-dev.qnsc.vn/v1/workspaces?limit=10&cursor=abc',
       API_ORIGIN,
     )
-    expect(result).toBe('https://rally-api-dev.qnsc.vn/v1/workspaces?limit=10&cursor=abc')
+    expect(result).toBe('https://rova-api-dev.qnsc.vn/v1/workspaces?limit=10&cursor=abc')
   })
 
   it('handles the prefix root with no extra path or query', () => {
     const result = buildUpstreamUrl('https://rally-dev.qnsc.vn/bff/login', API_ORIGIN)
-    expect(result).toBe('https://rally-api-dev.qnsc.vn/bff/login')
+    expect(result).toBe('https://rova-api-dev.qnsc.vn/bff/login')
   })
 })
 
@@ -23,7 +23,7 @@ describe('buildProxyRequest', () => {
     const request = new Request('https://rally-dev.qnsc.vn/v1/me', { method: 'GET' })
     const proxied = buildProxyRequest(request, API_ORIGIN)
     expect(proxied.method).toBe('GET')
-    expect(proxied.url).toBe('https://rally-api-dev.qnsc.vn/v1/me')
+    expect(proxied.url).toBe('https://rova-api-dev.qnsc.vn/v1/me')
   })
 
   it('strips the host header and sets forwarding headers from the edge', () => {
@@ -220,7 +220,7 @@ describe('proxyToApi', () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     const forwarded = fetchImpl.mock.calls[0][0] as Request
-    expect(forwarded.url).toBe('https://rally-api-dev.qnsc.vn/v1/me')
+    expect(forwarded.url).toBe('https://rova-api-dev.qnsc.vn/v1/me')
     expect(forwarded.headers.get('x-forwarded-for')).toBe('203.0.113.7')
     expect(response.status).toBe(200)
     await expect(response.text()).resolves.toBe('{"ok":true}')
