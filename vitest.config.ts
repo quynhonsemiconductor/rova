@@ -133,6 +133,8 @@ export default defineConfig({
         'apps/worker/src/email/bounce-feedback.service.ts',
         'apps/worker/src/identity/entra-guest-invite-relay.service.ts',
         'libs/platform/src/auth/jwt.guard.ts',
+        'libs/platform/src/context/als.middleware.ts',
+        'libs/platform/src/utils/sanitize.util.ts',
         'libs/platform/src/context/request-context.ts',
         'libs/platform/src/http/csrf.ts',
         'libs/modules/access/src/interface/http/route-authz-audit.ts',
