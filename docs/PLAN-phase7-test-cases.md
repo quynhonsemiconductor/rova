@@ -945,16 +945,132 @@ control uses the shared `Button`/`SearchableSelect`/`DateField`).
 
 ### Phase E — Test Result Detail (SRS §9)
 
-- [ ] **E1** `UpdateTestResultSchema` — build, run_date, verdict, duration_minutes, tester_id,
-  notes. **Not** `testCaseId` / `workItemId` (BR13).
-- [ ] **E2** `PATCH`/`DELETE /test-results/:id`; activity rows; `UploadPolicy` for `test_result`.
-- [ ] **E3** Route `/test-result/$testResultKey`, page with `Details | Revision History`, back to
-  the Test Case's Results tab. Same three-outcome denied-state handling as A13.
-- [ ] **E4** Left column Build / Attachments / Verdict / Notes; right sidebar Date / Tester /
-  Test Case (RO) / Work Product (RO) / Duration.
-- [ ] **E5** An edit that changes `run_date` or `verdict` must move the parent's `Last Verdict` —
-  the trigger already does it; assert it, because an UPDATE path is a separate trigger branch from
-  INSERT.
+- [x] **E1** `UpdateTestResultSchema` — build, runDate, verdict, durationMinutes, testerId, notes.
+  **Not** `testCaseId` / `workItemId` (BR13). `verdict` stays non-nullable when present (a Result
+  never records the absence of an outcome, same reasoning as `not_run`'s exclusion); `notes` is the
+  one nullable field (clearable). Confirmed field list with user before writing.
+  Added to `test-result-request.dto.ts` alongside `CreateTestResultSchema`.
+- [x] **E2** `PATCH`/`DELETE /test-results/:id` on `TestResultRecordsController`; `TestResultsService.update`
+  (BR8 tester re-gated only when CHANGING, BR9/E5 trigger UPDATE branch, scalar-diff activity log via
+  new `TEST_RESULT_ACTIVITY_CONFIG`) and `.delete` (soft delete + activity row, fires the trigger's
+  UPDATE branch on `deleted_at`). `ITestResultRepository` gained `update`/`softDelete` port methods.
+  `TEST_RESULT_ATTACHMENT_POLICY` added (`attachment-policy.ts`), `AttachmentEntityType` widened to
+  `test_result`; five attachment routes added (presign/confirm/list/download/content/delete), all
+  calling `getById` first (BR20) — same shape as Phase C's C4 for `test_case`.
+  Side effect fixed: widening `AttachmentEntityType` broke the SAME class of narrow-local-union bug
+  A5 already documented — `AttachmentResponseSchema`'s hand-written zod enum
+  (`libs/modules/attachments/src/interface/http/dto/attachment.dto.ts`) only admitted three members;
+  widened to four, which also turned two `as EntityAttachment` casts in
+  `attachment.drizzle-repository.ts` into genuinely unnecessary assertions (removed, not suppressed
+  — `pnpm lint` caught both via `@typescript-eslint/no-unnecessary-type-assertion`).
+  FE: `EntityRefType`/`SUBJECT_PATH` (`collaboration/api.ts`) and both `ENTITY_PATH` mirrors
+  (`attachment-block.tsx`, `use-upload-pasted-images.ts`) widened to `test_result` — same widen-three-
+  places shape C4 already established for `test_case`.
+  `test-results.service.spec.ts`: 25 tests total (11 new — update ×6, delete ×2, getActivity ×1,
+  attachments ×1, BR12's absence-assertion rewritten to a never-called assertion since the port now
+  legitimately has `update`/`softDelete` for its OWN entry points). `tsc -b --force` and `pnpm lint`
+  clean (repo-wide) after the two fixes above.
+- [x] **E3** Route `/test-result/$testResultId` (param is the UUID, not a key — confirmed with user:
+  plan's §3 API surface lists only `GET /test-results/:id`, no `by-key` route for Test Results unlike
+  Test Cases, so the Build-cell link in the Results tab passes the row's own `id` it already has).
+  `lazyPage`, NOT `guardedPage` — same deliberate third shape as `/test-case/$testCaseKey`
+  (CLAUDE.md: "A record route must own its denied state"), pinned by a new assertion in
+  `route-permission.contract.test.tsx`. `adoptTestResultProject` (`deep-link-result.ts`) resolves the
+  project before render, same shape as `adoptTestCaseProject`. Page: `Details | Revision History`
+  tabs; back navigates to the owning Test Case's own page (which already has the Results tab).
+  `test-result-unavailable.tsx` + `model/unavailable-reason.ts`: same three-outcome (403/404/other)
+  shape as A13/C's `TestCaseUnavailable`.
+- [x] **E4** Left column: Build (editable `Input`), Verdict (`SearchableSelect`), Notes (`Textarea`,
+  free text per schema — not rich text), `AttachmentBlock`. Right sidebar: Date (`DateField`),
+  Tester (`OwnerSelectField`, team-scoped feed = same BR8 rule as create), Test Case + Work Product
+  (both `ReadOnlyFieldValue` — BR13, nothing on the page could write either even if it tried since
+  `UpdateTestResultSchema` omits both), Duration (`Input type=number min=0`), Last Verdict badge
+  (mirrors the value being edited, for at-a-glance confirmation).
+  `useTestResult`/`useUpdateTestResult`/`useTestResultActivity` added to `features/test-cases/api.ts`.
+  `test-result-detail-page.test.tsx`: 5 tests (read-only vs editable rendering, BR13's read-only pair,
+  the three denied states, the notFound state) — all green. One debugging note: the existing
+  `test-case-detail-page.test.tsx`'s `getAllByRole('combobox')` assertion resolves via
+  `RichTextEditor`'s native `<select>` toolbar, NOT `SearchableSelect` (which renders a plain
+  `<button>`, no ARIA role) — this page has no `RichTextEditor`, so the equivalent assertion is
+  `getByRole('button', { name: 'Verdict' })` present/absent instead.
+- [x] **E5** `TestResultsService.update` never touches the parent's trigger-owned columns itself —
+  `trg_test_case_last_result`'s UPDATE branch (D6) does the work on any `run_date`/`verdict`/
+  `deleted_at` change. Two new e2e tests in `derived-invariants.e2e.spec.ts`'s existing D6 describe
+  block: editing the LATEST Result's `run_date`/`verdict` moves the parent (asserted against the
+  STORED columns); editing an OLDER Result (one with a newer sibling) does NOT move the parent — the
+  trigger's own `ORDER BY run_date DESC, created_at DESC LIMIT 1` recompute still picks the newer one.
+  Both green. `test-result-flow.e2e.spec.ts` extended with the HTTP-layer companion (16 new tests):
+  PATCH round trip, BR13 silently-ignored fields (asserted against the stored response), BR11
+  duration >= 0 on PATCH, `not_run` refused on PATCH, BR8 ineligible-tester refusal on PATCH, PATCH
+  404, activity route (created+updated rows present, 404 on unreadable id), DELETE (204 then 404),
+  DELETE 404, attachment routes (empty list, 404 unreadable, 404 download).
+
+**Phase E gate — all green except one pre-existing, documented, out-of-scope blocker.**
+- `pnpm lint` (backend glob) and `pnpm --filter rova-web lint` — both clean. Caught and fixed one
+  real regression along the way: widening `AttachmentEntityType` to `test_result` turned two
+  `as EntityAttachment` casts in `attachment.drizzle-repository.ts` into genuinely unnecessary
+  assertions (`@typescript-eslint/no-unnecessary-type-assertion`) — removed, not suppressed.
+- `tsc -b --force` (repo-wide) — clean.
+- `pnpm build` (api+worker) — clean.
+- `pnpm --filter rova-web build` — clean (pre-existing `INEFFECTIVE_DYNAMIC_IMPORT` / plugin-timing
+  warnings only, unrelated to this diff).
+- `pnpm test` (backend) — **89 files, 2054 tests**, all green (2043 Phase D baseline + 11 new in
+  `test-results.service.spec.ts`).
+- `pnpm --filter rova-web test` (FE) — **135 files, 1042 tests**, all green (134/1036 Phase D
+  baseline + 1 new file, 6 new tests).
+- Coverage measured (`pnpm test:cov`): stmts 86.31%, branches 79.84%, functions 84.64%,
+  lines 87.25% — all at or above the existing 86/79/84/87 floors. **Not raised** — same
+  precedent as Phase D: the move is small enough that truncation already absorbs it.
+  `pnpm check:coverage-floors` green.
+- `test/coverage-include.spec.ts` — green; no new entry needed (`test-results.service.ts` already
+  listed from Phase D; `test-result-activity-diff.ts` is a config module with no same-named sibling
+  spec, matching `test-case-activity-diff.ts`'s own precedent).
+- `test/route-policy.ratchet.spec.ts` — unchanged, 5/5 green (all new E2 routes — PATCH, DELETE,
+  activity, 5 attachment routes — decorated).
+- `fe-consistency.ratchet.test.ts` — unchanged, 8/8 green (raw-button count untouched; the Build-cell
+  link uses `Link`, not a hand-rolled clickable element).
+- **`pnpm test:e2e` (full suite) — BLOCKED, same pre-existing `governance-audit-flow.e2e.spec.ts`
+  hang Phase B's own gate notes document, reproduced twice this session.** `relayUntil` drains the
+  whole outbox backlog and hits a `project.archived` audit event from another spec whose
+  `resourceType` is 62 characters against `audit_logs.resource_type varchar(50)`; Postgres throws
+  `22001`, `AuditProjectionRelay` retries indefinitely, and the vitest process never exits. Confirmed
+  via a bounded `timeout 300 pnpm test:e2e` run: identical `value too long for type character
+  varying(50)` error, same stack trace through `governance-audit-flow.e2e.spec.ts:317/384`, process
+  killed at the 5-minute mark (exit 143). `git status` at the time confirmed none of this session's
+  diff touches `audit`, the outbox relay, or that spec — the failing row is produced by a DIFFERENT
+  spec's write path. **Not fixed here** (out of Phase E's scope, identical root cause already named
+  in this task's own instructions as pre-existing).
+  Verified instead, in isolation, with the API and docker stack up: `test-case-routes.e2e.spec.ts` +
+  `test-result-flow.e2e.spec.ts` + `derived-invariants.e2e.spec.ts` together — **66/66 passed**
+  (39.69s) — and `authz-cluster.e2e.spec.ts` — **10/10 passed** (20.76s), confirming no permission
+  regression from the new PATCH/DELETE/activity/attachment routes.
+- `pnpm db:seed:test` — reset + reseeded clean, run once BEFORE the Playwright pass below (no BE
+  e2e or manual session was live at the time — confirmed via `docker ps` and a process check).
+- `pnpm --filter rova-web test:e2e` (Playwright) — **45 passed, 3 failed (16.2m)**. Two failures are
+  `capacity-allocation.e2e.ts`, the exact documented pre-existing flake named in this task's own
+  instructions. The third, `backlog.e2e.ts`'s "bulk action bar appears with Delete and Copy actions",
+  was NOT on that list and got its own investigation: re-run in isolation, it failed identically and
+  reproducibly (`locator.check: Clicking the checkbox did not change its state` — the test's own
+  locator `input[aria-label^="Select "]` matches BOTH `"Select all"` (the header checkbox) and every
+  row's `"Select <row>"`, and `.first()` resolves to the header one). `git diff --stat` against
+  `apps/web/src/pages/backlog`, `apps/web/src/test/e2e/backlog.e2e.ts` and `shared/ui/table.tsx` is
+  EMPTY — this session's diff touches none of them. A pre-existing test-locator bug in Backlog's own
+  spec, unrelated to Test Cases; reported here for separate triage, not fixed (out of Phase E's
+  scope). **Zero Test Cases failures** — no `test-cases.e2e.ts` Playwright spec exists yet (§7's own
+  note: future work once Phases B/D land further, unchanged this phase), so nothing Test-Cases-
+  specific runs in this suite at all.
+
+  **Environment notes worth keeping.** (1) The dev API watch process crashed twice mid-session with
+  `Cannot find module '...\dist\apps\api\main'` — `pnpm build`/`pnpm build:web` running concurrently
+  with `nest start api --watch` raced the same `dist/` tree exactly as Phase B's own notes describe;
+  restarting `pnpm start:dev` clean each time recovered it. (2) One restart entered a "File change
+  detected" retrigger loop with no code edits in flight — resolved itself once memory pressure eased;
+  not chased further since it stopped on its own and CLAUDE.md already documents this class of
+  chokidar/dist-rewrite quirk under contention. (3) A `git stash` run mid-session to sanity-check the
+  Backlog failure against a clean tree was popped back immediately (within the same turn, before any
+  other command ran) — `git status` confirmed all 25 Phase E files and `tsc -b --force` confirmed
+  clean compilation afterward. Not a defect in the diff; recorded because the file-state notices
+  it triggered are otherwise easy to misread as unexplained drift.
 
 ### Phase F — Delete + lifecycle
 
