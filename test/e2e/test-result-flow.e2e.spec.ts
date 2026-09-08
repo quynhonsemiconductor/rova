@@ -58,6 +58,19 @@ describe('test result routes (e2e)', () => {
     });
   }
 
+  function patch(url: string, payload: Record<string, unknown>) {
+    return app.inject({
+      method: 'PATCH',
+      url,
+      headers: { authorization: `Bearer ${token}` },
+      payload,
+    });
+  }
+
+  function del(url: string) {
+    return app.inject({ method: 'DELETE', url, headers: { authorization: `Bearer ${token}` } });
+  }
+
   it('BR11: refuses a Result missing Build/run_date/tester (validation before the handler)', async () => {
     const response = await post(`/test-cases/${NXP_TEST_CASE_2_ID}/test-results`, {
       runDate: '2026-09-01',
@@ -217,5 +230,140 @@ describe('test result routes (e2e)', () => {
       ).body,
     );
     expect(result.testerName).not.toBeNull();
+  });
+
+  describe('PATCH/DELETE /test-results/:id (Phase E)', () => {
+    async function freshResult() {
+      const testCase = JSON.parse(
+        (
+          await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, {
+            name: `Edit case ${randomUUID()}`,
+          })
+        ).body,
+      );
+      const result = JSON.parse(
+        (
+          await post(`/test-cases/${testCase.id}/test-results`, {
+            build: 'build-1',
+            runDate: '2026-09-01',
+            verdict: 'fail',
+            testerId: ADMIN_USER_ID,
+          })
+        ).body,
+      );
+      return { testCase, result };
+    }
+
+    it('PATCH round trip: edits Build/Duration/Notes and returns the updated row', async () => {
+      const { result } = await freshResult();
+
+      const response = await patch(`/test-results/${result.id}`, {
+        build: 'build-2',
+        durationMinutes: 45,
+        notes: 'retested after fix',
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      const updated = JSON.parse(response.body);
+      expect(updated.build).toBe('build-2');
+      expect(updated.durationMinutes).toBe(45);
+      expect(updated.notes).toBe('retested after fix');
+      // Untouched fields survive the PATCH.
+      expect(updated.verdict).toBe('fail');
+      expect(updated.testResultKey).toBe(result.testResultKey);
+    });
+
+    it('BR13: testCaseId/workItemId are silently ignored on PATCH (asserted against the STORED response)', async () => {
+      const { testCase, result } = await freshResult();
+      const otherCase = JSON.parse(
+        (
+          await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, {
+            name: `Other case ${randomUUID()}`,
+          })
+        ).body,
+      );
+
+      const response = await patch(`/test-results/${result.id}`, {
+        testCaseId: otherCase.id,
+        workItemId: randomUUID(),
+        build: 'build-unchanged-links',
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      const updated = JSON.parse(response.body);
+      expect(updated.testCaseId).toBe(testCase.id);
+      expect(updated.workItemId).toBe(NXP_STORY_1_ID);
+    });
+
+    it('BR11: duration_minutes must be >= 0 on the UPDATE path too, not just create', async () => {
+      const { result } = await freshResult();
+
+      const response = await patch(`/test-results/${result.id}`, { durationMinutes: -1 });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it("D6: `not_run` is refused as a Result's own verdict on PATCH too", async () => {
+      const { result } = await freshResult();
+
+      const response = await patch(`/test-results/${result.id}`, { verdict: 'not_run' });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('BR8: an ineligible new tester is refused on PATCH identically to create', async () => {
+      const { result } = await freshResult();
+
+      const response = await patch(`/test-results/${result.id}`, { testerId: randomUUID() });
+      expect(response.statusCode).toBe(412);
+      expect(response.body).toContain('WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE');
+    });
+
+    it('PATCH 404s a Test Result id that belongs to nothing', async () => {
+      const response = await patch(`/test-results/${randomUUID()}`, { build: 'x' });
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('the activity route lists the created + updated rows', async () => {
+      const { result } = await freshResult();
+      await patch(`/test-results/${result.id}`, { build: 'build-edited' });
+
+      const activityRes = await get(`/test-results/${result.id}/activity`);
+      expect(activityRes.statusCode, activityRes.body).toBe(200);
+      const activity = JSON.parse(activityRes.body).data as Array<{ action: string }>;
+      expect(activity.some((a) => a.action === 'test_result.updated')).toBe(true);
+    });
+
+    it('404s the activity route for an unreadable Test Result id', async () => {
+      const response = await get(`/test-results/${randomUUID()}/activity`);
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('DELETE soft-deletes: 204, then the record 404s', async () => {
+      const { result } = await freshResult();
+
+      const deleteRes = await del(`/test-results/${result.id}`);
+      expect(deleteRes.statusCode, deleteRes.body).toBe(204);
+
+      const getRes = await get(`/test-results/${result.id}`);
+      expect(getRes.statusCode).toBe(404);
+    });
+
+    it('DELETE 404s a Test Result id that belongs to nothing', async () => {
+      const response = await del(`/test-results/${randomUUID()}`);
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('attachments: empty list, 404 on an unreadable Test Result, 404 on the download route', async () => {
+      const { result } = await freshResult();
+
+      const listRes = await get(`/test-results/${result.id}/attachments`);
+      expect(listRes.statusCode, listRes.body).toBe(200);
+      expect(JSON.parse(listRes.body)).toEqual([]);
+
+      const unreadableList = await get(`/test-results/${randomUUID()}/attachments`);
+      expect(unreadableList.statusCode).toBe(404);
+
+      const unreadableDownload = await get(
+        `/test-results/${randomUUID()}/attachments/${randomUUID()}/download`,
+      );
+      expect(unreadableDownload.statusCode).toBe(404);
+    });
   });
 });
