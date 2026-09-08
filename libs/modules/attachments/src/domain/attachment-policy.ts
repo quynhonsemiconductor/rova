@@ -20,7 +20,8 @@ export type UploadSurface =
   | 'comment-attachment'
   | 'user-avatar'
   | 'workspace-logo'
-  | 'test-case-attachment';
+  | 'test-case-attachment'
+  | 'test-result-attachment';
 
 export interface UploadPolicy {
   readonly surface: UploadSurface;
@@ -108,6 +109,20 @@ export const ENTITY_ATTACHMENT_POLICY: UploadPolicy = {
  */
 export const TEST_CASE_ATTACHMENT_POLICY: UploadPolicy = {
   surface: 'test-case-attachment',
+  allowedMimeTypes: new Set([...RASTER_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]),
+  maxSizeBytes: 25 * MB,
+  maxPerOwner: 25,
+  visibility: 'private',
+  inlineDisposition: false,
+};
+
+/**
+ * Files attached to a Test Result (Phase 7 Phase E). A NEW descriptor, same reasoning as
+ * `TEST_CASE_ATTACHMENT_POLICY`: the plan calls for admitting each new owner deliberately. Same
+ * limits and MIME allow-list — the SRS names no different rule for a Test Result's attachments.
+ */
+export const TEST_RESULT_ATTACHMENT_POLICY: UploadPolicy = {
+  surface: 'test-result-attachment',
   allowedMimeTypes: new Set([...RASTER_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]),
   maxSizeBytes: 25 * MB,
   maxPerOwner: 25,
