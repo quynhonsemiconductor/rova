@@ -30,7 +30,7 @@ services:
 
   # LocalStack for AWS services (SQS/SNS/S3/Secrets) in dev.
   # Replaces real AWS for local development — no AWS account needed.
-  # Production AWS resources live in the rally-infra repo (Terraform).
+  # Production AWS resources live in the rova repo (Terraform).
   localstack:
     image: localstack/localstack:4
     container_name: rova-localstack

@@ -29,7 +29,7 @@ have already sent someone down the wrong path:
   5-minute window holding one real request makes the p99 of that window equal to that
   one request, and the alert then fires and clears on individual requests. The same
   defect was found and fixed on the CloudWatch side first — see the `alb_latency` alarm
-  in `qnsc-tf-modules//modules/observability`, which gained the identical gate at the
+  in `tf-modules//modules/observability`, which gained the identical gate at the
   same floor of 50.
 
   The coverage that survives below the gate is **`http-slow-request-count`**, which

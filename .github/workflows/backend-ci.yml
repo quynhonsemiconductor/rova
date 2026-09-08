@@ -166,8 +166,8 @@ jobs:
           REDIS_URL: redis://localhost:6379
           JWT_PRIVATE_KEY: ${{ env.CI_JWT_PRIVATE_KEY }}
           JWT_PUBLIC_KEY: ${{ env.CI_JWT_PUBLIC_KEY }}
-          JWT_ISSUER: rally-api
-          JWT_AUDIENCE: rally-web
+          JWT_ISSUER: rova-api
+          JWT_AUDIENCE: rova-web
           JWT_ACCESS_EXPIRY: 15m
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
@@ -227,8 +227,8 @@ jobs:
           REDIS_URL: redis://localhost:6379
           JWT_PRIVATE_KEY: ${{ env.CI_JWT_PRIVATE_KEY }}
           JWT_PUBLIC_KEY: ${{ env.CI_JWT_PUBLIC_KEY }}
-          JWT_ISSUER: rally-api
-          JWT_AUDIENCE: rally-web
+          JWT_ISSUER: rova-api
+          JWT_AUDIENCE: rova-web
           JWT_ACCESS_EXPIRY: 15m
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
@@ -498,8 +498,8 @@ jobs:
           REDIS_URL: redis://localhost:6379
           JWT_PRIVATE_KEY: ${{ env.CI_JWT_PRIVATE_KEY }}
           JWT_PUBLIC_KEY: ${{ env.CI_JWT_PUBLIC_KEY }}
-          JWT_ISSUER: rally-api
-          JWT_AUDIENCE: rally-web
+          JWT_ISSUER: rova-api
+          JWT_AUDIENCE: rova-web
           JWT_ACCESS_EXPIRY: 15m
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
@@ -519,9 +519,9 @@ jobs:
       # diffing is the cheapest possible proof that the two agree.
       #
       # Runs against the spec file just captured, not a live server, so it is deterministic.
-      # Fix a failure with `pnpm --filter rally-web codegen` against a local API, then commit.
+      # Fix a failure with `pnpm --filter rova-web codegen` against a local API, then commit.
       - name: Generated web client matches the spec
-        run: pnpm --filter rally-web codegen:check
+        run: pnpm --filter rova-web codegen:check
         env:
           OPENAPI_SPEC: ${{ github.workspace }}/openapi.json
 

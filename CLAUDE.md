@@ -21,13 +21,13 @@ non-obvious tooling behaviour. Read this before changing build, auth, or DB code
 docker compose -f docker-compose.dev.yml up -d   # postgres + valkey + localstack
 pnpm db:migrate                                  # applies migrations AND seeds
 pnpm start:dev                                   # API with watch
-pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
+pnpm --filter rova-web dev                      # SPA (proxies /v1 → API)
 ```
 
 ## Commands
 
 Backend commands run from the repo root (the backend IS the root package); the SPA is the
-only pnpm workspace member, so it is reached with `--filter rally-web`.
+only pnpm workspace member, so it is reached with `--filter rova-web`.
 
 ```bash
 export NODE_AUTH_TOKEN="$(gh auth token)"   # @quynhonsemiconductor/* live on GitHub Packages (read:packages)
@@ -41,8 +41,8 @@ pnpm typecheck                              # tsc --noEmit (use `tsc -b --force`
 pnpm test                                   # backend unit (vitest)
 pnpm test:cov                               # coverage — floors are a ratchet, see below
 pnpm test:e2e                               # backend e2e (test/vitest.e2e.config.ts) — resets the DB
-pnpm --filter rally-web test                # SPA unit (vitest + testing-library)
-pnpm --filter rally-web test:e2e            # Playwright
+pnpm --filter rova-web test                # SPA unit (vitest + testing-library)
+pnpm --filter rova-web test:e2e            # Playwright
 ```
 
 One test / one case:
@@ -51,8 +51,8 @@ One test / one case:
 pnpm vitest run libs/modules/work-items/src/application/work-items.service.spec.ts
 pnpm vitest run -t "refuses a cross-project move"
 pnpm vitest run --config test/vitest.e2e.config.ts test/e2e/editor-team-scope.e2e.spec.ts
-pnpm --filter rally-web exec vitest run src/pages/portfolio/portfolio-page.test.tsx
-pnpm --filter rally-web exec playwright test golden-journey --headed
+pnpm --filter rova-web exec vitest run src/pages/portfolio/portfolio-page.test.tsx
+pnpm --filter rova-web exec playwright test golden-journey --headed
 ```
 
 Database:
@@ -62,7 +62,7 @@ pnpm db:migrate            # migrations + bootstrap seed (see the seeding note b
 pnpm db:seed               # demo fixtures on top
 pnpm db:seed:test          # RESETS, then seeds fixtures — run after a BE e2e run, before Playwright
 pnpm db:studio             # drizzle-kit studio
-pnpm --filter rally-web codegen   # regenerate the API client from a RUNNING local API
+pnpm --filter rova-web codegen   # regenerate the API client from a RUNNING local API
 ```
 
 Ordering that bites: a BE e2e run truncates at its START and leaves debris, Playwright and a manual
@@ -208,7 +208,7 @@ not a function`, so use `AuthService.devLogin` for a bearer token), the **Valida
   raw `fetch` writes. They may only decrease.
 - **The SPA's API client is generated AND committed.** `apps/web/src/shared/api/generated/api.ts`
   comes from `/api/docs-json`, so any DTO change needs
-  `pnpm --filter rally-web codegen` against a running local API, then a commit. The
+  `pnpm --filter rova-web codegen` against a running local API, then a commit. The
   `OpenAPI contract` job regenerates from the spec it captured and diffs
   (`codegen:check`), so drift fails CI instead of failing at runtime.
 

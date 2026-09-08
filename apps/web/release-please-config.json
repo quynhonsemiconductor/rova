@@ -4,7 +4,7 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "rally-web",
+      "package-name": "rova-web",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
