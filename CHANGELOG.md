@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.7.14](https://github.com/quynhonsemiconductor/rova/compare/v0.7.13...v0.7.14) (2026-09-08)
+
+
+### ✨ Features
+
+* **notifications:** deliver work-item assignment in-app only ([#549](https://github.com/quynhonsemiconductor/rova/issues/549)) ([d2fd168](https://github.com/quynhonsemiconductor/rova/commit/d2fd168429a693f4e14a719387fc06bee715c4d5))
+
+
+### 🐛 Bug Fixes
+
+* **ci:** align workspace filters, CI env and release config with product name ([00bc405](https://github.com/quynhonsemiconductor/rova/commit/00bc40532c0960a1dc4c1e12a5592a557e11b480))
+* **ci:** make the tag deploy wait for the develop deploy of the same commit ([#536](https://github.com/quynhonsemiconductor/rova/issues/536)) ([194de1d](https://github.com/quynhonsemiconductor/rova/commit/194de1d1a5f4db92d5c613420a620fdf0c7a1c50))
+* **deps:** restore dependabot npm updates ([#577](https://github.com/quynhonsemiconductor/rova/issues/577)) ([3cb451e](https://github.com/quynhonsemiconductor/rova/commit/3cb451ed90e6fd1539584b943e15fce95128541c))
+* **email:** centralize from-address resolution; add coverage-floor drift check ([#544](https://github.com/quynhonsemiconductor/rova/issues/544)) ([bd56840](https://github.com/quynhonsemiconductor/rova/commit/bd568406dc810173b548b28927e839a3e559a641))
+* **observability:** align dashboard queries, alert tags and SES grant with product name ([845ae4a](https://github.com/quynhonsemiconductor/rova/commit/845ae4a843d7e0d3c3f3ae09ca77beda195447ff))
+
+
+### ♻️ Refactors
+
+* **db:** rename least-privilege roles to the new product name ([e942af6](https://github.com/quynhonsemiconductor/rova/commit/e942af6ece77dd06b902455acd5675eda02e2220))
+* **infra:** move SES domain identity to platform tier, align qnsc-ci pins ([#543](https://github.com/quynhonsemiconductor/rova/issues/543)) ([6c7e5f7](https://github.com/quynhonsemiconductor/rova/commit/6c7e5f7fa6f8e91ecd7580c204272ded8d871de6))
+* **platform:** source runtime primitives from @quynhonsemiconductor/platform-runtime ([#561](https://github.com/quynhonsemiconductor/rova/issues/561)) ([0b50291](https://github.com/quynhonsemiconductor/rova/commit/0b50291cf0ebc6694078ad2495d9193cac3b9a88))
+
 ## [0.7.13](https://github.com/QNSC-VN/rally/compare/v0.7.12...v0.7.13) (2026-08-31)
 
 
