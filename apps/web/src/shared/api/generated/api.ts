@@ -2940,6 +2940,24 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/test-cases/{id}/test-results': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List a Test Case's Results, latest first (BR14) */
+    get: operations['TestCaseRecordsController_listResults']
+    put?: never
+    /** Add a Test Result to a Test Case (SRS §8) */
+    post: operations['TestCaseRecordsController_createResult']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/test-cases/{id}/attachments/presign': {
     parameters: {
       query?: never
@@ -3037,6 +3055,23 @@ export interface paths {
     post?: never
     /** Delete an attachment (uploader or admin only) */
     delete: operations['TestCaseRecordsController_deleteAttachment']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/test-results/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get a Test Result by ID */
+    get: operations['TestResultRecordsController_getById']
+    put?: never
+    post?: never
+    delete?: never
     options?: never
     head?: never
     patch?: never
@@ -5958,6 +5993,46 @@ export interface components {
       priority?: 'low' | 'normal' | 'high' | 'urgent'
       ownerId?: string | null
       assigneeId?: string | null
+    }
+    TestResultResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      /** Format: uuid */
+      testCaseId: string
+      /** @description SNAPSHOT of the Test Case Work Product at result-entry time (BR13). */
+      workItemId: string | null
+      /** @description TR-<n>, workspace-unique */
+      testResultKey: string
+      build: string
+      /** @description YYYY-MM-DD */
+      runDate: string
+      /** @enum {string} */
+      verdict: 'pass' | 'fail' | 'blocked' | 'error' | 'inconclusive'
+      durationMinutes: number
+      /** Format: uuid */
+      testerId: string
+      testerName: string | null
+      notes: string | null
+      /** Format: uuid */
+      createdBy: string
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+    }
+    CreateTestResultDto: {
+      build: string
+      runDate: string
+      /** @enum {string} */
+      verdict: 'pass' | 'fail' | 'blocked' | 'error' | 'inconclusive'
+      durationMinutes?: number
+      /** Format: uuid */
+      testerId: string
+      notes?: string
     }
     TestCaseTypeOptionDto: {
       /** Format: uuid */
@@ -16283,6 +16358,101 @@ export interface operations {
       }
     }
   }
+  TestCaseRecordsController_listResults: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TestResultResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestCaseRecordsController_createResult: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateTestResultDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TestResultResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Precondition Failed — the target is not in a state that allows this */
+      412: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   TestCaseRecordsController_presignAttachment: {
     parameters: {
       query?: never
@@ -16527,6 +16697,41 @@ export interface operations {
       }
       /** @description Forbidden — insufficient permissions */
       403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestResultRecordsController_getById: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TestResultResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
         headers: {
           [name: string]: unknown
         }

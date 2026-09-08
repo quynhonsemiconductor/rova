@@ -12,6 +12,8 @@ export type TestCaseType = components['schemas']['TestCaseTypeOptionDto']
 export type CreateTestCaseInput = components['schemas']['CreateTestCaseDto']
 export type UpdateTestCaseInput = components['schemas']['UpdateTestCaseDto']
 export type ActivityLog = components['schemas']['ActivityResponseDto']
+export type TestResult = components['schemas']['TestResultResponseDto']
+export type CreateTestResultInput = components['schemas']['CreateTestResultDto']
 
 // A Test Case tab loads one Work Item's whole set (like Tasks) — bounded, so no cursor UI. The
 // limit just has to exceed any real Work Item's Test Case count; the list route stays paged
@@ -178,5 +180,53 @@ export function useTestCaseActivity(id: string | undefined) {
     },
     enabled: !!id,
     staleTime: 15_000,
+  })
+}
+
+// ── Phase D: Test Results ────────────────────────────────────────────────────
+
+export const testResultKeys = {
+  all: ['test-results'] as const,
+  list: (testCaseId: string) => [...testResultKeys.all, 'list', testCaseId] as const,
+}
+
+/** BR14: the server already orders `run_date desc, created_at desc` — no client re-sort here. */
+export function useTestResults(testCaseId: string | undefined) {
+  return useQuery({
+    queryKey: testResultKeys.list(testCaseId ?? ''),
+    queryFn: async (): Promise<TestResult[]> => {
+      if (!testCaseId) return []
+      const { data, error, response } = await apiClient.GET('/v1/test-cases/{id}/test-results', {
+        params: { path: { id: testCaseId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data ?? []
+    },
+    enabled: !!testCaseId,
+    staleTime: 15_000,
+  })
+}
+
+/**
+ * `POST /test-cases/:id/test-results`. D8: invalidates BOTH this Test Case's Results list AND its
+ * own detail query — `Last Verdict`/`Last Run` in the sidebar are trigger-owned columns on the SAME
+ * Test Case row the trigger just changed, so a Result write must refresh
+ * `testCaseKeys.detail(testCaseId)` or the sidebar goes stale against a row that already moved. One
+ * narrow key set (`meta.invalidateKeys`), matching `useCreateTestCase`'s own reasoning — a Test
+ * Result has no other read-model derived from it yet.
+ */
+export function useCreateTestResult(testCaseId: string) {
+  return useMutation({
+    mutationFn: async (input: CreateTestResultInput): Promise<TestResult> => {
+      const { data, error, response } = await apiClient.POST('/v1/test-cases/{id}/test-results', {
+        params: { path: { id: testCaseId } },
+        body: input,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as TestResult
+    },
+    meta: {
+      invalidateKeys: [testResultKeys.list(testCaseId), testCaseKeys.detail(testCaseId)],
+    },
   })
 }

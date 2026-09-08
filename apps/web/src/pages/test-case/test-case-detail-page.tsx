@@ -7,17 +7,17 @@
  * `UpdateTestCaseSchema` itself does not carry any of the four, so there is nothing for this page
  * to accidentally send even if it tried.
  *
- * Two tabs: `Details` and `Revision History` (C6). `Results` is Phase D — omitted rather than a
- * placeholder, same reasoning Phase A's docblock already recorded for this page.
+ * Three tabs: `Details`, `Results` (Phase D) and `Revision History` (C6).
  */
 import { useState } from 'react'
 import { useParams, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { FileText, History } from 'lucide-react'
+import { FileText, ClipboardList, History } from 'lucide-react'
 import { useDetailBack } from '@/shared/lib/use-detail-back'
 import {
   useTestCaseByKey,
   useTestCaseTypes,
+  useTestResults,
   useUpdateTestCase,
   type TestCase,
   type UpdateTestCaseInput,
@@ -39,11 +39,13 @@ import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
 import { listResource } from '@/shared/lib/query/resource'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { testCaseUnavailableReason } from './model/unavailable-reason'
 import { TestCaseUnavailable } from './ui/test-case-unavailable'
 import { HistoryTab } from './ui/history-tab'
+import { ResultsTab } from './ui/results-tab'
 
-type DetailTab = 'details' | 'history'
+type DetailTab = 'details' | 'results' | 'history'
 
 export function TestCaseDetailPage() {
   const { t } = useTranslation('test-cases')
@@ -89,6 +91,12 @@ export function TestCaseDetailPage() {
   // `detail-sidebar.tsx`'s Feature select follows.
   const typeFeed = listResource(useTestCaseTypes(testCaseByKey?.projectId))
   const liveTypes = typeFeed.rows
+
+  // D7: the Results tab badge reads the SAME collection the tab itself lists (no second
+  // definition of one number) — the same shape the Work Item page's own Test Cases badge uses.
+  const resultsForCountQuery = useTestResults(testCaseByKey?.id)
+  const resultsForCount = listResource(resultsForCountQuery)
+  const resultCount = resultsForCount.phase === 'error' ? null : resultsForCount.rows.length
 
   const {
     value: testCase,
@@ -146,6 +154,18 @@ export function TestCaseDetailPage() {
       title={testCase.name}
       tabs={[
         { key: 'details', label: t('detail.tabs.details'), icon: <FileText size={19} /> },
+        {
+          key: 'results',
+          label: t('results.tabName'),
+          icon: (
+            <span className="flex items-center gap-1.5">
+              <ClipboardList size={19} />
+              <span className="text-ui-xs font-semibold tabular-nums">
+                {resultCount ?? EMPTY_VALUE}
+              </span>
+            </span>
+          ),
+        },
         { key: 'history', label: t('detail.tabs.history'), icon: <History size={19} /> },
       ]}
       activeTab={activeTab}
@@ -311,6 +331,14 @@ export function TestCaseDetailPage() {
               </DetailField>
             </div>
           }
+        />
+      )}
+
+      {activeTab === 'results' && (
+        <ResultsTab
+          testCaseId={testCase.id}
+          projectId={testCase.projectId}
+          workItemKey={workItem?.itemKey ?? null}
         />
       )}
 
