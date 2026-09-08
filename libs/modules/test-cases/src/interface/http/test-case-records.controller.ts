@@ -1,11 +1,60 @@
-import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Redirect,
+} from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiCommonErrors } from '@platform';
+import { ApiCommonErrors, RateLimit } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { AuthPolicy, RequirePermission, AuthorizedInService } from '@modules/access';
+import { ActivityQueryDto, ActivityResponseDto } from '@modules/activity';
+import type { ActivityLog } from '@modules/activity';
+import {
+  AttachmentResponseDto,
+  DownloadUrlResponseDto,
+  PresignAttachmentDto,
+  PresignAttachmentResponseDto,
+} from '@modules/attachments';
+import type { EntityAttachment } from '@modules/attachments';
 import { TestCasesService } from '../../application/test-cases.service';
+import { UpdateTestCaseDto } from './dto/test-case-request.dto';
 import { TestCaseResponseDto, toTestCaseDto } from './dto/test-case-response.dto';
+
+function toAttachmentDto(a: EntityAttachment): AttachmentResponseDto {
+  return {
+    id: a.id,
+    entityType: a.entityType,
+    entityId: a.entityId,
+    uploadedBy: a.uploadedBy,
+    filename: a.filename,
+    mimeType: a.mimeType,
+    sizeBytes: Number(a.sizeBytes),
+    createdAt: a.createdAt.toISOString(),
+  };
+}
+
+function toActivityDto(a: ActivityLog): ActivityResponseDto {
+  return {
+    id: a.id,
+    createdAt: a.createdAt,
+    actorId: a.actorId,
+    actorName: a.actorName,
+    action: a.action,
+    entityType: a.entityType,
+    entityId: a.entityId,
+    changes: a.changes,
+    metadata: a.metadata ?? {},
+  };
+}
 
 /** Test Case as a RECORD (AC4's detail page). */
 @ApiTags('test-cases')
@@ -45,5 +94,152 @@ export class TestCaseRecordsController {
   ): Promise<TestCaseResponseDto> {
     const testCase = await this.testCasesService.getById(user, id);
     return toTestCaseDto(testCase);
+  }
+
+  @Patch(':id')
+  @RequirePermission('test_case:edit', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Edit a Test Case (SRS §6.3)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: TestCaseResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 412)
+  async update(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTestCaseDto,
+  ): Promise<TestCaseResponseDto> {
+    const testCase = await this.testCasesService.update(user, id, dto);
+    return toTestCaseDto(testCase);
+  }
+
+  // ── Activity (Revision History, C6) ──────────────────────────────────────────
+
+  @Get(':id/activity')
+  @RequirePermission('test_case:view', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'List the revision history of a Test Case' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ActivityResponseDto, isArray: true })
+  @ApiCommonErrors(401, 404)
+  async getActivity(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ActivityQueryDto,
+  ): Promise<{ data: ActivityResponseDto[]; total: number; page: number; pageSize: number }> {
+    const { page, pageSize } = query;
+    const result = await this.testCasesService.getActivity(user, id, {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+    return {
+      data: result.items.map(toActivityDto),
+      total: result.total,
+      page,
+      pageSize,
+    };
+  }
+
+  // ── Attachments (C4) ──────────────────────────────────────────────────────────
+
+  @Post(':id/attachments/presign')
+  @RateLimit('STRICT')
+  @ApiOperation({ summary: 'Get presigned S3 PUT URL to upload a Test Case attachment' })
+  @RequirePermission('test_case:edit', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: PresignAttachmentResponseDto })
+  @ApiCommonErrors(400, 401, 404, 422)
+  async presignAttachment(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PresignAttachmentDto,
+  ): Promise<PresignAttachmentResponseDto> {
+    return this.testCasesService.presignAttachment(user, id, {
+      filename: dto.filename,
+      mimeType: dto.mimeType,
+      sizeBytes: dto.sizeBytes,
+      checksumSha256: dto.checksumSha256,
+    });
+  }
+
+  @Post(':id/attachments/:aid/confirm')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Confirm file upload completed — activates the attachment' })
+  @RequirePermission('test_case:edit', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'aid', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: AttachmentResponseDto })
+  @ApiCommonErrors(400, 401, 404, 422)
+  async confirmAttachment(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('aid', ParseUUIDPipe) aid: string,
+  ): Promise<AttachmentResponseDto> {
+    const attachment = await this.testCasesService.confirmAttachment(user, id, aid);
+    return toAttachmentDto(attachment);
+  }
+
+  @Get(':id/attachments')
+  @ApiOperation({ summary: 'List completed attachments for a Test Case' })
+  @RequirePermission('test_case:view', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: AttachmentResponseDto, isArray: true })
+  @ApiCommonErrors(401, 404)
+  async listAttachments(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<AttachmentResponseDto[]> {
+    const items = await this.testCasesService.listAttachments(user, id);
+    return items.map(toAttachmentDto);
+  }
+
+  @Get(':id/attachments/:aid/download')
+  @ApiOperation({ summary: 'Get a presigned S3 GET URL for downloading an attachment' })
+  @RequirePermission('test_case:view', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'aid', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: DownloadUrlResponseDto })
+  @ApiCommonErrors(401, 404)
+  async getAttachmentDownloadUrl(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('aid', ParseUUIDPipe) aid: string,
+  ): Promise<DownloadUrlResponseDto> {
+    return this.testCasesService.getAttachmentDownloadUrl(user, id, aid);
+  }
+
+  /**
+   * Stable, authenticated URL for an attachment's bytes — same shape as
+   * `work-items.controller.ts`'s own `:aid/content` (BR20: the SAME scoped read every attachment
+   * route on this controller uses, via `TestCasesService.getById`).
+   */
+  @Get(':id/attachments/:aid/content')
+  @Redirect(undefined, 302)
+  @ApiOperation({ summary: 'Redirect to the attachment bytes (stable, authenticated URL)' })
+  @RequirePermission('test_case:view', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'aid', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 302, description: 'Redirect to a short-lived presigned URL' })
+  @ApiCommonErrors(401, 404)
+  async getAttachmentContent(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('aid', ParseUUIDPipe) aid: string,
+  ): Promise<{ url: string; statusCode: number }> {
+    const { downloadUrl } = await this.testCasesService.getAttachmentDownloadUrl(user, id, aid);
+    return { url: downloadUrl, statusCode: 302 };
+  }
+
+  @Delete(':id/attachments/:aid')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Delete an attachment (uploader or admin only)' })
+  @RequirePermission('test_case:edit', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'aid', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Attachment deleted' })
+  @ApiCommonErrors(401, 403, 404)
+  async deleteAttachment(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('aid', ParseUUIDPipe) aid: string,
+  ): Promise<void> {
+    await this.testCasesService.deleteAttachment(user, id, aid);
   }
 }

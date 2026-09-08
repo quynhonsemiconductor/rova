@@ -12,6 +12,7 @@ import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
 import { ProjectsService } from '@modules/projects';
 import { ActivityLogger } from '@modules/activity';
+import { EntityAttachmentsService } from '@modules/attachments';
 import { TestCasesService } from './test-cases.service';
 import { TEST_CASE_REPOSITORY } from '../domain/ports/test-case.repository';
 import type { TestCase } from '../domain/test-case.types';
@@ -61,13 +62,23 @@ describe('TestCasesService', () => {
     findMaxRank: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     listSelectableTypes: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
   };
   let workItems: { getWorkItemForView: ReturnType<typeof vi.fn> };
   let access: { resolveTeamScope: ReturnType<typeof vi.fn> };
   let projects: { assertAssignable: ReturnType<typeof vi.fn> };
   let activity: {
     build: ReturnType<typeof vi.fn>;
+    buildDiff: ReturnType<typeof vi.fn>;
     log: ReturnType<typeof vi.fn>;
+    listFor: ReturnType<typeof vi.fn>;
+  };
+  let entityAttachments: {
+    presign: ReturnType<typeof vi.fn>;
+    confirm: ReturnType<typeof vi.fn>;
+    list: ReturnType<typeof vi.fn>;
+    downloadUrl: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
   };
 
   const SELECTABLE_TYPES = [
@@ -89,6 +100,7 @@ describe('TestCasesService', () => {
       findMaxRank: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue(TEST_CASE),
       listSelectableTypes: vi.fn().mockResolvedValue(SELECTABLE_TYPES),
+      update: vi.fn().mockResolvedValue(TEST_CASE),
     };
     workItems = {
       getWorkItemForView: vi
@@ -99,7 +111,18 @@ describe('TestCasesService', () => {
     projects = { assertAssignable: vi.fn().mockResolvedValue(undefined) };
     activity = {
       build: vi.fn().mockReturnValue({}),
+      buildDiff: vi.fn().mockReturnValue([]),
       log: vi.fn().mockResolvedValue(undefined),
+      listFor: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+    };
+    entityAttachments = {
+      presign: vi
+        .fn()
+        .mockResolvedValue({ attachmentId: 'a-1', uploadUrl: '', requiredHeaders: {} }),
+      confirm: vi.fn().mockResolvedValue({}),
+      list: vi.fn().mockResolvedValue([]),
+      downloadUrl: vi.fn().mockResolvedValue({ downloadUrl: 'https://example.test/x' }),
+      delete: vi.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -110,6 +133,7 @@ describe('TestCasesService', () => {
         { provide: AccessService, useValue: access },
         { provide: ProjectsService, useValue: projects },
         { provide: ActivityLogger, useValue: activity },
+        { provide: EntityAttachmentsService, useValue: entityAttachments },
         // Runs the callback with a stub executor: these tests assert the SERVICE's ordering and
         // validation, and the repository is mocked, so a real transaction adds nothing. The
         // advisory-lock/rank behaviour is proven in e2e against a real database.
@@ -423,6 +447,197 @@ describe('TestCasesService', () => {
 
       expect(repo.listSelectableTypes).toHaveBeenCalledWith('proj-1', 'ws-1');
       expect(result).toEqual(SELECTABLE_TYPES);
+    });
+  });
+
+  describe('update (Phase C, SRS §6.3)', () => {
+    it('authorises the parent Work Item BEFORE writing anything (BR19)', async () => {
+      await service.update(actor, 'tc-1', { name: 'Renamed' });
+
+      expect(workItems.getWorkItemForView).toHaveBeenCalledWith(actor, 'wi-1');
+    });
+
+    it('throws TEST_CASE_NOT_FOUND before touching the parent Work Item', async () => {
+      repo.findById.mockResolvedValue(null);
+
+      await expect(service.update(actor, 'missing', { name: 'x' })).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(workItems.getWorkItemForView).not.toHaveBeenCalled();
+    });
+
+    it('forwards the patch to the repository verbatim, on the transaction executor', async () => {
+      await service.update(actor, 'tc-1', { name: 'Renamed' });
+
+      expect(repo.update).toHaveBeenCalledWith(
+        'tc-1',
+        { name: 'Renamed' },
+        'ws-1',
+        expect.anything(),
+      );
+    });
+
+    it('BR5: the schema never carries projectId/teamId/workItemId, so update() has no such input to forward', async () => {
+      // The type-level guarantee is `UpdateTestCaseInput` itself (no such fields); this proves the
+      // service does not somehow synthesize them into the repository call either.
+      await service.update(actor, 'tc-1', { name: 'Renamed' });
+
+      const [, patchArg] = repo.update.mock.calls[0] as [string, Record<string, unknown>];
+      expect(patchArg).not.toHaveProperty('projectId');
+      expect(patchArg).not.toHaveProperty('teamId');
+      expect(patchArg).not.toHaveProperty('workItemId');
+    });
+
+    it('BR9: the repository patch never carries lastVerdict/lastRun/lastResultId', async () => {
+      await service.update(actor, 'tc-1', { name: 'Renamed' });
+
+      const [, patchArg] = repo.update.mock.calls[0] as [string, Record<string, unknown>];
+      expect(patchArg).not.toHaveProperty('lastVerdict');
+      expect(patchArg).not.toHaveProperty('lastRun');
+      expect(patchArg).not.toHaveProperty('lastResultId');
+    });
+
+    it('BR17: re-supplying the SAME Type is always a no-op, even one no longer selectable', async () => {
+      // TEST_CASE.type is 'Functional', which IS selectable here — assert the archived case too.
+      repo.listSelectableTypes.mockResolvedValue([{ id: 'type-1', name: 'Acceptance' }]);
+
+      await service.update(actor, 'tc-1', { type: 'Functional' });
+
+      expect(repo.update).toHaveBeenCalledWith(
+        'tc-1',
+        { type: 'Functional' },
+        'ws-1',
+        expect.anything(),
+      );
+    });
+
+    it('BR17/BR2: a DIFFERENT Type must be one of the project’s current selectable Types', async () => {
+      await expect(service.update(actor, 'tc-1', { type: 'Nonexistent' })).rejects.toThrow(
+        'is not a selectable Type',
+      );
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('BR8: gates a CHANGED Owner through the same assignment rule as create', async () => {
+      await service.update(actor, 'tc-1', { ownerId: 'user-9' });
+
+      expect(projects.assertAssignable).toHaveBeenCalledWith('ws-1', 'proj-1', 'team-1', 'user-9');
+    });
+
+    it('BR8: gates a CHANGED Assigned To through the SAME call shape as Owner', async () => {
+      await service.update(actor, 'tc-1', { assigneeId: 'user-9' });
+
+      expect(projects.assertAssignable).toHaveBeenCalledWith('ws-1', 'proj-1', 'team-1', 'user-9');
+    });
+
+    it('refuses an ineligible Owner — the write must not accept what the picker would not offer', async () => {
+      projects.assertAssignable.mockRejectedValue(new Error('WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE'));
+
+      await expect(service.update(actor, 'tc-1', { ownerId: 'user-9' })).rejects.toThrow(
+        'WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE',
+      );
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('re-saving the SAME Owner is a no-op — must not re-check eligibility (BR8)', async () => {
+      // TEST_CASE has no ownerId (null); re-sending null must not be treated as a "change".
+      await service.update(actor, 'tc-1', { ownerId: null });
+
+      expect(projects.assertAssignable).not.toHaveBeenCalled();
+    });
+
+    it('C3: logs a scalar-only diff via buildDiff, contextId = the parent Work Item id', async () => {
+      await service.update(actor, 'tc-1', { name: 'Renamed' });
+
+      expect(activity.buildDiff).toHaveBeenCalledWith(
+        expect.objectContaining({ entityType: 'test_case', entityId: 'tc-1', contextId: 'wi-1' }),
+        'user-1',
+        expect.anything(),
+        { name: 'Renamed' },
+        expect.anything(),
+        'test_case.updated',
+      );
+      expect(activity.log).toHaveBeenCalledWith(expect.anything(), { tx: expect.anything() });
+    });
+  });
+
+  describe('getActivity (C6, BR20)', () => {
+    it('goes through the SAME scoped read as the record itself before listing', async () => {
+      await service.getActivity(actor, 'tc-1', { limit: 50, offset: 0 });
+
+      expect(repo.findById).toHaveBeenCalledWith('tc-1', 'ws-1');
+      expect(workItems.getWorkItemForView).toHaveBeenCalledWith(actor, 'wi-1');
+      expect(activity.listFor).toHaveBeenCalledWith('tc-1', 'ws-1', 1, 50);
+    });
+
+    it('propagates a refusal on the parent Work Item without ever listing', async () => {
+      workItems.getWorkItemForView.mockRejectedValue(new Error('WORK_ITEM_NOT_FOUND'));
+
+      await expect(service.getActivity(actor, 'tc-1', { limit: 50, offset: 0 })).rejects.toThrow(
+        'WORK_ITEM_NOT_FOUND',
+      );
+      expect(activity.listFor).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('attachments (C4, BR20)', () => {
+    const attachmentInput = {
+      filename: 'a.png',
+      mimeType: 'image/png',
+      sizeBytes: 10,
+      checksumSha256: 'x',
+    };
+
+    it('presign goes through the SAME scoped read as the record before delegating', async () => {
+      await service.presignAttachment(actor, 'tc-1', attachmentInput);
+
+      expect(workItems.getWorkItemForView).toHaveBeenCalledWith(actor, 'wi-1');
+      expect(entityAttachments.presign).toHaveBeenCalledWith(
+        actor,
+        { entityType: 'test_case', entityId: 'tc-1' },
+        attachmentInput,
+        expect.objectContaining({ surface: 'test-case-attachment' }),
+      );
+    });
+
+    it('confirm passes the loaded row’s own projectId to the activity log', async () => {
+      await service.confirmAttachment(actor, 'tc-1', 'att-1');
+
+      expect(entityAttachments.confirm).toHaveBeenCalledWith(
+        actor,
+        { entityType: 'test_case', entityId: 'tc-1' },
+        'att-1',
+        'proj-1',
+        expect.objectContaining({ surface: 'test-case-attachment' }),
+      );
+    });
+
+    it('list refuses when the parent Work Item is out of scope, before ever listing', async () => {
+      workItems.getWorkItemForView.mockRejectedValue(new Error('WORK_ITEM_NOT_FOUND'));
+
+      await expect(service.listAttachments(actor, 'tc-1')).rejects.toThrow('WORK_ITEM_NOT_FOUND');
+      expect(entityAttachments.list).not.toHaveBeenCalled();
+    });
+
+    it('downloadUrl is scoped exactly like every other read — the signed-URL case CLAUDE.md warns about', async () => {
+      workItems.getWorkItemForView.mockRejectedValue(new Error('WORK_ITEM_NOT_FOUND'));
+
+      await expect(service.getAttachmentDownloadUrl(actor, 'tc-1', 'att-1')).rejects.toThrow(
+        'WORK_ITEM_NOT_FOUND',
+      );
+      expect(entityAttachments.downloadUrl).not.toHaveBeenCalled();
+    });
+
+    it('delete passes the loaded row’s own projectId, after the same scoped read', async () => {
+      await service.deleteAttachment(actor, 'tc-1', 'att-1');
+
+      expect(workItems.getWorkItemForView).toHaveBeenCalledWith(actor, 'wi-1');
+      expect(entityAttachments.delete).toHaveBeenCalledWith(
+        actor,
+        { entityType: 'test_case', entityId: 'tc-1' },
+        'att-1',
+        'proj-1',
+      );
     });
   });
 });
