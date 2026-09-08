@@ -119,6 +119,7 @@ export default defineConfig({
         'libs/modules/scm/src/infrastructure/github/github-rest.mapper.ts',
         'libs/modules/team-status/src/application/team-status.service.ts',
         'libs/modules/test-cases/src/application/test-cases.service.ts',
+        'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/work-items/src/application/work-items.service.ts',
         'libs/modules/work-items/src/domain/team-read-scope.ts',
         'libs/modules/workspace/src/application/team.service.ts',
