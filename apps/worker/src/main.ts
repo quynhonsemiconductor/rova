@@ -1,7 +1,8 @@
 // `.env` FIRST, above the OTel bootstrap: that bootstrap reads process.env directly, and
 // @nestjs/config does not load the file until ConfigModule initialises — far too late.
-// See libs/platform/src/config/load-env.ts.
-import '@platform/config/load-env';
+// See @quynhonsemiconductor/platform-runtime's own header: this MUST stay above the
+// OTel bootstrap, and MUST come from the subpath rather than the package root.
+import '@quynhonsemiconductor/platform-runtime/load-env';
 // OTel must be bootstrapped BEFORE any other imports so auto-instrumentation patches modules
 import { shutdownOtel } from './otel';
 

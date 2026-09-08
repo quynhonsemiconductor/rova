@@ -135,8 +135,6 @@ export default defineConfig({
         'libs/platform/src/context/request-context.ts',
         'libs/platform/src/http/csrf.ts',
         'libs/modules/access/src/interface/http/route-authz-audit.ts',
-        'libs/platform/src/scheduling/exclusive-job.service.ts',
-        'libs/platform/src/http/request-timing.ts',
         'libs/platform/src/outbox/abstract-outbox-relay.ts',
         'libs/platform/src/storage/storage.service.ts',
         'libs/platform/src/utils/lexorank.util.ts',

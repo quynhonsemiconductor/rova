@@ -8,7 +8,7 @@ import fastifyHelmet from '@fastify/helmet';
 import fastifyMultipart from '@fastify/multipart';
 import { AppConfigService } from '@platform/config';
 import { CSRF_HEADER, CSRF_SECRET_COOKIE, requiresCsrfProtection } from '@platform/http/csrf';
-import { registerRequestTiming } from '@platform/http/request-timing';
+import { registerRequestTiming } from '@quynhonsemiconductor/platform-runtime';
 import { BFF_SESSION_COOKIE } from '@platform/auth';
 
 export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
