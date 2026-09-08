@@ -9,6 +9,7 @@ import type { TestResult } from '../../domain/test-result.types';
 import {
   CreateTestResultInput,
   ITestResultRepository,
+  UpdateTestResultInput,
 } from '../../domain/ports/test-result.repository';
 
 /** Same name-resolution shape as `TestCaseDrizzleRepository`'s owner/assignee joins — a name is a
@@ -92,6 +93,49 @@ export class TestResultDrizzleRepository implements ITestResultRepository {
       .leftJoin(TR_TESTER_USER, eq(TR_TESTER_USER.id, testResults.testerId))
       .where(eq(testResults.id, input.id));
     return this.mapRow(rows[0]);
+  }
+
+  async update(
+    id: string,
+    input: UpdateTestResultInput,
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<TestResult> {
+    const exec = executor ?? this.db;
+    // Built key-by-key rather than spread: `undefined` means "leave alone" and `null` means
+    // "clear" for the nullable column — matches `TestCaseDrizzleRepository.update`'s reasoning.
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+    const assign = <K extends keyof UpdateTestResultInput>(key: K) => {
+      if (input[key] !== undefined) set[key] = input[key];
+    };
+    assign('build');
+    assign('runDate');
+    assign('verdict');
+    assign('durationMinutes');
+    assign('testerId');
+    assign('notes');
+
+    await exec
+      .update(testResults)
+      .set(set)
+      .where(and(eq(testResults.id, id), eq(testResults.workspaceId, workspaceId)));
+
+    // Re-select through the tester name join on the SAME executor — a stale connection would not
+    // yet see the row committed elsewhere (same reasoning as `create`'s own re-select).
+    const rows = await exec
+      .select({ ...getTableColumns(testResults), testerName: TESTER_NAME })
+      .from(testResults)
+      .leftJoin(TR_TESTER_USER, eq(TR_TESTER_USER.id, testResults.testerId))
+      .where(eq(testResults.id, id));
+    return this.mapRow(rows[0]);
+  }
+
+  async softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void> {
+    const exec = executor ?? this.db;
+    await exec
+      .update(testResults)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(testResults.id, id), eq(testResults.workspaceId, workspaceId)));
   }
 
   private mapRow(row: typeof testResults.$inferSelect & { testerName: string | null }): TestResult {
