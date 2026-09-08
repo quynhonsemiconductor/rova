@@ -803,26 +803,145 @@ ordering rule and was never restarted before Playwright started — confirmed by
 
 ### Phase D — Results tab + Add Result (SRS §7, §8)
 
-- [ ] **D1** `ITestResultRepository` + Drizzle repo, ordered `run_date desc, created_at desc`
-  (BR14), tester name joined on the row.
-- [ ] **D2** `TestResultsService`: `list`, `create`, `getById`. `create` snapshots `work_item_id`
-  from the Test Case (BR13) and validates `tester_id` through `assignmentCandidates`.
-- [ ] **D3** Routes `GET`/`POST /test-cases/:id/test-results`, `GET /test-results/:id`.
-- [ ] **D4** Trigger verification: a real INSERT moves `last_verdict` / `last_run` on the parent —
-  asserted against the STORED columns in `derived-invariants.e2e.spec.ts`.
-- [ ] **D5** `results-tab.tsx`: Build, Date, Work Product, Verdict, Duration, Tester (AC8 order).
-  Build cell is the link to Result Detail. Empty state.
-- [ ] **D6** `AddTestResultModal`: Build + Date + Tester required (Save disabled otherwise — AC9),
-  Date defaults to **`todayIsoDate()`** — NOT `new Date().toISOString().slice(0,10)`, which converts
-  to UTC first and hands a tester in UTC+7 yesterday's date before 07:00 local. Verdict defaults
-  `Pass`; Duration defaults 0 with `min={0}`; Test Case and Work Product read-only. On save,
-  navigate to the new Result's detail (AC10).
-- [ ] **D7** Results count badge on the Test Case Detail tab strip.
-- [ ] **D8** Invalidate the Test Case detail on result write, or `Last Verdict` in the sidebar goes
-  stale against the row the trigger just changed.
+- [x] **D1** `ITestResultRepository` + `TestResultDrizzleRepository`, ordered
+  `run_date desc, created_at desc, id desc` (BR14) over the EXISTING
+  `ix_test_results_case_run_date` index (no new index needed — the plan's own §2.3 note that this
+  index serves both the SRS ordering and the trigger's own lookup). Tester name joined the same
+  shape as `TestCaseDrizzleRepository`'s owner/assignee joins
+  (`coalesce(display_name, email)`). No `update`/`delete` port methods — append-only (BR12),
+  Phase E/F add those. `TestResultVerdict` is its own narrowed type (`pass|fail|blocked|error|
+  inconclusive`), deliberately NOT the wider `TestVerdict` DB enum that also carries `not_run` —
+  `tsc -b --force` caught the omission immediately (assigning the wider enum to the DTO's narrower
+  zod shape failed to compile) before it ever reached a test.
+- [x] **D2** `TestResultsService`: `list` (calls `TestCasesService.getById` first, BR19/BR20 — the
+  same scoped-read-first rule as attachments/activity), `getById` (same), `create`. `create`
+  snapshots `workItemId` by reading the just-loaded Test Case's own field and passing it straight
+  into `CreateTestResultInput.workItemId` — a plain value copy at the moment of insert, never a
+  live join, and the field is never read back off the Test Case afterward (BR13). `testerId` is
+  required (BR11, no `if` guard) and gated by `ProjectsService.assertAssignable` (BR8, the same
+  rule Owner/Assigned To/Dev Owner use). Key mint MAX+1 + retry-once identical to
+  `TestCasesService.create`'s loop, keyed on `isDuplicateKeyError`. No advisory lock — append-only
+  with no ordering column to race on.
+- [x] **D3** Routes: `GET`/`POST /test-cases/:id/test-results` added to the existing
+  `TestCaseRecordsController` (`test_result:view`/`test_result:create`, both scoped
+  `{ resource: 'test_case', from: 'param', field: 'id' }` per the plan's §3 table).
+  `GET /test-results/:id` in a new `TestResultRecordsController` (`test_result:view`, scoped
+  `{ resource: 'test_result', from: 'param', field: 'id' }` — the `test_result` `ScopedResource`
+  kind and `TEST_RESULT_NOT_FOUND` error code already existed from Phase A's A5, unused until now).
+  `CreateTestResultSchema`/`TestResultResponseSchema` as zod DTOs; response timestamps
+  `z.string().datetime()`. Registered in `TestCasesModule` (providers + controllers + barrel
+  exports). `tsc -b --force` clean across the whole repo on the first pass after one fix (the
+  `TestResultVerdict` narrowing above).
+- [x] **D4** Trigger verification, extending `derived-invariants.e2e.spec.ts` (new
+  `Test Case last_verdict/last_run trigger (D6)` describe block, 4 tests): a real INSERT moves the
+  STORED `last_verdict`/`last_run`/`last_result_id` columns (raw SQL against `work.test_cases`,
+  never the response of the call that changed the Result); the LATEST by `run_date` wins over
+  insertion order (three Results inserted out of date order); a same-`run_date` pair breaks the tie
+  on `created_at` (BR9); a soft-delete (UPDATE of `deleted_at`) of the only live Result clears all
+  three columns back to NULL. Also wrote `test/e2e/test-result-flow.e2e.spec.ts` (the plan's §7
+  Phase-D gate file) as the HTTP-layer companion — real `AppModule` + `app.inject()`, proving the
+  route guards (`ProjectScopeResolver`'s `test_result` kind, unused since Phase A's A5, exercised
+  here for the first time) rather than duplicating the trigger proof at the service layer alone.
+  Both files run clean in isolation on the first attempt: **28/28 passed**
+  (`pnpm vitest run --config test/vitest.e2e.config.ts test/e2e/test-result-flow.e2e.spec.ts
+  test/e2e/derived-invariants.e2e.spec.ts`, 36s).
+- [x] **D5** `features/test-cases/model/test-result-columns.tsx` (`ColumnSpec[]`, AC8 order exactly:
+  Build, Date, Work Product, Verdict, Duration, Tester) + `pages/test-case/ui/results-tab.tsx` on
+  `DataTableFrame`, mirroring `test-cases-tab.tsx`'s exact shape (the server already orders
+  `run_date desc, created_at desc`, BR14 — no client re-sort). **Build cell renders plain text, not
+  a link** — Result Detail is Phase E and does not exist yet, so there is nothing to navigate to;
+  confirmed with the user before writing rather than guessing (a "link to nowhere" would be worse
+  than no link). Work Product resolves from ONE `workItemKey` passed down from the parent page
+  (the Test Case's own current Work Item — BR13 means every row in Phase D shares this same
+  snapshot, since nothing yet changes a Test Case's Work Item link), not re-fetched per row.
+- [x] **D6** `features/test-cases/ui/add-test-result-modal.tsx`: Build + Date + Tester required
+  (Save disabled otherwise, AC9 — `canSave` gate). Date defaults `todayIsoDate()` (confirmed NOT
+  `new Date().toISOString().slice(0,10)`). Verdict defaults `pass`; Duration defaults `'0'` with
+  `min={0}`; Test Case (`testCaseKey`) and Work Product (`workItem.itemKey`) rendered via
+  `ReadOnlyFieldValue` — no field, no picker, matching BR13's "could not send even if it tried"
+  shape the schema itself already enforces server-side. Tester options are `useTeamOwnerOptions`
+  scoped to the Test Case's own inherited team (BR8, same feed as Owner/Assigned To).
+  **Confirmed with user before writing**: on save the modal closes and the list invalidates —
+  it does NOT navigate anywhere (AC10's "navigate to detail" has no Phase D route to land on,
+  Result Detail is Phase E; building a stub route was the explicit alternative offered and
+  declined). i18n: `results.*` block added to `test-cases.json`.
+  `add-test-result-modal.test.tsx`: 9 tests, all green — AC9 both directions (Build blank, no
+  Tester), Save enabled once all three set, `todayIsoDate()` default (asserted against the
+  system's actual local date, not a hardcoded string, so the test itself cannot hide a UTC-vs-local
+  regression), Verdict defaults `pass`, Duration defaults `0`/`min=0`, BR13's read-only pair, the
+  full submit payload shape, and the failed-submit error banner.
+- [x] **D7** Results count badge added to `test-case-detail-page.tsx`'s tab strip (`ClipboardList`
+  icon + count, same composition the Work Item page's own Test Cases badge uses — `resultCount`
+  read from `useTestResults`'s own row count, `null`→`EMPTY_VALUE` on a failed fetch, never `0`
+  standing in for "unknown"). Three tabs now: `Details | Results (n) | Revision History`.
+- [x] **D8** `useCreateTestResult`'s `meta.invalidateKeys` invalidates BOTH
+  `testResultKeys.list(testCaseId)` AND `testCaseKeys.detail(testCaseId)` in one narrow key set —
+  the same `meta.invalidateKeys` mechanism `useCreateTestCase` (Phase B, B5) already proved works,
+  so a Result write refreshes the sidebar's `Last Verdict`/`Last Run` (the trigger-owned columns on
+  the SAME Test Case row) without a broad invalidation of anything test-case-shaped.
 
 **Gate:** Phase A gate + `test/e2e/test-result-flow.e2e.spec.ts`: two results, verify the LATEST by
-date wins, then a same-date pair verifying `created_at` breaks the tie (BR9).
+run_date wins, then a same-run_date pair verifying `created_at` breaks the tie (BR9) — real HTTP,
+real trigger, stored columns (28/28 passing, see D4 above).
+
+**Phase D gate — all green.**
+- `pnpm lint` (backend glob) and `pnpm --filter rova-web lint` — both clean.
+- `tsc -b --force` (repo-wide) — clean after one fix: `TestResultVerdict` needed its own
+  5-member type, distinct from the wider `TestVerdict` DB enum (D1's note).
+- `pnpm build` (api+worker) and `pnpm --filter rova-web build` — both clean.
+- `pnpm test` (backend) — **89 files, 2043 tests**, all green (2029 Phase C baseline + 14 new in
+  `test-results.service.spec.ts`).
+- `pnpm --filter rova-web test` (FE) — **134 files, 1036 tests**, all green (132/1011 Phase C
+  baseline + 2 new/extended files, 25 new tests).
+- Coverage measured (`pnpm test:cov`): stmts 86.3%, branches 79.78%, functions 84.68%,
+  lines 87.23% — all at or above the existing 86/79/84/87 floors. **Not raised**: every measured
+  value truncates to the SAME floor already in place (matches Phase C's own precedent of not
+  forcing a bump when the move is small enough that truncation already absorbs it).
+  `pnpm check:coverage-floors` green.
+- `test/coverage-include.spec.ts` — green; `test-results.service.ts` added to `vitest.config.ts`'s
+  include list.
+- `test/route-policy.ratchet.spec.ts` — unchanged, 5/5 green (both new D3 routes decorated).
+- `fe-consistency.ratchet.test.ts` — unchanged, 8/8 green (raw-button count untouched).
+  `query-default.ratchet.test.ts`'s `MAX_QUERY_DEFAULTS` raised 95→96 (measured by forcing to -1):
+  one new call-site default in `AddTestResultModal`'s Tester feed, the same unconverted
+  `const { data: members = [] } = useTeamOwnerOptions(...)` pattern `AddTaskModal`/
+  `CreateTestCaseModal` already use.
+- `pnpm test:e2e` (full BE e2e) — **69 files, 585 passed, 1 skipped**, zero failures. The one
+  `governance-audit-flow` relay error visible in the log (`value too long for type character
+  varying(50)` on `audit_logs.resource_type`) is the SAME pre-existing, already-documented issue
+  named in this task's own instructions — did not fail the suite and touches nothing this phase
+  added.
+- `pnpm db:seed:test` — reset + reseeded clean, twice (once before an environment-contention
+  Playwright attempt, once after the environment was cleaned up — see below).
+- `pnpm --filter rova-web test:e2e` (Playwright) — **44 passed, 2 failed, 2 skipped (16.7m)** on
+  the trustworthy run. Both failures are `capacity-allocation.e2e.ts`, exactly the documented
+  pre-existing flake named in this task's own instructions. **Zero Test Cases failures.**
+
+  **Environment note, worth keeping for the next session.** The first two full Playwright attempts
+  this phase (11 failures, then an immediate re-run that hit `ECONNREFUSED` on `/v1/bff/dev-login`)
+  were NOT code defects — `Get-CimInstance Win32_Process` found FOUR orphaned node processes still
+  live: a Playwright run that a `TaskStop` had not actually killed, a leftover `vite --port 5173`,
+  and a `nest start api --watch` plus its compiled `dist/apps/api` child — all racing on the same
+  ports and `dist/` tree from earlier codegen/build steps in this session. Killing all four and
+  starting ONE clean `pnpm start:dev` + reseeding immediately dropped the failure count from 11 to
+  2, with `iterations.e2e.ts` and `portfolio.e2e.ts` (both failing in the contaminated run) passing
+  cleanly once isolated from the orphans. This is the same class CLAUDE.md's Phase B/C notes
+  already document (duplicate `nest --watch` processes racing `dist/`, OS-level OOM under
+  concurrent docker+API+vite+Playwright), with one addition: an unrelated container
+  (`save-tep-backend-ocr-worker-1`, not part of this repo's stack) was also consuming resources on
+  the same machine throughout the session — worth checking `docker ps` for foreign containers, not
+  just this repo's own four, before trusting a contention diagnosis.
+
+**FE specs written for Phase D** (§7's list, extending Phase A/B/C's files where the new tab
+touched them): `add-test-result-modal.test.tsx` (new, 9 tests), `test-case-detail-page.test.tsx`
+(extended with a `useTestResults` mock — the page's own count query runs regardless of which tab
+is active, so every existing test needed the mock or it threw "No useTestResults export"; all 6
+pre-existing tests pass unchanged otherwise). `query-default.ratchet.test.ts`'s
+`MAX_QUERY_DEFAULTS` raised 95→96 (measured by forcing to -1, never grepped): one new call-site
+default, `AddTestResultModal`'s `const { data: members = [] } = useTeamOwnerOptions(...)` for the
+Tester feed — the same unconverted pattern `AddTaskModal`/`CreateTestCaseModal` already use.
+`fe-consistency.ratchet.test.ts` unchanged (8/8 green, raw-button count untouched — every new
+control uses the shared `Button`/`SearchableSelect`/`DateField`).
 
 ### Phase E — Test Result Detail (SRS §9)
 
