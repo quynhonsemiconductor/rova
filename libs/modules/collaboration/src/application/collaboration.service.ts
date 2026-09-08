@@ -1,12 +1,16 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { NotFoundException, PreconditionFailedException } from '@platform';
+import {
+  NotFoundException,
+  PermissionDeniedException,
+  PreconditionFailedException,
+} from '@platform';
 import type { JwtPayload } from '@platform';
 import { PERMISSION } from '@shared-kernel';
 import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
 import { ICommentRepository, COMMENT_REPOSITORY } from '../domain/ports/comment.repository';
-import type { Comment, CommentRef } from '../domain/collaboration.types';
+import type { Comment, CommentEntityType, CommentRef } from '../domain/collaboration.types';
 import { PortfolioItemsService } from '@modules/portfolio';
 import { ProjectsService } from '@modules/projects';
 
@@ -30,12 +34,31 @@ export class CollaborationService {
    * differently.
    */
   private async subjectProjectId(actor: JwtPayload, ref: CommentRef): Promise<string> {
+    this.assertCommentableEntity(ref.entityType);
     if (ref.entityType === 'work_item') {
       const item = await this.workItemsService.getWorkItem(actor.workspaceId, ref.entityId);
       return item.projectId;
     }
     const item = await this.portfolioItems.getItem(actor, ref.entityId);
     return item.projectId;
+  }
+
+  /**
+   * Refuses `test_case` / `test_result` (plan §2.6/C7). `CommentEntityType` is derived from
+   * `entity_ref_type`, so migration 0129's widening (Phase 7) admits both at the TYPE level even
+   * though the SRS names no comment thread on either — the same enum also backs `attachments` and
+   * `milestone_artifacts`, and CLAUDE.md's own warning is that a widened vocabulary must not
+   * become a feature nobody designed. Without this, `subjectProjectId` would fall through to the
+   * portfolio-item branch for a `test_case` ref (there is no third branch), resolving the WRONG
+   * project rather than refusing outright.
+   */
+  private assertCommentableEntity(entityType: CommentEntityType): void {
+    if (entityType === 'test_case' || entityType === 'test_result') {
+      throw new PermissionDeniedException(
+        'COMMENT_ENTITY_NOT_SUPPORTED',
+        `Comments are not supported on a ${entityType}`,
+      );
+    }
   }
 
   /**
@@ -53,6 +76,7 @@ export class CollaborationService {
    * ruling is about Work Items.
    */
   private async assertSubjectReachable(actor: JwtPayload, ref: CommentRef): Promise<void> {
+    this.assertCommentableEntity(ref.entityType);
     if (ref.entityType !== 'work_item') return;
     const item = await this.workItemsService.getWorkItem(actor.workspaceId, ref.entityId);
     await this.accessService.assertTeamInScope(

@@ -278,4 +278,40 @@ describe('CollaborationService — project-scoped comment writes', () => {
       expect(accessService.assertTeamInScope).not.toHaveBeenCalled();
     });
   });
+
+  /**
+   * Phase 7 plan §2.6/C7: `entity_ref_type` (migration 0129) admits `test_case` / `test_result` at
+   * the DB level, and `CommentEntityType` is DERIVED from that enum — so both reach this service's
+   * TYPE signature even though the SRS names no comment thread on either. Without an explicit
+   * refusal, `subjectProjectId`/`assertSubjectReachable` have only two branches and would silently
+   * route a `test_case` ref into the PORTFOLIO branch (there is no third case) — the widened enum
+   * becoming a feature nobody designed, which is exactly CLAUDE.md's warning about this class of
+   * change.
+   */
+  describe('refuses comments on the two new Phase 7 entity kinds (C7)', () => {
+    const TEST_CASE_REF = { entityType: 'test_case' as const, entityId: 'tc-1' };
+    const TEST_RESULT_REF = { entityType: 'test_result' as const, entityId: 'tr-1' };
+
+    it.each([
+      ['test_case', TEST_CASE_REF],
+      ['test_result', TEST_RESULT_REF],
+    ])('refuses listComments for a %s ref', async (_label, ref) => {
+      await expect(service.listComments(mockActor, ref)).rejects.toMatchObject({
+        code: 'COMMENT_ENTITY_NOT_SUPPORTED',
+      });
+      expect(commentRepo.listByEntity).not.toHaveBeenCalled();
+      expect(portfolioItemsService.getItem).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['test_case', TEST_CASE_REF],
+      ['test_result', TEST_RESULT_REF],
+    ])('refuses createComment for a %s ref', async (_label, ref) => {
+      await expect(service.createComment(mockActor, ref, 'hello')).rejects.toMatchObject({
+        code: 'COMMENT_ENTITY_NOT_SUPPORTED',
+      });
+      expect(commentRepo.create).not.toHaveBeenCalled();
+      expect(portfolioItemsService.getItem).not.toHaveBeenCalled();
+    });
+  });
 });
