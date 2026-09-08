@@ -16,7 +16,11 @@
 
 /** Identifies a surface. Also the first segment of every key it produces. */
 export type UploadSurface =
-  'work-item-attachment' | 'comment-attachment' | 'user-avatar' | 'workspace-logo';
+  | 'work-item-attachment'
+  | 'comment-attachment'
+  | 'user-avatar'
+  | 'workspace-logo'
+  | 'test-case-attachment';
 
 export interface UploadPolicy {
   readonly surface: UploadSurface;
@@ -88,6 +92,22 @@ const MB = 1024 * 1024;
  */
 export const ENTITY_ATTACHMENT_POLICY: UploadPolicy = {
   surface: 'work-item-attachment',
+  allowedMimeTypes: new Set([...RASTER_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]),
+  maxSizeBytes: 25 * MB,
+  maxPerOwner: 25,
+  visibility: 'private',
+  inlineDisposition: false,
+};
+
+/**
+ * Files attached to a Test Case (Phase 7 Phase C, plan §2.6/C4). A NEW descriptor rather than
+ * reusing `ENTITY_ATTACHMENT_POLICY` — the plan calls for admitting the new owner deliberately,
+ * not implicitly, per `entity_ref_type`'s widening being "not neutral" (migration 0129's own
+ * docblock). Same limits and MIME allow-list as the work-item/portfolio-item policy: the SRS
+ * names no different rule for a Test Case's attachments.
+ */
+export const TEST_CASE_ATTACHMENT_POLICY: UploadPolicy = {
+  surface: 'test-case-attachment',
   allowedMimeTypes: new Set([...RASTER_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]),
   maxSizeBytes: 25 * MB,
   maxPerOwner: 25,

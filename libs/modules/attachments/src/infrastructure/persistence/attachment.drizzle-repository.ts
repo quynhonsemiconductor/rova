@@ -62,12 +62,12 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
         asc(attachments.entityId),
         asc(attachments.fileId),
       );
-    // `entity_type` (migration 0129) now admits `test_case` / `test_result` at the DB level, but
-    // this module's own `AttachmentRef` union does not yet — no `UploadPolicy` descriptor exists
-    // for either (Phase 7 plan §2.6, Phase C). The WHERE clause above filters on `ref.entityType`,
-    // which is always one of THIS module's two members, so a row here can never actually carry one
-    // of the two new values; the cast is narrowing to what the query provably returns, not widening
-    // what the module accepts.
+    // `entity_type` (migration 0129) admits `test_case` AND `test_result` at the DB level, but this
+    // module's own `AttachmentRef` union only picked up `test_case` (Phase 7 plan §2.6, Phase C) —
+    // `test_result` has no `UploadPolicy` descriptor yet (Phase D/E). The WHERE clause above filters
+    // on `ref.entityType`, which is always one of THIS module's three members, so a row here can
+    // never actually carry `test_result`; the cast is narrowing to what the query provably returns,
+    // not widening what the module accepts.
     return rows as EntityAttachment[];
   }
 

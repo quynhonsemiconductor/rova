@@ -12,6 +12,7 @@ import { AccessService } from '@modules/access';
 import { ActivityLogger } from '@modules/activity';
 import { AttachmentsService } from './attachments.service';
 import { ENTITY_ATTACHMENT_POLICY } from '../domain/attachment-policy';
+import type { UploadPolicy } from '../domain/attachment-policy';
 import {
   ATTACHMENT_REPOSITORY,
   type IAttachmentRepository,
@@ -58,11 +59,12 @@ export class EntityAttachmentsService {
     actor: JwtPayload,
     ref: AttachmentRef,
     input: { filename: string; mimeType: string; sizeBytes: number; checksumSha256: string },
+    policy: UploadPolicy = ENTITY_ATTACHMENT_POLICY,
   ): Promise<{ attachmentId: string; uploadUrl: string; requiredHeaders: Record<string, string> }> {
     const current = await this.links.countByEntity(ref, actor.workspaceId);
     const { fileId, uploadUrl, requiredHeaders } = await this.attachments.presign(
       actor,
-      ENTITY_ATTACHMENT_POLICY,
+      policy,
       input,
       current,
     );
@@ -74,19 +76,20 @@ export class EntityAttachmentsService {
     ref: AttachmentRef,
     attachmentId: string,
     projectId: string,
+    policy: UploadPolicy = ENTITY_ATTACHMENT_POLICY,
   ): Promise<EntityAttachment> {
     // Verifies the object landed and matches the declared size + checksum.
-    const file = await this.attachments.confirm(actor, attachmentId, ENTITY_ATTACHMENT_POLICY);
+    const file = await this.attachments.confirm(actor, attachmentId, policy);
 
     // Re-check the quota at confirm time: presign only reserved a row, and N concurrent
     // presigns could each have passed the check against the same count. This is the point
     // where the file becomes visible, so it is the point that has to hold the limit.
     const current = await this.links.countByEntity(ref, actor.workspaceId);
-    if (current >= (ENTITY_ATTACHMENT_POLICY.maxPerOwner ?? Infinity)) {
+    if (current >= (policy.maxPerOwner ?? Infinity)) {
       await this.attachments.softDelete(attachmentId);
       throw new PreconditionFailedException(
         'ATTACHMENT_LIMIT_EXCEEDED',
-        `This item already has the maximum of ${ENTITY_ATTACHMENT_POLICY.maxPerOwner} attachments`,
+        `This item already has the maximum of ${policy.maxPerOwner} attachments`,
       );
     }
 
@@ -157,17 +160,14 @@ export class EntityAttachmentsService {
     actor: JwtPayload,
     ref: AttachmentRef,
     attachmentId: string,
+    policy: UploadPolicy = ENTITY_ATTACHMENT_POLICY,
   ): Promise<{ downloadUrl: string }> {
     // Scoped to the ENTITY, not just the workspace: without this a viewer of item A could
     // mint a URL for an attachment on item B in a project they cannot see.
     const link = await this.links.findByEntityAndFile(ref, attachmentId, actor.workspaceId);
     if (!link) throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
 
-    const { url } = await this.attachments.getDownloadUrl(
-      actor,
-      attachmentId,
-      ENTITY_ATTACHMENT_POLICY,
-    );
+    const { url } = await this.attachments.getDownloadUrl(actor, attachmentId, policy);
     return { downloadUrl: url };
   }
 
