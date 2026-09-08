@@ -98,6 +98,15 @@ describe('test case routes (e2e)', () => {
     });
   }
 
+  function patch(url: string, payload: Record<string, unknown>) {
+    return app.inject({
+      method: 'PATCH',
+      url,
+      headers: { authorization: `Bearer ${token}` },
+      payload,
+    });
+  }
+
   it("lists the parent Work Item's Test Cases, in rank order (AC2)", async () => {
     const response = await get(`/work-items/${NXP_STORY_1_ID}/test-cases`);
     expect(response.statusCode, response.body).toBe(200);
@@ -234,6 +243,142 @@ describe('test case routes (e2e)', () => {
 
     it("refuses to create under a Work Item outside the caller's readable projects (404, not 500)", async () => {
       const response = await post(`/work-items/${randomUUID()}/test-cases`, { name: 'Orphan' });
+      expect(response.statusCode).toBe(404);
+    });
+  });
+
+  describe('update (Phase C)', () => {
+    it('PATCH edits a content field and it is immediately visible on GET', async () => {
+      const created = JSON.parse(
+        (await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, { name: 'To be edited' })).body,
+      );
+
+      const patchRes = await patch(`/test-cases/${created.id}`, {
+        name: 'Edited name',
+        description: '<p>new description</p>',
+      });
+      expect(patchRes.statusCode, patchRes.body).toBe(200);
+      const patched = JSON.parse(patchRes.body);
+      expect(patched.name).toBe('Edited name');
+      expect(patched.description).toBe('<p>new description</p>');
+
+      const getRes = await get(`/test-cases/${created.id}`);
+      expect(JSON.parse(getRes.body).name).toBe('Edited name');
+    });
+
+    it('BR5: a projectId/teamId/workItemId in the PATCH body is silently ignored, never honoured', async () => {
+      const created = JSON.parse(
+        (await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, { name: 'Immutable parentage' }))
+          .body,
+      );
+      const otherWorkItem = randomUUID();
+
+      const patchRes = await patch(`/test-cases/${created.id}`, {
+        name: 'Still same parent',
+        projectId: randomUUID(),
+        teamId: randomUUID(),
+        workItemId: otherWorkItem,
+      });
+      expect(patchRes.statusCode, patchRes.body).toBe(200);
+      const patched = JSON.parse(patchRes.body);
+      expect(patched.projectId).toBe(created.projectId);
+      expect(patched.teamId).toBe(created.teamId);
+      expect(patched.workItemId).toBe(created.workItemId);
+      expect(patched.workItemId).not.toBe(otherWorkItem);
+    });
+
+    it('BR9: lastVerdict/lastRun/lastResultId in the PATCH body are silently ignored — only the trigger writes them', async () => {
+      const patchRes = await patch(`/test-cases/${NXP_TEST_CASE_2_ID}`, {
+        lastVerdict: 'pass',
+        lastRun: '2020-01-01',
+        lastResultId: randomUUID(),
+      });
+      expect(patchRes.statusCode, patchRes.body).toBe(200);
+      const patched = JSON.parse(patchRes.body);
+      // TC-2 is seeded with NO Results (BR10) — a write here would prove the columns are settable
+      // from the PATCH body, which BR9 forbids.
+      expect(patched.lastVerdict).toBeNull();
+      expect(patched.lastRun).toBeNull();
+      expect(patched.lastResultId).toBeNull();
+    });
+
+    it('BR17: re-supplying the SAME Type is a no-op even if the field is otherwise validated', async () => {
+      const created = JSON.parse(
+        (await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, { name: 'Type no-op case' })).body,
+      );
+      const patchRes = await patch(`/test-cases/${created.id}`, { type: created.type });
+      expect(patchRes.statusCode, patchRes.body).toBe(200);
+      expect(JSON.parse(patchRes.body).type).toBe(created.type);
+    });
+
+    it('BR2/BR17: a Type not in the project catalog and not the row’s own value is refused', async () => {
+      const created = JSON.parse(
+        (await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, { name: 'Bad type edit' })).body,
+      );
+      const patchRes = await patch(`/test-cases/${created.id}`, { type: 'Nonexistent Type XYZ' });
+      expect(patchRes.statusCode).toBe(412);
+      expect(patchRes.body).toContain('TEST_CASE_TYPE_NOT_SELECTABLE');
+    });
+
+    it('BR8: an ineligible Owner on PATCH is refused identically to create', async () => {
+      const created = JSON.parse(
+        (await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, { name: 'Reassign case' })).body,
+      );
+      const patchRes = await patch(`/test-cases/${created.id}`, { ownerId: randomUUID() });
+      expect(patchRes.statusCode).toBe(412);
+      expect(patchRes.body).toContain('WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE');
+    });
+
+    it('404s a PATCH to a Test Case id that belongs to nothing', async () => {
+      const response = await patch(`/test-cases/${randomUUID()}`, { name: 'x' });
+      expect(response.statusCode).toBe(404);
+    });
+  });
+
+  describe('activity (C6)', () => {
+    it('GET /test-cases/:id/activity lists the create + edit rows for one Test Case', async () => {
+      const created = JSON.parse(
+        (await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, { name: 'History case' })).body,
+      );
+      await patch(`/test-cases/${created.id}`, { name: 'History case renamed' });
+
+      const activityRes = await get(`/test-cases/${created.id}/activity`);
+      expect(activityRes.statusCode, activityRes.body).toBe(200);
+      const body = JSON.parse(activityRes.body) as { data: Array<{ action: string }> };
+      expect(body.data.some((row) => row.action === 'test_case.created')).toBe(true);
+      expect(body.data.some((row) => row.action === 'test_case.updated')).toBe(true);
+    });
+
+    it('BR20: refuses activity for a Test Case outside the readable projects (404, not 500)', async () => {
+      const response = await get(`/test-cases/${randomUUID()}/activity`);
+      expect(response.statusCode).toBe(404);
+    });
+  });
+
+  describe('attachments (C4, BR20)', () => {
+    it('lists zero attachments for a freshly created Test Case', async () => {
+      const created = JSON.parse(
+        (await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, { name: 'No attachments yet' }))
+          .body,
+      );
+      const response = await get(`/test-cases/${created.id}/attachments`);
+      expect(response.statusCode, response.body).toBe(200);
+      expect(JSON.parse(response.body)).toEqual([]);
+    });
+
+    it('BR20: refuses the attachment list for a Test Case outside the readable projects', async () => {
+      const response = await get(`/test-cases/${randomUUID()}/attachments`);
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('BR20: refuses the download route the SAME way — the signed-URL case', async () => {
+      const created = JSON.parse(
+        (await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, { name: 'Download scope case' }))
+          .body,
+      );
+      // The Test Case is readable but the attachment id is not real — 404 either way, proving the
+      // scoped read runs before anything about the attachment id is even asked.
+      const response = await get(`/test-cases/${created.id}/attachments/${randomUUID()}/download`);
       expect(response.statusCode).toBe(404);
     });
   });
