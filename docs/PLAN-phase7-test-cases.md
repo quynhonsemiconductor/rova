@@ -696,25 +696,110 @@ triage alongside the BE e2e blocker above.
 
 ### Phase C — Test Case Detail edit (SRS §6)
 
-- [ ] **C1** `UpdateTestCaseSchema` — carries name, the seven content fields, type, method,
+- [x] **C1** `UpdateTestCaseSchema` — carries name, the seven content fields, type, method,
   priority, ownerId, assigneeId. **Does NOT carry `projectId`, `teamId`, `workItemId`, `lastVerdict`,
   `lastRun`** (BR5, BR9); document the absence on the schema so it is not helpfully filled in later.
-- [ ] **C2** `PATCH /test-cases/:id`; `assertAssignable` on both people fields, looping the two
+  Added to `test-case-request.dto.ts` alongside `CreateTestCaseSchema`. 13 fields, all optional
+  (PATCH semantics); `ownerId`/`assigneeId` are `.nullable().optional()` (create has no clear-to-
+  Unassigned case, update does). Also omits `lastResultId` (third trigger-owned column, D6),
+  `rank` (own route, reorder), and every identity/audit column. Docblock records BR17's exception:
+  `type` re-validates against the live selectable list UNLESS equal to the row's own current
+  value, so a no-op save of a historical Type is never refused.
+- [x] **C2** `PATCH /test-cases/:id`; `assertAssignable` on both people fields, looping the two
   through ONE rule the way Dev Owner does, so a third responsibility later cannot pick up half the
   behaviour.
-- [ ] **C3** Activity diff rows via `ActivityLogger.buildDiff` — scalar values only, never a
+  `TestCasesService.update()` loops `['ownerId', 'assigneeId']` through one `assertAssignable` call,
+  checking eligibility only when the field is actually CHANGING (matches
+  `WorkItemsService.assertAssignmentScope`'s `changedAssignableIds` shape) — re-saving an existing,
+  possibly since-ineligible value is never refused. Route: `TestCaseRecordsController.update`,
+  `test_case:edit` scoped to the path id.
+- [x] **C3** Activity diff rows via `ActivityLogger.buildDiff` — scalar values only, never a
   rich-text body.
-- [ ] **C4** Attachments: `UploadPolicy` descriptor for `test_case`; wire the existing
+  `test-case-activity-diff.ts`: `TEST_CASE_ACTIVITY_CONFIG`, modelled directly on
+  `PORTFOLIO_ACTIVITY_CONFIG` — 13 fields diffed, the seven content fields declared `richText`
+  (field name only, body never logged). `contextId` = the parent Work Item id, matching B2's
+  create-time logging, so the Story's own Revision History includes the edit. Written in the SAME
+  `uow.run` transaction as the column update (not `logSafe`), same reasoning B2 already used for
+  create.
+- [x] **C4** Attachments: `UploadPolicy` descriptor for `test_case`; wire the existing
   `AttachmentBlock`. Both download routes go through the scoped read (BR20).
-- [ ] **C5** Detail tab becomes editable — `usePendingPatch` + `SaveCancelBar`, the shape the work
+  New `TEST_CASE_ATTACHMENT_POLICY` (`attachment-policy.ts`) — its own `surface` value
+  (`test-case-attachment`), same limits/MIME set as `ENTITY_ATTACHMENT_POLICY` (SRS names no
+  different rule). `AttachmentEntityType` widened to admit `test_case` (NOT `test_result` — no
+  Phase C task names it); `EntityAttachmentsService.presign/confirm/downloadUrl` now take an
+  optional `policy` param (defaulted to `ENTITY_ATTACHMENT_POLICY`, so `WorkItemsService`'s and
+  `PortfolioAttachmentsController`'s existing call sites are untouched). Five routes added to
+  `TestCaseRecordsController` (presign, confirm, list, download, content-redirect, delete) — all
+  five call `TestCasesService.getById` FIRST (BR20's same-scoped-read rule), including the two
+  download routes where a signed URL outliving the request is the worst case CLAUDE.md names.
+  FE: `EntityRefType` widened to `'work_item' | 'portfolio_item' | 'test_case'`; `CommentEntityType`
+  deliberately kept NARROWER (own type, not derived from `EntityRefType`) so a caller cannot
+  construct a `test_case` comment subject with no type error to catch it before C7's server-side
+  403 does. `AttachmentBlock`'s `ENTITY_PATH` and `use-upload-pasted-images.ts`'s mirror both
+  gained the `test_case` → `/v1/test-cases` entry (the latter a compile-error fix from the
+  widening, not a new upload path — the Test Case detail page does not paste images).
+- [x] **C5** Detail tab becomes editable — `usePendingPatch` + `SaveCancelBar`, the shape the work
   item detail already uses. Type select unions the row's current value with the live project list
   (BR17).
-- [ ] **C6** Revision History tab reusing `ActivityHistoryTab`.
-- [ ] **C7** `CollaborationService` **refuses** comments on `test_case` / `test_result`, asserted
+  `test-case-detail-page.tsx` rewritten from Phase A's read-only version: the seven content fields
+  (`RichTextEditor` with `onChange`), Type/Method/Priority (`SearchableSelect`), Owner/Assigned To
+  (`OwnerSelectField`, team-scoped feed + current-value-append exactly like
+  `detail-sidebar.tsx`'s own `ownerOptions`). Gated on `test_case:edit` via `useProjectPermissions`.
+  Project/Team/Last Verdict/Last Run stay `DetailReadonlyValue` / `VerdictBadge` — no control on
+  the page could write any of the four even if it tried, since `UpdateTestCaseSchema` omits them.
+- [x] **C6** Revision History tab reusing `ActivityHistoryTab`.
+  `GET /test-cases/:id/activity` route + `TestCasesService.getActivity` (calls `getById` first,
+  BR20) mirroring `WorkItemsService.getActivity` exactly. FE: `useTestCaseActivity` hook +
+  `pages/test-case/ui/history-tab.tsx`, both thin wrappers reusing the shared
+  `ActivityHistoryTab`/`describeActivity` — no new humanisation needed, since nothing here repeats
+  the `task.state_changed` field-name mismatch that needed `FIELD_LABEL_BY_ACTION`.
+- [x] **C7** `CollaborationService` **refuses** comments on `test_case` / `test_result`, asserted
   (§2.6).
+  `CommentEntityType` is DERIVED from `entity_ref_type` (unchanged from before Phase C), so
+  migration 0129's widening already put both new members at the TYPE level with no route ever
+  constructing one — `assertCommentableEntity` closes the gap explicitly, called from both
+  `subjectProjectId` (the write path) and `assertSubjectReachable` (the read path, `listComments`'
+  own chokepoint, which previously no-opped for anything not `work_item`). Without it,
+  `subjectProjectId` would silently route a `test_case` ref into the portfolio-item branch (there
+  is no third branch) — the widened enum becoming a feature nobody designed, CLAUDE.md's own
+  warning. 4 new spec cases in `collaboration.service.spec.ts` (list + create, both new kinds),
+  asserting `commentRepo.listByEntity`/`.create` and `portfolioItemsService.getItem` are never
+  reached.
 
 **Gate:** Phase A gate + a spec asserting each read-only field is refused, and that
 `CollaborationService` refuses both new entity kinds.
+Verified: `test-cases.service.spec.ts` gained 19 new tests (BR5/BR9 read-only-field refusal via
+`repo.update`'s own patch shape, BR17 both directions, BR8 loop both directions + eligibility
+refusal + no-op-on-unchanged, C3's `buildDiff` call shape, C6's scoped-read-first, C4's five
+attachment delegations) — 50/50 green. `collaboration.service.spec.ts` gained 4 (C7) — all green.
+`test/e2e/test-case-routes.e2e.spec.ts` (extended, real HTTP): +18 new tests over Phase A/B's 7 —
+PATCH round trip, BR5's three fields silently ignored (asserted against the STORED response, not
+just the schema), BR9's three trigger-owned columns silently ignored (against `TC-2`, seeded with
+zero Results, so a write would be unambiguous), BR17 both directions, BR2/BR8 refusals mirroring
+create's, a PATCH 404, the activity route (both created+updated rows present, and a 404 for an
+unreadable id), and the attachment routes (empty list, 404 on an unreadable Test Case, 404 on the
+download route). 25/25 green in isolation
+(`pnpm vitest run --config test/vitest.e2e.config.ts test/e2e/test-case-routes.e2e.spec.ts`).
+
+Full gate run, in order: `pnpm test:e2e` (full BE e2e) — **572 passed, 1 skipped**, zero failures.
+`pnpm db:seed:test` — reset + reseeded clean. `pnpm --filter rova-web test:e2e` (Playwright,
+API + docker stack running, no BE e2e or manual session live) — **43 passed, 4 failed, 1 skipped
+(17.2m)**. All 4 failures are the documented pre-existing flakes named in this task's own
+instructions: `capacity-allocation.e2e.ts` ×3 (`Test timeout of 45000ms exceeded` waiting on a
+button/tab that is present in every other run) and `golden-journey.e2e.ts` ×1 (same
+timeout-pattern in a shared `settle()` helper). **Zero Test Cases failures** — `role-conformance`,
+`backlog` and all 43 others passed clean, including the four `role-conformance` cases nearest in
+shape to a permission-gated new surface.
+
+One environment note worth keeping: this session hit an actual OS-level OOM twice — the machine
+had ~23 pre-existing Chrome tabs (the user's own browser, untouched) plus the docker stack, `nest
+--watch`, Vite and Playwright's own chromium all live at once, and the harness itself killed two
+background tasks mid-run with "system is running low on memory." Not a code defect — confirmed by
+free-memory dropping to ~4GB before the kill and the identical suite passing cleanly once retried
+with a leaner one-thing-at-a-time approach. The FIRST Playwright attempt (before this one) failed
+outright for an unrelated reason: the API had been stopped for the BE e2e run per this task's own
+ordering rule and was never restarted before Playwright started — confirmed by the exact same
+`backlog.e2e.ts` tests passing on immediate retry with the API up, no code change in between.
 
 ### Phase D — Results tab + Add Result (SRS §7, §8)
 
