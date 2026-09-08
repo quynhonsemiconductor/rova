@@ -436,7 +436,7 @@ module "tunnel_api" {
 }
 
 module "otel_agent_api" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.1"
 
   product       = var.product
   env           = var.env
@@ -453,7 +453,7 @@ module "otel_agent_api" {
 }
 
 module "otel_agent_worker" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.1"
 
   product       = var.product
   env           = var.env
@@ -484,7 +484,7 @@ module "otel_agent_worker" {
 # above exactly, for the same reason: logs, metrics and traces must agree on
 # which namespace/environment they belong to.
 module "firelens_agent_api" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.2"
 
   service_name     = "rova-api"
   product          = var.product
@@ -497,7 +497,7 @@ module "firelens_agent_api" {
 }
 
 module "firelens_agent_worker" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.2"
 
   service_name     = "rova-worker"
   product          = var.product

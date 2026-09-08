@@ -9,4 +9,11 @@ export * from './pagination';
 export * from './http-logging.interceptor';
 export * from './idempotency.interceptor';
 export * from './csrf';
-export * from './request-timing';
+// Request-arrival timing is sourced from @quynhonsemiconductor/platform-runtime.
+export {
+  registerRequestTiming,
+  arrivalAtMs,
+  albReceivedAtMs,
+  albWaitMs,
+  ALB_WAIT_REPORTING_FLOOR_MS,
+} from '@quynhonsemiconductor/platform-runtime';
