@@ -3,9 +3,13 @@ import type { FastifyRequest } from 'fastify';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { DomainException as SharedDomainException } from '@quynhonsemiconductor/platform-http';
-import { HttpMetrics, IGNORED_REQUEST_PATHS, normalizeRoute } from '@quynhonsemiconductor/observability';
+import {
+  HttpMetrics,
+  IGNORED_REQUEST_PATHS,
+  normalizeRoute,
+} from '@quynhonsemiconductor/observability';
 import { AppConfigService } from '../config/app-config.service';
-import { albReceivedAtMs, albWaitMs, arrivalAtMs } from './request-timing';
+import { albReceivedAtMs, albWaitMs, arrivalAtMs } from '@quynhonsemiconductor/platform-runtime';
 
 /** Routes whose access logs are suppressed (probes + favicon spam). */
 /**
