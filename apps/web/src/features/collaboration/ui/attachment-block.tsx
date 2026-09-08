@@ -37,6 +37,7 @@ import {
 const ENTITY_PATH: Record<EntityRefType, string> = {
   work_item: '/v1/work-items',
   portfolio_item: '/v1/portfolio-items',
+  test_case: '/v1/test-cases',
 }
 
 /** Column headers — an array (not literal JSX text) so labels stay data. */
@@ -52,9 +53,9 @@ function formatBytes(bytes: number): string {
 
 interface AttachmentBlockProps {
   /**
-   * The entity the files hang off — a work item or a portfolio item. A pair rather than a
-   * bare id because the two live at different API paths and carry different edit
-   * permissions; the block itself is identical for both.
+   * The entity the files hang off — a work item, a portfolio item, or a Test Case. A pair rather
+   * than a bare id because each lives at a different API path and carries different edit
+   * permissions; the block itself is identical for all three.
    */
   subject: EntitySubject | undefined
   readOnly?: boolean
