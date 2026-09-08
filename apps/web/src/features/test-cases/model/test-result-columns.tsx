@@ -3,9 +3,10 @@
  * Duration, Tester.
  *
  * Widths fit the HEADER (CLAUDE.md's floor: `label.length * 6.9 + 32`px). Build is the link to the
- * Result's own detail (Phase E) — Phase D has no such page yet, so the cell renders plain text
- * (D5's checklist names only the list + empty state, not navigation to a page that does not exist).
+ * Result's own detail page (Phase E's E3, `/test-result/$testResultId`) — Phase D built the plain
+ * text placeholder because no such page existed yet.
  */
+import { Link } from '@tanstack/react-router'
 import { type ColumnSpec } from '@/shared/ui/table'
 import { formatDate, EMPTY_VALUE } from '@/shared/lib/utils'
 import type { TestResult } from '../api'
@@ -32,9 +33,13 @@ export function testResultColumns(): ColumnSpec<TestResult, TestResultCtx, TestR
       locked: true,
       cellClassName: 'min-w-0 px-2',
       cell: (row) => (
-        <span className="block min-w-0 truncate font-mono text-ui-md text-foreground">
+        <Link
+          to="/test-result/$testResultId"
+          params={{ testResultId: row.id }}
+          className="block min-w-0 truncate font-mono text-ui-md text-primary-light underline-offset-2 hover:underline"
+        >
           {row.build}
-        </span>
+        </Link>
       ),
     },
     {

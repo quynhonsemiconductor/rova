@@ -3071,7 +3071,128 @@ export interface paths {
     get: operations['TestResultRecordsController_getById']
     put?: never
     post?: never
+    /** Delete a Test Result (soft delete) */
+    delete: operations['TestResultRecordsController_delete']
+    options?: never
+    head?: never
+    /** Edit a Test Result (SRS §9) */
+    patch: operations['TestResultRecordsController_update']
+    trace?: never
+  }
+  '/v1/test-results/{id}/activity': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List the revision history of a Test Result */
+    get: operations['TestResultRecordsController_getActivity']
+    put?: never
+    post?: never
     delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/test-results/{id}/attachments/presign': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Get presigned S3 PUT URL to upload a Test Result attachment */
+    post: operations['TestResultRecordsController_presignAttachment']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/test-results/{id}/attachments/{aid}/confirm': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Confirm file upload completed — activates the attachment */
+    post: operations['TestResultRecordsController_confirmAttachment']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/test-results/{id}/attachments': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List completed attachments for a Test Result */
+    get: operations['TestResultRecordsController_listAttachments']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/test-results/{id}/attachments/{aid}/download': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get a presigned S3 GET URL for downloading an attachment */
+    get: operations['TestResultRecordsController_getAttachmentDownloadUrl']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/test-results/{id}/attachments/{aid}/content': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Redirect to the attachment bytes (stable, authenticated URL) */
+    get: operations['TestResultRecordsController_getAttachmentContent']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/test-results/{id}/attachments/{aid}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Delete an attachment (uploader or admin only) */
+    delete: operations['TestResultRecordsController_deleteAttachment']
     options?: never
     head?: never
     patch?: never
@@ -3886,7 +4007,7 @@ export interface components {
       /** Format: uuid */
       id: string
       /** @enum {string} */
-      entityType: 'work_item' | 'portfolio_item' | 'test_case'
+      entityType: 'work_item' | 'portfolio_item' | 'test_case' | 'test_result'
       /** Format: uuid */
       entityId: string
       /** Format: uuid */
@@ -6033,6 +6154,16 @@ export interface components {
       /** Format: uuid */
       testerId: string
       notes?: string
+    }
+    UpdateTestResultDto: {
+      build?: string
+      runDate?: string
+      /** @enum {string} */
+      verdict?: 'pass' | 'fail' | 'blocked' | 'error' | 'inconclusive'
+      durationMinutes?: number
+      /** Format: uuid */
+      testerId?: string
+      notes?: string | null
     }
     TestCaseTypeOptionDto: {
       /** Format: uuid */
@@ -16732,6 +16863,403 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestResultRecordsController_delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Test Result deleted */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestResultRecordsController_update: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateTestResultDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TestResultResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Precondition Failed — the target is not in a state that allows this */
+      412: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestResultRecordsController_getActivity: {
+    parameters: {
+      query?: {
+        page?: number
+        pageSize?: number
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ActivityResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestResultRecordsController_presignAttachment: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PresignAttachmentDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PresignAttachmentResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
+      429: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestResultRecordsController_confirmAttachment: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        aid: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AttachmentResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestResultRecordsController_listAttachments: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AttachmentResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestResultRecordsController_getAttachmentDownloadUrl: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        aid: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['DownloadUrlResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestResultRecordsController_getAttachmentContent: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        aid: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Redirect to a short-lived presigned URL */
+      302: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestResultRecordsController_deleteAttachment: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        aid: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Attachment deleted */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }

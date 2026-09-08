@@ -275,6 +275,25 @@ const testCaseDetailRoute = createRoute({
   ),
 })
 
+const testResultDetailRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/test-result/$testResultId',
+  staticData: { breadcrumb: 'Test Result' },
+  // Test Results have no `by-key` server route (plan §3 lists only `GET /test-results/:id`), so
+  // this resolves by UUID, unlike `/test-case/$testCaseKey`'s workspace-unique key.
+  loader: ({ context, params, cause }) =>
+    import('@/features/test-cases/deep-link-result').then((m) =>
+      m.adoptTestResultProject(context.queryClient, params.testResultId, cause),
+    ),
+  // Same THIRD shape as `/test-case/$testCaseKey`: reached only from the Results tab's Build-cell
+  // link (no nav row, no list surface of its own to fold a code onto), so the PAGE owns its whole
+  // denied state — 403/404/other (CLAUDE.md: "A record route must own its denied state").
+  component: lazyPage(
+    () => import('@/pages/test-result/test-result-detail-page'),
+    'TestResultDetailPage',
+  ),
+})
+
 const timeboxesRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/timeboxes',
@@ -526,6 +545,7 @@ const routeTree = rootRoute.addChildren([
     releaseTrackingRoute,
     workItemDetailRoute,
     testCaseDetailRoute,
+    testResultDetailRoute,
     notFoundRoute,
   ]),
 ])
