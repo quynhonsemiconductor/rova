@@ -1780,6 +1780,62 @@ and Velocity needs a FINISHED iteration before it says anything. The reports sta
 (`noBaseline`, `historyState`) rather than drawing a flat zero line — do not "fix" that by synthesising
 history.
 
+## Test Cases (Phase 7): the trigger, the nullable Work Product, and two exceptions to shared rules
+
+`libs/modules/test-cases` — a Test Case is a project artifact, OPTIONALLY attached to a Work Item.
+
+- **`test_cases.work_item_id` is NULLABLE, but only work-item-scoped routes are exposed.** Rally's
+  Test Case has an optional Work Product; ours schema-supports that today (D2) but ships no
+  standalone `Quality > Test Cases` surface yet — every route in Phase 7 requires the parent Work
+  Item. `TestCasesService.requireReadableWorkItem` is the ONE authorization check the whole module
+  has: a Test Case is readable exactly when its parent is (`getWorkItemForView`, which already
+  asserts `work_item:view` + team scope), so this module adds no second team predicate of its own.
+- **`last_verdict` / `last_run` / `last_result_id` are maintained EXCLUSIVELY by a DB trigger**
+  (`trg_test_case_last_result`, migration 0129), never by the service — the same reasoning
+  `trg_sync_accepted_date` and `trg_task_iteration_from_parent` already established. It recomputes
+  from the latest LIVE Result (`order by run_date desc, created_at desc`) on every INSERT, UPDATE
+  (of `run_date`/`verdict`/`deleted_at`/`test_case_id`) and DELETE, and sets all three back to NULL
+  when no live Result remains. `UpdateTestCaseSchema` and `UpdateTestResultSchema` both omit these
+  columns so the contract does not advertise what the trigger owns.
+- **`entity_ref_type` widened to admit `test_case` and `test_result`** for attachments — a shared
+  enum across `comments`, `attachments` and `milestone_artifacts` (§2.6), so widening it for one
+  consumer technically opens the other two. Attachments got a deliberate `UploadPolicy` per new
+  owner; `CollaborationService.assertCommentableEntity` REFUSES both new kinds explicitly (the SRS
+  names no comment thread on either) — asserted in `collaboration.service.spec.ts`, or the widened
+  enum would have silently become a feature nobody designed.
+- **`Not Run` / `Not run yet` is a SECOND declared exception to `EMPTY_VALUE`** (BR10), alongside
+  Capacity's `Dependencies` `0`. A Test Case with no Result renders these words, never `--` and
+  never `0` — `lastVerdict`/`lastRun` being `null` is a fact (no Result exists yet), not an absent
+  read.
+- **The Type catalog (`work.test_case_types`) is per-PROJECT and modelled on `work.labels`**, but
+  soft-hidden (`archived_at`) rather than hard-deleted, because `test_cases.type` stores the Type
+  NAME as a text SNAPSHOT (D8) — a removed Type must keep rendering on every historical Test Case
+  that used it (BR17, AC17). `POST`/`DELETE /projects/:id/test-case-types` are gated
+  `workspace:edit` (Workspace-Admin-only, matching the structural project routes — see "A
+  per-Project Admin has NO structural authority" above), **not** `project:edit`. The FIVE default
+  Types are seeded twice, deliberately: migration 0129's one-time backfill for every project that
+  existed before Phase G shipped, and `ProjectsService.createProject`'s own create-time loop (the
+  same shape as `DEFAULT_WORKFLOW_STATUSES`) for every project created afterward — one seeds the
+  past, the other seeds the future, and neither re-runs the other's job.
+  BR17's union (the Detail page's Type select showing a historical value that is no longer live) is
+  resolved entirely CLIENT-side, from the row's own snapshot string — no server `includeArchived`
+  read exists, because there is no FK to look an archived row up by.
+
+**Declared divergences from Rally, in Test Cases** (the reasons behind D2–D8 above, and the design
+choices they replace):
+
+1. **No standalone Test Case surface.** Rally has `Quality > Test Cases`, Test Folders and Test
+   Sets; Phase 7 exposes Test Cases only through a Work Item. The schema is ready (`work_item_id`
+   nullable); the UI is not built.
+2. **No Test Folder, Test Set, Last Build, Tags, Color, or Expedite fields.** Rally's Test Case
+   carries all of them; the SRS field list is exhaustive and names none.
+3. **`Validation Input` is not required**, though Rally marks it required — the SRS makes `Name`
+   the only required create field, and every content field starts blank.
+4. **Rally's Test Case Result has a `Test Set` field; ours has none**, because there are no Test
+   Sets.
+5. **Test Case Type is per-PROJECT and admin-editable.** Rally's is a workspace-level customisable
+   dropdown; per-project is the BA's model.
+
 ## Observability
 
 The implementation lives in `@quynhonsemiconductor/observability` — shared with opshub, so fix it
