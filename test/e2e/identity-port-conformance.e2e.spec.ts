@@ -23,7 +23,7 @@ import {
   describeAuthSessionRepositoryContract,
   SESSION_CONTRACT_USER_IDS,
 } from '@quynhonsemiconductor/identity/testing';
-import { sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll } from 'vitest';
 import { DRIZZLE, type DrizzleDB } from '@platform';
 // Deep import: the module barrel exports the Nest module and its HTTP DTOs, not
@@ -31,6 +31,7 @@ import { DRIZZLE, type DrizzleDB } from '@platform';
 // here for the same reason WorkspaceService deep-imports ApiTokensService — the
 // barrel would close a cycle.
 import { AuthSessionDrizzleRepository } from '@modules/identity/infrastructure/persistence/auth-session.drizzle-repository';
+import { authSessions } from '@db/schema/identity';
 import { bootRallyApp } from './support/flow-harness';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 
@@ -72,17 +73,26 @@ describeAuthSessionRepositoryContract({
   id: toUuid,
 
   /**
-   * The contract requires a FRESH, EMPTY repository per test — with a shared real
-   * database that means truncating, not constructing a new object. Without this the
-   * suite's own fixtures collide on `uq_auth_sessions_token_hash` from the second
-   * test onwards, and the failure reads as a broken adapter rather than as leaked
-   * state.
+   * The contract requires a FRESH, EMPTY repository per test. Against a shared real
+   * database that means removing the previous test's rows — otherwise the suite's
+   * own fixtures collide on `uq_auth_sessions_token_hash` from the second test
+   * onwards, and the failure reads as a broken adapter rather than as leaked state.
    *
-   * Scoped to this table only: the e2e suite shares one database and a broader
-   * reset here would delete fixtures other specs are mid-way through using.
+   * A DELETE scoped to this suite's own user ids, NOT a TRUNCATE. `e2e-fixtures
+   * .ratchet.spec.ts` forbids a file resetting on its own, and it is right to: a
+   * per-file truncate fights `global-setup.ts` and makes other specs' failures
+   * depend on file order. Every row this contract creates carries one of the two
+   * seeded user ids, so this removes exactly the suite's rows and cannot touch
+   * another spec's fixtures — which a TRUNCATE would.
    */
   create: async () => {
-    await db.execute(sql`TRUNCATE TABLE identity.auth_sessions`);
+    // drizzle's query builder, not a hand-built SQL literal: `sql.raw` with
+    // interpolated values is the shape db/migrate.ts was burned by (it produced a
+    // 42601 on the first real migration run), and there is no reason to reach for it
+    // when `inArray` parameterises this correctly.
+    await db
+      .delete(authSessions)
+      .where(inArray(authSessions.userId, SESSION_CONTRACT_USER_IDS.map(toUuid)));
     return new AuthSessionDrizzleRepository(db);
   },
 
