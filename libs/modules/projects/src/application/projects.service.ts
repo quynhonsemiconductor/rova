@@ -50,7 +50,14 @@ import type {
 } from '../domain/project.types';
 import type { ProjectAccessLevel } from '@shared-kernel';
 import { AccessService, assertTeamAssignmentForLevel, grantsAllTeams } from '@modules/access';
-import { DEFAULT_WORKFLOW_STATUSES } from '../domain/project.constants';
+import {
+  DEFAULT_WORKFLOW_STATUSES,
+  DEFAULT_TEST_CASE_TYPE_NAMES,
+} from '../domain/project.constants';
+// Deep-import (see `projects.module.ts`'s own comment for why): `TestCasesModule` already
+// imports `ProjectsModule`, so a service-level dependency the other way would close a cycle.
+import type { ITestCaseTypeRepository } from '@modules/test-cases/domain/ports/test-case-type.repository';
+import { TEST_CASE_TYPE_REPOSITORY } from '@modules/test-cases/domain/ports/test-case-type.repository';
 import type { Label } from '../domain/label.types';
 import type { WorkItemType } from '../domain/ports/project.repository';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
@@ -96,6 +103,8 @@ export class ProjectsService {
     @Inject(PROJECT_MEMBER_REPOSITORY) private readonly projectMemberRepo: IProjectMemberRepository,
     @Inject(WORKSPACE_MEMBER_REPOSITORY)
     private readonly workspaceMemberRepo: IWorkspaceMemberRepository,
+    @Inject(TEST_CASE_TYPE_REPOSITORY)
+    private readonly testCaseTypeRepo: ITestCaseTypeRepository,
     private readonly teamService: TeamService,
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
@@ -292,6 +301,17 @@ export class ProjectsService {
             position: s.position,
             isDefault: s.isDefault,
           },
+          tx,
+        );
+      }
+
+      // BR18/G3: every new project starts with the five default Test Case Types, in the SAME
+      // transaction as the project — mirrors the workflow-status loop immediately above. This is
+      // the CREATE-time half only; migration 0129 already backfilled every project that existed
+      // before this hook shipped, and that one-time backfill is not re-run here.
+      for (const [position, name] of DEFAULT_TEST_CASE_TYPE_NAMES.entries()) {
+        await this.testCaseTypeRepo.create(
+          { id: uuidv7(), workspaceId: actor.workspaceId, projectId, name, position },
           tx,
         );
       }

@@ -7,6 +7,7 @@ import { WORKFLOW_STATUS_REPOSITORY } from '../domain/ports/workflow-status.repo
 import { LABEL_REPOSITORY } from '../domain/ports/label.repository';
 import { PROJECT_TEAM_REPOSITORY } from '../domain/ports/project-team.repository';
 import { PROJECT_MEMBER_REPOSITORY } from '../domain/ports/project-member.repository';
+import { TEST_CASE_TYPE_REPOSITORY } from '@modules/test-cases/domain/ports/test-case-type.repository';
 import { WORKSPACE_MEMBER_REPOSITORY, TeamService } from '@modules/workspace';
 import { ActivityLogger } from '@modules/activity';
 import type { Project, WorkflowStatus } from '../domain/project.types';
@@ -110,6 +111,14 @@ const makeLabelRepo = () => ({
   delete: vi.fn().mockResolvedValue(undefined),
 });
 
+const makeTestCaseTypeRepo = () => ({
+  listSelectable: vi.fn().mockResolvedValue([]),
+  findByName: vi.fn().mockResolvedValue(null),
+  nextPosition: vi.fn().mockResolvedValue(0),
+  create: vi.fn().mockResolvedValue({}),
+  archive: vi.fn().mockResolvedValue(null),
+});
+
 const makeProjectTeamRepo = () => ({
   findLink: vi.fn().mockResolvedValue(null),
   listByProject: vi.fn().mockResolvedValue([]),
@@ -200,6 +209,7 @@ describe('ProjectsService', () => {
   let estimationRows: unknown[];
   let audit: { emit: ReturnType<typeof vi.fn> };
   let access: ReturnType<typeof makeAccessService>;
+  let testCaseTypeRepo: ReturnType<typeof makeTestCaseTypeRepo>;
 
   beforeEach(async () => {
     capacityPlanRows = [];
@@ -208,6 +218,7 @@ describe('ProjectsService', () => {
     projectRepo = makeProjectRepo();
     statusRepo = makeStatusRepo();
     labelRepo = makeLabelRepo();
+    testCaseTypeRepo = makeTestCaseTypeRepo();
     projectTeamRepo = makeProjectTeamRepo();
     projectMemberRepo = makeProjectMemberRepo();
     workspaceMemberRepo = makeWorkspaceMemberRepo();
@@ -229,6 +240,7 @@ describe('ProjectsService', () => {
         { provide: PROJECT_REPOSITORY, useValue: projectRepo },
         { provide: WORKFLOW_STATUS_REPOSITORY, useValue: statusRepo },
         { provide: LABEL_REPOSITORY, useValue: labelRepo },
+        { provide: TEST_CASE_TYPE_REPOSITORY, useValue: testCaseTypeRepo },
         { provide: PROJECT_TEAM_REPOSITORY, useValue: projectTeamRepo },
         { provide: PROJECT_MEMBER_REPOSITORY, useValue: projectMemberRepo },
         { provide: WORKSPACE_MEMBER_REPOSITORY, useValue: workspaceMemberRepo },
@@ -280,6 +292,33 @@ describe('ProjectsService', () => {
       );
       // 4 default statuses + 1 counter init
       expect(statusRepo.create).toHaveBeenCalledTimes(4);
+    });
+
+    /**
+     * BR18/G3: every new project starts with the five default Test Case Types, seeded in the
+     * SAME transaction as the project — the create-time half of BR18 (migration 0129 already
+     * backfilled every project that existed before this hook shipped; that one-time backfill is
+     * not re-run here).
+     */
+    it('seeds the five default Test Case Types inside the create transaction (BR18/G3)', async () => {
+      projectRepo.create.mockResolvedValue(mockProject());
+      statusRepo.create.mockResolvedValue(mockStatus());
+
+      await service.createProject(mockActor, { key: 'proj', name: 'Test Project' });
+
+      expect(testCaseTypeRepo.create).toHaveBeenCalledTimes(5);
+      const calls = testCaseTypeRepo.create.mock.calls as Array<[{ name: string }, unknown]>;
+      expect(calls.map(([input]) => input.name)).toEqual([
+        'Acceptance',
+        'Functional',
+        'Regression',
+        'Performance',
+        'Usability',
+      ]);
+      // Every call lands on the transaction executor, not the pool connection.
+      for (const [, executor] of calls) {
+        expect(executor).toBeDefined();
+      }
     });
 
     /**
