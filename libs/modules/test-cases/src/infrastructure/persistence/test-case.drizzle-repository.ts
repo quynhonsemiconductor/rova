@@ -3,14 +3,13 @@ import { and, asc, count, desc, eq, getTableColumns, inArray, isNull, sql } from
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, CursorPayload, DbExecutor, PagedResult } from '@platform';
-import { testCases, testCaseTypes } from '../../../../../../db/schema/work';
+import { testCases } from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
 import type { TestCase } from '../../domain/test-case.types';
 import type { TeamReadScope } from '../../domain/team-read-scope';
 import {
   CreateTestCaseInput,
   ITestCaseRepository,
-  TestCaseTypeOption,
   UpdateTestCaseInput,
 } from '../../domain/ports/test-case.repository';
 
@@ -187,23 +186,6 @@ export class TestCaseDrizzleRepository implements ITestCaseRepository {
       .leftJoin(TC_ASSIGNEE_USER, eq(TC_ASSIGNEE_USER.id, testCases.assigneeId))
       .where(eq(testCases.id, input.id));
     return this.mapRow(rows[0]);
-  }
-
-  async listSelectableTypes(projectId: string, workspaceId: string): Promise<TestCaseTypeOption[]> {
-    const rows = await this.db
-      .select({ id: testCaseTypes.id, name: testCaseTypes.name })
-      .from(testCaseTypes)
-      .where(
-        and(
-          eq(testCaseTypes.projectId, projectId),
-          eq(testCaseTypes.workspaceId, workspaceId),
-          isNull(testCaseTypes.archivedAt),
-        ),
-      )
-      // `id` as a final tiebreaker keeps the order deterministic under keyset pagination — same rule
-      // as every other ranked read in this repo (`query-ordering.ratchet.spec.ts`).
-      .orderBy(asc(testCaseTypes.position), asc(testCaseTypes.name), asc(testCaseTypes.id));
-    return rows;
   }
 
   async update(

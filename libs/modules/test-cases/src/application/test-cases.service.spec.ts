@@ -16,6 +16,7 @@ import { EntityAttachmentsService } from '@modules/attachments';
 import { TestCasesService } from './test-cases.service';
 import { TEST_CASE_REPOSITORY } from '../domain/ports/test-case.repository';
 import { TEST_RESULT_REPOSITORY } from '../domain/ports/test-result.repository';
+import { TEST_CASE_TYPE_REPOSITORY } from '../domain/ports/test-case-type.repository';
 import type { TestCase } from '../domain/test-case.types';
 
 const actor = { sub: 'user-1', workspaceId: 'ws-1' } as never;
@@ -62,7 +63,6 @@ describe('TestCasesService', () => {
     lockRankScope: ReturnType<typeof vi.fn>;
     findMaxRank: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
-    listSelectableTypes: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
     softDelete: ReturnType<typeof vi.fn>;
     listLiveIdsByWorkItem: ReturnType<typeof vi.fn>;
@@ -71,6 +71,7 @@ describe('TestCasesService', () => {
     updateRank: ReturnType<typeof vi.fn>;
   };
   let testResultRepo: { softDeleteByTestCaseIds: ReturnType<typeof vi.fn> };
+  let typeRepo: { listSelectable: ReturnType<typeof vi.fn> };
   let workItems: { getWorkItemForView: ReturnType<typeof vi.fn> };
   let access: { resolveTeamScope: ReturnType<typeof vi.fn> };
   let projects: { assertAssignable: ReturnType<typeof vi.fn> };
@@ -89,8 +90,8 @@ describe('TestCasesService', () => {
   };
 
   const SELECTABLE_TYPES = [
-    { id: 'type-1', name: 'Acceptance' },
-    { id: 'type-2', name: 'Functional' },
+    { id: 'type-1', name: 'Acceptance', position: 0 },
+    { id: 'type-2', name: 'Functional', position: 1 },
   ];
 
   beforeEach(async () => {
@@ -106,7 +107,6 @@ describe('TestCasesService', () => {
       lockRankScope: vi.fn().mockResolvedValue(undefined),
       findMaxRank: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue(TEST_CASE),
-      listSelectableTypes: vi.fn().mockResolvedValue(SELECTABLE_TYPES),
       update: vi.fn().mockResolvedValue(TEST_CASE),
       softDelete: vi.fn().mockResolvedValue(undefined),
       listLiveIdsByWorkItem: vi.fn().mockResolvedValue([]),
@@ -115,6 +115,7 @@ describe('TestCasesService', () => {
       updateRank: vi.fn().mockResolvedValue(undefined),
     };
     testResultRepo = { softDeleteByTestCaseIds: vi.fn().mockResolvedValue(undefined) };
+    typeRepo = { listSelectable: vi.fn().mockResolvedValue(SELECTABLE_TYPES) };
     workItems = {
       getWorkItemForView: vi
         .fn()
@@ -143,6 +144,7 @@ describe('TestCasesService', () => {
         TestCasesService,
         { provide: TEST_CASE_REPOSITORY, useValue: repo },
         { provide: TEST_RESULT_REPOSITORY, useValue: testResultRepo },
+        { provide: TEST_CASE_TYPE_REPOSITORY, useValue: typeRepo },
         { provide: WorkItemsService, useValue: workItems },
         { provide: AccessService, useValue: access },
         { provide: ProjectsService, useValue: projects },
@@ -293,7 +295,7 @@ describe('TestCasesService', () => {
     });
 
     it('refuses to default a Type when the project has none selectable', async () => {
-      repo.listSelectableTypes.mockResolvedValue([]);
+      typeRepo.listSelectable.mockResolvedValue([]);
 
       await expect(service.create(actor, 'wi-1', { name: 'New case' })).rejects.toThrow(
         PreconditionFailedException,
@@ -455,15 +457,6 @@ describe('TestCasesService', () => {
     });
   });
 
-  describe('listSelectableTypes', () => {
-    it('reads the project catalog with no team/work-item authorization of its own', async () => {
-      const result = await service.listSelectableTypes(actor, 'proj-1');
-
-      expect(repo.listSelectableTypes).toHaveBeenCalledWith('proj-1', 'ws-1');
-      expect(result).toEqual(SELECTABLE_TYPES);
-    });
-  });
-
   describe('update (Phase C, SRS §6.3)', () => {
     it('authorises the parent Work Item BEFORE writing anything (BR19)', async () => {
       await service.update(actor, 'tc-1', { name: 'Renamed' });
@@ -513,7 +506,9 @@ describe('TestCasesService', () => {
 
     it('BR17: re-supplying the SAME Type is always a no-op, even one no longer selectable', async () => {
       // TEST_CASE.type is 'Functional', which IS selectable here — assert the archived case too.
-      repo.listSelectableTypes.mockResolvedValue([{ id: 'type-1', name: 'Acceptance' }]);
+      typeRepo.listSelectable.mockResolvedValue([
+        { id: 'type-1', name: 'Acceptance', position: 0 },
+      ]);
 
       await service.update(actor, 'tc-1', { type: 'Functional' });
 

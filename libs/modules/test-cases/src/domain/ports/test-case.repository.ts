@@ -4,10 +4,17 @@ import type { TeamReadScope } from '../team-read-scope';
 
 export const TEST_CASE_REPOSITORY = Symbol('TEST_CASE_REPOSITORY');
 
-/** One (project, live Type) row — the Create modal's dropdown, and BR2's "first selectable" source. */
+/**
+ * One (project, live Type) row — the Create modal's dropdown, BR2's "first selectable" source,
+ * and (Phase G) the Settings chip list's row shape too, since both read the same `GET` route.
+ * Lives here (not on `test-case-type.repository.ts`) because it predates the Type catalog's own
+ * port (Phase B's stopgap) and both `TestCaseTypeOptionDto` and `ITestCaseTypeRepository.listSelectable`
+ * still return this exact shape — moving it would be a pure rename with no behaviour change.
+ */
 export interface TestCaseTypeOption {
   id: string;
   name: string;
+  position: number;
 }
 
 export interface CreateTestCaseInput {
@@ -91,9 +98,6 @@ export interface ITestCaseRepository {
     executor: DbExecutor,
   ): Promise<string | null>;
   create(input: CreateTestCaseInput, executor: DbExecutor): Promise<TestCase>;
-
-  /** Live (non-archived) Types for a project, ordered for BR2's "first selectable" default. */
-  listSelectableTypes(projectId: string, workspaceId: string): Promise<TestCaseTypeOption[]>;
 
   // ── Writes (Phase C) ────────────────────────────────────────────────────────
 
