@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, getTableColumns, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
@@ -136,6 +136,24 @@ export class TestResultDrizzleRepository implements ITestResultRepository {
       .update(testResults)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(testResults.id, id), eq(testResults.workspaceId, workspaceId)));
+  }
+
+  async softDeleteByTestCaseIds(
+    testCaseIds: string[],
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<void> {
+    if (testCaseIds.length === 0) return;
+    await executor
+      .update(testResults)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          inArray(testResults.testCaseId, testCaseIds),
+          eq(testResults.workspaceId, workspaceId),
+          isNull(testResults.deletedAt),
+        ),
+      );
   }
 
   private mapRow(row: typeof testResults.$inferSelect & { testerName: string | null }): TestResult {

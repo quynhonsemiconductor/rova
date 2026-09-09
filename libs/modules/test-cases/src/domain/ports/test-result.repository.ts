@@ -64,4 +64,19 @@ export interface ITestResultRepository {
   ): Promise<TestResult>;
   /** Soft delete (`deleted_at`) — also fires the trigger's UPDATE branch. */
   softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void>;
+
+  /**
+   * Soft-delete every LIVE Result under a set of Test Cases, in ONE set-based UPDATE (F1/F4's
+   * cascade — a Work Item delete soft-deletes its Test Cases, and by this method their Results, in
+   * the SAME transaction). `test_case_id` carries `ON DELETE cascade`, but that FK never fires for
+   * a soft delete (it is an UPDATE, not a DELETE) — this is the application doing explicitly what
+   * the FK cannot, once, as a set, not as a loop over ids. The UPDATE still fires
+   * `trg_test_case_last_result`'s `deleted_at` branch per row, recomputing each Test Case's
+   * `last_verdict`/`last_run` back to NULL.
+   */
+  softDeleteByTestCaseIds(
+    testCaseIds: string[],
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<void>;
 }

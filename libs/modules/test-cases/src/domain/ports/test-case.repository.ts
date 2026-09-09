@@ -108,4 +108,47 @@ export interface ITestCaseRepository {
     workspaceId: string,
     executor?: DbExecutor,
   ): Promise<TestCase>;
+
+  // ── Writes (Phase F) ────────────────────────────────────────────────────────
+
+  /**
+   * Soft-delete ONE Test Case (F1). `test_results.test_case_id` carries `ON DELETE cascade`, but a
+   * soft delete is an UPDATE of `deleted_at`, so that FK never fires (same reason
+   * `work_item_id`/`work.tasks` carry none) — the caller must also soft-delete this row's Results
+   * (see `softDeleteResultsByTestCase` on `ITestResultRepository`) in the SAME transaction. This
+   * method touches ONLY `test_cases`.
+   */
+  softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void>;
+
+  /**
+   * All live Test Case ids under one Work Item — used by the F1/F4 cascade to soft-delete a Work
+   * Item's Test Cases (and, via `softDeleteResultsByTestCase`, their Results) in one transaction.
+   * Read-then-write rather than a single `UPDATE … RETURNING id`, so the same id list can also be
+   * handed to the Results cascade without a second query.
+   */
+  listLiveIdsByWorkItem(
+    workItemId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<string[]>;
+
+  /** Soft-delete every LIVE Test Case under one Work Item, one set-based UPDATE (F4's cascade). */
+  softDeleteByWorkItem(
+    workItemId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<void>;
+
+  /**
+   * Neighbour lookup for the rank drag (F3) — mirrors `IWorkItemRepository.findByIds`. Only `id`
+   * and `rank` are needed; the service resolves `between(low, high)` from the two returned ranks
+   * and refuses a neighbour that does not belong to the same Work Item (`WORK_ITEM_PARENT_SCOPE_MISMATCH`).
+   */
+  findRanksByIds(
+    ids: string[],
+    workspaceId: string,
+  ): Promise<Array<{ id: string; workItemId: string | null; rank: string }>>;
+
+  /** Single-row rank UPDATE — the write half of the neighbour-based reorder (F3). */
+  updateRank(id: string, rank: string, workspaceId: string, executor?: DbExecutor): Promise<void>;
 }
