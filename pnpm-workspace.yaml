@@ -26,11 +26,22 @@ overrides:
   # The range spans every published major, so force the whole tree to 5.0.9 (leaf
   # util; the tree already accepted a forced 5.x across majors).
   "brace-expansion": "5.0.9"
-  # GHSA-5p4m-2wfm-xmqj (CVE-2026-59870) — quadratic CPU in !!omap resolution, CVSS
-  # 7.5, fixed in 4.3.1 and NOT backported to 3.x. Raised from ^4.3.0, which covered
-  # only the earlier GHSA-pm4m-ph32-ghv5. `^` and not `>=`: the looser form resolves
-  # into 5.x, whose API @nestjs/swagger 11.x and cosmiconfig were not built against.
-  "js-yaml@4": "^4.3.1"
+  # THREE advisories now, each raising this floor in turn — GHSA-pm4m-ph32-ghv5, then
+  # GHSA-5p4m-2wfm-xmqj (CVE-2026-59870, quadratic CPU in !!omap resolution, CVSS 7.5,
+  # fixed 4.3.1), and now GHSA-2883-xcg3-v3hh (CVSS 7.5): `maxTotalMergeKeys` counts only
+  # the keys a merge actually CONTRIBUTES, so an alias chain of EMPTY merge sources costs
+  # CPU without ever incrementing the counter the limit reads — the mitigation for the
+  # previous advisory is what the new one walks past. Fixed in 4.3.2, not backported to 3.x.
+  #
+  # Transitive only: @redocly/openapi-core (the SPA's openapi-typescript codegen) and
+  # cosmiconfig 8.x/9.x (@nestjs/cli, commitlint, @nestjs/swagger). Nothing here parses
+  # untrusted YAML at runtime, so this is a blocking-scanner fix rather than a production
+  # exposure — but `osv_blocking=true` means a lockfile the scanner rejects blocks every
+  # unrelated PR, which is its own kind of outage.
+  #
+  # `^` and not `>=`: the looser form resolves into 5.x, whose API @nestjs/swagger 11.x and
+  # cosmiconfig were not built against. The 5.x line has its own entry below.
+  "js-yaml@4": "^4.3.2"
   # GHSA-pm4m-ph32-ghv5 — js-yaml 5.x, fixed in 5.2.2. Transitive via cosmiconfig
   # (@nestjs/cli, commitlint) + @nestjs/swagger. Newly published advisory that
   # also affects main; pinned via override.
