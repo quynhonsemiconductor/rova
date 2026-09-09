@@ -131,13 +131,35 @@ describe('TestCaseDetailPage', () => {
   it('BR5: renders Project backlog when teamId is null, with no Team control to edit it', () => {
     canPermission.mockReturnValue(true)
     testCaseByKey.mockReturnValue({
-      data: testCase({ teamId: null }),
+      data: testCase({ teamId: null, teamName: null }),
       isLoading: false,
       isError: false,
     })
     render(<TestCaseDetailPage />)
 
     expect(screen.getByText('Project backlog')).toBeInTheDocument()
+  })
+
+  it('SRS §6.3 / Story 5 AC3: renders the real Team name when teamId is set, never the Project backlog fallback', () => {
+    canPermission.mockReturnValue(true)
+    testCaseByKey.mockReturnValue({
+      data: testCase({ teamId: 'team-1', teamName: 'Team Alpha' }),
+      isLoading: false,
+      isError: false,
+    })
+    render(<TestCaseDetailPage />)
+
+    expect(screen.getByText('Team Alpha')).toBeInTheDocument()
+    expect(screen.queryByText('Project backlog')).not.toBeInTheDocument()
+  })
+
+  it('Story 6 AC1: the Results tab uses the flask icon, not ClipboardList', () => {
+    canPermission.mockReturnValue(false)
+    testCaseByKey.mockReturnValue({ data: testCase(), isLoading: false, isError: false })
+    const { container } = render(<TestCaseDetailPage />)
+
+    expect(container.querySelector('svg.lucide-flask-conical')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-clipboard-list')).toBeNull()
   })
 
   it('links Work Product to the parent Work Item', () => {

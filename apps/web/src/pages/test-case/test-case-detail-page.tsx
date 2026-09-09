@@ -12,7 +12,7 @@
 import { useState } from 'react'
 import { useParams, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { FileText, ClipboardList, History } from 'lucide-react'
+import { FileText, FlaskConical, History } from 'lucide-react'
 import { useDetailBack } from '@/shared/lib/use-detail-back'
 import {
   useTestCaseByKey,
@@ -159,7 +159,7 @@ export function TestCaseDetailPage() {
           label: t('results.tabName'),
           icon: (
             <span className="flex items-center gap-1.5">
-              <ClipboardList size={19} />
+              <FlaskConical size={19} />
               <span className="text-ui-xs font-semibold tabular-nums">
                 {resultCount ?? EMPTY_VALUE}
               </span>
@@ -243,7 +243,9 @@ export function TestCaseDetailPage() {
 
               <DetailField label={t('fields.team')}>
                 {/* NULL = "Project backlog" (SRS §5), read-only (BR5). */}
-                <DetailReadonlyValue>{t('fields.projectBacklog')}</DetailReadonlyValue>
+                <DetailReadonlyValue>
+                  {testCase.teamName ?? t('fields.projectBacklog')}
+                </DetailReadonlyValue>
               </DetailField>
 
               <DetailField label={t('fields.workProduct')}>

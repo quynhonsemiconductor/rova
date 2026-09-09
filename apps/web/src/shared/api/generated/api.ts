@@ -6088,6 +6088,7 @@ export interface components {
       projectId: string
       /** @description NULL = "Project backlog" (SRS §5). */
       teamId: string | null
+      teamName: string | null
       workItemId: string | null
       /** @description TC-<n>, workspace-unique */
       testCaseKey: string

@@ -26,6 +26,7 @@ const TEST_CASE: TestCase = {
   workspaceId: 'ws-1',
   projectId: 'proj-1',
   teamId: 'team-1',
+  teamName: 'Team Alpha',
   workItemId: 'wi-1',
   testCaseKey: 'TC-1',
   name: 'Login works',

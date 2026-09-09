@@ -26,6 +26,7 @@ const TEST_CASE: TestCase = {
   workspaceId: 'ws-1',
   projectId: 'proj-1',
   teamId: 'team-1',
+  teamName: 'Team Alpha',
   workItemId: 'wi-1',
   testCaseKey: 'TC-1',
   name: 'Login works',
@@ -250,6 +251,27 @@ describe('TestCasesService', () => {
       workItems.getWorkItemForView.mockRejectedValue(new Error('WORK_ITEM_NOT_FOUND'));
 
       await expect(service.getByKey(actor, 'TC-1')).rejects.toThrow('WORK_ITEM_NOT_FOUND');
+    });
+
+    it('AC-audit fix #1: passes the repository-resolved teamName through untouched, for a real Team', async () => {
+      repo.findByKey.mockResolvedValue({
+        ...TEST_CASE,
+        teamId: 'team-1',
+        teamName: 'Team Alpha',
+      });
+
+      const result = await service.getByKey(actor, 'TC-1');
+
+      expect(result.teamName).toBe('Team Alpha');
+    });
+
+    it('AC-audit fix #1: a null teamId resolves teamName null too — the fallback is a DISPLAY rule, not a repository default', async () => {
+      repo.findByKey.mockResolvedValue({ ...TEST_CASE, teamId: null, teamName: null });
+
+      const result = await service.getByKey(actor, 'TC-1');
+
+      expect(result.teamId).toBeNull();
+      expect(result.teamName).toBeNull();
     });
   });
 
