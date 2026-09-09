@@ -2916,11 +2916,29 @@ export interface paths {
     get: operations['TestCaseRecordsController_getById']
     put?: never
     post?: never
-    delete?: never
+    /** Delete a Test Case (soft; cascades to its Results) */
+    delete: operations['TestCaseRecordsController_delete']
     options?: never
     head?: never
     /** Edit a Test Case (SRS §6.3) */
     patch: operations['TestCaseRecordsController_update']
+    trace?: never
+  }
+  '/v1/test-cases/{id}/rank': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Reorder a Test Case between two neighbours (drag-to-reorder) */
+    patch: operations['TestCaseRecordsController_rank']
     trace?: never
   }
   '/v1/test-cases/{id}/activity': {
@@ -6114,6 +6132,12 @@ export interface components {
       priority?: 'low' | 'normal' | 'high' | 'urgent'
       ownerId?: string | null
       assigneeId?: string | null
+    }
+    RankTestCaseDto: {
+      /** Format: uuid */
+      workItemId: string
+      beforeId?: string | null
+      afterId?: string | null
     }
     TestResultResponseDto: {
       /** Format: uuid */
@@ -16391,6 +16415,47 @@ export interface operations {
       }
     }
   }
+  TestCaseRecordsController_delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Test case deleted */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   TestCaseRecordsController_update: {
     parameters: {
       query?: never
@@ -16403,6 +16468,66 @@ export interface operations {
     requestBody: {
       content: {
         'application/json': components['schemas']['UpdateTestCaseDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TestCaseResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Precondition Failed — the target is not in a state that allows this */
+      412: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestCaseRecordsController_rank: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RankTestCaseDto']
       }
     }
     responses: {

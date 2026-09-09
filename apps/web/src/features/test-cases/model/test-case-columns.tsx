@@ -7,6 +7,7 @@
  * `grow: true`: `grow` widens the whole table to fit a long title instead of wrapping it inside
  * its own cell (CLAUDE.md — the same mistake Quality's Name column avoided).
  */
+import type { ReactNode } from 'react'
 import { type ColumnSpec, rankColumn, RankCell } from '@/shared/ui/table'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import type { TestCase } from '../api'
@@ -28,6 +29,10 @@ export type TestCaseColKey =
 export interface TestCaseCtx {
   rowNum: (id: string) => number
   openTestCase: (testCaseKey: string) => void
+  /** The drag grip for THIS row, or `undefined` when reorder is disabled (no `test_case:edit`) —
+   *  rendered in the Rank cell's own `actions` slot (F3), matching Portfolio Items' up/down
+   *  buttons' precedent for that slot. Never a declared column of its own. */
+  dragHandle?: (rowId: string) => ReactNode
 }
 
 const METHOD_LABEL: Record<TestCase['method'], string> = {
@@ -57,7 +62,9 @@ export function testCaseColumns(): ColumnSpec<TestCase, TestCaseCtx, TestCaseCol
     },
     {
       ...rankColumn<TestCase, TestCaseCtx>(),
-      cell: (row, ctx) => <RankCell rowNum={ctx.rowNum(row.id)} />,
+      cell: (row, ctx) => (
+        <RankCell rowNum={ctx.rowNum(row.id)} actions={ctx.dragHandle?.(row.id)} />
+      ),
     },
     {
       key: 'id',
