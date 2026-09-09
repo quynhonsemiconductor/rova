@@ -19,6 +19,8 @@ import {
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { MilestonesService } from '@modules/milestones';
+import { TEST_CASE_REPOSITORY } from '@modules/test-cases/domain/ports/test-case.repository';
+import { TEST_RESULT_REPOSITORY } from '@modules/test-cases/domain/ports/test-result.repository';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -258,6 +260,17 @@ const makeMilestonesService = () => ({
   assertArtifactsAssignable: vi.fn().mockResolvedValue(undefined),
 });
 
+// F1/F4's Test Case cascade — repo-level mocks (see work-items.module.ts's own comment for why
+// `deleteWorkItem` depends on these ports directly, not `TestCasesService`).
+const makeTestCaseRepo = () => ({
+  listLiveIdsByWorkItem: vi.fn().mockResolvedValue([]),
+  softDeleteByWorkItem: vi.fn().mockResolvedValue(undefined),
+});
+
+const makeTestResultRepo = () => ({
+  softDeleteByTestCaseIds: vi.fn().mockResolvedValue(undefined),
+});
+
 const makeTimeLogRepo = () => ({
   findById: vi.fn(),
   listByWorkItem: vi.fn(),
@@ -326,6 +339,8 @@ describe('WorkItemsService', () => {
   let relationRepo: ReturnType<typeof makeRelationRepo>;
   let notificationScheduler: ReturnType<typeof makeNotificationScheduler>;
   let milestonesService: ReturnType<typeof makeMilestonesService>;
+  let testCaseRepo: ReturnType<typeof makeTestCaseRepo>;
+  let testResultRepo: ReturnType<typeof makeTestResultRepo>;
 
   beforeEach(async () => {
     workItemRepo = makeWorkItemRepo();
@@ -340,6 +355,8 @@ describe('WorkItemsService', () => {
     relationRepo = makeRelationRepo();
     notificationScheduler = makeNotificationScheduler();
     milestonesService = makeMilestonesService();
+    testCaseRepo = makeTestCaseRepo();
+    testResultRepo = makeTestResultRepo();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -357,6 +374,8 @@ describe('WorkItemsService', () => {
         { provide: AccessService, useValue: accessService },
         { provide: MilestonesService, useValue: milestonesService },
         { provide: UnitOfWork, useValue: uow },
+        { provide: TEST_CASE_REPOSITORY, useValue: testCaseRepo },
+        { provide: TEST_RESULT_REPOSITORY, useValue: testResultRepo },
       ],
     }).compile();
 
@@ -1398,7 +1417,9 @@ describe('WorkItemsService', () => {
 
       await service.deleteWorkItem(mockActor, 'wi-1');
 
-      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1', 'ws-1');
+      // Now runs inside `uow.run` (F1/F4: the Test Case cascade must commit atomically with this
+      // write), so the repo call carries the transaction executor as its 3rd argument.
+      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1', 'ws-1', expect.anything());
     });
 
     /**
@@ -1451,7 +1472,48 @@ describe('WorkItemsService', () => {
 
       await service.deleteWorkItem(mockActor, 'wi-1');
 
-      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1', 'ws-1');
+      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1', 'ws-1', expect.anything());
+    });
+
+    // F1/F4 — plan §8 Q1, RULED 2026-09-08: a Work Item delete soft-deletes its Test Cases, and
+    // by the same call their Results, in the SAME transaction as the Work Item's own soft delete.
+    it('cascades to its live Test Cases and their Results, in the SAME transaction (F4)', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1', type: 'story' }));
+      testCaseRepo.listLiveIdsByWorkItem.mockResolvedValue(['tc-1', 'tc-2']);
+
+      await service.deleteWorkItem(mockActor, 'wi-1');
+
+      expect(testCaseRepo.listLiveIdsByWorkItem).toHaveBeenCalledWith(
+        'wi-1',
+        'ws-1',
+        expect.anything(),
+      );
+      expect(testResultRepo.softDeleteByTestCaseIds).toHaveBeenCalledWith(
+        ['tc-1', 'tc-2'],
+        'ws-1',
+        expect.anything(),
+      );
+      expect(testCaseRepo.softDeleteByWorkItem).toHaveBeenCalledWith(
+        'wi-1',
+        'ws-1',
+        expect.anything(),
+      );
+      // Results before Test Cases would be harmless here (both are set-based UPDATEs with no FK
+      // ordering requirement between them), but pinning the order still catches an accidental
+      // reordering that changes which query the trigger's recompute sees mid-transaction.
+      const resultsCallOrder = testResultRepo.softDeleteByTestCaseIds.mock.invocationCallOrder[0];
+      const testCasesCallOrder = testCaseRepo.softDeleteByWorkItem.mock.invocationCallOrder[0];
+      expect(resultsCallOrder).toBeLessThan(testCasesCallOrder);
+    });
+
+    it('does NOT call the Results cascade when the Work Item has no live Test Cases', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1', type: 'story' }));
+      testCaseRepo.listLiveIdsByWorkItem.mockResolvedValue([]);
+
+      await service.deleteWorkItem(mockActor, 'wi-1');
+
+      expect(testResultRepo.softDeleteByTestCaseIds).not.toHaveBeenCalled();
+      expect(testCaseRepo.softDeleteByWorkItem).not.toHaveBeenCalled();
     });
   });
 

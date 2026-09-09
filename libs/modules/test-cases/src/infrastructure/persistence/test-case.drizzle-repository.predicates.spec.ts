@@ -132,4 +132,72 @@ describe('TestCaseDrizzleRepository — scope is REQUIRED but never a predicate 
       expect(captured[0].sql).toMatch(/order by "work"\."test_case_types"\."position" asc/);
     });
   });
+
+  describe('delete cascade (F1/F4)', () => {
+    it('softDelete is a plain (id, workspace_id) UPDATE of deleted_at', async () => {
+      const { repo, captured } = recordingRepo();
+
+      await repo.softDelete('tc-1', 'ws-1');
+
+      expect(captured).toHaveLength(1);
+      expect(captured[0].sql).toMatch(/^update /);
+      expect(whereOf(captured[0].sql)).toContain('id');
+      expect(whereOf(captured[0].sql)).toContain('workspace_id');
+    });
+
+    it('listLiveIdsByWorkItem scopes by work_item_id + workspace_id + deleted_at IS NULL', async () => {
+      const { repo, captured } = recordingRepo();
+      const db = (repo as unknown as { db: unknown }).db;
+
+      await repo.listLiveIdsByWorkItem('wi-1', 'ws-1', db as never);
+
+      expect(captured).toHaveLength(1);
+      expect(whereOf(captured[0].sql)).toContain('work_item_id');
+      expect(whereOf(captured[0].sql)).toContain('deleted_at');
+    });
+
+    it('softDeleteByWorkItem is ONE set-based UPDATE scoped to LIVE rows of one Work Item', async () => {
+      const { repo, captured } = recordingRepo();
+      const db = (repo as unknown as { db: unknown }).db;
+
+      await repo.softDeleteByWorkItem('wi-1', 'ws-1', db as never);
+
+      expect(captured).toHaveLength(1);
+      expect(captured[0].sql).toMatch(/^update /);
+      expect(whereOf(captured[0].sql)).toContain('work_item_id');
+      expect(whereOf(captured[0].sql)).toContain('deleted_at');
+    });
+  });
+
+  describe('rank drag — neighbour-based (F3)', () => {
+    it('findRanksByIds looks up (id, workItemId, rank) by a set of ids, scoped to workspace', async () => {
+      const { repo, captured } = recordingRepo();
+
+      await repo.findRanksByIds(['tc-before', 'tc-after'], 'ws-1');
+
+      expect(captured).toHaveLength(1);
+      expect(whereOf(captured[0].sql)).toContain('id');
+      expect(whereOf(captured[0].sql)).toContain('workspace_id');
+    });
+
+    it('findRanksByIds is a no-op for an empty id list', async () => {
+      const { repo, captured } = recordingRepo();
+
+      await repo.findRanksByIds([], 'ws-1');
+
+      expect(captured).toHaveLength(0);
+    });
+
+    it('updateRank is a single-row UPDATE scoped by (id, workspace_id)', async () => {
+      const { repo, captured } = recordingRepo();
+      const db = (repo as unknown as { db: unknown }).db;
+
+      await repo.updateRank('tc-1', 'a0005', 'ws-1', db as never);
+
+      expect(captured).toHaveLength(1);
+      expect(captured[0].sql).toMatch(/^update /);
+      expect(whereOf(captured[0].sql)).toContain('id');
+      expect(whereOf(captured[0].sql)).toContain('workspace_id');
+    });
+  });
 });

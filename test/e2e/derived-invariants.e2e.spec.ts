@@ -612,6 +612,122 @@ describe('derived invariants (e2e)', () => {
       expect(after.last_run).toBe('2026-09-10');
       expect(after.last_result_id).toBe(newer.id);
     });
+
+    // Phase F ships the real DELETE routes this block's own INSERT/UPDATE tests above predate
+    // (Phase D's soft-delete branch test used raw SQL as a stand-in, noted in its own comment).
+    // These exercise the SAME trigger branch through the ACTUAL service methods a caller reaches.
+
+    it("DELETE (F1's own delete route): TestResultsService.delete clears the parent's columns", async () => {
+      const testCase = await freshTestCase();
+      const only = await testResults.create(actor, testCase.id, {
+        build: 'build-1',
+        runDate: '2026-09-01',
+        verdict: 'pass',
+        testerId: actor.sub,
+      });
+      expect((await storedColumns(testCase.id)).last_result_id).toBe(only.id);
+
+      await testResults.delete(actor, only.id);
+
+      const after = await storedColumns(testCase.id);
+      expect(after.last_verdict).toBeNull();
+      expect(after.last_run).toBeNull();
+      expect(after.last_result_id).toBeNull();
+    });
+
+    it('DELETE (F1): TestCasesService.delete cascades to soft-delete its own Results', async () => {
+      const testCase = await freshTestCase();
+      const result = await testResults.create(actor, testCase.id, {
+        build: 'build-1',
+        runDate: '2026-09-01',
+        verdict: 'pass',
+        testerId: actor.sub,
+      });
+
+      await testCases.delete(actor, testCase.id);
+
+      const tcRow = await db.execute<{ deleted_at: string | null }>(
+        sql`select deleted_at from work.test_cases where id = ${testCase.id}::uuid`,
+      );
+      expect(tcRow.rows[0].deleted_at).not.toBeNull();
+
+      const trRow = await db.execute<{ deleted_at: string | null }>(
+        sql`select deleted_at from work.test_results where id = ${result.id}::uuid`,
+      );
+      expect(trRow.rows[0].deleted_at).not.toBeNull();
+    });
+  });
+
+  describe('Work Item delete cascades to its Test Cases and Results, atomically (F4)', () => {
+    it('soft-deletes the Work Item, its live Test Cases AND their Results in ONE transaction', async () => {
+      const story = await items.createWorkItem(
+        actor,
+        SEEDED.nxp.projectId,
+        'story',
+        `F4 cascade fixture ${uniqueKey()}`,
+        {},
+      );
+      const tc1 = await testCases.create(actor, story.id, { name: `F4 case A ${uniqueKey()}` });
+      const tc2 = await testCases.create(actor, story.id, { name: `F4 case B ${uniqueKey()}` });
+      const result = await testResults.create(actor, tc1.id, {
+        build: 'build-1',
+        runDate: '2026-09-01',
+        verdict: 'pass',
+        testerId: actor.sub,
+      });
+
+      await items.deleteWorkItem(actor, story.id);
+
+      // Query the DB directly — a stale cache read on the API's own list route could pass a
+      // weaker test that only checked "the API stopped listing them".
+      const wiRow = await db.execute<{ deleted_at: string | null }>(
+        sql`select deleted_at from work.work_items where id = ${story.id}::uuid`,
+      );
+      expect(wiRow.rows[0].deleted_at).not.toBeNull();
+
+      const tcRows = await db.execute<{ id: string; deleted_at: string | null }>(
+        sql`select id, deleted_at from work.test_cases where id in (${tc1.id}::uuid, ${tc2.id}::uuid)`,
+      );
+      expect(tcRows.rows).toHaveLength(2);
+      for (const row of tcRows.rows) {
+        expect(row.deleted_at).not.toBeNull();
+      }
+
+      const trRow = await db.execute<{ deleted_at: string | null }>(
+        sql`select deleted_at from work.test_results where id = ${result.id}::uuid`,
+      );
+      expect(trRow.rows[0].deleted_at).not.toBeNull();
+
+      // The trigger's DELETE-equivalent branch ran as part of the SAME cascade — the Result was
+      // the only live one, so the parent's trigger-owned columns must have been recomputed to NULL.
+      const tc1Row = await db.execute<{
+        last_verdict: string | null;
+        last_run: string | null;
+        last_result_id: string | null;
+      }>(
+        sql`select last_verdict, last_run, last_result_id from work.test_cases where id = ${tc1.id}::uuid`,
+      );
+      expect(tc1Row.rows[0].last_verdict).toBeNull();
+      expect(tc1Row.rows[0].last_run).toBeNull();
+      expect(tc1Row.rows[0].last_result_id).toBeNull();
+    });
+
+    it('is a no-op cascade when the Work Item has no Test Cases (still deletes cleanly)', async () => {
+      const story = await items.createWorkItem(
+        actor,
+        SEEDED.nxp.projectId,
+        'story',
+        `F4 no-cascade fixture ${uniqueKey()}`,
+        {},
+      );
+
+      await expect(items.deleteWorkItem(actor, story.id)).resolves.toBeUndefined();
+
+      const wiRow = await db.execute<{ deleted_at: string | null }>(
+        sql`select deleted_at from work.work_items where id = ${story.id}::uuid`,
+      );
+      expect(wiRow.rows[0].deleted_at).not.toBeNull();
+    });
   });
 
   it('leaves a milestone with NO linked release manually dated', async () => {
