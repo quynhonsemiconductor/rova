@@ -2,11 +2,13 @@
  * AddTestResultModal — Phase D (SRS §8). Adds a Result to a Test Case. Build, Date and Tester are
  * required (Save disabled otherwise, AC9); Test Case and Work Product are read-only display facts,
  * never fields (BR13 — the service snapshots `workItemId` server-side, nothing here can override
- * it). On save, the modal closes and the caller's list invalidates — there is no Result Detail page
- * yet (Phase E), so navigation to it is not wired here (Phase D's own scope).
+ * it). On save, the modal closes, the caller's list invalidates, and — SRS §8 / Story 7 AC5 — the
+ * new Result's own Detail opens (`/test-result/$testResultId`, Phase E), the same
+ * create-then-navigate shape `CreateTestCaseModal` already uses one level up.
  */
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useCreateTestResult, useTestCase } from '@/features/test-cases/api'
 import { useWorkItem } from '@/features/work-items/api'
@@ -37,6 +39,7 @@ const VERDICT_LABEL: Record<(typeof VERDICT_OPTIONS)[number], string> = {
 
 export function AddTestResultModal({ testCaseId, projectId, onClose }: Props) {
   const { t } = useTranslation('test-cases')
+  const navigate = useNavigate()
 
   const { data: testCase } = useTestCase(testCaseId)
   // Work Product — display only (BR13); resolved from the Test Case's OWN current workItemId,
@@ -67,7 +70,7 @@ export function AddTestResultModal({ testCaseId, projectId, onClose }: Props) {
     setFormError(null)
     setSubmitting(true)
     try {
-      await createResult.mutateAsync({
+      const created = await createResult.mutateAsync({
         build: build.trim(),
         runDate,
         verdict,
@@ -76,6 +79,8 @@ export function AddTestResultModal({ testCaseId, projectId, onClose }: Props) {
         notes: notes.trim() || undefined,
       })
       onClose()
+      // SRS §8 / Story 7 AC5: "a new Result is added... and the new Test Result Detail opens."
+      void navigate({ to: '/test-result/$testResultId', params: { testResultId: created.id } })
     } catch (e) {
       setFormError(e instanceof Error ? e.message : t('results.create.createFailed'))
     } finally {
