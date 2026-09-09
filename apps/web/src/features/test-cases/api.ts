@@ -123,7 +123,11 @@ export const testCaseTypeKeys = {
   list: (projectId: string) => [...testCaseTypeKeys.all, projectId] as const,
 }
 
-/** Live (non-archived) Types for a project — the Create modal's dropdown, BR2's "first selectable" source. */
+/**
+ * Live (non-archived) Types for a project — ONE feed for the Create modal's dropdown (Phase B,
+ * BR2's "first selectable" source) AND Settings' chip list (G4). `position` is included so both
+ * consumers render the catalog's own order.
+ */
 export function useTestCaseTypes(projectId: string | undefined) {
   return useQuery({
     queryKey: testCaseTypeKeys.list(projectId ?? ''),
@@ -137,6 +141,39 @@ export function useTestCaseTypes(projectId: string | undefined) {
     },
     enabled: !!projectId,
     staleTime: 60_000,
+  })
+}
+
+// ── Phase G: Type catalog CRUD (workspace:edit, Workspace-Admin-only) ────────
+
+/** `POST /projects/:id/test-case-types` (BR16). */
+export function useCreateTestCaseType(projectId: string | undefined) {
+  return useMutation({
+    mutationFn: async (name: string): Promise<TestCaseType> => {
+      if (!projectId) throw new Error('No project selected')
+      const { data, error, response } = await apiClient.POST('/v1/projects/{id}/test-case-types', {
+        params: { path: { id: projectId } },
+        body: { name },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as TestCaseType
+    },
+    meta: { invalidateKeys: [testCaseTypeKeys.list(projectId ?? '')] },
+  })
+}
+
+/** `DELETE /projects/:id/test-case-types/:typeId` — soft-hide (BR17); existing Test Cases keep their historical value. */
+export function useArchiveTestCaseType(projectId: string | undefined) {
+  return useMutation({
+    mutationFn: async (typeId: string): Promise<void> => {
+      if (!projectId) throw new Error('No project selected')
+      const { error, response } = await apiClient.DELETE(
+        '/v1/projects/{id}/test-case-types/{typeId}',
+        { params: { path: { id: projectId, typeId } } },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    meta: { invalidateKeys: [testCaseTypeKeys.list(projectId ?? '')] },
   })
 }
 

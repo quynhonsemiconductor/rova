@@ -3226,8 +3226,26 @@ export interface paths {
     /** List a project's selectable (non-archived) Test Case Types */
     get: operations['TestCaseTypesController_listSelectableTypes']
     put?: never
-    post?: never
+    /** Create a Test Case Type for a project (Workspace Admin only) */
+    post: operations['TestCaseTypesController_createType']
     delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/projects/{id}/test-case-types/{typeId}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Archive (soft-hide) a Test Case Type (Workspace Admin only). Existing Test Cases keep their historical Type value (BR17). */
+    delete: operations['TestCaseTypesController_archiveType']
     options?: never
     head?: never
     patch?: never
@@ -6192,6 +6210,10 @@ export interface components {
     TestCaseTypeOptionDto: {
       /** Format: uuid */
       id: string
+      name: string
+      position: number
+    }
+    CreateTestCaseTypeDto: {
       name: string
     }
   }
@@ -17417,6 +17439,108 @@ export interface operations {
         content: {
           'application/json': components['schemas']['TestCaseTypeOptionDto'][]
         }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestCaseTypesController_createType: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateTestCaseTypeDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TestCaseTypeOptionDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TestCaseTypesController_archiveType: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        typeId: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Test Case Type archived */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
