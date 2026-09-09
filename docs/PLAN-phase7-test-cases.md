@@ -1519,8 +1519,17 @@ None of these blocks Phase A. Each is asked at the phase that needs it.
    sort cannot disagree about where blanks belong. Confirm blanks-last is what the BA wants.
 7. **A read-only `Test Case Type` for a Project Admin.** §3.3 gives `Add New` to a Workspace Admin
    only; a Project Admin can still SEE the chips (they hold `test_case:view`). Confirm.
-
----
+8. **Owner / Assigned To / Tester population wording vs. the 8 BA user stories.** Found by the
+   2026-09-09 post-Phase-G AC audit. All 8 stories' literal text (Story 3 AC2, Story 5 AC1, Story 8
+   AC3) and the SRS's own field tables (§5, §6.3, §8) say only "Project members," with no team
+   qualifier. The shipped behavior offers `ProjectsService.assignmentCandidates`'s TEAM-scoped
+   population (project `admin` project-wide + `editor` on the row's own team + Workspace Admin on
+   that team's roster) — BR4/BR8's rule, and the same one CLAUDE.md documents at length for Owner /
+   Dev Owner everywhere else in the app. **Left as-is, not changed**: widening to a literal
+   project-wide reading would contradict the app's own established convention and could put an
+   Editor in front of another team's work, which is a bigger behavioral change than the wording gap
+   justifies. Confirm with the BA whether "Project members" in these ACs was meant literally or is
+   shorthand for the same team-scoped rule the rest of the app already uses.
 
 ## 9. Risk register
 
