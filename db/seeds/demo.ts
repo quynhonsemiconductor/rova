@@ -8,7 +8,7 @@ try {
 /**
  * Demo/fixture tier — ONE sample project (NXP) with a full end-to-end flow, for
  * E2E + staging + opt-in dev fixtures (`pnpm db:seed:test`): 3 users + Team
- * (with members) → Story + Defect (team-linked) → 2 Tasks under the Story
+ * (with members) → Story + Defect (team-linked) → 3 Tasks under the Story
  * (team/iteration inherited) → Iteration (contains the Story + Defect) →
  * Release + Milestone (linked to each other and to the Story). See seedFlow()
  * for the full relation graph. Every FK resolves to a real, matching row.
@@ -62,6 +62,8 @@ import {
   capacityPlans,
   capacityPlanAllocations,
   capacityPlanTeams,
+  testCases,
+  testResults,
 } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
 import { seedSystemRolesInto } from './reference';
@@ -82,6 +84,7 @@ import {
   NXP_DEFECT_1_ID,
   NXP_TASK_1_ID,
   NXP_TASK_2_ID,
+  NXP_TASK_3_ID,
   TEAM_ALPHA_ID,
   NXP_RELEASE_1_ID,
   NXP_ITER_CURRENT_ID,
@@ -99,6 +102,10 @@ import {
   NXP_CAPACITY_PLAN_2_ID,
   NXP_CAPACITY_PLAN_ID,
   SEED_PROJECTS,
+  NXP_TEST_CASE_1_ID,
+  NXP_TEST_CASE_2_ID,
+  NXP_TEST_RESULT_1_ID,
+  NXP_TEST_RESULT_2_ID,
 } from './constants';
 
 // Assigned inside seed() before any helper function runs.
@@ -196,7 +203,7 @@ async function seedProject(project: {
 }
 
 // ── The one end-to-end demo flow (NXP only) ───────────────────────────────────
-// Team Alpha (with members) → Story + Defect (team-linked) → 2 Tasks under the
+// Team Alpha (with members) → Story + Defect (team-linked) → 3 Tasks under the
 // Story (team + iteration inherited from the parent, mirroring
 // WorkItemsService.createTask's `teamId: opts.teamId ?? parent.teamId` and
 // `iterationId: opts.iterationId ?? parent.iterationId` rules) → Iteration
@@ -854,7 +861,7 @@ async function seedFlow() {
     })
     .onConflictDoNothing();
 
-  // ── 6. 2 Tasks under the Story — team/iteration EXPLICITLY inherited from ─
+  // ── 6. 3 Tasks under the Story — team/iteration EXPLICITLY inherited from ─
   //    the parent, mirroring WorkItemsService.createTask's real business rule
   //    (`teamId: opts.teamId ?? parent.teamId`, `iterationId: opts.iterationId
   //    ?? parent.iterationId`) so no seeded task is ever team-less.
@@ -900,11 +907,36 @@ async function seedFlow() {
         rank: getDeterministicRank('TA-2'),
         createdBy: ADMIN_USER_ID,
       },
+      {
+        id: NXP_TASK_3_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        parentId: NXP_STORY_1_ID,
+        teamId: TEAM_ALPHA_ID,
+        iterationId: NXP_ITER_CURRENT_ID,
+        itemKey: 'TA-3',
+        title: 'Migrate CI workflows to the NX v21 task runner',
+        state: 'in_progress' as const,
+        assigneeId: ADMIN_USER_ID,
+        // The admin's task WITH logged Actuals, so Team Status' member progress
+        // bar has something to draw on a fresh database. The bar is
+        // `actual / estimate` (Team_Status SRS §10) and every local session signs
+        // in as this user, so without a row like this their group reads a
+        // truthful-but-useless 0% and the bar reads as broken. Deliberately
+        // partial (5 of 8 logged, 3 remaining) rather than complete: it exercises
+        // a mid-range fill instead of an empty or full bar, and it keeps the three
+        // hour fields independent, which is the rule the other two rows also show.
+        estimateHours: '8',
+        todoHours: '3',
+        actualHours: '5',
+        rank: getDeterministicRank('TA-3'),
+        createdBy: ADMIN_USER_ID,
+      },
     ])
     .onConflictDoNothing();
 
   // ── 7. Workspace-wide per-type counters — keep in lock-step with what was
-  //    actually seeded (US-1, DE-1, TA-1/TA-2) so a later app-created item never
+  //    actually seeded (US-1, DE-1, TA-1/TA-2/TA-3) so a later app-created item never
   //    collides on the unique (workspace_id, item_key) index.
   await db
     .update(workspaceItemCounters)
@@ -926,7 +958,7 @@ async function seedFlow() {
     );
   await db
     .update(workspaceItemCounters)
-    .set({ lastItemNumber: sql`GREATEST(${workspaceItemCounters.lastItemNumber}, 2)` })
+    .set({ lastItemNumber: sql`GREATEST(${workspaceItemCounters.lastItemNumber}, 3)` })
     .where(
       and(
         eq(workspaceItemCounters.workspaceId, WORKSPACE_ID),
@@ -1170,13 +1202,104 @@ async function seedFlow() {
     ])
     .onConflictDoNothing();
 
+  // ── 13.5. Phase 7 — Test Cases + Results (Phase A) ──────────────────────
+  // Two Test Cases under the seeded Story: one WITH Results (incl. a `fail`, so `Last
+  // Verdict`/`Last Run` — maintained by `trg_test_case_last_result` — are populated) and one with
+  // NONE, so the tab's `Not Run` / `Not run yet` rendering (BR10, never `--`) has a case on a
+  // fresh database. `type` is a literal snapshot string (D8) — not a lookup against
+  // `work.test_case_types`, which a project only gets rows in via the migration 0129 backfill
+  // (existing projects) or a future project-create hook (Phase G's G3); neither runs against a
+  // project this seed itself creates on a FRESH database, so there is nothing to look up yet.
+  await db
+    .insert(testCases)
+    .values([
+      {
+        id: NXP_TEST_CASE_1_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        teamId: TEAM_ALPHA_ID,
+        workItemId: NXP_STORY_1_ID,
+        testCaseKey: 'TC-1',
+        name: 'User can log in with valid credentials',
+        objective: 'Verify the login flow accepts a correct email/password pair.',
+        preconditions: 'A registered, active user account exists.',
+        type: 'Functional',
+        method: 'manual',
+        priority: 'high',
+        ownerId: ADMIN_USER_ID,
+        assigneeId: DEVELOPER_ID,
+        rank: getDeterministicRank('TC-1'),
+        createdBy: ADMIN_USER_ID,
+      },
+      {
+        id: NXP_TEST_CASE_2_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        teamId: TEAM_ALPHA_ID,
+        workItemId: NXP_STORY_1_ID,
+        testCaseKey: 'TC-2',
+        name: 'Login is rate-limited after repeated failures',
+        objective: 'Verify the account locks out after 5 consecutive failed attempts.',
+        type: 'Regression',
+        method: 'manual',
+        priority: 'normal',
+        rank: getDeterministicRank('TC-2'),
+        createdBy: ADMIN_USER_ID,
+      },
+    ])
+    .onConflictDoNothing();
+
+  await db
+    .insert(testResults)
+    .values([
+      {
+        id: NXP_TEST_RESULT_1_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        testCaseId: NXP_TEST_CASE_1_ID,
+        workItemId: NXP_STORY_1_ID,
+        testResultKey: 'TR-1',
+        build: '2026.06.20-rc1',
+        runDate: '2026-06-20',
+        verdict: 'fail',
+        durationMinutes: 4,
+        testerId: DEVELOPER_ID,
+        notes: 'Login rejected a valid password — traced to a stale bcrypt salt round config.',
+        createdBy: DEVELOPER_ID,
+      },
+      {
+        // Later date than TR-1, so this is the row `trg_test_case_last_result` should surface as
+        // the Test Case's Last Verdict/Last Run — proves the trigger's own tie-break (latest
+        // run_date, then created_at) rather than "whichever inserted last".
+        id: NXP_TEST_RESULT_2_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        testCaseId: NXP_TEST_CASE_1_ID,
+        workItemId: NXP_STORY_1_ID,
+        testResultKey: 'TR-2',
+        build: '2026.06.21-rc2',
+        runDate: '2026-06-21',
+        verdict: 'pass',
+        durationMinutes: 3,
+        testerId: DEVELOPER_ID,
+        notes: 'Fix verified — salt rounds corrected, login succeeds.',
+        createdBy: DEVELOPER_ID,
+      },
+    ])
+    .onConflictDoNothing();
+
+  // Seeded keys must advance the counter, or the app mints TC-1 / TR-1 again and collides. Test
+  // Cases/Results mint MAX+1 from their OWN table (like Portfolio), not `workspace_item_counters`
+  // (whose `item_type` enum is narrowed to story/task/defect and cannot fit these) — so there is no
+  // separate counter row to bump here; a fresh `MAX(substring(...))` naturally sees TC-2 / TR-2.
+
   // ── 14. Phase 6 report history ────────────────────────────────────────────
   await seedReportHistory();
 
   console.log(
-    '✅  Demo flow seeded — Team Alpha, Story + Defect (team+iteration+release-linked), 2 Tasks, ' +
+    '✅  Demo flow seeded — Team Alpha, Story + Defect (team+iteration+release-linked), 3 Tasks, ' +
       '1 Iteration, 1 Release, 1 Milestone, plus capacity/labels/comments/time logs/watchers, ' +
-      'and frozen Burndown + Release burnup history',
+      '2 Test Cases (one with 2 Results, one with none), and frozen Burndown + Release burnup history',
   );
 }
 
@@ -1563,7 +1686,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
     await seedReferenceExtras(db);
 
     console.log(
-      `✅  Test fixture seeded — 1 project (NXP), 3 users, 1 team, 1 iteration, 1 release, 1 milestone, 1 story + 1 defect + 2 tasks (one fully-linked flow)`,
+      `✅  Test fixture seeded — 1 project (NXP), 3 users, 1 team, 1 iteration, 1 release, 1 milestone, 1 story + 1 defect + 3 tasks (one fully-linked flow)`,
     );
   } finally {
     await pool.end();

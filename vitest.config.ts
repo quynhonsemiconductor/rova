@@ -118,6 +118,7 @@ export default defineConfig({
         'libs/modules/scm/src/infrastructure/github/github-app-auth.service.ts',
         'libs/modules/scm/src/infrastructure/github/github-rest.mapper.ts',
         'libs/modules/team-status/src/application/team-status.service.ts',
+        'libs/modules/test-cases/src/application/test-cases.service.ts',
         'libs/modules/work-items/src/application/work-items.service.ts',
         'libs/modules/work-items/src/domain/team-read-scope.ts',
         'libs/modules/workspace/src/application/team.service.ts',
@@ -172,10 +173,23 @@ export default defineConfig({
       // regression pass unnoticed. `pnpm check:coverage-floors` (ported from opshub's
       // test/check-coverage-floors.ts) now fails CI when any floor sits more than 3 points behind
       // measured coverage, so raising these is enforced rather than remembered.
+      // RE-MEASURED 2026-09-07 (Phase 7 Phase A — Test Cases): stmts 86.03, branch 79.56, funcs
+      // 84.34, lines 86.94. `test-cases.service.spec.ts` and the drizzle-repository predicates spec
+      // added well-covered new files; raised in step with the measurement, per the rule above.
+      //
+      // RE-MEASURED 2026-09-09 (same branch, after merging main's org-rename + settings/archive +
+      // invitation-flow work into it for its own PR): stmts 85.97, branch 79.49, funcs 84.28,
+      // lines 86.89 (via `pnpm test:cov`, confirmed twice — the first run hit an unrelated
+      // resource-contention timeout in `scheduled-job-exclusivity.ratchet.spec.ts`, which passes
+      // in isolation in 629ms and is not this floor's concern). main's own merged-in code diluted
+      // statements below the 2026-09-07 floor; the other three still clear theirs. Lowered
+      // `statements` 86 -> 85 to match — a floor sitting ABOVE measured coverage fails CI on every
+      // run, which is the configuration error this file's own docblock warns about, not a real
+      // regression to chase.
       thresholds: {
-        lines: 85,
+        lines: 86,
         functions: 84,
-        branches: 78,
+        branches: 79,
         statements: 85,
       },
     },

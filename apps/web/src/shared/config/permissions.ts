@@ -78,6 +78,19 @@ export const PERMISSION = {
   WORK_ITEM_VIEW: 'work_item:view',
   PORTFOLIO_VIEW: 'portfolio:view',
   CAPACITY_VIEW: 'capacity:view',
+
+  // Test Cases tab on Story/Defect detail (Phase 7). Split from work_item:* — see
+  // db/permissions.catalog.ts — so TEST_CASE_VIEW gates the tab's presence and
+  // TEST_CASE_CREATE gates whether `Add New` may ever be enabled (Phase A: it renders
+  // disabled regardless — AC3 needs the action displayed, not functional yet).
+  TEST_CASE_VIEW: 'test_case:view',
+  TEST_CASE_CREATE: 'test_case:create',
+  TEST_CASE_EDIT: 'test_case:edit',
+  TEST_CASE_DELETE: 'test_case:delete',
+  TEST_RESULT_VIEW: 'test_result:view',
+  TEST_RESULT_CREATE: 'test_result:create',
+  TEST_RESULT_EDIT: 'test_result:edit',
+  TEST_RESULT_DELETE: 'test_result:delete',
 } as const
 
 export type Permission = (typeof PERMISSION)[keyof typeof PERMISSION]

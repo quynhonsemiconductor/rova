@@ -245,6 +245,21 @@ export const PERMISSION = {
   // snapshot jobs are internal scheduled work with no HTTP surface, and capacity is
   // still edited through `team_status:edit` on Team Status.
   REPORT_VIEW: 'report:view',
+
+  // ── test_case / test_result namespaces (Phase 7) ───────────────────────────
+  // Split from `work_item:*` rather than reused, even though a Test Case is delivery
+  // artifact of the same class as a Story/Defect/Task: reusing `work_item:*` would make
+  // `work_item:edit` imply editing every Test Case, and a later "QA writes tests, not
+  // stories" ruling needs the split anyway (Phase 7 plan D3). Granted to every role that
+  // holds `work_item:*` today — see ROLE_PERMISSIONS — so nothing narrows on landing.
+  TEST_CASE_VIEW: 'test_case:view',
+  TEST_CASE_CREATE: 'test_case:create',
+  TEST_CASE_EDIT: 'test_case:edit',
+  TEST_CASE_DELETE: 'test_case:delete',
+  TEST_RESULT_VIEW: 'test_result:view',
+  TEST_RESULT_CREATE: 'test_result:create',
+  TEST_RESULT_EDIT: 'test_result:edit',
+  TEST_RESULT_DELETE: 'test_result:delete',
 } as const;
 
 /** Union of every valid permission code. */
@@ -333,6 +348,16 @@ export const PERMISSION_TIER = {
   // it. A workspace-tier report code would let a grant on one project read another's
   // velocity.
   [PERMISSION.REPORT_VIEW]: 'project',
+  // Project tier: a Test Case belongs to a Project (D2 — optionally to one Work Item),
+  // same tier as work_item:* beside it.
+  [PERMISSION.TEST_CASE_VIEW]: 'project',
+  [PERMISSION.TEST_CASE_CREATE]: 'project',
+  [PERMISSION.TEST_CASE_EDIT]: 'project',
+  [PERMISSION.TEST_CASE_DELETE]: 'project',
+  [PERMISSION.TEST_RESULT_VIEW]: 'project',
+  [PERMISSION.TEST_RESULT_CREATE]: 'project',
+  [PERMISSION.TEST_RESULT_EDIT]: 'project',
+  [PERMISSION.TEST_RESULT_DELETE]: 'project',
 } as const satisfies Record<Permission, 'workspace' | 'project'>;
 
 /** Permissions enforced against the workspace-wide JWT baseline. */
@@ -448,6 +473,14 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.CAPACITY_MANAGE,
     PERMISSION.CAPACITY_PUBLISH,
     PERMISSION.REPORT_VIEW,
+    PERMISSION.TEST_CASE_VIEW,
+    PERMISSION.TEST_CASE_CREATE,
+    PERMISSION.TEST_CASE_EDIT,
+    PERMISSION.TEST_CASE_DELETE,
+    PERMISSION.TEST_RESULT_VIEW,
+    PERMISSION.TEST_RESULT_CREATE,
+    PERMISSION.TEST_RESULT_EDIT,
+    PERMISSION.TEST_RESULT_DELETE,
   ],
   // Full DELIVERY control of an assigned project, but NOT its lifecycle or
   // membership. Per SRS Phase 4.2: project create/archive/restore/delete and
@@ -488,6 +521,14 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.CAPACITY_MANAGE,
     PERMISSION.CAPACITY_PUBLISH,
     PERMISSION.REPORT_VIEW,
+    PERMISSION.TEST_CASE_VIEW,
+    PERMISSION.TEST_CASE_CREATE,
+    PERMISSION.TEST_CASE_EDIT,
+    PERMISSION.TEST_CASE_DELETE,
+    PERMISSION.TEST_RESULT_VIEW,
+    PERMISSION.TEST_RESULT_CREATE,
+    PERMISSION.TEST_RESULT_EDIT,
+    PERMISSION.TEST_RESULT_DELETE,
   ],
   // Delivery contributor inside ONE assigned project. Per SRS Phase 4.2 the
   // member can create AND delete US/DE + tasks (delete added); no iteration/
@@ -514,6 +555,19 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     // (Iterations, Releases and Milestones alike) are admin surfaces the Editor does NOT
     // see; only Admin and WA do. (assertTeamScoped enforces the Team boundary on the
     // delivery CRUD below.)
+    //
+    // Test Cases are the same class of delivery artifact as the Story/Defect/Task above,
+    // and the SRS gives the tab no role restriction — all eight granted (Phase 7 plan §4,
+    // a deliberate choice, not an omission). `assertTeamInScope` on the parent Work Item
+    // still applies (D7): a Test Case is reachable exactly when its Work Item is.
+    PERMISSION.TEST_CASE_VIEW,
+    PERMISSION.TEST_CASE_CREATE,
+    PERMISSION.TEST_CASE_EDIT,
+    PERMISSION.TEST_CASE_DELETE,
+    PERMISSION.TEST_RESULT_VIEW,
+    PERMISSION.TEST_RESULT_CREATE,
+    PERMISSION.TEST_RESULT_EDIT,
+    PERMISSION.TEST_RESULT_DELETE,
   ],
 };
 

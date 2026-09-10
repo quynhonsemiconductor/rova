@@ -209,6 +209,19 @@ describe('route ↔ nav permission contract', () => {
     expect(NAV_PERMISSIONS.get('/projects/$projectKey')).toBe('project:view')
   })
 
+  it('Test Case Detail is a deliberate THIRD shape — no nav row, no guardedPage, no alias', () => {
+    // Unlike `/item/$itemKey` (a real nav-derived code folds on) and `/projects/$projectKey` (a
+    // NON_NAV_SURFACES code folds on), `/test-case/$testCaseKey` has no list surface of its own to
+    // fold a code from — it opens only from the Test Cases tab's ID link, and the PAGE owns its
+    // whole denied state (403/404/other) via `test-case-detail-page.tsx`'s own three-outcome
+    // handling, exactly like `WorkItemUnavailable` — see the plan's Phase 7 A13. So it correctly has
+    // NO entry in `NAV_PERMISSIONS` and is NOT a `guardedPage()` call site; both loops above
+    // therefore never see it, which is the intended outcome, not a gap in either map.
+    expect(NAV_PERMISSIONS.has('/test-case/$testCaseKey')).toBe(false)
+    const used = [...ROUTER.matchAll(/\bguardedPage\(\s*\n?\s*'([^']*)'/g)].map((m) => m[1])
+    expect(used).not.toContain('/test-case/$testCaseKey')
+  })
+
   it('a NON-NAV surface is in the map without being a nav row', () => {
     // The property that made the fix legal. `/projects` must gate the route and must NOT appear in
     // the bar — `NAV_ITEMS` is what `app-shell.tsx` renders, so a permission entry added there would

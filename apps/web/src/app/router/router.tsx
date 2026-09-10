@@ -255,6 +255,26 @@ const workItemDetailRoute = createRoute({
   ),
 })
 
+const testCaseDetailRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/test-case/$testCaseKey',
+  staticData: { breadcrumb: 'Test Case' },
+  // Same reasoning as `/item/$itemKey` — Test Case keys are workspace-unique, so the project is
+  // unknown until the row loads.
+  loader: ({ context, params, cause }) =>
+    import('@/features/test-cases/deep-link').then((m) =>
+      m.adoptTestCaseProject(context.queryClient, params.testCaseKey, cause),
+    ),
+  // Plain `lazyPage`, NOT `guardedPage`: Test Case Detail is reached only from the tab's ID link
+  // (no nav row, no list surface of its own to fold a code onto), so the PAGE owns its whole denied
+  // state — 403/404/other, the same three-outcome shape `/item/$itemKey`'s `WorkItemUnavailable`
+  // uses (CLAUDE.md: "A record route must own its denied state; its guard cannot").
+  component: lazyPage(
+    () => import('@/pages/test-case/test-case-detail-page'),
+    'TestCaseDetailPage',
+  ),
+})
+
 const timeboxesRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/timeboxes',
@@ -505,6 +525,7 @@ const routeTree = rootRoute.addChildren([
     capacityPlanDetailRoute,
     releaseTrackingRoute,
     workItemDetailRoute,
+    testCaseDetailRoute,
     notFoundRoute,
   ]),
 ])

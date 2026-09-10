@@ -30,6 +30,7 @@ import { randomUUID } from 'crypto';
 
 import { AppModule } from '../../apps/api/src/app.module';
 import { ADMIN_USER_ID, DEVELOPER_ID, SEED_PROJECTS, WORKSPACE_ID } from '../../db/seeds/constants';
+import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -164,9 +165,9 @@ describe('a Workspace Admin as a Team member', () => {
     const login = await app.get(AuthService).ssoLogin(
       JSON.stringify({
         oid: `${label}-${randomUUID()}`,
-        email: `${label}@qnsc.vn`,
+        email: `${label}@${SSO_EMAIL_DOMAIN}`,
         displayName: 'E2E outsider',
-        externalTenantId: 'dev-tenant',
+        externalTenantId: SSO_TENANT_ID,
         roles: [],
       }),
       '127.0.0.1',

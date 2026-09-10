@@ -55,6 +55,8 @@ import {
   type WorkItem,
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
+import { useTestCases } from '@/features/test-cases/api'
+import { TestCasesTab } from './ui/test-cases-tab'
 import { useCollapseToSummary } from '@/features/work-items/summary-selection'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -85,7 +87,7 @@ import { EMPTY_VALUE } from '@/shared/lib/utils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type DetailTab = 'details' | 'tasks' | 'connections' | 'history'
+type DetailTab = 'details' | 'tasks' | 'test-cases' | 'connections' | 'history'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -235,6 +237,14 @@ export function WorkItemDetailPage() {
   // decide whether to open the tab at all.
   const taskCount = tasksForCount.phase === 'error' ? null : tasksForCount.rows.length
 
+  // Test Cases tab count — same shape as Tasks' badge: `null` when unknown (renders `--`), a
+  // measured `0` is a claim that this item has no Test Cases and the count reads the SAME
+  // collection the tab itself lists (no second definition of one number).
+  const showsTestCases = itemByKey != null && itemByKey.type !== 'task'
+  const testCasesForCountQuery = useTestCases(showsTestCases ? itemByKey.id : undefined)
+  const testCasesForCount = listResource(testCasesForCountQuery)
+  const testCaseCount = testCasesForCount.phase === 'error' ? null : testCasesForCount.rows.length
+
   // Connections tab badge = linked pull requests + changesets (matches Rally,
   // e.g. 11 connections + 12 changesets → "23"). Both queries live under the
   // ['work-items'] root, so they refresh with the rest of the work-item views.
@@ -324,6 +334,22 @@ export function WorkItemDetailPage() {
               </span>
             ),
             label: t('tabs.tasks'),
+          },
+        ]
+      : []),
+    ...(!isTask
+      ? [
+          {
+            id: 'test-cases' as DetailTab,
+            icon: (
+              <span className="flex items-center gap-1.5">
+                <ListChecks size={19} />
+                <span className="text-ui-xs font-semibold tabular-nums">
+                  {testCaseCount ?? EMPTY_VALUE}
+                </span>
+              </span>
+            ),
+            label: t('test-cases:tabName'),
           },
         ]
       : []),
@@ -462,6 +488,9 @@ export function WorkItemDetailPage() {
               parentTeamId={item.teamId}
               readOnly={readOnly}
             />
+          )}
+          {activeTabId === 'test-cases' && !isTask && (
+            <TestCasesTab workItemId={item.id} projectId={item.projectId} />
           )}
           {activeTabId === 'connections' && <ConnectionsTab workItemId={item.id} />}
           {activeTabId === 'history' && <HistoryTab workItemId={item.id} />}

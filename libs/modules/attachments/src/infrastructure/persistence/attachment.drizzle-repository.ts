@@ -43,7 +43,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
   }
 
   async listByEntity(ref: AttachmentRef, workspaceId: string): Promise<EntityAttachment[]> {
-    return this.db
+    const rows = await this.db
       .select(AttachmentDrizzleRepository.projection)
       .from(attachments)
       .innerJoin(files, eq(files.id, attachments.fileId))
@@ -62,6 +62,13 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
         asc(attachments.entityId),
         asc(attachments.fileId),
       );
+    // `entity_type` (migration 0129) now admits `test_case` / `test_result` at the DB level, but
+    // this module's own `AttachmentRef` union does not yet — no `UploadPolicy` descriptor exists
+    // for either (Phase 7 plan §2.6, Phase C). The WHERE clause above filters on `ref.entityType`,
+    // which is always one of THIS module's two members, so a row here can never actually carry one
+    // of the two new values; the cast is narrowing to what the query provably returns, not widening
+    // what the module accepts.
+    return rows as EntityAttachment[];
   }
 
   async countByEntity(ref: AttachmentRef, workspaceId: string): Promise<number> {
@@ -96,7 +103,8 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
         ),
       )
       .limit(1);
-    return rows[0] ?? null;
+    // See the comment in `listByEntity` — narrowing, not widening.
+    return (rows[0] as EntityAttachment | undefined) ?? null;
   }
 
   async link(

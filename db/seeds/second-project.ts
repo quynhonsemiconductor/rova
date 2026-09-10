@@ -42,6 +42,8 @@ import {
   tasks,
   teamMembers,
   teams,
+  testCases,
+  testResults,
   timeLogs,
   workItemLabels,
   workItemWatchers,
@@ -60,6 +62,8 @@ import {
   PAY_RELEASE_ID,
   PAY_STORY_ID,
   PAY_TASK_ID,
+  PAY_TEST_CASE_ID,
+  PAY_TEST_RESULT_ID,
   TEAM_GAMMA_ID,
   WORKSPACE_ID,
 } from './constants';
@@ -442,6 +446,46 @@ export async function seedSecondProject(db: Db): Promise<void> {
         ),
       );
   }
+
+  // ── Test Case + Result: ONE of each (mirrors every other PAY entity type) ─
+  await db
+    .insert(testCases)
+    .values({
+      id: PAY_TEST_CASE_ID,
+      workspaceId: WORKSPACE_ID,
+      projectId: PAY_PROJECT_ID,
+      teamId: TEAM_GAMMA_ID,
+      workItemId: PAY_STORY_ID,
+      testCaseKey: 'TC-3',
+      name: 'Top-up succeeds with a saved card',
+      objective: 'Verify a saved card can top up the wallet end to end.',
+      type: 'Functional',
+      method: 'manual',
+      priority: 'high',
+      ownerId: ADMIN_USER_ID,
+      assigneeId: DEVELOPER_ID,
+      rank: 'a0003',
+      createdBy: ADMIN_USER_ID,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(testResults)
+    .values({
+      id: PAY_TEST_RESULT_ID,
+      workspaceId: WORKSPACE_ID,
+      projectId: PAY_PROJECT_ID,
+      testCaseId: PAY_TEST_CASE_ID,
+      workItemId: PAY_STORY_ID,
+      testResultKey: 'TR-3',
+      build: '2026.08.04-rc1',
+      runDate: '2026-08-04',
+      verdict: 'pass',
+      durationMinutes: 5,
+      testerId: DEVELOPER_ID,
+      createdBy: DEVELOPER_ID,
+    })
+    .onConflictDoNothing();
 
   // ── Collaboration: label, comment, time log, watcher ──────────────────────
   const labelId = '00000000-0000-7000-8000-0000000000f0';

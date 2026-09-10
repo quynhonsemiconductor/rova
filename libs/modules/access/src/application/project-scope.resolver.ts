@@ -10,6 +10,8 @@ import {
   milestones,
   portfolioItems,
   capacityPlans,
+  testCases,
+  testResults,
 } from '../../../../../db/schema/work';
 
 /**
@@ -26,7 +28,14 @@ import {
  * `WorkItemDrizzleRepository.findById` already does.
  */
 export type ScopedResource =
-  'work_item' | 'iteration' | 'release' | 'milestone' | 'portfolio_item' | 'capacity_plan';
+  | 'work_item'
+  | 'iteration'
+  | 'release'
+  | 'milestone'
+  | 'portfolio_item'
+  | 'capacity_plan'
+  | 'test_case'
+  | 'test_result';
 
 const TABLES = {
   work_item: workItems,
@@ -36,6 +45,11 @@ const TABLES = {
   // Epic and Feature share one table, so one kind covers both.
   portfolio_item: portfolioItems,
   capacity_plan: capacityPlans,
+  // Distinct kinds, NOT folded into `work_item` (Phase 7 plan §3): unlike Tasks, Test Case and
+  // Test Result routes are not shared with anything, so there is no reason for one kind to cover
+  // two tables the way `work_item` is forced to.
+  test_case: testCases,
+  test_result: testResults,
 } as const;
 
 const NOT_FOUND: Record<ScopedResource, [ErrorCode, string]> = {
@@ -45,6 +59,8 @@ const NOT_FOUND: Record<ScopedResource, [ErrorCode, string]> = {
   milestone: ['MILESTONE_NOT_FOUND', 'Milestone not found'],
   portfolio_item: ['PORTFOLIO_ITEM_NOT_FOUND', 'Portfolio item not found'],
   capacity_plan: ['CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found'],
+  test_case: ['TEST_CASE_NOT_FOUND', 'Test case not found'],
+  test_result: ['TEST_RESULT_NOT_FOUND', 'Test result not found'],
 };
 
 /**
