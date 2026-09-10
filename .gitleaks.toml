@@ -1,3 +1,17 @@
+# EXTENDS the default ruleset — it does not replace it.
+#
+# Without this block gitleaks 8 treats a discovered config as THE config, so a file
+# that defines only an [allowlist] and no [[rules]] leaves the scanner with an empty
+# ruleset. It then finds nothing, exits 0, and the required `Secret scan (Gitleaks)`
+# check goes green — a security control whose failure mode is silent success. That is
+# what this file did from the day it was added until 2026-09-09; verified by probe, a
+# real `ghp_` token planted in this tree was NOT detected while this block was absent,
+# and IS detected with it.
+#
+# Never delete these two lines to "simplify" the config.
+[extend]
+useDefault = true
+
 title = "rally gitleaks config"
 
 [allowlist]
@@ -12,6 +26,14 @@ paths = [
 # postgres/postgres is the standard docker-compose convention for ephemeral CI containers.
 regexes = [
   '''POSTGRES_PASSWORD:\s*postgres''',
+  # CI CSRF placeholder. The literal is self-describing and exists only to satisfy
+  # CSRF_SECRET's 32-character minimum in CI jobs. A REGEX rather than a
+  # .gitleaksignore fingerprint because fingerprints are commit-scoped and this value
+  # recurs in every new commit touching those workflow lines — the existing fingerprints
+  # already went stale when ci.yml was split into backend-ci.yml and web-ci.yml, which
+  # is why four findings surfaced the moment scanning was actually armed.
+  # Anchored to the exact literal, so it can never suppress anything else.
+  '''ci-test-csrf-secret-min-32-characters-ok''',
   # ACM certificate ARNs — contain AWS account ID but are infrastructure references, not credentials.
   '''arn:aws:acm:[a-z0-9-]+:074487692297:certificate/[0-9a-f-]+''',
   # Entra (Azure AD) OAuth identifiers — tenant ID and client ID are public in OAuth flows.
