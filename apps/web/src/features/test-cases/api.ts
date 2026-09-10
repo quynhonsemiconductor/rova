@@ -20,7 +20,14 @@ export type UpdateTestResultInput = components['schemas']['UpdateTestResultDto']
 // limit just has to exceed any real Work Item's Test Case count; the list route stays paged
 // server-side (matches the plan's `{ data, pageInfo }` shape) for consistency with every other
 // list route, even though this feature never asks for a second page.
-const LIST_LIMIT = 200
+//
+// 100 is the house-wide ceiling on every list DTO's `limit` (activity, api-tokens, audit, login,
+// iterations, projects, releases, work-items, workflow, workspace all cap at `.max(100)`) — 200
+// here was an unchecked assumption and made every list call 422 (VALIDATION_FAILED), which left
+// `useTestCases()`'s `data` permanently `undefined` and, fed through `listResource(...).rows`
+// (`[] ?? []`, a fresh array reference every render) into `useRowRerank`'s render-time sync, was
+// an infinite re-render loop ("Too many re-renders") on every visit to the tab.
+const LIST_LIMIT = 100
 
 export const testCaseKeys = {
   all: ['test-cases'] as const,
@@ -248,6 +255,11 @@ export function useUpdateTestCase(id: string) {
     onSuccess: (testCase) => {
       qc.setQueryData(testCaseKeys.detail(id), testCase)
       qc.setQueriesData({ queryKey: testCaseKeys.byKey(testCase.testCaseKey) }, testCase)
+      // The Test Cases TAB reads a third, different query (`testCaseKeys.list`, an array) that
+      // neither write above touches — an inline edit from the tab correctly patched the server and
+      // the two caches above, but left the grid showing the stale row until a full refresh
+      // re-fetched everything. Mirrors `useUpdateTestResult`'s own list invalidation below.
+      void qc.invalidateQueries({ queryKey: testCaseKeys.list(testCase.workItemId ?? '') })
     },
   })
 }

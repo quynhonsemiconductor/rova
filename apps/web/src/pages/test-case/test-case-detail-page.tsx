@@ -26,7 +26,7 @@ import { useWorkItem } from '@/features/work-items/api'
 import { useProjectMemberOptions, useTeamOwnerOptions } from '@/features/teams/api'
 import { useProjectPermissions } from '@/features/access/api'
 import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
-import { DetailField, DetailFieldPair, DetailReadonlyValue } from '@/shared/ui/detail/detail-field'
+import { DetailField, DetailReadonlyValue } from '@/shared/ui/detail/detail-field'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { VerdictBadge } from '@/features/test-cases/ui/verdict-badge'
 import { ProjectCell } from '@/shared/ui/project-cell'
@@ -262,56 +262,54 @@ export function TestCaseDetailPage() {
                 )}
               </DetailField>
 
-              <DetailFieldPair>
-                <DetailField label={t('fields.type')}>
-                  <SearchableSelect
-                    variant="field"
-                    value={testCase.type}
-                    readOnly={readOnly || typeFeed.isError}
-                    ariaLabel={t('fields.type')}
-                    options={typeOptions.map((ty) => ({ value: ty.name, label: ty.name }))}
-                    onChange={(v) => setField({ type: v })}
-                  />
-                </DetailField>
-                <DetailField label={t('fields.method')}>
-                  <SearchableSelect
-                    variant="field"
-                    value={testCase.method}
-                    readOnly={readOnly}
-                    ariaLabel={t('fields.method')}
-                    options={[
-                      { value: 'manual', label: t('methods.manual') },
-                      { value: 'automated', label: t('methods.automated') },
-                    ]}
-                    onChange={(v) => setField({ method: v as UpdateTestCaseInput['method'] })}
-                  />
-                </DetailField>
-              </DetailFieldPair>
-
-              <DetailFieldPair>
-                <DetailField label={t('fields.priority')}>
-                  <SearchableSelect
-                    variant="field"
-                    value={testCase.priority}
-                    readOnly={readOnly}
-                    ariaLabel={t('fields.priority')}
-                    options={[
-                      { value: 'low', label: t('priorities.low') },
-                      { value: 'normal', label: t('priorities.normal') },
-                      { value: 'high', label: t('priorities.high') },
-                      { value: 'urgent', label: t('priorities.urgent') },
-                    ]}
-                    onChange={(v) => setField({ priority: v as UpdateTestCaseInput['priority'] })}
-                  />
-                </DetailField>
-                <OwnerSelectField
-                  label={t('fields.owner')}
-                  value={testCase.ownerId}
-                  onChange={(v) => setField({ ownerId: v || null })}
-                  members={ownerOptionsFor(testCase.ownerId)}
-                  disabled={readOnly}
+              <DetailField label={t('fields.type')}>
+                <SearchableSelect
+                  variant="field"
+                  value={testCase.type}
+                  readOnly={readOnly || typeFeed.isError}
+                  ariaLabel={t('fields.type')}
+                  options={typeOptions.map((ty) => ({ value: ty.name, label: ty.name }))}
+                  onChange={(v) => setField({ type: v })}
                 />
-              </DetailFieldPair>
+              </DetailField>
+
+              <DetailField label={t('fields.method')}>
+                <SearchableSelect
+                  variant="field"
+                  value={testCase.method}
+                  readOnly={readOnly}
+                  ariaLabel={t('fields.method')}
+                  options={[
+                    { value: 'manual', label: t('methods.manual') },
+                    { value: 'automated', label: t('methods.automated') },
+                  ]}
+                  onChange={(v) => setField({ method: v as UpdateTestCaseInput['method'] })}
+                />
+              </DetailField>
+
+              <DetailField label={t('fields.priority')}>
+                <SearchableSelect
+                  variant="field"
+                  value={testCase.priority}
+                  readOnly={readOnly}
+                  ariaLabel={t('fields.priority')}
+                  options={[
+                    { value: 'low', label: t('priorities.low') },
+                    { value: 'normal', label: t('priorities.normal') },
+                    { value: 'high', label: t('priorities.high') },
+                    { value: 'urgent', label: t('priorities.urgent') },
+                  ]}
+                  onChange={(v) => setField({ priority: v as UpdateTestCaseInput['priority'] })}
+                />
+              </DetailField>
+
+              <OwnerSelectField
+                label={t('fields.owner')}
+                value={testCase.ownerId}
+                onChange={(v) => setField({ ownerId: v || null })}
+                members={ownerOptionsFor(testCase.ownerId)}
+                disabled={readOnly}
+              />
 
               <OwnerSelectField
                 label={t('fields.assignedTo')}
@@ -336,23 +334,41 @@ export function TestCaseDetailPage() {
         />
       )}
 
+      {/* `results`/`history` are single-pane tab bodies, unlike `details` (which gets its padding
+          from `DetailTwoPane`'s own `main` column) — this wrapper matches that same `bg-card p-6`
+          inset so all three tabs sit at one consistent inset rather than `results`/`history`
+          rendering flush against the page edge. */}
       {activeTab === 'results' && (
-        <ResultsTab
-          testCaseId={testCase.id}
-          projectId={testCase.projectId}
-          workItemKey={workItem?.itemKey ?? null}
-        />
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-card p-6">
+          <ResultsTab
+            testCaseId={testCase.id}
+            projectId={testCase.projectId}
+            teamId={testCase.teamId}
+            workItemKey={workItem?.itemKey ?? null}
+          />
+        </div>
       )}
 
-      {activeTab === 'history' && <HistoryTab testCaseId={testCase.id} />}
+      {activeTab === 'history' && (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-card p-6">
+          <HistoryTab testCaseId={testCase.id} />
+        </div>
+      )}
 
-      <SaveCancelBar
-        visible={isDirty && !readOnly}
-        saving={saving}
-        errorMsg={saveStatus === 'error' ? saveErrorMsg : null}
-        onSave={() => void save()}
-        onCancel={cancel}
-      />
+      {/* Results/History have no `usePendingPatch` state of their own — only Details does — so the
+          bar has no business appearing there under ANY circumstance. It used to render as a bare
+          sibling after all three tab branches with no `activeTab` guard, so a dirty flag raised
+          while on Details (whatever its cause) stayed visible across a tab switch, since nothing
+          clears `pending` on `activeTab` change either. */}
+      {activeTab === 'details' && (
+        <SaveCancelBar
+          visible={isDirty && !readOnly}
+          saving={saving}
+          errorMsg={saveStatus === 'error' ? saveErrorMsg : null}
+          onSave={() => void save()}
+          onCancel={cancel}
+        />
+      )}
     </DetailLayout>
   )
 }

@@ -1,5 +1,6 @@
 {
   "tabName": "Test Cases",
+  "search": "Search test cases",
   "addNew": {
     "label": "Add New",
     "noPermission": "You do not have permission to create a Test Case."
@@ -48,7 +49,6 @@
     "description": "Something went wrong loading this list. Try again shortly."
   },
   "columns": {
-    "select": "",
     "rank": "Rank",
     "id": "ID",
     "name": "Name",
@@ -58,6 +58,14 @@
     "owner": "Owner",
     "lastVerdict": "Last Verdict",
     "lastRun": "Last Run"
+  },
+  "filters": {
+    "all": "All",
+    "type": "Filter by Type",
+    "method": "Filter by Method",
+    "priority": "Filter by Priority",
+    "verdict": "Filter by Last Verdict",
+    "owner": "Filter by Owner"
   },
   "fields": {
     "description": "Description",
@@ -95,6 +103,7 @@
   },
   "results": {
     "tabName": "Results",
+    "search": "Search results",
     "addNew": {
       "label": "Add Result",
       "noPermission": "You do not have permission to add a Test Result."
@@ -130,6 +139,10 @@
       "verdict": "Verdict",
       "duration": "Duration",
       "tester": "Tester"
+    },
+    "filters": {
+      "verdict": "Filter by Verdict",
+      "tester": "Filter by Tester"
     },
     "detail": {
       "notFound": "No Test Result found",

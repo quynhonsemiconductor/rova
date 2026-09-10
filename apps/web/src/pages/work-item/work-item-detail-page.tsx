@@ -36,6 +36,7 @@ import {
   Bell,
   BellOff,
   FileText,
+  FlaskConical,
   GitPullRequest,
   History,
   ListChecks,
@@ -343,7 +344,7 @@ export function WorkItemDetailPage() {
             id: 'test-cases' as DetailTab,
             icon: (
               <span className="flex items-center gap-1.5">
-                <ListChecks size={19} />
+                <FlaskConical size={19} />
                 <span className="text-ui-xs font-semibold tabular-nums">
                   {testCaseCount ?? EMPTY_VALUE}
                 </span>

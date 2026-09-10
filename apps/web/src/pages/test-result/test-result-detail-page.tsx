@@ -6,12 +6,16 @@
  * Test Case and Work Product stay `ReadOnlyFieldValue` — BR13, and `UpdateTestResultSchema` itself
  * does not carry either, so there is nothing for this page to accidentally send even if it tried.
  *
- * Two tabs: `Details` and `Revision History`. Back goes to the Test Case's own Results tab.
+ * Two tabs: `Details` and `Revision History`. Back walks the real history stack (`useDetailBack`),
+ * falling back to the parent Test Case's detail route when there is nowhere to walk back to (a
+ * deep link) — never a hardcoded forward `navigate()`, which pushes a new stack entry instead of
+ * consuming one and corrupts a SECOND Back from wherever this page led to.
  */
 import { useState } from 'react'
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { useParams } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { FileText, History } from 'lucide-react'
+import { useDetailBack } from '@/shared/lib/use-detail-back'
 import {
   useTestResult,
   useTestCase,
@@ -55,7 +59,6 @@ const VERDICT_LABEL: Record<(typeof VERDICT_OPTIONS)[number], string> = {
 
 export function TestResultDetailPage() {
   const { t } = useTranslation('test-cases')
-  const navigate = useNavigate()
   const { testResultId } = useParams({ from: '/auth/test-result/$testResultId' })
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
 
@@ -65,6 +68,18 @@ export function TestResultDetailPage() {
   // The owning Test Case, for the sidebar's read-only "Test Case" link and its Team (Tester feed).
   const { data: testCase } = useTestCase(result?.testCaseId)
   const { data: workItem } = useWorkItem(result?.workItemId ?? undefined)
+
+  // Walks the REAL history stack (`useDetailBack`), like every other detail page — this page used
+  // to call `navigate()` directly instead, which PUSHES a new forward entry rather than consuming
+  // one. That left a duplicate Test Case entry in the stack, so a second Back (after landing back
+  // on Test Case Detail) walked to the wrong place: this page's own previous entry (itself), not
+  // Work Item Detail. The fallback varies with `testCase` — recomputed each render, not a
+  // conditional hook call — matching what the old hardcoded `navigate()` already targeted.
+  const back = useDetailBack(
+    testCase
+      ? { to: '/test-case/$testCaseKey', params: { testCaseKey: testCase.testCaseKey } }
+      : { to: '/backlog' },
+  )
 
   const { can } = useProjectPermissions(result?.projectId)
   const readOnly = !can('test_result:edit')
@@ -110,22 +125,10 @@ export function TestResultDetailPage() {
       <TestResultUnavailable
         reason={testResultUnavailableReason(isError, error)}
         error={error}
-        onBack={() =>
-          testCase
-            ? navigate({
-                to: '/test-case/$testCaseKey',
-                params: { testCaseKey: testCase.testCaseKey },
-              })
-            : navigate({ to: '/backlog' })
-        }
+        onBack={back}
       />
     )
   }
-
-  const back = () =>
-    testCase
-      ? navigate({ to: '/test-case/$testCaseKey', params: { testCaseKey: testCase.testCaseKey } })
-      : navigate({ to: '/backlog' })
 
   return (
     <DetailLayout
@@ -232,7 +235,15 @@ export function TestResultDetailPage() {
         />
       )}
 
-      {activeTab === 'history' && <HistoryTab testResultId={testResult.id} />}
+      {/* `history` is a single-pane tab body, unlike `details` (which gets its padding from
+          `DetailTwoPane`'s own `main` column) — this wrapper matches that same `bg-card p-6` inset,
+          the identical fix `test-case-detail-page.tsx` already applies to its own `results`/
+          `history` branches. */}
+      {activeTab === 'history' && (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-card p-6">
+          <HistoryTab testResultId={testResult.id} />
+        </div>
+      )}
 
       <SaveCancelBar
         visible={isDirty && !readOnly}
