@@ -80,6 +80,9 @@ describe('TestCasesService', () => {
     build: ReturnType<typeof vi.fn>;
     buildDiff: ReturnType<typeof vi.fn>;
     log: ReturnType<typeof vi.fn>;
+    // TX1: the service logs via `logSafe` OUTSIDE the transaction, so the mock must
+    // declare it — the specs below already assert against it.
+    logSafe: ReturnType<typeof vi.fn>;
     listFor: ReturnType<typeof vi.fn>;
   };
   let entityAttachments: {

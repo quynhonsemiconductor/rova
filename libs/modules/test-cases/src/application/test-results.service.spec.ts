@@ -86,6 +86,9 @@ describe('TestResultsService', () => {
   let projects: { assertAssignable: ReturnType<typeof vi.fn> };
   let activity: {
     log: ReturnType<typeof vi.fn>;
+    // TX1: the service logs via `logSafe` OUTSIDE the transaction, so the mock must
+    // declare it — the specs below already assert against it.
+    logSafe: ReturnType<typeof vi.fn>;
     build: ReturnType<typeof vi.fn>;
     buildDiff: ReturnType<typeof vi.fn>;
     listFor: ReturnType<typeof vi.fn>;
