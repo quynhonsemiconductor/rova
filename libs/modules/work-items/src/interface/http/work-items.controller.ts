@@ -980,7 +980,15 @@ export class WorkItemsController {
    *
    * 302 rather than 307 so the browser follows with GET and does not re-send the
    * session cookie to the bucket origin.
+   *
+   * Semgrep's `nestjs-open-redirect` flags the `{ url }` shape generically — it cannot trace that
+   * `downloadUrl` is a server-generated S3 presigned URL (bucket/key/expiry/signature, all
+   * server-side), never built from request input. The only caller-supplied value, `aid`, is a
+   * `ParseUUIDPipe`-validated id used purely as a lookup key into a permission-scoped attachment
+   * record; it can only select which pre-existing, already-authorized URL comes back, never choose
+   * an arbitrary redirect target. False positive.
    */
+  // nosemgrep: typescript.nestjs.security.audit.nestjs-open-redirect.nestjs-open-redirect
   @Get(':id/attachments/:aid/content')
   @Redirect(undefined, 302)
   @ApiOperation({ summary: 'Redirect to the attachment bytes (stable, authenticated URL)' })
