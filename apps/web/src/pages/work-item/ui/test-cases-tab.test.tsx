@@ -1,18 +1,31 @@
 /**
- * The Test Cases tab (Phase 7, Phase A — AC2, AC3, AC4, BR10, BR15).
+ * The Test Cases tab (Phase 7, Phase A — AC2, AC3, AC4, BR10, BR15; Phase B — B4's live Add New).
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 
 const navigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 const testCases = vi.fn()
+let canCreateTestCase = false
 vi.mock('@/features/test-cases/api', () => ({
   useTestCases: (...args: unknown[]) => testCases(...args),
 }))
 vi.mock('@/features/access/api', () => ({
-  useProjectPermissions: () => ({ can: (code: string) => code === 'test_case:view' }),
+  useProjectPermissions: () => ({
+    can: (code: string) =>
+      code === 'test_case:view' || (code === 'test_case:create' && canCreateTestCase),
+  }),
+}))
+vi.mock('@/features/test-cases/ui/create-test-case-modal', () => ({
+  CreateTestCaseModal: ({ onClose }: { workItemId: string; onClose: () => void }) => (
+    <div role="dialog" aria-label="Create Test Case">
+      <button type="button" onClick={onClose}>
+        close
+      </button>
+    </div>
+  ),
 }))
 
 import '@/shared/i18n/i18n'
@@ -43,6 +56,7 @@ const testCase = (over: Partial<TestCase> = {}): TestCase =>
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  canCreateTestCase = false
   testCases.mockReturnValue({ data: [], isLoading: false, isError: false })
 })
 
@@ -74,13 +88,27 @@ describe('TestCasesTab', () => {
     expect(screen.queryAllByRole('columnheader')).toHaveLength(0)
   })
 
-  it('shows the empty state and a DISABLED Add New (AC3)', () => {
+  it('shows the empty state and a DISABLED Add New with no test_case:create (AC3)', () => {
     testCases.mockReturnValue({ data: [], isLoading: false, isError: false })
     renderTab()
 
     expect(screen.getByText('No Test Cases yet')).toBeInTheDocument()
     const addNew = screen.getByRole('button', { name: 'Add New' })
     expect(addNew).toBeDisabled()
+  })
+
+  it('B4: renders Add New ENABLED with test_case:create, and it opens the create modal', () => {
+    canCreateTestCase = true
+    testCases.mockReturnValue({ data: [], isLoading: false, isError: false })
+    renderTab()
+
+    const addNew = screen.getByRole('button', { name: 'Add New' })
+    expect(addNew).not.toBeDisabled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(addNew)
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
   it('renders "Not Run" / "Not run yet" for a Test Case with no Results — never a dash (BR10)', () => {

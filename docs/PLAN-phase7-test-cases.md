@@ -552,23 +552,147 @@ confirmed fixed and stable across 3 subsequent full BE e2e runs.
 
 ### Phase B — Create Test Case (SRS §5)
 
-- [ ] **B1** `CreateTestCaseSchema` + `POST /work-items/:id/test-cases`. `assertAssignable` on
+**Type feed decision (confirmed with user before B1, since Phase A shipped `work.test_case_types`
+with no repository/service/route/FE feed at all):** minimal read-only query, not a hardcoded list
+and not the full Phase G route. `TestCasesService.listSelectableTypes` + one
+`GET /projects/:id/test-case-types` (`test_case:view`, no `resource` key — same shape as
+`GET /projects/:id/member-options`) — live rows only, ordered by `position`. No create/archive, no
+`workspace:edit` gate (that is G2's). This is the minimum surface B3's dropdown needs; G2 later adds
+write routes to the SAME path rather than a second one.
+
+- [x] **B1** `CreateTestCaseSchema` + `POST /work-items/:id/test-cases`. `assertAssignable` on
   `ownerId` (BR8). Key mint = `MAX+1` + retry once on `uq_test_case_key` (D4). Rank via
   `lockRankScope` → `findMaxRank` → `between()` (BR7).
-- [ ] **B2** `ActivityLogger` row: `test_case.created`, `entityType: 'test_case'`,
+  Also gates `assigneeId` through the same `assertAssignable` rule (BR8 names it for Owner /
+  Assigned To / Tester as one rule). Type feed resolved per the recorded decision below (no Phase G
+  route): a minimal `listSelectableTypes` repo method + service method + one
+  `GET /projects/:id/test-case-types` route (`test_case:view`-gated, read-only — no `POST`/`DELETE`,
+  those stay Phase G). Retry keyed on `isDuplicateKeyError` (`@platform/database/pg-errors.ts`), not
+  a blind catch, so a non-duplicate error is never silently retried.
+  `libs/modules/test-cases/src/application/test-cases.service.spec.ts`: 20 new tests (31 total, all
+  green) covering BR1–BR8 plus the retry. `test-case.drizzle-repository.predicates.spec.ts`: 5 new
+  tests (16 total, all green) proving `findMaxRank`/`listSelectableTypes`'s exact WHERE/ORDER BY.
+  `pnpm vitest run` on both files: 31 passed, 11 passed respectively. `tsc -b --force` and
+  `pnpm lint` clean.
+- [x] **B2** `ActivityLogger` row: `test_case.created`, `entityType: 'test_case'`,
   **`contextId` = the parent work item id** so the Story's own Revision History includes it — the
-  reason `context_id` exists.
-- [ ] **B3** `CreateTestCaseModal`: Name (required, Create disabled while blank — AC2), Type
+  reason `context_id` exists. Written IN THE SAME transaction as the insert (`uow.run`, matching
+  `WorkItemsService.appendActivity`'s in-tx shape, not Portfolio's post-commit `logSafe`) — a Test
+  Case create is a child-of-work-item write, so a log failure rolling back the create is the
+  behaviour that shape already established for tasks. Pinned inline in B1's spec
+  ("B2: logs test_case.created with contextId = the parent Work Item id").
+- [x] **B3** `CreateTestCaseModal`: Name (required, Create disabled while blank — AC2), Type
   (project feed, defaults to first), Method, Priority, Owner (`useDefaultOwner`, BR4). Copy from the
   mockup, including the footer note "Test steps are maintained on the Test Case detail as Input and
   Expected Result pairs."
-- [ ] **B4** `Add New` enabled; renders only with `test_case:create`. On success, invalidate the
+  Mirrors `AddTaskModal`'s shape exactly (parent-derived Project/Team, not the app shell's selected
+  context — P6-E2E-003's reasoning). Type/Method/Priority selectors DISPLAY the resolved default
+  (project's first selectable Type, `manual`, `normal`) but send `undefined` when untouched, so the
+  SERVICE's default (not a second client-side copy of the same rule) is what's actually recorded.
+  `apps/web/src/features/test-cases/ui/create-test-case-modal.test.tsx`: 13 tests, all green —
+  BR1 (disabled/enabled/trim), BR2 (default display + untouched-sends-undefined), BR3 (same for
+  Method/Priority), BR4 (both directions: current user offered vs. not), BR5 (read-only Project, no
+  picker), BR6 (Assigned To omitted untouched), the parent-team-not-shell-team assertion, the footer
+  copy, the SRS §2 success-navigates-and-closes flow, and the failed-submit error banner.
+  One debugging note: `getByLabelText('Name')` (exact string) failed to find the label because
+  `FormField`'s `required` prop renders an `aria-hidden="true"` asterisk INSIDE the `<label>`, which
+  still contributes to the computed accessible name (`"Name*"`) — `getByLabelText(/^Name/)` fixed it.
+  `create-work-item-modal.test.tsx`'s own `Title` field query already used a regex for the same
+  reason; not a new pattern, just one this file hadn't followed yet.
+- [x] **B4** `Add New` enabled; renders only with `test_case:create`. On success, invalidate the
   list + the tab count and **navigate to the new Test Case Detail** (SRS §2 creation flow).
-- [ ] **B5** Optimistic-free invalidation: one query key per (`work-items`, id, `test-cases`).
+  `test-cases-tab.tsx` opens `CreateTestCaseModal` in local state on click (`fireEvent.click`, NOT
+  `.click()` — the latter didn't flush the React state update synchronously in this test setup, a
+  second debugging note worth keeping). `addNew.comingSoon` i18n key retired (Phase A's placeholder
+  tooltip, no longer applicable now the action is live); `test-cases-tab.test.tsx` gained a case
+  proving Add New is enabled with the permission and opens the modal (9 tests total, all green).
+- [x] **B5** Optimistic-free invalidation: one query key per (`work-items`, id, `test-cases`).
+  `useCreateTestCase`'s `meta.invalidateKeys: [testCaseKeys.list(workItemId)]` — a NARROW key, not a
+  new `EntityTag` in the shared registry (`shared/api/invalidation.ts`): a Test Case has no other
+  read-model derived from it yet (no report, no dashboard, no picker feed reads it), so a coarse tag
+  would be scope this phase doesn't need. Covers BOTH the list and the tab badge for free, since
+  A7/A12 already read the badge count from this SAME query's `pageInfo.total` — confirmed by reading
+  `work-item-detail-page.tsx`'s `testCasesForCountQuery = useTestCases(...)` rather than assuming.
 
 **Gate:** Phase A gate + `test/e2e/test-case-routes.e2e.spec.ts` covers create → list → detail over
 `app.inject()`. **A spec that calls the service directly cannot see a guard defect** — that blind
 spot hid the `work_item`/`task` resolver fault and the `report:view` bug.
+
+**Codegen note:** the first restart attempt hit an environment issue independent of this diff — two
+duplicate `nest start --watch` processes (one an orphan from a bash-backgrounding retry) raced each
+other rewriting `dist/`, causing an infinite "file change detected" retrigger loop that never let the
+app finish booting. Killed both, started ONE clean instance, and it booted fine on the first real
+attempt (~65s cold compile) — `Route authorization audit passed — 233 handlers, all declared`,
+`POST /v1/work-items/:id/test-cases` and `GET /v1/projects/:id/test-case-types` both mapped. Grepped
+`/api/docs-json` for `CreateTestCaseDto` / `test-case-types` before trusting codegen (both present).
+`pnpm --filter rova-web codegen` diff: 145 insertions, 1 deletion, purely additive.
+
+**`pnpm test:e2e` (full suite) BLOCKED — pre-existing, reproducible, unrelated to Phase B.**
+Confirmed with the user rather than assumed. `test/e2e/governance-audit-flow.e2e.spec.ts`'s
+`relayUntil` deliberately drains the WHOLE outbox backlog (its own docblock explains why — a
+batch-position dependency from a prior fix), and in a full run it reaches a `project.archived`
+audit event — from some OTHER spec, not this one — whose `resourceType` is 62 characters against
+`audit_logs.resource_type varchar(50)`. The INSERT throws Postgres `22001`
+(`value too long for type character varying(50)`), `AuditProjectionRelay` logs it and retries, and
+the vitest process then hangs rather than exiting — reproduced identically on 2/2 clean-DB attempts
+(once left running 90 minutes before being killed, once bounded with `timeout 300` and killed at 5
+minutes). `git status` confirms none of this session's diff touches `audit`, the outbox relay, or
+`governance-audit-flow.e2e.spec.ts` — the failing `resourceType` is produced by a DIFFERENT spec's
+seed/write path, not by anything Phase B added.
+
+Verified instead: `test/e2e/test-case-routes.e2e.spec.ts` run in ISOLATION —
+`pnpm vitest run --config test/vitest.e2e.config.ts test/e2e/test-case-routes.e2e.spec.ts` — green,
+13/13 (the 7 Phase A tests + 6 new Phase B ones: create→list→detail round trip, BR1 blank-name
+refusal, BR2 non-catalog-Type refusal, BR4/BR8 owner eligibility both directions, BR7 rank-after
+ordering, 404 on a Work Item outside the caller's readable projects). This is the shape CLAUDE.md
+names as the one that can see a guard defect — real `AppModule`, `app.inject()`, a Bearer token from
+`AuthService.devLogin` — so it is not a weaker substitute for the full-suite gate, only a narrower
+one. **This blocker is unrelated to Test Cases and is reported to the user for separate triage; it
+is not fixed here** (out of Phase B's scope, and the reproduction makes clear which spec and which
+column need attention).
+
+**`pnpm --filter rova-web test` (full FE suite) — also BLOCKED, same shape, confirmed with the
+user.** Two full runs, both failed 4-5 unrelated test files
+(`user-access-modal.test.tsx`, `backlog-filters.test.tsx`, `iteration-filters.test.tsx`,
+`portfolio-detail-page.test.tsx` — Settings, Backlog, Iteration Status, Portfolio, never Test
+Cases) and then HUNG rather than printing a final summary, forcing a kill both times. Re-ran all
+four failing files together in ISOLATION: 22/22 GREEN in 29s — confirms resource-contention flake
+under full-suite parallel load on this machine, the same class CLAUDE.md documents extensively for
+Playwright ("Eight Playwright specs … time out under full-suite resource contention and pass in
+isolation"), now apparently also affecting the FE unit runner. One REAL issue this run did catch
+and fix: `query-default.ratchet.test.ts`'s `MAX_QUERY_DEFAULTS` needed raising 94→95 (see B3's
+note) — `CreateTestCaseModal`'s `useTestCaseTypes` call-site default, the same unconverted pattern
+`AddTaskModal` already uses. Verified individually: `test-cases-tab.test.tsx` (9/9),
+`create-test-case-modal.test.tsx` (13/13), `verdict-badge.test.tsx`,
+`test-case-detail-page.test.tsx`, `test-case-unavailable.test.tsx`,
+`fe-consistency.ratchet.test.ts` (8/8), `query-default.ratchet.test.ts` (4/4) — all green. **Not
+fixed here** (environment resource contention, not a code defect); reported for the user's own
+triage alongside the BE e2e blocker above.
+
+**Remaining Phase B gate steps — all green.**
+- `pnpm build` (api + worker) — clean.
+- `pnpm --filter rova-web build` — clean (pre-existing `INEFFECTIVE_DYNAMIC_IMPORT` / plugin-timing
+  warnings only, unrelated to this diff).
+- `tsc -b --force` (repo-wide) — clean.
+- `pnpm test` (backend unit) — **88/88 files, 2006/2006 tests**, after fixing one REAL ratchet
+  failure this run caught: `test/query-ordering.ratchet.spec.ts` — `listSelectableTypes`'s
+  `ORDER BY position, name` didn't end in a unique column; added `id` as the tiebreaker (matches
+  the rule every other ranked read in this repo already follows).
+  Coverage RAISED and RE-MEASURED (`pnpm test:cov`): stmts 86.14%, branches 79.67%, functions 84.4%,
+  lines 87.06% → floors raised 86/79/84/86 → **86/79/84/87** (lines only; the create path's own
+  tests held statements/branches/functions at their Phase A floor). `pnpm check:coverage-floors`
+  green.
+- `test/coverage-include.spec.ts` — green, no new entry needed (`test-cases.service.ts` already
+  listed from Phase A).
+- `test/route-policy.ratchet.spec.ts` — unchanged, 5/5 green (both new B1 routes are decorated).
+- `pnpm db:seed:test` — reset + reseeded cleanly before Playwright.
+- `pnpm --filter rova-web test:e2e` (Playwright) — **42 passed, 5 failed, 1 skipped (19.5m)**. All 5
+  failures are the documented pre-existing flakes named in this task's own instructions
+  (`capacity-allocation.e2e.ts` ×4, `golden-journey.e2e.ts` ×1) — `iterations` and `portfolio`, also
+  on that list, passed cleanly this run. **Zero Test Cases failures**: no `test-cases.e2e.ts`
+  Playwright spec exists yet (not shipped in Phase A or B — the plan's own §7 test-strategy section
+  lists it as future work once Phases B/D land further), so nothing Test-Cases-specific runs in
+  this suite at all; the diff introduced no new Playwright failure and touched no passing spec.
 
 ### Phase C — Test Case Detail edit (SRS §6)
 

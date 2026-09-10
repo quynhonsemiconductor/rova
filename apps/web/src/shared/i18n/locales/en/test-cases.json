@@ -2,8 +2,29 @@
   "tabName": "Test Cases",
   "addNew": {
     "label": "Add New",
-    "comingSoon": "Creating a Test Case is coming in a later phase.",
     "noPermission": "You do not have permission to create a Test Case."
+  },
+  "create": {
+    "title": "Create Test Case",
+    "subtitle": "Create a new Test Case for this Work Item.",
+    "nameLabel": "Name",
+    "namePlaceholder": "Enter a name",
+    "nameRequired": "Name is required",
+    "unassigned": "Unassigned",
+    "stepsNote": "Test steps are maintained on the Test Case detail as Input and Expected Result pairs.",
+    "createButton": "Create",
+    "creating": "Creating…",
+    "createFailed": "Failed to create Test Case"
+  },
+  "methods": {
+    "manual": "Manual",
+    "automated": "Automated"
+  },
+  "priorities": {
+    "low": "Low",
+    "normal": "Normal",
+    "high": "High",
+    "urgent": "Urgent"
   },
   "empty": {
     "title": "No Test Cases yet",

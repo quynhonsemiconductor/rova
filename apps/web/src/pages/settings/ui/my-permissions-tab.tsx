@@ -169,16 +169,21 @@ function ProjectAccessSummary({ workspaceId }: { workspaceId: string }) {
 }
 
 /**
- * Project on the left, the reader's level on the right.
+ * Project on the left, the reader's level beside it.
  *
  * The heading was one uppercase band reading `Your Project Access` over an unlabelled two-column
  * list, so the LEVEL column — the answer this screen exists to give — had no heading at all. Naming
  * both columns is what the shared table asks for, and it is also the honest layout: the level is a
  * value in a column, not a suffix on the project name.
+ *
+ * The level is LEFT-aligned, unlike every other `align: 'right'` column in the app. Those are all
+ * numeric, where right alignment plus `tabular-nums` lines the digits up into a column that can be
+ * scanned; this one holds words (`Admin`, `Editor`, `No Access`) of unequal length, so right
+ * alignment ragged their first letters and gave the reader no edge to read down.
  */
 const ACCESS_COLUMNS: PanelTableColumn[] = [
   { key: 'project', label: 'Project' },
-  { key: 'level', label: 'Your Access', width: 148, align: 'right' },
+  { key: 'level', label: 'Your Access', width: 148 },
 ]
 
 const CAPABILITY_ROWS = [

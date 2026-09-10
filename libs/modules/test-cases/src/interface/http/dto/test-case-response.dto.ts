@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import type { TestCase } from '../../../domain/test-case.types';
+import type { TestCaseTypeOption } from '../../../domain/ports/test-case.repository';
 
 export const TestCaseResponseSchema = z.object({
   id: z.string().uuid(),
@@ -69,4 +70,16 @@ export function toTestCaseDto(tc: TestCase): TestCaseResponseDto {
     createdAt: tc.createdAt,
     updatedAt: tc.updatedAt,
   };
+}
+
+/** One live Type — the Create modal's dropdown feed. Minimal shape; Type CRUD itself is Phase G. */
+export const TestCaseTypeOptionSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+});
+
+export class TestCaseTypeOptionDto extends createZodDto(TestCaseTypeOptionSchema) {}
+
+export function toTestCaseTypeOptionDto(t: TestCaseTypeOption): TestCaseTypeOptionDto {
+  return { id: t.id, name: t.name };
 }
