@@ -286,3 +286,28 @@ jobs:
           retention-days: 3
 
   # Security scans (Trivy, CodeQL) → security.yml
+
+  # ── The aggregate gate ──────────────────────────────────────────────────────
+  # `Web CI required` is THE required check for this workflow. See backend-ci.yml's
+  # copy of this note for the full reasoning; the short version is that GitHub counts a
+  # SKIPPED or CANCELLED required check as PASSING, so naming each job in the ruleset
+  # cannot catch a job that never ran — and every false-green recorded in this repo
+  # (pr-title.yml's cancelled-run incident, Phase 7's 3-of-22 checks) is that bug.
+  #
+  # Named `Web CI required`, not `CI required`, deliberately: this workflow and
+  # backend-ci.yml BOTH publish a job called `Lint & typecheck`, and a required check
+  # matched by name against two producers is ambiguous. The two gates carry distinct
+  # names so the ruleset can require both without guessing which workflow answered.
+  #
+  # `needs` MUST list every job above. A job missing from this list is a job outside
+  # the gate. The assertion lives in `quynhonsemiconductor/ci` — see backend-ci.yml.
+  ci-required:
+    name: Web CI required
+    if: always()
+    needs: [quality, test, e2e, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@v1
+        with:
+          results: ${{ join(needs.*.result, ',') }}
