@@ -2,12 +2,15 @@
  * Test Result domain types (Phase 7, Phase D). Append-only (BR12) — no `update`/`delete` shape
  * here; those are Phase E/F.
  */
+import type { TestVerdict } from '../../../../../db/schema/enums';
+
 /**
  * `not_run` is excluded here (enforced by `ck_test_results_verdict_not_not_run` in the DB) — a
- * Result records an outcome, never its absence (D6). Deliberately NOT `TestVerdict` from
- * `db/schema/enums`, which is the wider vocabulary shared with `test_cases.last_verdict`.
+ * Result records an outcome, never its absence (D6). `Exclude<TestVerdict, 'not_run'>` rather than
+ * a hand-typed union (B1: derive from the Drizzle enum, never re-type it) — still the NARROWER of
+ * `TestVerdict`'s two audiences: `test_cases.last_verdict` is the wider one and keeps `not_run`.
  */
-export type TestResultVerdict = 'pass' | 'fail' | 'blocked' | 'error' | 'inconclusive';
+export type TestResultVerdict = Exclude<TestVerdict, 'not_run'>;
 
 export interface TestResult {
   id: string;

@@ -117,7 +117,7 @@ export function MilestoneDetailPage() {
     save,
     cancel,
   } = usePendingPatch<Milestone, UpdateMilestoneInput>(
-    milestone ?? ({} as Milestone),
+    milestone ?? null,
     milestoneId,
     async (patch) => {
       try {
@@ -130,7 +130,10 @@ export function MilestoneDetailPage() {
   )
 
   function handleSave() {
-    if (!(mrel.name ?? '').trim()) {
+    // N1: `mrel` is `Milestone | null` before the entity loads; `handleSave` is only reachable
+    // from the rendered form below, which already guards `!mrel` (the early return below), but TS
+    // can't see that across the function boundary — `?.` keeps this branch type-safe regardless.
+    if (!(mrel?.name ?? '').trim()) {
       toast.error(t('detail.nameRequired'))
       return
     }
@@ -147,7 +150,8 @@ export function MilestoneDetailPage() {
     )
   }
 
-  if (isError || !milestone) {
+  // N1: `mrel` (the hook's `value`) is null exactly when `milestone` is.
+  if (isError || !milestone || !mrel) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background">
         <p className="text-ui-lg text-muted-foreground">{t('detail.loadError')}</p>

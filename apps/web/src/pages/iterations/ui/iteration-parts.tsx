@@ -262,7 +262,7 @@ export function IterationDetail({
     save,
     cancel,
   } = usePendingPatch<Iteration, Parameters<typeof update.mutateAsync>[0]>(
-    it ?? ({} as Iteration),
+    it ?? null,
     id,
     async (body) => {
       try {
@@ -302,7 +302,9 @@ export function IterationDetail({
     )
   }
 
-  if (isLoading || !it) {
+  // N1: `vit` (the hook's `value`) is null exactly when `it` is — checking both narrows `vit` from
+  // `Iteration | null` for every reference below, with no cast needed.
+  if (isLoading || !it || !vit) {
     return (
       <div className="flex h-40 items-center justify-center">
         <Spinner />

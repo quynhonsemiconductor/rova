@@ -106,7 +106,7 @@ export function TestCaseDetailPage() {
     save,
     cancel,
   } = usePendingPatch<TestCase, UpdateTestCaseInput>(
-    testCaseByKey ?? ({} as TestCase),
+    testCaseByKey ?? null,
     testCaseByKey?.id,
     async (patch) => {
       await wrapSave(async () => {
@@ -117,7 +117,9 @@ export function TestCaseDetailPage() {
 
   if (isLoading) return <PageSpinner />
 
-  if (!testCaseByKey) {
+  // N1: `testCase` (the hook's `value`) is null exactly when `testCaseByKey` is — checking both
+  // narrows `testCase` from `TestCase | null` for every reference below, with no cast needed.
+  if (!testCaseByKey || !testCase) {
     return (
       <TestCaseUnavailable
         reason={testCaseUnavailableReason(isError, error)}

@@ -1,7 +1,19 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import {
+  testCaseMethodEnum,
+  testCasePriorityEnum,
+  testVerdictEnum,
+} from '../../../../../../../db/schema/enums';
 import type { TestCase } from '../../../domain/test-case.types';
 import type { TestCaseTypeOption } from '../../../domain/ports/test-case.repository';
+
+// Derived from the Drizzle enum, never re-typed (B1). `lastVerdict` uses the FULL enum (including
+// `not_run`) — it's the Test Case side of `testVerdictEnum`'s two-audience split (D6); the
+// `not_run`-excluded slice is only for a Test Result's own `verdict`, see test-result DTOs.
+const TEST_CASE_METHODS = testCaseMethodEnum.enumValues;
+const TEST_CASE_PRIORITIES = testCasePriorityEnum.enumValues;
+const TEST_VERDICTS = testVerdictEnum.enumValues;
 
 export const TestCaseResponseSchema = z.object({
   id: z.string().uuid(),
@@ -20,15 +32,15 @@ export const TestCaseResponseSchema = z.object({
   postconditions: z.string().nullable(),
   notes: z.string().nullable(),
   type: z.string().describe('Text snapshot of the Type name at the time it was set (D8, BR2).'),
-  method: z.enum(['manual', 'automated']),
-  priority: z.enum(['low', 'normal', 'high', 'urgent']),
+  method: z.enum(TEST_CASE_METHODS),
+  priority: z.enum(TEST_CASE_PRIORITIES),
   ownerId: z.string().uuid().nullable(),
   ownerName: z.string().nullable(),
   assigneeId: z.string().uuid().nullable(),
   assigneeName: z.string().nullable(),
   rank: z.string(),
   lastVerdict: z
-    .enum(['pass', 'fail', 'blocked', 'error', 'inconclusive', 'not_run'])
+    .enum(TEST_VERDICTS)
     .nullable()
     .describe('Maintained by trg_test_case_last_result (D6). NULL renders "Not Run" (BR10).'),
   lastRun: z.string().nullable().describe('YYYY-MM-DD. NULL renders "Not run yet" (BR10).'),

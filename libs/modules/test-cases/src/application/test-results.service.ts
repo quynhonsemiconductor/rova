@@ -13,13 +13,13 @@ import {
   TEST_RESULT_REPOSITORY,
   UpdateTestResultInput,
 } from '../domain/ports/test-result.repository';
-import type { TestResult } from '../domain/test-result.types';
+import type { TestResult, TestResultVerdict } from '../domain/test-result.types';
 import { TEST_RESULT_ACTIVITY_CONFIG } from './test-result-activity-diff';
 
 export interface CreateTestResultCommand {
   build: string;
   runDate: string;
-  verdict: 'pass' | 'fail' | 'blocked' | 'error' | 'inconclusive';
+  verdict: TestResultVerdict;
   durationMinutes?: number;
   testerId: string;
   notes?: string;
@@ -160,33 +160,32 @@ export class TestResultsService {
       );
     }
 
-    const updated = await this.uow.run(async (tx) => {
-      const row = await this.testResultRepo.update(id, input, actor.workspaceId, tx);
+    const updated = await this.uow.run((tx) =>
+      this.testResultRepo.update(id, input, actor.workspaceId, tx),
+    );
 
-      // Scalar-only diff rows, never a rich-text body (TEST_RESULT_ACTIVITY_CONFIG.richText).
-      // `contextId` = the Test Case's own id, matching Test Case activity's own `contextId`
-      // (the parent Work Item) one level up — a Result's Revision History belongs to its Result,
-      // and its Test Case's history is a SEPARATE feed (C6), not this one.
-      await this.activityLogger.log(
-        this.activityLogger.buildDiff(
-          {
-            workspaceId: actor.workspaceId,
-            projectId: existing.projectId,
-            entityType: 'test_result',
-            entityId: id,
-            contextId: existing.testCaseId,
-          },
-          actor.sub,
-          existing as unknown as Record<string, unknown>,
-          input as Partial<Record<string, unknown>>,
-          TEST_RESULT_ACTIVITY_CONFIG,
-          'test_result.updated',
-        ),
-        { tx },
-      );
-
-      return row;
-    });
+    // TX1: outside the transaction, `logSafe` — matching releases/projects (`TestCasesService`'s
+    // identical reasoning): a revision-log failure must never fail the mutation. Scalar-only diff
+    // rows, never a rich-text body (TEST_RESULT_ACTIVITY_CONFIG.richText). `contextId` = the Test
+    // Case's own id, matching Test Case activity's own `contextId` (the parent Work Item) one
+    // level up — a Result's Revision History belongs to its Result, and its Test Case's history is
+    // a SEPARATE feed (C6), not this one.
+    await this.activityLogger.logSafe(
+      this.activityLogger.buildDiff(
+        {
+          workspaceId: actor.workspaceId,
+          projectId: existing.projectId,
+          entityType: 'test_result',
+          entityId: id,
+          contextId: existing.testCaseId,
+        },
+        actor.sub,
+        existing as unknown as Record<string, unknown>,
+        input as Partial<Record<string, unknown>>,
+        TEST_RESULT_ACTIVITY_CONFIG,
+        'test_result.updated',
+      ),
+    );
 
     return updated;
   }
@@ -199,27 +198,24 @@ export class TestResultsService {
     }
     await this.testCasesService.getById(actor, existing.testCaseId);
 
-    await this.uow.run(async (tx) => {
-      await this.testResultRepo.softDelete(id, actor.workspaceId, tx);
-      await this.activityLogger.log(
-        [
-          this.activityLogger.build(
-            {
-              workspaceId: actor.workspaceId,
-              projectId: existing.projectId,
-              entityType: 'test_result',
-              entityId: id,
-              contextId: existing.testCaseId,
-            },
-            actor.sub,
-            'test_result.deleted',
-            null,
-            { testResultKey: existing.testResultKey },
-          ),
-        ],
-        { tx },
-      );
-    });
+    await this.uow.run((tx) => this.testResultRepo.softDelete(id, actor.workspaceId, tx));
+
+    // TX1: outside the transaction, `logSafe` — see `update`'s identical reasoning.
+    await this.activityLogger.logSafe([
+      this.activityLogger.build(
+        {
+          workspaceId: actor.workspaceId,
+          projectId: existing.projectId,
+          entityType: 'test_result',
+          entityId: id,
+          contextId: existing.testCaseId,
+        },
+        actor.sub,
+        'test_result.deleted',
+        null,
+        { testResultKey: existing.testResultKey },
+      ),
+    ]);
   }
 
   /**

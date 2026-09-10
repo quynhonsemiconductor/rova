@@ -128,6 +128,7 @@ describe('TestCasesService', () => {
       build: vi.fn().mockReturnValue({}),
       buildDiff: vi.fn().mockReturnValue([]),
       log: vi.fn().mockResolvedValue(undefined),
+      logSafe: vi.fn().mockResolvedValue(undefined),
       listFor: vi.fn().mockResolvedValue({ data: [], total: 0 }),
     };
     entityAttachments = {
@@ -443,7 +444,7 @@ describe('TestCasesService', () => {
       expect(repo.findMaxRank).toHaveBeenCalledWith('wi-1', 'ws-1', expect.anything());
     });
 
-    it('B2: logs test_case.created with contextId = the parent Work Item id', async () => {
+    it('B2/TX1: logs test_case.created with contextId = the parent Work Item id, via logSafe outside the tx', async () => {
       await service.create(actor, 'wi-1', { name: 'New case' });
 
       expect(activity.build).toHaveBeenCalledWith(
@@ -456,7 +457,7 @@ describe('TestCasesService', () => {
         null,
         expect.anything(),
       );
-      expect(activity.log).toHaveBeenCalled();
+      expect(activity.logSafe).toHaveBeenCalledWith(expect.anything());
     });
 
     it('D4: retries ONCE on a duplicate-key race and succeeds on the second attempt', async () => {
@@ -577,7 +578,7 @@ describe('TestCasesService', () => {
       expect(projects.assertAssignable).not.toHaveBeenCalled();
     });
 
-    it('C3: logs a scalar-only diff via buildDiff, contextId = the parent Work Item id', async () => {
+    it('C3/TX1: logs a scalar-only diff via buildDiff, contextId = the parent Work Item id, via logSafe outside the tx', async () => {
       await service.update(actor, 'tc-1', { name: 'Renamed' });
 
       expect(activity.buildDiff).toHaveBeenCalledWith(
@@ -588,7 +589,7 @@ describe('TestCasesService', () => {
         expect.anything(),
         'test_case.updated',
       );
-      expect(activity.log).toHaveBeenCalledWith(expect.anything(), { tx: expect.anything() });
+      expect(activity.logSafe).toHaveBeenCalledWith(expect.anything());
     });
   });
 
@@ -645,7 +646,7 @@ describe('TestCasesService', () => {
       expect(resultsOrder).toBeLessThan(caseOrder);
     });
 
-    it('logs test_case.deleted with contextId = the parent Work Item id', async () => {
+    it('logs test_case.deleted with contextId = the parent Work Item id, via logSafe outside the tx (TX1)', async () => {
       await service.delete(actor, 'tc-1');
 
       expect(activity.build).toHaveBeenCalledWith(
@@ -655,7 +656,7 @@ describe('TestCasesService', () => {
         null,
         expect.objectContaining({ testCaseKey: 'TC-1' }),
       );
-      expect(activity.log).toHaveBeenCalledWith(expect.anything(), { tx: expect.anything() });
+      expect(activity.logSafe).toHaveBeenCalledWith(expect.anything());
     });
   });
 

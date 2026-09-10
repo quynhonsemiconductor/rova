@@ -30,6 +30,7 @@ import {
   METHOD_LABEL,
   PRIORITY_LABEL,
 } from '@/features/test-cases/model/test-case-columns'
+import { TEST_VERDICT_STYLE } from '@/features/test-cases/status-colors'
 import { CreateTestCaseModal } from '@/features/test-cases/ui/create-test-case-modal'
 import { TestCaseBulkDeleteCopy } from '@/features/test-cases/ui/test-case-bulk-delete-copy'
 import { useProjectMemberOptions } from '@/features/teams/api'
@@ -44,14 +45,12 @@ import { InlineSelect } from '@/shared/ui/native-select'
 import { useProjectPermissions } from '@/features/access/api'
 import { TestCaseRow } from './test-case-row'
 
-const VERDICT_LABEL: Record<string, string> = {
-  pass: 'Pass',
-  fail: 'Fail',
-  blocked: 'Blocked',
-  error: 'Error',
-  inconclusive: 'Inconclusive',
-  not_run: 'Not Run',
-}
+// F1: derived from TEST_VERDICT_STYLE (status-colors.ts) — the WIDE 6-member set (incl. `not_run`,
+// Test Case's own `lastVerdict` audience), not a 4th hardcoded copy. test-result-columns.tsx's own
+// VERDICT_LABEL is the narrower 5-member Result-only set; the two are deliberately not the same map.
+const VERDICT_LABEL: Record<string, string> = Object.fromEntries(
+  Object.entries(TEST_VERDICT_STYLE).map(([verdict, style]) => [verdict, style.label]),
+)
 
 export function TestCasesTab({ workItemId, projectId }: { workItemId: string; projectId: string }) {
   const { t } = useTranslation('test-cases')

@@ -23,6 +23,7 @@ import {
   type TestResult,
   type UpdateTestResultInput,
 } from '@/features/test-cases/api'
+import { VERDICT_LABEL } from '@/features/test-cases/model/test-result-columns'
 import { useWorkItem } from '@/features/work-items/api'
 import { useTeamOwnerOptions, useProjectMemberOptions } from '@/features/teams/api'
 import { useProjectPermissions } from '@/features/access/api'
@@ -48,14 +49,8 @@ import { HistoryTab } from './ui/history-tab'
 
 type DetailTab = 'details' | 'history'
 
-const VERDICT_OPTIONS = ['pass', 'fail', 'blocked', 'error', 'inconclusive'] as const
-const VERDICT_LABEL: Record<(typeof VERDICT_OPTIONS)[number], string> = {
-  pass: 'Pass',
-  fail: 'Fail',
-  blocked: 'Blocked',
-  error: 'Error',
-  inconclusive: 'Inconclusive',
-}
+// F1: derived from the ONE VERDICT_LABEL (test-result-columns.tsx), not a second hardcoded list.
+const VERDICT_OPTIONS = Object.keys(VERDICT_LABEL) as TestResult['verdict'][]
 
 export function TestResultDetailPage() {
   const { t } = useTranslation('test-cases')
@@ -109,7 +104,7 @@ export function TestResultDetailPage() {
     save,
     cancel,
   } = usePendingPatch<TestResult, UpdateTestResultInput>(
-    result ?? ({} as TestResult),
+    result ?? null,
     result?.id,
     async (patch) => {
       await wrapSave(async () => {
@@ -120,7 +115,9 @@ export function TestResultDetailPage() {
 
   if (isLoading) return <PageSpinner />
 
-  if (!result) {
+  // N1: `testResult` (the hook's `value`) is null exactly when `result` is — checking both narrows
+  // `testResult` from `TestResult | null` for every reference below, with no cast needed.
+  if (!result || !testResult) {
     return (
       <TestResultUnavailable
         reason={testResultUnavailableReason(isError, error)}

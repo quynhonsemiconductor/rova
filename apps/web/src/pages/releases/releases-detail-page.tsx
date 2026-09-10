@@ -83,25 +83,23 @@ export function ReleaseDetailPage() {
     setField,
     save,
     cancel,
-  } = usePendingPatch<Release, UpdateReleaseInput>(
-    release ?? ({} as Release),
-    releaseId,
-    async (patch) => {
-      try {
-        return await update.mutateAsync(patch)
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : t('detail.updateFailed'))
-        throw err
-      }
-    },
-  )
+  } = usePendingPatch<Release, UpdateReleaseInput>(release ?? null, releaseId, async (patch) => {
+    try {
+      return await update.mutateAsync(patch)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('detail.updateFailed'))
+      throw err
+    }
+  })
 
   function handleSave() {
-    if (!(vrel.name ?? '').trim()) {
+    // N1: `vrel` is `Release | null` before the entity loads; the rendered form already guards
+    // `!release` (the early return below), but TS can't see that across the function boundary.
+    if (!(vrel?.name ?? '').trim()) {
       toast.error(t('create.nameRequired'))
       return
     }
-    if (vrel.startDate && vrel.releaseDate && vrel.releaseDate < vrel.startDate) {
+    if (vrel?.startDate && vrel.releaseDate && vrel.releaseDate < vrel.startDate) {
       toast.error(t('create.dateOrder'))
       return
     }
@@ -116,7 +114,8 @@ export function ReleaseDetailPage() {
     )
   }
 
-  if (isError || !release) {
+  // N1: `vrel` (the hook's `value`) is null exactly when `release` is.
+  if (isError || !release || !vrel) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background">
         <p className="text-ui-lg text-muted-foreground">{t('detailPage.loadError')}</p>

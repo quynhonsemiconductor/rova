@@ -30,12 +30,13 @@ import {
 } from '../domain/ports/test-case-type.repository';
 import type { TestCase } from '../domain/test-case.types';
 import { TEST_CASE_ACTIVITY_CONFIG } from './test-case-activity-diff';
+import type { TestCaseMethod, TestCasePriority } from '../../../../../db/schema/enums';
 
 export interface CreateTestCaseCommand {
   name: string;
   type?: string;
-  method?: 'manual' | 'automated';
-  priority?: 'low' | 'normal' | 'high' | 'urgent';
+  method?: TestCaseMethod;
+  priority?: TestCasePriority;
   ownerId?: string;
   assigneeId?: string;
 }
@@ -229,27 +230,6 @@ export class TestCasesService {
             tx,
           );
 
-          // contextId = the parent Work Item's id, so the Story's own Revision History includes
-          // this row — the entire reason `context_id` exists on `activity_logs` (CLAUDE.md).
-          await this.activityLogger.log(
-            [
-              this.activityLogger.build(
-                {
-                  workspaceId: actor.workspaceId,
-                  projectId: workItem.projectId,
-                  entityType: 'test_case',
-                  entityId: row.id,
-                  contextId: workItemId,
-                },
-                actor.sub,
-                'test_case.created',
-                null,
-                { name: row.name, testCaseKey: row.testCaseKey },
-              ),
-            ],
-            { tx },
-          );
-
           return row;
         });
         break;
@@ -267,6 +247,28 @@ export class TestCasesService {
     }
 
     if (!created) throw lastErr;
+
+    // TX1: outside the transaction, `logSafe` — matching releases/projects: a revision-log
+    // failure must never fail the mutation, which `log()` inside `uow.run` would (a log error
+    // would roll back a Test Case that was otherwise created successfully). `contextId` = the
+    // parent Work Item's id, so the Story's own Revision History includes this row too
+    // (CLAUDE.md: the entire reason `context_id` exists on `activity_logs`).
+    await this.activityLogger.logSafe([
+      this.activityLogger.build(
+        {
+          workspaceId: actor.workspaceId,
+          projectId: workItem.projectId,
+          entityType: 'test_case',
+          entityId: created.id,
+          contextId: workItemId,
+        },
+        actor.sub,
+        'test_case.created',
+        null,
+        { name: created.name, testCaseKey: created.testCaseKey },
+      ),
+    ]);
+
     return created;
   }
 
@@ -320,32 +322,30 @@ export class TestCasesService {
       }
     }
 
-    const updated = await this.uow.run(async (tx) => {
-      const row = await this.testCaseRepo.update(id, input, actor.workspaceId, tx);
+    const updated = await this.uow.run((tx) =>
+      this.testCaseRepo.update(id, input, actor.workspaceId, tx),
+    );
 
-      // C3: scalar-only diff rows, never a rich-text body (TEST_CASE_ACTIVITY_CONFIG.richText).
-      // `contextId` = the parent Work Item's id, matching create (B2), so the Story's own
-      // Revision History includes this edit too.
-      await this.activityLogger.log(
-        this.activityLogger.buildDiff(
-          {
-            workspaceId: actor.workspaceId,
-            projectId: existing.projectId,
-            entityType: 'test_case',
-            entityId: id,
-            contextId: existing.workItemId,
-          },
-          actor.sub,
-          existing as unknown as Record<string, unknown>,
-          input as Partial<Record<string, unknown>>,
-          TEST_CASE_ACTIVITY_CONFIG,
-          'test_case.updated',
-        ),
-        { tx },
-      );
-
-      return row;
-    });
+    // TX1: outside the transaction, `logSafe` — see `create`'s identical reasoning. C3: scalar-only
+    // diff rows, never a rich-text body (TEST_CASE_ACTIVITY_CONFIG.richText). `contextId` = the
+    // parent Work Item's id, matching create (B2), so the Story's own Revision History includes
+    // this edit too.
+    await this.activityLogger.logSafe(
+      this.activityLogger.buildDiff(
+        {
+          workspaceId: actor.workspaceId,
+          projectId: existing.projectId,
+          entityType: 'test_case',
+          entityId: id,
+          contextId: existing.workItemId,
+        },
+        actor.sub,
+        existing as unknown as Record<string, unknown>,
+        input as Partial<Record<string, unknown>>,
+        TEST_CASE_ACTIVITY_CONFIG,
+        'test_case.updated',
+      ),
+    );
 
     return updated;
   }
@@ -376,26 +376,24 @@ export class TestCasesService {
     await this.uow.run(async (tx) => {
       await this.testResultRepo.softDeleteByTestCaseIds([id], actor.workspaceId, tx);
       await this.testCaseRepo.softDelete(id, actor.workspaceId, tx);
-
-      await this.activityLogger.log(
-        [
-          this.activityLogger.build(
-            {
-              workspaceId: actor.workspaceId,
-              projectId: existing.projectId,
-              entityType: 'test_case',
-              entityId: id,
-              contextId: existing.workItemId,
-            },
-            actor.sub,
-            'test_case.deleted',
-            null,
-            { name: existing.name, testCaseKey: existing.testCaseKey },
-          ),
-        ],
-        { tx },
-      );
     });
+
+    // TX1: outside the transaction, `logSafe` — see `create`'s identical reasoning.
+    await this.activityLogger.logSafe([
+      this.activityLogger.build(
+        {
+          workspaceId: actor.workspaceId,
+          projectId: existing.projectId,
+          entityType: 'test_case',
+          entityId: id,
+          contextId: existing.workItemId,
+        },
+        actor.sub,
+        'test_case.deleted',
+        null,
+        { name: existing.name, testCaseKey: existing.testCaseKey },
+      ),
+    ]);
   }
 
   /**

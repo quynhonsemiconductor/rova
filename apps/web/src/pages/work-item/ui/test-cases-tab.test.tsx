@@ -2,7 +2,7 @@
  * The Test Cases tab (Phase 7, Phase A — AC2, AC3, AC4, BR10, BR15; Phase B — B4's live Add New).
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 
 const navigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
@@ -214,9 +214,12 @@ describe('TestCasesTab', () => {
     expect(deleteMutate).not.toHaveBeenCalled()
 
     // The confirm dialog's own Delete is the last one rendered (the bulk bar's is still mounted
-    // behind it).
+    // behind it). T1: `act` flushes the `mutateAsync` resolution and the state update it drives
+    // (closing the dialog), so the assertion below doesn't trigger an unawaited-update warning.
     const buttons = screen.getAllByRole('button', { name: /^Delete$/ })
-    fireEvent.click(buttons[buttons.length - 1])
+    await act(async () => {
+      fireEvent.click(buttons[buttons.length - 1])
+    })
     expect(deleteMutate).toHaveBeenCalledWith('tc-1')
   })
 

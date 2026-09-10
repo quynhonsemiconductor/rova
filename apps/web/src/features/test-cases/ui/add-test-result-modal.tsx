@@ -10,7 +10,8 @@ import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
-import { useCreateTestResult, useTestCase } from '@/features/test-cases/api'
+import { useCreateTestResult, useTestCase, type TestResult } from '@/features/test-cases/api'
+import { VERDICT_LABEL } from '@/features/test-cases/model/test-result-columns'
 import { useWorkItem } from '@/features/work-items/api'
 import { useTeamOwnerOptions } from '@/features/teams/api'
 import { todayIsoDate, EMPTY_VALUE } from '@/shared/lib/utils'
@@ -28,14 +29,8 @@ interface Props {
   onClose: () => void
 }
 
-const VERDICT_OPTIONS = ['pass', 'fail', 'blocked', 'error', 'inconclusive'] as const
-const VERDICT_LABEL: Record<(typeof VERDICT_OPTIONS)[number], string> = {
-  pass: 'Pass',
-  fail: 'Fail',
-  blocked: 'Blocked',
-  error: 'Error',
-  inconclusive: 'Inconclusive',
-}
+// F1: derived from the ONE VERDICT_LABEL (test-result-columns.tsx), not a second hardcoded list.
+const VERDICT_OPTIONS = Object.keys(VERDICT_LABEL) as TestResult['verdict'][]
 
 export function AddTestResultModal({ testCaseId, projectId, onClose }: Props) {
   const { t } = useTranslation('test-cases')
