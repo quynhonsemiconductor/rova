@@ -19,12 +19,15 @@
  */
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
+import { DRIZZLE, type DrizzleDB } from '@platform';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
+import { testCaseTypes, workItems } from '../../db/schema/work';
 import {
   ADMIN_USER_ID,
   NXP_STORY_1_ID,
@@ -52,6 +55,30 @@ describe('test case routes (e2e)', () => {
 
     // Bearer, not the BFF cookie: `requiresCsrfProtection` exempts Bearer callers, so no CSRF dance.
     token = (await app.get(AuthService).devLogin('admin@qnsc.dev', '127.0.0.1')).accessToken;
+
+    // NXP gets its five default Test Case Types from migration 0129's backfill, which only
+    // covers projects that ALREADY EXIST when it runs — NXP is created by the demo SEED, which
+    // runs AFTER migrations, so on a fresh CI database NXP has ZERO selectable Types (this is
+    // documented on the seed itself, db/seeds/demo.ts, around the Test Cases block). The
+    // create-time hook that would seed Types for a NEW project is Phase G, not part of this
+    // branch. Insert one directly — the only mechanism this branch has, since Phase G's
+    // TestCaseTypesService/route don't exist here yet — so `create (Phase B)`'s default-Type
+    // path (BR2: "first selectable Type") has something to select.
+    const db = app.get<DrizzleDB>(DRIZZLE);
+    const [story] = await db
+      .select({ projectId: workItems.projectId, workspaceId: workItems.workspaceId })
+      .from(workItems)
+      .where(eq(workItems.id, NXP_STORY_1_ID));
+    if (!story) throw new Error(`Seed fixture missing: work item ${NXP_STORY_1_ID}`);
+    await db
+      .insert(testCaseTypes)
+      .values({
+        workspaceId: story.workspaceId,
+        projectId: story.projectId,
+        name: 'Acceptance',
+        position: 0,
+      })
+      .onConflictDoNothing();
   });
 
   afterAll(async () => {
