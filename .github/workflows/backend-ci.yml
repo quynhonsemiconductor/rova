@@ -562,3 +562,50 @@ jobs:
           fail-on-breaking: "true"
 
   # Security scans (Trivy, CodeQL) → security.yml
+
+  # ── The aggregate gate ──────────────────────────────────────────────────────
+  # `Backend CI required` is THE required check for this workflow, and it exists for
+  # one reason: GitHub counts a SKIPPED or CANCELLED required check as PASSING. Every
+  # false-green this repo has recorded is that same bug wearing a different hat —
+  # pr-title.yml documents a title edit cancelling the real run and replacing it with
+  # one where every heavy job skipped (green, having executed nothing, three times on
+  # opshub #110), and Phase 7's stack sat on 3-5 reported checks because the jobs never
+  # started at all. Naming each job individually in the ruleset cannot catch either
+  # case: a check that never reports is not a check that fails.
+  #
+  # This job inverts the default. It asserts a POSITIVE result from every gate, so
+  # "did not run" is failure rather than absence.
+  #
+  # `if: always()` is what makes that possible — without it this job would skip as soon
+  # as a dependency failed and would inherit the very bug it closes. A cancelled
+  # WORKFLOW still cancels this job rather than failing it, so a run superseded by
+  # `cancel-in-progress` does not leave a red check behind; its replacement reports fresh.
+  #
+  # `skipped` is treated as failure because nothing above is conditional: this workflow
+  # carries no `paths:` filter and no job carries an `if:`. A skip therefore means a job
+  # was renamed, removed, or guarded out — each of which should fail loudly rather than
+  # quietly shrink the gate. If a genuinely optional job is ever added, exclude it from
+  # `needs` here instead of loosening this check.
+  #
+  # `needs` MUST list every job above. A job missing from this list is a job outside the
+  # gate.
+  #
+  # The assertion itself lives in `quynhonsemiconductor/ci` so the eight repos that need
+  # it share one implementation and one copy of the incident history — the same reason
+  # pr-title.yml calls an action instead of carrying its own copy. It stays a LOCAL job
+  # calling that action, never a reusable workflow, because this name is a required check
+  # and the reusable form would rename it to `<caller job>/<called job>`.
+  ci-required:
+    name: Backend CI required
+    if: always()
+    needs: [quality, test, migrations, build, openapi]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # No `allow-skipped`: nothing above is conditional (this workflow carries no
+      # `paths:` filter and no job carries an `if:`), so a skip means a job was renamed,
+      # removed or guarded out — each of which should fail loudly rather than quietly
+      # shrink the gate.
+      - uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@v1
+        with:
+          results: ${{ join(needs.*.result, ',') }}
