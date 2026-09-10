@@ -2,7 +2,7 @@
  * Test Cases API hooks — Phase 7. Phase A shipped the read path; Phase B adds create.
  * All types derive from the generated OpenAPI contract (never hand-written).
  */
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { ApiError, apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
@@ -10,6 +10,8 @@ import type { components } from '@/shared/api/generated/api'
 export type TestCase = components['schemas']['TestCaseResponseDto']
 export type TestCaseType = components['schemas']['TestCaseTypeOptionDto']
 export type CreateTestCaseInput = components['schemas']['CreateTestCaseDto']
+export type UpdateTestCaseInput = components['schemas']['UpdateTestCaseDto']
+export type ActivityLog = components['schemas']['ActivityResponseDto']
 
 // A Test Case tab loads one Work Item's whole set (like Tasks) — bounded, so no cursor UI. The
 // limit just has to exceed any real Work Item's Test Case count; the list route stays paged
@@ -22,6 +24,7 @@ export const testCaseKeys = {
   list: (workItemId: string) => [...testCaseKeys.all, 'list', workItemId] as const,
   detail: (id: string) => [...testCaseKeys.all, 'detail', id] as const,
   byKey: (key: string) => [...testCaseKeys.all, 'by-key', key] as const,
+  activity: (id: string) => [...testCaseKeys.all, 'activity', id] as const,
 }
 
 export function useTestCases(workItemId: string | undefined) {
@@ -131,5 +134,49 @@ export function useTestCaseTypes(projectId: string | undefined) {
     },
     enabled: !!projectId,
     staleTime: 60_000,
+  })
+}
+
+// ── Phase C: edit ────────────────────────────────────────────────────────────
+
+/**
+ * `PATCH /test-cases/:id`. Mirrors `useUpdateWorkItem`'s cache-write shape: an instant,
+ * flash-free update of the detail page the user is looking at, rather than waiting on a
+ * refetch — the list/badge query invalidates separately since a Test Case's own edit does
+ * not change the count.
+ */
+export function useUpdateTestCase(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: UpdateTestCaseInput): Promise<TestCase> => {
+      const { data, error, response } = await apiClient.PATCH('/v1/test-cases/{id}', {
+        params: { path: { id } },
+        body: input,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as TestCase
+    },
+    onSuccess: (testCase) => {
+      qc.setQueryData(testCaseKeys.detail(id), testCase)
+      qc.setQueriesData({ queryKey: testCaseKeys.byKey(testCase.testCaseKey) }, testCase)
+    },
+  })
+}
+
+// ── Phase C: Revision History (C6) ───────────────────────────────────────────
+
+export function useTestCaseActivity(id: string | undefined) {
+  return useQuery({
+    queryKey: testCaseKeys.activity(id ?? ''),
+    queryFn: async (): Promise<ActivityLog[]> => {
+      if (!id) return []
+      const { data, error, response } = await apiClient.GET('/v1/test-cases/{id}/activity', {
+        params: { path: { id }, query: { page: 1, pageSize: 100 } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as { data?: ActivityLog[] } | undefined)?.data ?? []
+    },
+    enabled: !!id,
+    staleTime: 15_000,
   })
 }

@@ -1,6 +1,7 @@
 /**
- * Test Case Detail page (Phase 7, Phase A — AC4). READ-ONLY: every field is a
- * `DetailReadonlyValue` / read-only `RichTextEditor`, never an editable input.
+ * Test Case Detail page (Phase 7, Phase C — SRS §6). Now editable, gated on `test_case:edit`.
+ * BR5: Project/Team/Last Verdict/Last Run stay read-only regardless of permission — there is no
+ * control anywhere on this page that could write any of the four.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
@@ -17,11 +18,33 @@ vi.mock('@/shared/lib/deep-link-project', () => ({
 }))
 
 const testCaseByKey = vi.fn()
+const updateTestCase = vi.fn()
+const testCaseTypes = vi.fn()
+const testCaseActivity = vi.fn()
 vi.mock('@/features/test-cases/api', () => ({
   useTestCaseByKey: (...args: unknown[]) => testCaseByKey(...args),
+  useUpdateTestCase: () => ({ mutateAsync: updateTestCase }),
+  useTestCaseTypes: (...args: unknown[]) => testCaseTypes(...args),
+  useTestCaseActivity: (...args: unknown[]) => testCaseActivity(...args),
 }))
 vi.mock('@/features/work-items/api', () => ({
   useWorkItem: () => ({ data: { id: 'wi-1', itemKey: 'US-1' } }),
+}))
+
+const canPermission = vi.fn()
+vi.mock('@/features/access/api', () => ({
+  useProjectPermissions: () => ({ can: canPermission }),
+}))
+
+const teamOwnerOptions = vi.fn()
+const projectMemberOptions = vi.fn()
+vi.mock('@/features/teams/api', () => ({
+  useTeamOwnerOptions: (...args: unknown[]) => teamOwnerOptions(...args),
+  useProjectMemberOptions: (...args: unknown[]) => projectMemberOptions(...args),
+}))
+
+vi.mock('@/features/collaboration/ui/attachment-block', () => ({
+  AttachmentBlock: () => <div data-testid="attachment-block" />,
 }))
 
 import '@/shared/i18n/i18n'
@@ -57,24 +80,53 @@ const testCase = (over: Partial<TestCase> = {}): TestCase =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  teamOwnerOptions.mockReturnValue({ data: [], isLoading: false, isError: false })
+  projectMemberOptions.mockReturnValue({ data: [], isLoading: false, isError: false })
+  testCaseTypes.mockReturnValue({ data: [{ id: 'type-1', name: 'Functional' }] })
+  testCaseActivity.mockReturnValue({ data: [], isLoading: false, isError: false })
 })
 
 describe('TestCaseDetailPage', () => {
-  it('renders every field read-only — no editable input anywhere', () => {
+  it('renders read-only when the caller lacks test_case:edit', () => {
+    canPermission.mockReturnValue(false)
     testCaseByKey.mockReturnValue({ data: testCase(), isLoading: false, isError: false })
     render(<TestCaseDetailPage />)
 
     expect(screen.getByText('User can log in')).toBeInTheDocument()
-    // RichTextEditor keeps `role="textbox"` even read-only (it is still the accessible name for the
-    // rendered prose), but `contenteditable` must be `false` on every one of them, and no `combobox`
-    // (a live SearchableSelect) may exist at all on a read-only detail page.
     for (const editor of screen.getAllByRole('textbox')) {
       expect(editor).toHaveAttribute('contenteditable', 'false')
     }
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 
-  it('renders Project backlog when teamId is null (SRS §5)', () => {
+  it('renders editable controls when the caller holds test_case:edit (C5)', () => {
+    canPermission.mockReturnValue(true)
+    testCaseByKey.mockReturnValue({ data: testCase(), isLoading: false, isError: false })
+    render(<TestCaseDetailPage />)
+
+    // At least one content editor is writable, and the Type/Method/Priority selects are live.
+    const editors = screen.getAllByRole('textbox')
+    expect(editors.some((e) => e.getAttribute('contenteditable') !== 'false')).toBe(true)
+    expect(screen.getAllByRole('combobox').length).toBeGreaterThan(0)
+  })
+
+  it('BR17: unions the row’s OWN Type with the live selectable list', () => {
+    canPermission.mockReturnValue(true)
+    testCaseTypes.mockReturnValue({ data: [{ id: 'type-2', name: 'Regression' }] })
+    testCaseByKey.mockReturnValue({
+      data: testCase({ type: 'Retired Type' }),
+      isLoading: false,
+      isError: false,
+    })
+    render(<TestCaseDetailPage />)
+
+    // The Type trigger renders the row's own historical value even though it is absent from the
+    // live feed above — proves the union, not a refusal to render an unknown value.
+    expect(screen.getByText('Retired Type')).toBeInTheDocument()
+  })
+
+  it('BR5: renders Project backlog when teamId is null, with no Team control to edit it', () => {
+    canPermission.mockReturnValue(true)
     testCaseByKey.mockReturnValue({
       data: testCase({ teamId: null }),
       isLoading: false,
@@ -86,6 +138,7 @@ describe('TestCaseDetailPage', () => {
   })
 
   it('links Work Product to the parent Work Item', () => {
+    canPermission.mockReturnValue(false)
     testCaseByKey.mockReturnValue({ data: testCase(), isLoading: false, isError: false })
     render(<TestCaseDetailPage />)
 
@@ -94,6 +147,7 @@ describe('TestCaseDetailPage', () => {
   })
 
   it('renders each of the three denied states, not a blank page', () => {
+    canPermission.mockReturnValue(false)
     testCaseByKey.mockReturnValue({
       data: undefined,
       isLoading: false,

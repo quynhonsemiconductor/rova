@@ -28,6 +28,28 @@ export interface CreateTestCaseInput {
 }
 
 /**
+ * Phase C's PATCH payload at the repository boundary — `undefined` means "leave the column
+ * alone", `null` (where nullable) means "clear it". Deliberately the same field list as
+ * `UpdateTestCaseSchema`: no `projectId`/`teamId`/`workItemId`/`lastVerdict`/`lastRun`/
+ * `lastResultId`/`rank` ever reaches this port.
+ */
+export interface UpdateTestCaseInput {
+  name?: string;
+  description?: string | null;
+  objective?: string | null;
+  preconditions?: string | null;
+  validationInput?: string | null;
+  validationExpectedResult?: string | null;
+  postconditions?: string | null;
+  notes?: string | null;
+  type?: string;
+  method?: 'manual' | 'automated';
+  priority?: 'low' | 'normal' | 'high' | 'urgent';
+  ownerId?: string | null;
+  assigneeId?: string | null;
+}
+
+/**
  * `scope` is REQUIRED on the LIST-shaped reads, structurally — see `team-read-scope.ts` for why
  * it is never applied as a predicate here. The real boundary is
  * `TestCasesService.requireReadable`, called before either of these; the parameter exists so a
@@ -72,4 +94,18 @@ export interface ITestCaseRepository {
 
   /** Live (non-archived) Types for a project, ordered for BR2's "first selectable" default. */
   listSelectableTypes(projectId: string, workspaceId: string): Promise<TestCaseTypeOption[]>;
+
+  // ── Writes (Phase C) ────────────────────────────────────────────────────────
+
+  /**
+   * Column patch only — no rank, no team/project/work-item repointing. Returns the updated row.
+   * `executor` defaults to the pool connection; the service passes `tx` so the write and its
+   * activity log land in one transaction.
+   */
+  update(
+    id: string,
+    input: UpdateTestCaseInput,
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<TestCase>;
 }

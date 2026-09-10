@@ -50,8 +50,8 @@ export class PresignAttachmentResponseDto extends createZodDto(PresignAttachment
 // by a route, so it carried no information and invited clients to branch on it.
 export const AttachmentResponseSchema = z.object({
   id: z.string().uuid(),
-  /** The subject this file hangs off (0083). Replaced `workItemId`. */
-  entityType: z.enum(['work_item', 'portfolio_item']),
+  /** The subject this file hangs off (0083; `test_case` added Phase 7 Phase C). Replaced `workItemId`. */
+  entityType: z.enum(['work_item', 'portfolio_item', 'test_case']),
   entityId: z.string().uuid(),
   uploadedBy: z.string().uuid(),
   filename: z.string(),

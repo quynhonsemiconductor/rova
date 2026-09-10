@@ -68,12 +68,16 @@
   },
   "detail": {
     "tabs": {
-      "details": "Details"
+      "details": "Details",
+      "history": "Revision History"
     },
     "metadataTitle": "Details",
     "back": "Back",
     "notFound": "No Test Case found for \"{{key}}\"",
     "notFoundHint": "Check the key and try again.",
     "notRunYet": "Not run yet"
+  },
+  "history": {
+    "subtitle": "Activity log for field changes on this Test Case."
   }
 }

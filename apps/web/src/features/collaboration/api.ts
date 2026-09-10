@@ -9,12 +9,16 @@ import { withCsrfHeader } from '@/shared/api/csrf'
 export type Attachment = components['schemas']['AttachmentResponseDto']
 
 /**
- * What a comment or an attachment hangs off. Mirrors the `entity_ref_type` enum (migrations
- * 0080 and 0081) — both child records live on a work item or on a portfolio item, and the API
- * has one route tree per entity so the permission check can differ (`work_item:edit` vs
- * `portfolio:edit`).
+ * What an ATTACHMENT hangs off. Mirrors `AttachmentEntityType` (migrations 0080/0081, `test_case`
+ * added Phase 7 Phase C) — every member here has its own route tree so the permission check can
+ * differ (`work_item:edit` vs `portfolio:edit` vs `test_case:edit`).
+ *
+ * Comments stay NARROWER (`work_item` | `portfolio_item` only, see `CommentEntityType` below):
+ * `CollaborationService` refuses `test_case`/`test_result` (SRS names no comment thread on a Test
+ * Case) — this type must not admit what comments refuse, or a caller could construct a comment
+ * subject the server rejects with no type error to catch it first.
  */
-export type EntityRefType = 'work_item' | 'portfolio_item'
+export type EntityRefType = 'work_item' | 'portfolio_item' | 'test_case'
 
 export interface EntitySubject {
   entityType: EntityRefType
@@ -24,6 +28,7 @@ export interface EntitySubject {
 const SUBJECT_PATH: Record<EntityRefType, string> = {
   work_item: 'work-items',
   portfolio_item: 'portfolio-items',
+  test_case: 'test-cases',
 }
 
 /** `/v1/work-items/:id` or `/v1/portfolio-items/:id` — every child-record call hangs off this. */
@@ -158,7 +163,7 @@ export function useDeleteAttachment(subject: EntitySubject | undefined) {
 
 export interface Comment {
   id: string
-  entityType: EntityRefType
+  entityType: CommentEntityType
   entityId: string
   authorId: string
   body: string
@@ -169,16 +174,25 @@ export interface Comment {
   updatedAt: string
 }
 
-/** Kept as a name for what a comment thread hangs off; the shape is the shared subject. */
-export type CommentEntityType = EntityRefType
-export type CommentSubject = EntitySubject
+/**
+ * What a COMMENT thread hangs off — deliberately NARROWER than `EntityRefType` (Phase 7 plan
+ * §2.6/C7): `test_case` gained an attachment route tree but no comment one, since the SRS names
+ * no thread on a Test Case and `CollaborationService` refuses it server-side. Widening this
+ * alongside `EntityRefType` would let a caller construct a `test_case` comment subject with no
+ * type error to catch it before the 403 does.
+ */
+export type CommentEntityType = 'work_item' | 'portfolio_item'
+export interface CommentSubject {
+  entityType: CommentEntityType
+  entityId: string
+}
 
 const commentKeys = {
-  list: (subject: EntitySubject | undefined) =>
+  list: (subject: CommentSubject | undefined) =>
     ['comments', subject?.entityType ?? '', subject?.entityId ?? ''] as const,
 }
 
-export function useComments(subject: EntitySubject | undefined) {
+export function useComments(subject: CommentSubject | undefined) {
   return useQuery({
     queryKey: commentKeys.list(subject),
     queryFn: async (): Promise<Comment[]> => {
@@ -192,7 +206,7 @@ export function useComments(subject: EntitySubject | undefined) {
   })
 }
 
-export function useCreateComment(subject: EntitySubject | undefined) {
+export function useCreateComment(subject: CommentSubject | undefined) {
   return useMutation({
     mutationFn: async (input: {
       body: string
@@ -213,7 +227,7 @@ export function useCreateComment(subject: EntitySubject | undefined) {
   })
 }
 
-export function useUpdateComment(subject: EntitySubject | undefined) {
+export function useUpdateComment(subject: CommentSubject | undefined) {
   return useMutation({
     mutationFn: async (input: { commentId: string; body: string }): Promise<Comment> => {
       if (!subject) throw new Error('comment subject required')
@@ -230,7 +244,7 @@ export function useUpdateComment(subject: EntitySubject | undefined) {
   })
 }
 
-export function useDeleteComment(subject: EntitySubject | undefined) {
+export function useDeleteComment(subject: CommentSubject | undefined) {
   return useMutation({
     mutationFn: async (commentId: string): Promise<void> => {
       if (!subject) throw new Error('comment subject required')

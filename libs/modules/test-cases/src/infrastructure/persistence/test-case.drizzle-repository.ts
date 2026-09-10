@@ -11,6 +11,7 @@ import {
   CreateTestCaseInput,
   ITestCaseRepository,
   TestCaseTypeOption,
+  UpdateTestCaseInput,
 } from '../../domain/ports/test-case.repository';
 
 /**
@@ -203,6 +204,54 @@ export class TestCaseDrizzleRepository implements ITestCaseRepository {
       // as every other ranked read in this repo (`query-ordering.ratchet.spec.ts`).
       .orderBy(asc(testCaseTypes.position), asc(testCaseTypes.name), asc(testCaseTypes.id));
     return rows;
+  }
+
+  async update(
+    id: string,
+    input: UpdateTestCaseInput,
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<TestCase> {
+    const exec = executor ?? this.db;
+    // Built key-by-key rather than spread: `undefined` means "leave alone" and `null` means
+    // "clear" for the nullable columns — spreading `input` would write nulls over untouched
+    // fields (matches `PortfolioItemDrizzleRepository.update`).
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+    const assign = <K extends keyof UpdateTestCaseInput>(key: K) => {
+      if (input[key] !== undefined) set[key] = input[key];
+    };
+    assign('name');
+    assign('description');
+    assign('objective');
+    assign('preconditions');
+    assign('validationInput');
+    assign('validationExpectedResult');
+    assign('postconditions');
+    assign('notes');
+    assign('type');
+    assign('method');
+    assign('priority');
+    assign('ownerId');
+    assign('assigneeId');
+
+    await exec
+      .update(testCases)
+      .set(set)
+      .where(and(eq(testCases.id, id), eq(testCases.workspaceId, workspaceId)));
+
+    const rows = await exec
+      .select({ ...getTableColumns(testCases), ownerName: OWNER_NAME, assigneeName: ASSIGNEE_NAME })
+      .from(testCases)
+      .leftJoin(TC_OWNER_USER, eq(TC_OWNER_USER.id, testCases.ownerId))
+      .leftJoin(TC_ASSIGNEE_USER, eq(TC_ASSIGNEE_USER.id, testCases.assigneeId))
+      .where(
+        and(
+          eq(testCases.id, id),
+          eq(testCases.workspaceId, workspaceId),
+          sql`${testCases.deletedAt} IS NULL`,
+        ),
+      );
+    return this.mapRow(rows[0]);
   }
 
   private mapRow(

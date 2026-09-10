@@ -8,16 +8,21 @@ import {
   isDuplicateKeyError,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
+import type { ActivityLog } from '@modules/activity';
 import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
 import { ProjectsService } from '@modules/projects';
 import { ActivityLogger } from '@modules/activity';
+import { EntityAttachmentsService, TEST_CASE_ATTACHMENT_POLICY } from '@modules/attachments';
+import type { AttachmentRef, EntityAttachment } from '@modules/attachments';
 import {
   ITestCaseRepository,
   TEST_CASE_REPOSITORY,
   TestCaseTypeOption,
+  UpdateTestCaseInput,
 } from '../domain/ports/test-case.repository';
 import type { TestCase } from '../domain/test-case.types';
+import { TEST_CASE_ACTIVITY_CONFIG } from './test-case-activity-diff';
 
 export interface CreateTestCaseCommand {
   name: string;
@@ -38,6 +43,7 @@ export class TestCasesService {
     private readonly accessService: AccessService,
     private readonly projectsService: ProjectsService,
     private readonly activityLogger: ActivityLogger,
+    private readonly entityAttachments: EntityAttachmentsService,
     private readonly uow: UnitOfWork,
   ) {}
 
@@ -97,6 +103,23 @@ export class TestCasesService {
   /** Live Types for the Create modal's dropdown, and BR2's "first selectable" source. */
   async listSelectableTypes(actor: JwtPayload, projectId: string): Promise<TestCaseTypeOption[]> {
     return this.testCaseRepo.listSelectableTypes(projectId, actor.workspaceId);
+  }
+
+  /**
+   * Revision History (C6). BR20: every sub-resource of a Test Case goes through the SAME scoped
+   * read as the record itself — this calls `getById` first (which itself calls
+   * `requireReadableWorkItem`), the same shape `WorkItemsService.getActivity` uses for its own
+   * sub-resource.
+   */
+  async getActivity(
+    actor: JwtPayload,
+    id: string,
+    args: { limit: number; offset: number },
+  ): Promise<{ items: ActivityLog[]; total: number }> {
+    await this.getById(actor, id);
+    const page = Math.floor(args.offset / args.limit) + 1;
+    const res = await this.activityLogger.listFor(id, actor.workspaceId, page, args.limit);
+    return { items: res.data, total: res.total };
   }
 
   /**
@@ -237,5 +260,160 @@ export class TestCasesService {
 
     if (!created) throw lastErr;
     return created;
+  }
+
+  /**
+   * Edit a Test Case (SRS §6.3, Phase C). `test_case:edit` is checked by the route's own
+   * `@RequirePermission`; this method still loads the row and its parent Work Item first — BR19's
+   * read-scope check applies to a write exactly as it does to a read, and the parent's `projectId`/
+   * `teamId` are what `assertAssignable` needs for Owner/Assigned To (BR8).
+   */
+  async update(actor: JwtPayload, id: string, input: UpdateTestCaseInput): Promise<TestCase> {
+    const existing = await this.testCaseRepo.findById(id, actor.workspaceId);
+    if (!existing) {
+      throw new NotFoundException('TEST_CASE_NOT_FOUND', 'Test case not found');
+    }
+    if (existing.workItemId) {
+      await this.requireReadableWorkItem(actor, existing.workItemId);
+    }
+
+    // BR17: a Type re-supplied UNCHANGED is always a no-op, even if it has since been archived —
+    // a historical value must stay settable back to itself without appearing in the live dropdown.
+    // Any OTHER value must be one of the project's current selectable Types (BR2's rule, applied
+    // the same way on update as on create).
+    if (input.type !== undefined && input.type !== existing.type) {
+      const selectableTypes = await this.testCaseRepo.listSelectableTypes(
+        existing.projectId,
+        actor.workspaceId,
+      );
+      if (!selectableTypes.some((t) => t.name === input.type)) {
+        throw new PreconditionFailedException(
+          'TEST_CASE_TYPE_NOT_SELECTABLE',
+          `"${input.type}" is not a selectable Type for this project`,
+        );
+      }
+    }
+
+    // BR8: Owner and Assigned To go through the SAME assignment-eligibility rule, looped through
+    // ONE call shape — not two near-duplicate blocks a third field could later half-update (the
+    // Dev Owner precedent). Only fields that are ACTUALLY CHANGING are checked, matching
+    // `WorkItemsService.assertAssignmentScope`'s `changedAssignableIds` shape: re-saving an
+    // existing (and possibly since-ineligible) value must not be refused.
+    const assignableFields: Array<'ownerId' | 'assigneeId'> = ['ownerId', 'assigneeId'];
+    for (const field of assignableFields) {
+      const value = input[field];
+      if (value && value !== existing[field]) {
+        await this.projectsService.assertAssignable(
+          actor.workspaceId,
+          existing.projectId,
+          existing.teamId,
+          value,
+        );
+      }
+    }
+
+    const updated = await this.uow.run(async (tx) => {
+      const row = await this.testCaseRepo.update(id, input, actor.workspaceId, tx);
+
+      // C3: scalar-only diff rows, never a rich-text body (TEST_CASE_ACTIVITY_CONFIG.richText).
+      // `contextId` = the parent Work Item's id, matching create (B2), so the Story's own
+      // Revision History includes this edit too.
+      await this.activityLogger.log(
+        this.activityLogger.buildDiff(
+          {
+            workspaceId: actor.workspaceId,
+            projectId: existing.projectId,
+            entityType: 'test_case',
+            entityId: id,
+            contextId: existing.workItemId,
+          },
+          actor.sub,
+          existing as unknown as Record<string, unknown>,
+          input as Partial<Record<string, unknown>>,
+          TEST_CASE_ACTIVITY_CONFIG,
+          'test_case.updated',
+        ),
+        { tx },
+      );
+
+      return row;
+    });
+
+    return updated;
+  }
+
+  // ── Attachments (C4) ─────────────────────────────────────────────────────────
+  //
+  // Thin delegations to `EntityAttachmentsService` — same shape as
+  // `WorkItemsService`'s own attachment methods. BR20: every one of these calls
+  // `getById` FIRST, which is the SAME scoped read the record route itself uses (BR19's
+  // `requireReadableWorkItem` underneath) — including `getAttachmentDownloadUrl`, where a signed
+  // URL outliving the request makes a missing scope check the worst of the group.
+
+  private static attachmentRef(testCaseId: string): AttachmentRef {
+    return { entityType: 'test_case', entityId: testCaseId };
+  }
+
+  async presignAttachment(
+    actor: JwtPayload,
+    testCaseId: string,
+    input: { filename: string; mimeType: string; sizeBytes: number; checksumSha256: string },
+  ): Promise<{ attachmentId: string; uploadUrl: string; requiredHeaders: Record<string, string> }> {
+    await this.getById(actor, testCaseId);
+    return this.entityAttachments.presign(
+      actor,
+      TestCasesService.attachmentRef(testCaseId),
+      input,
+      TEST_CASE_ATTACHMENT_POLICY,
+    );
+  }
+
+  async confirmAttachment(
+    actor: JwtPayload,
+    testCaseId: string,
+    attachmentId: string,
+  ): Promise<EntityAttachment> {
+    const testCase = await this.getById(actor, testCaseId);
+    return this.entityAttachments.confirm(
+      actor,
+      TestCasesService.attachmentRef(testCaseId),
+      attachmentId,
+      testCase.projectId,
+      TEST_CASE_ATTACHMENT_POLICY,
+    );
+  }
+
+  async listAttachments(actor: JwtPayload, testCaseId: string): Promise<EntityAttachment[]> {
+    await this.getById(actor, testCaseId);
+    return this.entityAttachments.list(actor, TestCasesService.attachmentRef(testCaseId));
+  }
+
+  async getAttachmentDownloadUrl(
+    actor: JwtPayload,
+    testCaseId: string,
+    attachmentId: string,
+  ): Promise<{ downloadUrl: string }> {
+    // Both `:aid/download` and `:aid/content` land here — see the class-level BR20 note.
+    await this.getById(actor, testCaseId);
+    return this.entityAttachments.downloadUrl(
+      actor,
+      TestCasesService.attachmentRef(testCaseId),
+      attachmentId,
+      TEST_CASE_ATTACHMENT_POLICY,
+    );
+  }
+
+  async deleteAttachment(
+    actor: JwtPayload,
+    testCaseId: string,
+    attachmentId: string,
+  ): Promise<void> {
+    const testCase = await this.getById(actor, testCaseId);
+    await this.entityAttachments.delete(
+      actor,
+      TestCasesService.attachmentRef(testCaseId),
+      attachmentId,
+      testCase.projectId,
+    );
   }
 }
