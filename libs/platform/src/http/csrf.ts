@@ -46,7 +46,7 @@ function hasBearerToken(authorization: string | string[] | undefined): boolean {
  * Whether this request must present a valid CSRF token.
  *
  * CSRF is only possible when the browser attaches a credential **ambiently** — for
- * rally, the `__Host-rova_session` cookie. So the check applies exactly when all
+ * rova, the `__Host-rova_session` cookie. So the check applies exactly when all
  * of the following hold:
  *
  *  1. the method can change state;

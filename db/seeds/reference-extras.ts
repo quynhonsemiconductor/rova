@@ -315,7 +315,7 @@ async function seedScm(db: Db): Promise<void> {
       workspaceId: WORKSPACE_ID,
       provider: 'github',
       installationId: '90000001',
-      accountLogin: 'QNSC-VN',
+      accountLogin: 'quynhonsemiconductor',
       active: true,
     })
     .onConflictDoNothing();

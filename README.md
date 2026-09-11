@@ -1,15 +1,15 @@
-# Rally
+# Rova
 
 Single-tenant project-management application. Runs on **ECS Fargate** (AWS), per the [platform architecture](https://github.com/quynhonsemiconductor/.github/blob/main/docs/PLATFORM_ARCHITECTURE.md).
 
-> **Not multi-tenant.** Rally was built as a multi-tenant SaaS and stopped being one on 2026-07-09, when `tenant` was merged into `workspace` ([design](docs/superpowers/specs/2026-07-09-drop-multi-tenant-merge-into-workspace-design.md)). `workspace` is now the switchable root; users are global and join workspaces via `workspace_members`. The deployment seeds exactly one workspace (`db/seeds/bootstrap.ts`), so in practice the boundary that separates users is **project**, enforced by `PolicyGuard`. There is no RLS and no DB-level isolation — see the ratchets in `test/workspace-scope.ratchet.spec.ts` and `test/route-policy.ratchet.spec.ts` for what holds that line instead.
+> **Not multi-tenant.** Rova was built as a multi-tenant SaaS and stopped being one on 2026-07-09, when `tenant` was merged into `workspace` ([design](docs/superpowers/specs/2026-07-09-drop-multi-tenant-merge-into-workspace-design.md)). `workspace` is now the switchable root; users are global and join workspaces via `workspace_members`. The deployment seeds exactly one workspace (`db/seeds/bootstrap.ts`), so in practice the boundary that separates users is **project**, enforced by `PolicyGuard`. There is no RLS and no DB-level isolation — see the ratchets in `test/workspace-scope.ratchet.spec.ts` and `test/route-policy.ratchet.spec.ts` for what holds that line instead.
 
 > **Monorepo.** Consolidates the former `rally-api` + `rally-web` + `rally-infra` into one repository per [REPOSITORY_STRUCTURE.md](https://github.com/quynhonsemiconductor/.github/blob/main/docs/REPOSITORY_STRUCTURE.md). Old repos are archived (read-only) for history.
 
 ## Layout
 
 ```
-rally/
+rova/
 ├── apps/
 │   ├── api/       # NestJS 11 (Fastify) HTTP API — ECS Fargate service
 │   ├── worker/    # NestJS background/queue worker — ECS Fargate service

@@ -266,7 +266,7 @@ export function AppShell() {
   }, [projectId, teamId])
 
   async function handleSignOut() {
-    // Revoke the server-side session (clears the __Host-rally_session cookie) and return to login.
+    // Revoke the server-side session (clears the __Host-rova_session cookie) and return to login.
     // The browser holds no tokens to clear. The POST + clearAuth pair lives in
     // `shared/api/sign-out.ts` because `/accept-invitation` needs the same thing for its
     // wrong-account refusal, and a page cannot import a widget.

@@ -208,7 +208,7 @@ export const scmInstallations = scmSchema.table(
     provider: scmProviderEnum('provider').notNull().default('github'),
     /** GitHub App installation id (numeric, stored as text). */
     installationId: varchar('installation_id', { length: 64 }).notNull(),
-    /** Owning org/user login, e.g. "QNSC-VN". */
+    /** Owning org/user login, e.g. "quynhonsemiconductor". */
     accountLogin: varchar('account_login', { length: 255 }),
     /** 'Organization' | 'User'. */
     accountType: varchar('account_type', { length: 32 }),

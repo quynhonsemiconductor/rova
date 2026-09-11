@@ -1,4 +1,4 @@
-# Rally — working notes
+# Rova — working notes
 
 Conventions that already exist in this repo but are easy to miss, plus the
 non-obvious tooling behaviour. Read this before changing build, auth, or DB code.
@@ -1956,7 +1956,7 @@ either opens a hole or leaks API surface.
 
 - **Browser sessions are BFF, not bearer.** The SPA holds no tokens. It talks to a
   same-origin Cloudflare Pages Function (`apps/web/functions/v1/[[path]].ts`) that
-  proxies to the API, and authentication rides an opaque `__Host-rally_session`
+  proxies to the API, and authentication rides an opaque `__Host-rova_session`
   cookie backed by a server-side Valkey session. Bearer still works for machine
   clients — `JwtAuthGuard` handles both paths.
 - **One guard, one decorator.** `PolicyGuard`
@@ -2055,9 +2055,9 @@ of those here should be ported there in the same week, and vice versa.
 **A difference between the two repos is either declared in `docs/DIVERGENCE.md` or it
 is drift.** Read that before "aligning" anything — several differences are deliberate
 (opshub is single-tenant with `self|team|dept|region` scopes and dotted permission
-codes; rally is workspace-scoped with `ns:*` wildcards).
+codes; rova is workspace-scoped with `ns:*` wildcards).
 
-rally is ahead on infra, CI gates, BFF auth and test depth; opshub is ahead on
+rova is ahead on infra, CI gates, BFF auth and test depth; opshub is ahead on
 authorization scope dimensions, delegation and IdP role mapping. Both now resolve
 permissions from the database — see
 `docs/superpowers/specs/2026-07-28-auth-convergence.md` for the shared model and the
@@ -2065,7 +2065,7 @@ ordered list of what opshub still has to do. Wider audit:
 `OPSHUB_RALLY_PARITY_PLAN.md` and `RALLY_HARDENING_PLAN.md` one directory up.
 
 What may live in a _shared package_ is a separate rule, recorded in
-`qnsc-app-platform/docs/ADMISSION-TEST.md`: divergence that would be a security
+`app-platform/docs/ADMISSION-TEST.md`: divergence that would be a security
 defect or a cross-repo contract break belongs there; divergence that would merely be
 inconsistent stays in the product.
 
