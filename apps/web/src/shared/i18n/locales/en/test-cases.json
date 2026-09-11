@@ -117,6 +117,10 @@
       "verdict": "Verdict",
       "duration": "Duration",
       "tester": "Tester"
+    },
+    "detail": {
+      "notFound": "No Test Result found",
+      "notFoundHint": "Check the link and try again."
     }
   }
 }

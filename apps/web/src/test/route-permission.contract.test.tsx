@@ -222,6 +222,15 @@ describe('route ↔ nav permission contract', () => {
     expect(used).not.toContain('/test-case/$testCaseKey')
   })
 
+  it('Test Result Detail is the SAME deliberate third shape (Phase E)', () => {
+    // Identical reasoning to Test Case Detail one line above: `/test-result/$testResultId` opens
+    // only from the Results tab's Build-cell link, so it correctly has NO entry in
+    // `NAV_PERMISSIONS` and is NOT a `guardedPage()` call site.
+    expect(NAV_PERMISSIONS.has('/test-result/$testResultId')).toBe(false)
+    const used = [...ROUTER.matchAll(/\bguardedPage\(\s*\n?\s*'([^']*)'/g)].map((m) => m[1])
+    expect(used).not.toContain('/test-result/$testResultId')
+  })
+
   it('a NON-NAV surface is in the map without being a nav row', () => {
     // The property that made the fix legal. `/projects` must gate the route and must NOT appear in
     // the bar — `NAV_ITEMS` is what `app-shell.tsx` renders, so a permission entry added there would

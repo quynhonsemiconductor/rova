@@ -1,10 +1,9 @@
 /**
- * What an attachment hangs off (migration 0083; `test_case` added Phase 7 Phase C). The same
- * `entity_ref_type` vocabulary `comments` uses — one list of things that can own child records,
- * not one per table. `test_result` is deliberately NOT here yet: no Phase C task names it, and
- * Phase D/E own Test Result attachments.
+ * What an attachment hangs off (migration 0083; `test_case` added Phase 7 Phase C, `test_result`
+ * Phase E). The same `entity_ref_type` vocabulary `comments` uses — one list of things that can
+ * own child records, not one per table.
  */
-export type AttachmentEntityType = 'work_item' | 'portfolio_item' | 'test_case';
+export type AttachmentEntityType = 'work_item' | 'portfolio_item' | 'test_case' | 'test_result';
 
 export interface AttachmentRef {
   entityType: AttachmentEntityType;

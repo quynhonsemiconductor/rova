@@ -62,13 +62,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
         asc(attachments.entityId),
         asc(attachments.fileId),
       );
-    // `entity_type` (migration 0129) admits `test_case` AND `test_result` at the DB level, but this
-    // module's own `AttachmentRef` union only picked up `test_case` (Phase 7 plan §2.6, Phase C) —
-    // `test_result` has no `UploadPolicy` descriptor yet (Phase D/E). The WHERE clause above filters
-    // on `ref.entityType`, which is always one of THIS module's three members, so a row here can
-    // never actually carry `test_result`; the cast is narrowing to what the query provably returns,
-    // not widening what the module accepts.
-    return rows as EntityAttachment[];
+    return rows;
   }
 
   async countByEntity(ref: AttachmentRef, workspaceId: string): Promise<number> {
@@ -103,8 +97,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
         ),
       )
       .limit(1);
-    // See the comment in `listByEntity` — narrowing, not widening.
-    return (rows[0] as EntityAttachment | undefined) ?? null;
+    return rows[0] ?? null;
   }
 
   async link(

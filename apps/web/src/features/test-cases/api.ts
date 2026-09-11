@@ -14,6 +14,7 @@ export type UpdateTestCaseInput = components['schemas']['UpdateTestCaseDto']
 export type ActivityLog = components['schemas']['ActivityResponseDto']
 export type TestResult = components['schemas']['TestResultResponseDto']
 export type CreateTestResultInput = components['schemas']['CreateTestResultDto']
+export type UpdateTestResultInput = components['schemas']['UpdateTestResultDto']
 
 // A Test Case tab loads one Work Item's whole set (like Tasks) — bounded, so no cursor UI. The
 // limit just has to exceed any real Work Item's Test Case count; the list route stays paged
@@ -188,6 +189,8 @@ export function useTestCaseActivity(id: string | undefined) {
 export const testResultKeys = {
   all: ['test-results'] as const,
   list: (testCaseId: string) => [...testResultKeys.all, 'list', testCaseId] as const,
+  detail: (id: string) => [...testResultKeys.all, 'detail', id] as const,
+  activity: (id: string) => [...testResultKeys.all, 'activity', id] as const,
 }
 
 /** BR14: the server already orders `run_date desc, created_at desc` — no client re-sort here. */
@@ -228,5 +231,76 @@ export function useCreateTestResult(testCaseId: string) {
     meta: {
       invalidateKeys: [testResultKeys.list(testCaseId), testCaseKeys.detail(testCaseId)],
     },
+  })
+}
+
+// ── Phase E: Test Result Detail ──────────────────────────────────────────────
+
+/**
+ * `by-key` has no server route for Test Results (unlike Test Cases) — the plan's §3 API surface
+ * lists only `GET /test-results/:id` (UUID). The Results tab's Build-cell link already carries
+ * the row's `id`, so the detail route resolves by UUID (`/test-result/$testResultId`), not by key.
+ */
+export function testResultQueryOptions(id: string) {
+  return {
+    queryKey: testResultKeys.detail(id),
+    queryFn: async (): Promise<TestResult | null> => {
+      if (!id) return null
+      const { data, error, response } = await apiClient.GET('/v1/test-results/{id}', {
+        params: { path: { id } },
+      })
+      if (error) {
+        if (response.status === 404) return null
+        throw new ApiError(error, response.status)
+      }
+      return data ?? null
+    },
+    staleTime: 15_000,
+  }
+}
+
+export function useTestResult(id: string | undefined) {
+  return useQuery({ ...testResultQueryOptions(id ?? ''), enabled: !!id })
+}
+
+/**
+ * `PATCH /test-results/:id`. Mirrors `useUpdateTestCase`'s cache-write shape: an instant update of
+ * the detail page the user is looking at. Also invalidates the parent Test Case's own detail query
+ * — E5: an edit that changes `run_date`/`verdict` moves the parent's `Last Verdict`/`Last Run`
+ * (trigger-owned columns on the SAME Test Case row), and the Results LIST for that Test Case, so a
+ * later verdict edit is reflected wherever either is read.
+ */
+export function useUpdateTestResult(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: UpdateTestResultInput): Promise<TestResult> => {
+      const { data, error, response } = await apiClient.PATCH('/v1/test-results/{id}', {
+        params: { path: { id } },
+        body: input,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as TestResult
+    },
+    onSuccess: (result) => {
+      qc.setQueryData(testResultKeys.detail(id), result)
+      void qc.invalidateQueries({ queryKey: testResultKeys.list(result.testCaseId) })
+      void qc.invalidateQueries({ queryKey: testCaseKeys.detail(result.testCaseId) })
+    },
+  })
+}
+
+export function useTestResultActivity(id: string | undefined) {
+  return useQuery({
+    queryKey: testResultKeys.activity(id ?? ''),
+    queryFn: async (): Promise<ActivityLog[]> => {
+      if (!id) return []
+      const { data, error, response } = await apiClient.GET('/v1/test-results/{id}/activity', {
+        params: { path: { id }, query: { page: 1, pageSize: 100 } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as { data?: ActivityLog[] } | undefined)?.data ?? []
+    },
+    enabled: !!id,
+    staleTime: 15_000,
   })
 }

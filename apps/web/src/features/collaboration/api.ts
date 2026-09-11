@@ -10,15 +10,16 @@ export type Attachment = components['schemas']['AttachmentResponseDto']
 
 /**
  * What an ATTACHMENT hangs off. Mirrors `AttachmentEntityType` (migrations 0080/0081, `test_case`
- * added Phase 7 Phase C) — every member here has its own route tree so the permission check can
- * differ (`work_item:edit` vs `portfolio:edit` vs `test_case:edit`).
+ * added Phase 7 Phase C, `test_result` Phase E) — every member here has its own route tree so the
+ * permission check can differ (`work_item:edit` vs `portfolio:edit` vs `test_case:edit` vs
+ * `test_result:edit`).
  *
  * Comments stay NARROWER (`work_item` | `portfolio_item` only, see `CommentEntityType` below):
  * `CollaborationService` refuses `test_case`/`test_result` (SRS names no comment thread on a Test
  * Case) — this type must not admit what comments refuse, or a caller could construct a comment
  * subject the server rejects with no type error to catch it first.
  */
-export type EntityRefType = 'work_item' | 'portfolio_item' | 'test_case'
+export type EntityRefType = 'work_item' | 'portfolio_item' | 'test_case' | 'test_result'
 
 export interface EntitySubject {
   entityType: EntityRefType
@@ -29,6 +30,7 @@ const SUBJECT_PATH: Record<EntityRefType, string> = {
   work_item: 'work-items',
   portfolio_item: 'portfolio-items',
   test_case: 'test-cases',
+  test_result: 'test-results',
 }
 
 /** `/v1/work-items/:id` or `/v1/portfolio-items/:id` — every child-record call hangs off this. */

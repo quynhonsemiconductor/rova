@@ -556,6 +556,62 @@ describe('derived invariants (e2e)', () => {
       expect(after.last_run).toBeNull();
       expect(after.last_result_id).toBeNull();
     });
+
+    // Phase E's E5: an edit through `TestResultsService.update` is a real UPDATE of `run_date`/
+    // `verdict` — a SEPARATE trigger branch from the INSERT the four tests above exercise. The
+    // instructions for this phase name both directions explicitly: editing the LATEST Result must
+    // move the parent, and editing an OLDER one must NOT — the second is the "boring" half BR9
+    // itself is easiest to skip, since the trigger's own recompute already handles it for free the
+    // moment run_date/verdict change and the ORDER BY... LIMIT 1 re-picks the winner.
+
+    it("UPDATE: editing the LATEST Result's run_date/verdict moves the parent (BR9/E5)", async () => {
+      const testCase = await freshTestCase();
+      const only = await testResults.create(actor, testCase.id, {
+        build: 'build-1',
+        runDate: '2026-09-01',
+        verdict: 'fail',
+        testerId: actor.sub,
+      });
+      expect(await storedColumns(testCase.id)).toEqual({
+        last_verdict: 'fail',
+        last_run: '2026-09-01',
+        last_result_id: only.id,
+      });
+
+      await testResults.update(actor, only.id, { verdict: 'pass', runDate: '2026-09-15' });
+
+      const after = await storedColumns(testCase.id);
+      expect(after.last_verdict).toBe('pass');
+      expect(after.last_run).toBe('2026-09-15');
+      expect(after.last_result_id).toBe(only.id);
+    });
+
+    it('UPDATE: editing an OLDER Result does NOT change the parent (still the newer one)', async () => {
+      const testCase = await freshTestCase();
+      const older = await testResults.create(actor, testCase.id, {
+        build: 'build-old',
+        runDate: '2026-09-01',
+        verdict: 'fail',
+        testerId: actor.sub,
+      });
+      const newer = await testResults.create(actor, testCase.id, {
+        build: 'build-new',
+        runDate: '2026-09-10',
+        verdict: 'pass',
+        testerId: actor.sub,
+      });
+      expect((await storedColumns(testCase.id)).last_result_id).toBe(newer.id);
+
+      // Edit the OLDER Result's verdict/run_date — the trigger recomputes and must still find
+      // `newer` as the winner by `run_date DESC, created_at DESC`, since `older`'s new run_date
+      // (2026-09-05) still sits before `newer`'s (2026-09-10).
+      await testResults.update(actor, older.id, { verdict: 'error', runDate: '2026-09-05' });
+
+      const after = await storedColumns(testCase.id);
+      expect(after.last_verdict).toBe('pass');
+      expect(after.last_run).toBe('2026-09-10');
+      expect(after.last_result_id).toBe(newer.id);
+    });
   });
 
   it('leaves a milestone with NO linked release manually dated', async () => {

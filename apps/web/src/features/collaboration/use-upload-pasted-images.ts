@@ -16,6 +16,7 @@ const ENTITY_PATH: Record<EntityRefType, string> = {
   work_item: '/v1/work-items',
   portfolio_item: '/v1/portfolio-items',
   test_case: '/v1/test-cases',
+  test_result: '/v1/test-results',
 }
 
 const BLOB_IMG_RE = /<img\b[^>]*\bsrc="(blob:[^"]+)"[^>]*>/g
