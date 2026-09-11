@@ -107,6 +107,10 @@ describe('test case routes (e2e)', () => {
     });
   }
 
+  function del(url: string) {
+    return app.inject({ method: 'DELETE', url, headers: { authorization: `Bearer ${token}` } });
+  }
+
   it("lists the parent Work Item's Test Cases, in rank order (AC2)", async () => {
     const response = await get(`/work-items/${NXP_STORY_1_ID}/test-cases`);
     expect(response.statusCode, response.body).toBe(200);
@@ -332,6 +336,118 @@ describe('test case routes (e2e)', () => {
     it('404s a PATCH to a Test Case id that belongs to nothing', async () => {
       const response = await patch(`/test-cases/${randomUUID()}`, { name: 'x' });
       expect(response.statusCode).toBe(404);
+    });
+  });
+
+  /**
+   * F3/F1's tests mint their OWN Work Item rather than piling more Test Cases onto the seeded
+   * `NXP_STORY_1_ID` — the `create`/`update` blocks above already do that with no cleanup, and the
+   * very first test in this file (AC2's "lists…in rank order") asserts that Story's list is
+   * EXACTLY `['TC-1', 'TC-2']`. Reordering and deleting rows need a scratch parent whose list
+   * nothing else is asserting the exact contents of.
+   */
+  async function freshStoryId(): Promise<string> {
+    const storyRes = await get(`/test-cases/by-key/TC-1`);
+    const projectId = JSON.parse(storyRes.body).projectId as string;
+    const created = await post('/work-items', {
+      projectId,
+      type: 'story',
+      title: `F3/F1 scratch story ${randomUUID()}`,
+    });
+    return (JSON.parse(created.body) as { id: string }).id;
+  }
+
+  describe('rank (F3, neighbour-based drag-reorder)', () => {
+    it('moves a Test Case between two neighbours and the new order is visible on the list', async () => {
+      const workItemId = await freshStoryId();
+      const a = JSON.parse(
+        (await post(`/work-items/${workItemId}/test-cases`, { name: 'Rank A' })).body,
+      );
+      const b = JSON.parse(
+        (await post(`/work-items/${workItemId}/test-cases`, { name: 'Rank B' })).body,
+      );
+      const c = JSON.parse(
+        (await post(`/work-items/${workItemId}/test-cases`, { name: 'Rank C' })).body,
+      );
+      // Created in order A, B, C (BR7: ranks after existing) — move C between A and B.
+      const rankRes = await patch(`/test-cases/${c.id}/rank`, {
+        workItemId,
+        beforeId: a.id,
+        afterId: b.id,
+      });
+      expect(rankRes.statusCode, rankRes.body).toBe(200);
+      const ranked = JSON.parse(rankRes.body);
+      expect(ranked.rank > a.rank && ranked.rank < b.rank).toBe(true);
+
+      const listRes = await get(`/work-items/${workItemId}/test-cases`);
+      const body = JSON.parse(listRes.body) as { data: Array<{ id: string }> };
+      const ids = body.data.map((tc) => tc.id);
+      expect(ids.indexOf(a.id)).toBeLessThan(ids.indexOf(c.id));
+      expect(ids.indexOf(c.id)).toBeLessThan(ids.indexOf(b.id));
+    });
+
+    it('refuses a workItemId that does not match the Test Case’s own parent', async () => {
+      const workItemId = await freshStoryId();
+      const created = JSON.parse(
+        (await post(`/work-items/${workItemId}/test-cases`, { name: 'Wrong parent rank' })).body,
+      );
+      const response = await patch(`/test-cases/${created.id}/rank`, {
+        workItemId: randomUUID(),
+      });
+      expect(response.statusCode).toBe(412);
+      expect(response.body).toContain('WORK_ITEM_PARENT_SCOPE_MISMATCH');
+    });
+
+    it('refuses a neighbour that belongs to a different Work Item', async () => {
+      const workItemId = await freshStoryId();
+      const created = JSON.parse(
+        (await post(`/work-items/${workItemId}/test-cases`, { name: 'Cross-parent rank' })).body,
+      );
+      const response = await patch(`/test-cases/${created.id}/rank`, {
+        workItemId,
+        beforeId: randomUUID(),
+      });
+      expect(response.statusCode).toBe(412);
+      expect(response.body).toContain('WORK_ITEM_PARENT_SCOPE_MISMATCH');
+    });
+
+    it('404s a rank PATCH to a Test Case id that belongs to nothing', async () => {
+      const workItemId = await freshStoryId();
+      const response = await patch(`/test-cases/${randomUUID()}/rank`, { workItemId });
+      expect(response.statusCode).toBe(404);
+    });
+  });
+
+  describe('delete (F1/F2, soft, cascades to Results)', () => {
+    it('204s, and the Test Case no longer appears on the list', async () => {
+      const workItemId = await freshStoryId();
+      const created = JSON.parse(
+        (await post(`/work-items/${workItemId}/test-cases`, { name: 'To be deleted' })).body,
+      );
+
+      const deleteRes = await del(`/test-cases/${created.id}`);
+      expect(deleteRes.statusCode, deleteRes.body).toBe(204);
+
+      const getRes = await get(`/test-cases/${created.id}`);
+      expect(getRes.statusCode).toBe(404);
+
+      const listRes = await get(`/work-items/${workItemId}/test-cases`);
+      const body = JSON.parse(listRes.body) as { data: Array<{ id: string }> };
+      expect(body.data.map((tc) => tc.id)).not.toContain(created.id);
+    });
+
+    it('404s a delete of a Test Case id that belongs to nothing', async () => {
+      const response = await del(`/test-cases/${randomUUID()}`);
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('404s a delete of an already-deleted Test Case', async () => {
+      const workItemId = await freshStoryId();
+      const created = JSON.parse(
+        (await post(`/work-items/${workItemId}/test-cases`, { name: 'Double delete' })).body,
+      );
+      expect((await del(`/test-cases/${created.id}`)).statusCode).toBe(204);
+      expect((await del(`/test-cases/${created.id}`)).statusCode).toBe(404);
     });
   });
 

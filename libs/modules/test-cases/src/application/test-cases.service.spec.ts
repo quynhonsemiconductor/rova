@@ -15,6 +15,7 @@ import { ActivityLogger } from '@modules/activity';
 import { EntityAttachmentsService } from '@modules/attachments';
 import { TestCasesService } from './test-cases.service';
 import { TEST_CASE_REPOSITORY } from '../domain/ports/test-case.repository';
+import { TEST_RESULT_REPOSITORY } from '../domain/ports/test-result.repository';
 import type { TestCase } from '../domain/test-case.types';
 
 const actor = { sub: 'user-1', workspaceId: 'ws-1' } as never;
@@ -63,7 +64,13 @@ describe('TestCasesService', () => {
     create: ReturnType<typeof vi.fn>;
     listSelectableTypes: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
+    softDelete: ReturnType<typeof vi.fn>;
+    listLiveIdsByWorkItem: ReturnType<typeof vi.fn>;
+    softDeleteByWorkItem: ReturnType<typeof vi.fn>;
+    findRanksByIds: ReturnType<typeof vi.fn>;
+    updateRank: ReturnType<typeof vi.fn>;
   };
+  let testResultRepo: { softDeleteByTestCaseIds: ReturnType<typeof vi.fn> };
   let workItems: { getWorkItemForView: ReturnType<typeof vi.fn> };
   let access: { resolveTeamScope: ReturnType<typeof vi.fn> };
   let projects: { assertAssignable: ReturnType<typeof vi.fn> };
@@ -101,7 +108,13 @@ describe('TestCasesService', () => {
       create: vi.fn().mockResolvedValue(TEST_CASE),
       listSelectableTypes: vi.fn().mockResolvedValue(SELECTABLE_TYPES),
       update: vi.fn().mockResolvedValue(TEST_CASE),
+      softDelete: vi.fn().mockResolvedValue(undefined),
+      listLiveIdsByWorkItem: vi.fn().mockResolvedValue([]),
+      softDeleteByWorkItem: vi.fn().mockResolvedValue(undefined),
+      findRanksByIds: vi.fn().mockResolvedValue([]),
+      updateRank: vi.fn().mockResolvedValue(undefined),
     };
+    testResultRepo = { softDeleteByTestCaseIds: vi.fn().mockResolvedValue(undefined) };
     workItems = {
       getWorkItemForView: vi
         .fn()
@@ -129,6 +142,7 @@ describe('TestCasesService', () => {
       providers: [
         TestCasesService,
         { provide: TEST_CASE_REPOSITORY, useValue: repo },
+        { provide: TEST_RESULT_REPOSITORY, useValue: testResultRepo },
         { provide: WorkItemsService, useValue: workItems },
         { provide: AccessService, useValue: access },
         { provide: ProjectsService, useValue: projects },
@@ -577,6 +591,116 @@ describe('TestCasesService', () => {
         'WORK_ITEM_NOT_FOUND',
       );
       expect(activity.listFor).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('delete (F1/F2)', () => {
+    it('goes through the SAME scoped read as every other write before deleting', async () => {
+      await service.delete(actor, 'tc-1');
+
+      expect(repo.findById).toHaveBeenCalledWith('tc-1', 'ws-1');
+      expect(workItems.getWorkItemForView).toHaveBeenCalledWith(actor, 'wi-1');
+    });
+
+    it('propagates a refusal on the parent Work Item without ever deleting', async () => {
+      workItems.getWorkItemForView.mockRejectedValue(new Error('WORK_ITEM_NOT_FOUND'));
+
+      await expect(service.delete(actor, 'tc-1')).rejects.toThrow('WORK_ITEM_NOT_FOUND');
+      expect(repo.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unknown id', async () => {
+      repo.findById.mockResolvedValue(null);
+      await expect(service.delete(actor, 'missing')).rejects.toThrow(NotFoundException);
+    });
+
+    it('soft-deletes its own Results FIRST, then itself, in the SAME transaction', async () => {
+      await service.delete(actor, 'tc-1');
+
+      expect(testResultRepo.softDeleteByTestCaseIds).toHaveBeenCalledWith(
+        ['tc-1'],
+        'ws-1',
+        expect.anything(),
+      );
+      expect(repo.softDelete).toHaveBeenCalledWith('tc-1', 'ws-1', expect.anything());
+      const resultsOrder = testResultRepo.softDeleteByTestCaseIds.mock.invocationCallOrder[0];
+      const caseOrder = repo.softDelete.mock.invocationCallOrder[0];
+      expect(resultsOrder).toBeLessThan(caseOrder);
+    });
+
+    it('logs test_case.deleted with contextId = the parent Work Item id', async () => {
+      await service.delete(actor, 'tc-1');
+
+      expect(activity.build).toHaveBeenCalledWith(
+        expect.objectContaining({ entityType: 'test_case', entityId: 'tc-1', contextId: 'wi-1' }),
+        'user-1',
+        'test_case.deleted',
+        null,
+        expect.objectContaining({ testCaseKey: 'TC-1' }),
+      );
+      expect(activity.log).toHaveBeenCalledWith(expect.anything(), { tx: expect.anything() });
+    });
+  });
+
+  describe('reorder (F3) — neighbour-based, mirrors rankWorkItem', () => {
+    beforeEach(() => {
+      repo.findRanksByIds.mockResolvedValue([
+        { id: 'tc-before', workItemId: 'wi-1', rank: 'a0001' },
+        { id: 'tc-after', workItemId: 'wi-1', rank: 'a0009' },
+      ]);
+    });
+
+    it('goes through the SAME scoped read as every other write before reordering', async () => {
+      await service.reorder(actor, 'tc-1', { workItemId: 'wi-1' });
+      expect(workItems.getWorkItemForView).toHaveBeenCalledWith(actor, 'wi-1');
+    });
+
+    it('computes a rank strictly between the two neighbours and persists it', async () => {
+      const result = await service.reorder(actor, 'tc-1', {
+        workItemId: 'wi-1',
+        beforeId: 'tc-before',
+        afterId: 'tc-after',
+      });
+
+      expect(repo.updateRank).toHaveBeenCalledWith(
+        'tc-1',
+        expect.any(String),
+        'ws-1',
+        expect.anything(),
+      );
+      const newRank = repo.updateRank.mock.calls[0][1] as string;
+      expect(newRank > 'a0001' && newRank < 'a0009').toBe(true);
+      expect(result.rank).toBe(newRank);
+    });
+
+    it('appends to the end when afterId is null (no upper neighbour)', async () => {
+      await service.reorder(actor, 'tc-1', { workItemId: 'wi-1', beforeId: 'tc-before' });
+      const newRank = repo.updateRank.mock.calls[0][1] as string;
+      expect(newRank > 'a0001').toBe(true);
+    });
+
+    it('refuses when the Test Case does not belong to the given Work Item', async () => {
+      await expect(service.reorder(actor, 'tc-1', { workItemId: 'wi-DIFFERENT' })).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(repo.updateRank).not.toHaveBeenCalled();
+    });
+
+    it('refuses a neighbour from a different Work Item', async () => {
+      repo.findRanksByIds.mockResolvedValue([
+        { id: 'tc-before', workItemId: 'wi-OTHER', rank: 'a0001' },
+      ]);
+      await expect(
+        service.reorder(actor, 'tc-1', { workItemId: 'wi-1', beforeId: 'tc-before' }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(repo.updateRank).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unknown id', async () => {
+      repo.findById.mockResolvedValue(null);
+      await expect(service.reorder(actor, 'missing', { workItemId: 'wi-1' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

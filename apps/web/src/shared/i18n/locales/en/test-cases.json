@@ -30,6 +30,19 @@
     "title": "No Test Cases yet",
     "description": "Test Cases created against this item will appear here."
   },
+  "rowActions": {
+    "label": "Actions for {{key}}"
+  },
+  "delete": {
+    "action": "Delete",
+    "title": "Delete this Test Case",
+    "message": "Delete {{key}}? Its Results are deleted with it and do not survive independently.",
+    "deleted": "{{key}} deleted",
+    "failed": "Delete failed"
+  },
+  "reorder": {
+    "failed": "Could not reorder Test Cases"
+  },
   "error": {
     "title": "Could not load Test Cases",
     "description": "Something went wrong loading this list. Try again shortly."

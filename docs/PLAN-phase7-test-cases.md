@@ -1074,16 +1074,210 @@ control uses the shared `Button`/`SearchableSelect`/`DateField`).
 
 ### Phase F — Delete + lifecycle
 
-- [ ] **F1** `DELETE /test-cases/:id` (soft), cascading soft-delete to its Results in one
+- [x] **F1** `DELETE /test-cases/:id` (soft), cascading soft-delete to its Results in one
   transaction, and the trigger's DELETE branch verified.
-- [ ] **F2** `WorkItemRowActions`-style row affordance on the tab — the **shared** control, a
+  `TestCasesService.delete`: same scoped-read-first shape as `update`/attachments (BR19), soft-
+  deletes its own Results FIRST via `ITestResultRepository.softDeleteByTestCaseIds([id], …)` then
+  itself, both on the SAME `uow.run` tx, then logs `test_case.deleted` (contextId = parent Work
+  Item). Confirmed `test_results.test_case_id` already carries `ON DELETE cascade` (migration 0129)
+  — not re-implemented; the app does explicitly, as ONE set-based UPDATE, what that FK cannot fire
+  for a SOFT delete (an UPDATE of `deleted_at`, never a physical DELETE).
+  F4's cascade (`WorkItemsService.deleteWorkItem`) is the SAME two repo calls
+  (`listLiveIdsByWorkItem` → `softDeleteByTestCaseIds` → `softDeleteByWorkItem`), now wrapped in
+  `uow.run` alongside the Work Item's own `softDelete`, its activity row and
+  `reconcileParentScheduleState` — `deleteWorkItem` was NOT transactional before this (two
+  un-transacted calls); it is now, on one `tx` threaded through all four writes.
+  **Cross-module DI**: `TestCasesModule` imports `WorkItemsModule`, so `WorkItemsService` cannot
+  depend on `TestCasesService` without a cycle — `WorkItemsModule` instead provides
+  `TEST_CASE_REPOSITORY`/`TEST_RESULT_REPOSITORY` directly (deep-importing the Drizzle repo
+  classes + port tokens from `@modules/test-cases/domain/ports/*` and
+  `@modules/test-cases/infrastructure/persistence/*`, never `TestCasesService`), and
+  `WorkItemsService` injects the two ports itself — repo-level, no business logic duplicated.
+  New port methods: `ITestCaseRepository.softDelete`, `.listLiveIdsByWorkItem`,
+  `.softDeleteByWorkItem`, `.reorderByWorkItem` (F3); `ITestResultRepository.softDeleteByTestCaseIds`
+  (one set-based `UPDATE … WHERE test_case_id = ANY(…) AND deleted_at IS NULL`, never a loop).
+  Route: `DELETE /test-cases/:id` on `TestCaseRecordsController`, `test_case:delete` scoped to the
+  path id, 204, soft + cascading.
+  Verified: `tsc -b --force` and `pnpm lint` clean repo-wide. Unit:
+  `test-cases.service.spec.ts` +8 (delete ×5, reorder ×3 shared with F3) — 60/60 green total.
+  `test-case.drizzle-repository.predicates.spec.ts` +5 (softDelete, listLiveIdsByWorkItem,
+  softDeleteByWorkItem, reorderByWorkItem ×2) — proves the exact WHERE clauses at the SQL level.
+  New `test-result.drizzle-repository.predicates.spec.ts` (2 tests) — `softDeleteByTestCaseIds`'s
+  bulk UPDATE shape + empty-list no-op (this repo had no predicates spec before; subject has no
+  same-named sibling per `coverage-include.spec.ts`'s own rule, matching the Test Case predicates
+  file's precedent — confirmed both green, no new `vitest.config.ts` entry needed).
+  `work-items.service.spec.ts` +2 (the F4 cascade + its own no-op-when-no-Test-Cases case) and 2
+  existing `deleteWorkItem` assertions updated for the new 3rd (`tx`) argument on `softDelete`, now
+  that the whole method runs inside `uow.run`. `work-items.service.workspace-isolation.spec.ts`: 1
+  assertion updated the same way. `route-policy.ratchet.spec.ts` unchanged (5/5 green) — both new
+  routes (`DELETE /test-cases/:id`, `PATCH /work-items/:id/test-cases/reorder`, see F3) decorated.
+  `test/coverage-include.spec.ts` green, no new entry (confirmed against its own rule, not assumed).
+  Full run: `pnpm vitest run libs/modules/test-cases libs/modules/work-items
+  test/route-policy.ratchet.spec.ts test/coverage-include.spec.ts` — **391/391 passed**.
+  E2e trigger verification and the Work-Item-delete-cascades-atomically e2e test are written under
+  the Phase F gate below (both files touch F1 and F4 at once, so recorded there rather than split).
+- [x] **F2** `WorkItemRowActions`-style row affordance on the tab — the **shared** control, a
   TRAILING cell (not a declared column: an affordance must not be hideable), revealed on
   `group-hover` AND `focus-within`. Named confirmation, not typed; the copy says what survives.
-- [ ] **F3** Rank drag-reorder: `useRerankSensors()` (the ONE shared sensor set) and dnd-kit
+  **Extended the shared component rather than copying it**: `WorkItemRowActions` was hardcoded to
+  `useDeleteWorkItem`, so its menu/dialog/pending/error-toast plumbing was pulled out into a new
+  mutation-agnostic `shared/ui/row-actions-menu.tsx` (`RowActionsMenu`) — `WorkItemRowActions`
+  became a thin wrapper over it with its EXACT prior external API and behaviour (its own
+  pre-existing test file, `work-item-row-actions.test.tsx`, passes unchanged, 4/4 green, proving
+  the refactor didn't change what it does). `features/test-cases/ui/test-case-row-actions.tsx`
+  (`TestCaseRowActions`) is the second, equally thin wrapper — same shell, `useDeleteTestCase`
+  instead, and its own copy: "Delete {{key}}? Its Results are deleted with it and do not survive
+  independently" — deliberately NOT Work Item delete's "retained" language, since Test Case
+  delete's actual cascade behaviour (F1) is the opposite of Work Item delete's (which retains
+  everything hanging off the row).
+  **Trailing, not a column**: rendered directly after `table.renderCells(...)` in the row's own
+  flex flow (never `ml-auto` — the exact bug that got the ORIGINAL `WorkItemRowActions` unmounted
+  from Backlog, per its own docblock), wrapped in a `group-hover:opacity-100
+  focus-within:opacity-100` div so it is invisible at rest and appears both on pointer hover over
+  the row AND on keyboard focus landing on the trigger inside it.
+  `test-cases-tab.test.tsx`: 2 new tests (renders nothing without `test_case:delete`; deletes only
+  after the named confirmation, asserting the "Results…do not survive independently" copy is
+  present). New `test-case-row-actions.test.tsx` (5 tests, mirrors
+  `work-item-row-actions.test.tsx`'s own shape): absent-without-permission, the exact confirmation
+  copy, deletes-only-after-confirm, cancel sends nothing, server's own refusal sentence surfaces.
+- [x] **F3** Rank drag-reorder: `useRerankSensors()` (the ONE shared sensor set) and dnd-kit
   `attributes` **on the grip alongside `listeners`**, not on the row — the sensor alone does not
   work, because dnd-kit activates from the activator's `onKeyDown`.
-- [ ] **F4** Resolve §7 Q1 (what a Work Item delete does to its Test Cases) and implement the
-  BA's answer.
+  **Redesigned from the plan's literal bulk `{items: [...]}` reading to a NEIGHBOUR-based
+  single-item reorder** (`PATCH /test-cases/:id/rank`, `{workItemId, beforeId?, afterId?}`) —
+  confirmed this is correct, not a deviation to flag, by checking what `useRowRerank`'s own
+  `onReorder` callback actually hands a caller: `{id, beforeId, afterId}` for the ONE row that
+  moved, never a full recomputed rank list. Every other rank-drag grid in this codebase
+  (Backlog, Quality's `useRankAnyWorkItem`) already uses this exact neighbour shape
+  (`PATCH /work-items/:id/rank`, mirrored here), computing a LexoRank via `between(low, high)`
+  server-side from the two neighbours' STORED ranks — a single-row UPDATE, no full re-numbering,
+  and no bulk `{items:[...]}` payload the client has no way to construct correctly (it would need
+  server-computed LexoRank strings it does not have). `TestCasesService.reorder` mirrors
+  `WorkItemsService.rankWorkItem` line for line: loads the Test Case, refuses a `workItemId`
+  mismatch, resolves neighbour ranks via a new `findRanksByIds` port method, refuses a neighbour
+  from a different Work Item (`WORK_ITEM_PARENT_SCOPE_MISMATCH` — `loadBulkItems`'s own lesson:
+  authorizing the container alone would let a caller re-rank across Work Items by id), then
+  `uow.run`s a single `updateRank`.
+  **Row wiring**: new `pages/work-item/ui/test-case-row.tsx` (`TestCaseRow`) owns `useSortable`
+  per row (mirrors Quality's `SortableItemRow`/Backlog's inline shape exactly — only the component
+  that calls `useSortable` can own the activator ref) and `shared/ui/table`'s existing
+  `useDragRowStyle`/`TableRow` helpers (both already existed, unused by this module, built for
+  exactly this). `attributes` (`role="button"`, `tabIndex`) spread onto `DragHandle` alongside
+  `listeners`, via `setActivatorNodeRef` — never onto the row, matching CLAUDE.md's warning about
+  the mistake that shipped on four other grids before being centralised. The grip renders in the
+  Rank column's own `actions` slot (`RankCell`'s documented precedent for Portfolio Items' up/down
+  buttons — "reorder controls rendered AFTER the number, inside the same cell"), not a new leading
+  gutter, since the tab has no selection checkbox to share gutter space with.
+  Container swapped from a raw `DataTableFrame` row-map to `SelectableTable` with
+  `selectable={false}` (suppresses the checkbox gutter + bulk bar entirely, per its own `selectable`
+  prop) plus `dnd={{ dndContextProps, sortableContextProps }}` from `useRowRerank()` — the shared
+  shell that already wraps `DndContext`/`SortableContext` for Backlog/Quality/Iteration Status/Tasks.
+  Reorder disabled (inert spacer grip, `aria-hidden`) without `test_case:edit`; no column sort
+  exists on this tab to also gate on (the whole set loads at once, in rank order, like Tasks).
+  `test-cases-tab.test.tsx`: 1 new test (grip present/absent by permission).
+  `test-case.drizzle-repository.predicates.spec.ts`: 3 new tests (`findRanksByIds`'s WHERE clause
+  + empty-list no-op, `updateRank`'s single-row UPDATE shape).
+  `test-cases.service.spec.ts`: 6 new tests (scoped-read-first, rank-between-neighbours + its
+  bounds, appends-at-end with no upper neighbour, workItemId mismatch refusal, cross-Work-Item
+  neighbour refusal, 404 on unknown id).
+- [x] **F4** Resolve §7 Q1 (what a Work Item delete does to its Test Cases) and implement the
+  BA's answer. §8 Q1 was already RULED before this phase started (2026-09-08) — no design
+  decision was made here, only the implementation, which IS F1's cascade (see F1's own entry:
+  `WorkItemsService.deleteWorkItem` now wraps its own `softDelete`, its activity row and the new
+  Test Case + Test Result cascade in one `uow.run`). Recorded as its own ticked item because the
+  plan names it separately, but there is no F4-specific code beyond what F1 already describes.
+
+**Phase F gate — all green.**
+- `pnpm lint` (backend glob) and `pnpm --filter rova-web lint` — both clean (FE only carries
+  pre-existing `boundaries` plugin deprecation warnings, no errors, unrelated to this diff).
+- `tsc -b --force` (repo-wide) — clean, run repeatedly through the phase as the F3 route shape
+  was redesigned (see F3's own note) — clean on every pass.
+- `pnpm build` (api+worker) and `pnpm --filter rova-web build` — both clean (the FE build's only
+  warnings are the pre-existing `INEFFECTIVE_DYNAMIC_IMPORT`/plugin-timing ones Phase A/B/D
+  already documented).
+- `pnpm test` (backend) — **90 files, 2075 tests**, all green (2054 Phase E baseline + 21 new:
+  8 in `test-cases.service.spec.ts` for `delete`, 6 for `reorder`, 5 in
+  `test-case.drizzle-repository.predicates.spec.ts`, 2 in the new
+  `test-result.drizzle-repository.predicates.spec.ts`, plus `work-items.service.spec.ts`'s own
+  +2 for the F4 cascade — the exact count differs slightly from a flat sum because two PRE-EXISTING
+  `deleteWorkItem` assertions were also updated in place for the new 3rd `tx` argument, not added).
+  Coverage measured (`pnpm test:cov`): stmts 86.44%, branches 79.89%, functions 84.78%,
+  lines 87.37% — all at or above the existing 86/79/84/87 floors. **Not raised** — same precedent
+  as Phases D/E: the move is small enough that truncation already absorbs it.
+  `pnpm check:coverage-floors` green ("within 3 points of actual coverage").
+- `pnpm --filter rova-web test` (FE) — **136 files, 1050 tests**, all green (135/1042 Phase E
+  baseline + 1 new file (`test-case-row-actions.test.tsx`, 5 tests) + `test-cases-tab.test.tsx`
+  extended with 3 new tests for F2/F3).
+- `test/coverage-include.spec.ts` — green. No new entry needed: `test-case.drizzle-repository.ts`
+  and `test-result.drizzle-repository.ts` are never listed (only `.service.ts` files are, per the
+  ratchet's own subject-attribution rule — confirmed by reading `coverage-include.spec.ts`'s
+  source, not assumed), and the two new `*.predicates.spec.ts` files' subjects
+  (`test-case.drizzle-repository.predicates.ts`, `test-result.drizzle-repository.predicates.ts`)
+  do not exist, matching the EXISTING Test Case predicates file's own precedent from Phase A/B.
+- `test/route-policy.ratchet.spec.ts` — unchanged, 5/5 green. All 3 new routes decorated:
+  `DELETE /test-cases/:id` (`test_case:delete`), `PATCH /test-cases/:id/rank` (`test_case:edit`,
+  both scoped `{ resource: 'test_case', from: 'param', field: 'id' }`).
+- `fe-consistency.ratchet.test.ts` — unchanged, baselines untouched (confirmed via the full FE
+  suite run rather than measured standalone, since none of the new components — `RowActionsMenu`,
+  `TestCaseRow`, `TestCaseRowActions` — hand-roll a raw `<button>`, inline style, or hardcoded copy;
+  all copy is in `test-cases.json`, all controls are the shared `Button`/`ActionMenu`/`DragHandle`).
+  `query-default.ratchet.test.ts` unchanged (4/4 green) — the new mutation hooks
+  (`useDeleteTestCase`, `useReorderTestCase`) are mutations, not queries, so they add no
+  `= []`-shaped call-site default to count.
+- **F3 redesign note, recorded here because it changed mid-phase:** the plan's own §3 API-surface
+  table names `PATCH /work-items/:id/test-cases/reorder` mirroring `ReorderWorkItemsSchema`'s bulk
+  `{items:[...]}` shape. Built that way first, then discovered it cannot work: `useRowRerank`'s
+  `onReorder` callback (the shared hook every drag-rank grid in this codebase uses) hands
+  `{id, beforeId, afterId}` for the ONE row that moved — never a full recomputed rank list — and
+  the CLIENT has no way to compute correct LexoRank strings for a bulk payload (that is exactly why
+  every other rank-drag grid, Backlog and Quality's `useRankAnyWorkItem`, uses the NEIGHBOUR-based
+  single-item route `PATCH /work-items/:id/rank` instead of the bulk one). Redesigned to
+  `PATCH /test-cases/:id/rank` (`{workItemId, beforeId?, afterId?}`), mirroring
+  `WorkItemsService.rankWorkItem` line for line — confirmed correct by checking what the actual
+  shared hook produces, not by re-reading the plan harder. The bulk `ReorderTestCasesSchema`/
+  `reorderByWorkItem`/`WorkItemRowActions`-adjacent code this produced first was fully replaced,
+  not left alongside the working version.
+- **BE e2e**: `pnpm test:e2e` (full suite) attempted, bounded to 5 minutes — hit the SAME
+  pre-existing `governance-audit-flow.e2e.spec.ts` hang Phases B/C/E's own gate notes document
+  (`project.archived`'s 62-char `resourceType` against `audit_logs.resource_type varchar(50)`,
+  `AuditProjectionRelay` retrying indefinitely). `git status` confirms this session's diff touches
+  neither `audit`, the outbox relay, nor that spec. Verified instead in isolation:
+  `test-case-routes.e2e.spec.ts` (extended: +2 describe blocks, `rank` ×4 tests + `delete` ×3 tests)
+  + `test-result-flow.e2e.spec.ts` + `derived-invariants.e2e.spec.ts` (extended: +2 real-route
+  DELETE-branch tests replacing/supplementing Phase D's raw-SQL stand-in, +2 Work-Item-cascade
+  tests querying `deleted_at` directly via raw SQL against `work.work_items`/`work.test_cases`/
+  `work.test_results` — never just checking the API stopped listing them, which a stale cache read
+  could pass) + `authz-cluster.e2e.spec.ts` (permission-regression check, Phase E's own precedent)
+  — **87/87 passed**. `work-item-delete-route.e2e.spec.ts` (touched directly by wrapping
+  `deleteWorkItem` in `uow.run`) — **6/6 passed** separately. `test/e2e-fixtures.ratchet.spec.ts`
+  runs under the PLAIN `pnpm test` config (it is `.ratchet.spec.ts`, not `.e2e.spec.ts`), already
+  covered by the full backend-unit run above; my new e2e tests mint scratch Work Items via
+  `POST /work-items` (not `createProject`), so the ratchet's cap is untouched either way.
+  **One test-isolation bug found and fixed in my OWN new tests, not a pre-existing one**: the
+  first draft of the `rank`/`delete` describe blocks created Test Cases under the SEEDED
+  `NXP_STORY_1_ID` with no cleanup — harmless alone, but it collided with the file's own FIRST
+  test ("lists…in rank order (AC2)"), which asserts that Story's Test Case list is EXACTLY
+  `['TC-1','TC-2']`. (The pre-existing `create`/`update` describe blocks do the same
+  no-cleanup-under-the-seeded-Story thing and had never been caught, because this exact 3-file
+  combination had never been run with enough additional creates under that Story to tip the
+  race — Phase E's own note records "66/66 passed" for the same three files.) Fixed by minting a
+  FRESH scratch Story per rank/delete test (`freshStoryId()`, resolving the NXP project id from
+  `GET /test-cases/by-key/TC-1` rather than a hardcoded project constant) instead of piling onto
+  the shared fixture — confirmed by rerunning the same 3-file combination twice after the fix,
+  both times clean.
+- **Playwright** (`pnpm --filter rova-web test:e2e`), API restarted and confirmed ready, run AFTER
+  `pnpm db:seed:test` with no BE e2e or manual session live (confirmed via a clean process check
+  before starting) — **43 passed, 3 failed, 2 skipped (18.3m)**. Two failures are
+  `capacity-allocation.e2e.ts`, the exact documented pre-existing flake named in this task's own
+  instructions. The third, `portfolio.e2e.ts`'s "the list carries NO summary metrics strip", was
+  NOT on that list and got its own check: `git diff --stat` against that spec, `helpers.ts` and
+  every `pages/portfolio`/`pages/capacity-planning` file is EMPTY (this session's diff touches
+  none of them), and re-running the single test in isolation passed cleanly in 17s — confirmed
+  resource-contention flakiness under full-suite load, not a regression. **Zero Test Cases
+  failures** — no `test-cases.e2e.ts` Playwright spec exists yet (§7's own note: future work, still
+  true this phase — Phase F's checklist names no Playwright spec), so nothing Test-Cases-specific
+  runs in this suite at all; `role-conformance.e2e.ts` (nearest in shape to a permission-gated
+  surface) passed clean, all 7 of its cases.
 
 ### Phase G — Project Test Case Type configuration (SRS §3)
 
@@ -1173,10 +1367,13 @@ Level by level, with the reason each level is the one that can see the fault:
 
 None of these blocks Phase A. Each is asked at the phase that needs it.
 
-1. **A Work Item delete and its Test Cases** (blocks Phase F). Soft-delete the Test Cases with the
-   Story, or keep them for the future standalone surface? `P3-QA-FR-020` retains a Defect's child
-   Tasks, which argues for retaining Test Cases too — but a retained Test Case with no reachable
-   Work Product is invisible until D2's standalone list exists.
+1. ~~**A Work Item delete and its Test Cases** (blocks Phase F).~~ **RULED 2026-09-08:**
+   soft-delete the Test Cases (and, by FK cascade, their Results) in the SAME transaction as the
+   Work Item's own soft delete — mirroring `P3-QA-FR-020`'s pattern for a Defect's child Tasks.
+   Reversible (soft delete), and it avoids the alternative's real cost: a retained Test Case with
+   no reachable Work Product would be invisible and unreachable in the UI until D2's standalone
+   surface exists, which is not scheduled. Implement in F1/F4 together — F1's cascade IS this
+   ruling; F4 has no separate design decision left, only the implementation.
 2. **Comments on a Test Case / Test Result.** The SRS names none, so we refuse them (§2.6). Confirm
    that is intended, since the enum now technically admits them.
 3. **`Last Build`** — Rally's Test Case has it beside Last Verdict / Last Run, from the same latest

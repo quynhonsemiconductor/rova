@@ -20,6 +20,8 @@ import { NotFoundException, PreconditionFailedException, UnitOfWork } from '@pla
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { MilestonesService } from '@modules/milestones';
+import { TEST_CASE_REPOSITORY } from '@modules/test-cases/domain/ports/test-case.repository';
+import { TEST_RESULT_REPOSITORY } from '@modules/test-cases/domain/ports/test-result.repository';
 
 // Workspace isolation is enforced at the application layer via `getWorkItem`'s
 // `item.workspaceId !== workspaceId` guard. These tests exercise that boundary
@@ -334,6 +336,19 @@ describe('WorkItemsService — workspace isolation', () => {
           useValue: { assertArtifactsAssignable: vi.fn().mockResolvedValue(undefined) },
         },
         { provide: UnitOfWork, useValue: makeUnitOfWork() },
+        {
+          // F1/F4's Test Case cascade — the isolation tests only need these present and inert
+          // (no Test Case fixtures exist in this file's scope).
+          provide: TEST_CASE_REPOSITORY,
+          useValue: {
+            listLiveIdsByWorkItem: vi.fn().mockResolvedValue([]),
+            softDeleteByWorkItem: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: TEST_RESULT_REPOSITORY,
+          useValue: { softDeleteByTestCaseIds: vi.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
     return module.get(WorkItemsService);
@@ -402,7 +417,8 @@ describe('WorkItemsService — workspace isolation', () => {
 
     it('soft-deletes using the caller workspaceId', async () => {
       await service.deleteWorkItem(actorForWorkspace(WORKSPACE_A), 'wi-a');
-      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-a', WORKSPACE_A);
+      // Now runs inside `uow.run` (F1/F4's Test Case cascade), so a 3rd (tx) argument is expected.
+      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-a', WORKSPACE_A, expect.anything());
     });
   });
 

@@ -75,6 +75,16 @@ import type { Watcher } from '../domain/watcher.types';
 import { diffWorkItem } from './activity-diff';
 import { EntityAttachmentsService } from '@modules/attachments';
 import type { AttachmentRef, EntityAttachment } from '@modules/attachments';
+// Repo-level deep-imports for F1/F4's Test Case cascade — see the module's own comment for why
+// this is not `TestCasesService`.
+import {
+  ITestCaseRepository,
+  TEST_CASE_REPOSITORY,
+} from '@modules/test-cases/domain/ports/test-case.repository';
+import {
+  ITestResultRepository,
+  TEST_RESULT_REPOSITORY,
+} from '@modules/test-cases/domain/ports/test-result.repository';
 
 /** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
 function isDuplicateKeyError(err: unknown): boolean {
@@ -140,6 +150,12 @@ export class WorkItemsService {
     // Owns the milestone-artifact scope rule; see setWorkItemMilestones.
     private readonly milestonesService: MilestonesService,
     private readonly uow: UnitOfWork,
+    // F1/F4's Test Case cascade (plan §8 Q1, RULED): repo-level, not `TestCasesService` —
+    // `TestCasesModule` imports `WorkItemsModule`, so a service-to-service dependency the other way
+    // would be a genuine NestJS module cycle. These two set-based writes carry no authorization
+    // logic of their own (the Work Item delete above has already authorised the whole operation).
+    @Inject(TEST_CASE_REPOSITORY) private readonly testCaseRepo: ITestCaseRepository,
+    @Inject(TEST_RESULT_REPOSITORY) private readonly testResultRepo: ITestResultRepository,
   ) {}
 
   // ── Activity helpers ────────────────────────────────────────────────────────
@@ -1498,7 +1514,7 @@ export class WorkItemsService {
      */
     // An `assertTeamScoped` call sat here too, and is gone by the same ruling (2026-08-14).
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
-    await this.workItemRepo.softDelete(id, actor.workspaceId);
+
     /**
      * The delete RECORDS ITSELF, and it RETAINS everything hanging off the row.
      *
@@ -1515,22 +1531,45 @@ export class WorkItemsService {
      * The activity row is the "records the actor/action" half. `activity_logs.action` is a free
      * varchar, so this needs no migration, and the entry lands in the item's own Revision History —
      * which the item keeps, because nothing here erases history either.
+     *
+     * Test Cases are the ONE thing that IS cascaded (Phase 7 plan §8 Q1, RULED 2026-09-08) — a
+     * Test Case with no reachable Work Product would be invisible and unreachable in the UI (D2's
+     * standalone surface is not scheduled), unlike Tasks/attachments/comments/relations which stay
+     * reachable through the retained parent. `test_results.test_case_id` carries `ON DELETE
+     * cascade`, but that FK never fires for a SOFT delete (an UPDATE, not a DELETE) — the app does
+     * explicitly, as one set-based UPDATE per table, what the FK cannot. All four writes — the Work
+     * Item's own soft delete, its activity row, the Test Case cascade and the Results cascade — run
+     * on the SAME transaction, so a Work Item deleted with its Test Cases left live (or the reverse,
+     * on a rollback) can never happen.
      */
-    await this.appendMany([
-      this.buildActivityInput(
-        item,
-        item.type === 'task' ? 'task' : 'work_item',
-        actor.sub,
-        item.type === 'task' ? 'task.deleted' : 'work_item.deleted',
-        null,
-      ),
-    ]);
-    // Deleting a task changes the set its parent is derived from — deleting the last OPEN one
-    // completes the parent, exactly as completing it would have. Runs after the delete, so the census
-    // counts live rows only.
-    if (item.type === 'task' && item.parentId) {
-      await this.reconcileParentScheduleState(actor, item.parentId);
-    }
+    await this.uow.run(async (tx) => {
+      await this.workItemRepo.softDelete(id, actor.workspaceId, tx);
+
+      const testCaseIds = await this.testCaseRepo.listLiveIdsByWorkItem(id, actor.workspaceId, tx);
+      if (testCaseIds.length > 0) {
+        await this.testResultRepo.softDeleteByTestCaseIds(testCaseIds, actor.workspaceId, tx);
+        await this.testCaseRepo.softDeleteByWorkItem(id, actor.workspaceId, tx);
+      }
+
+      await this.appendMany(
+        [
+          this.buildActivityInput(
+            item,
+            item.type === 'task' ? 'task' : 'work_item',
+            actor.sub,
+            item.type === 'task' ? 'task.deleted' : 'work_item.deleted',
+            null,
+          ),
+        ],
+        tx,
+      );
+      // Deleting a task changes the set its parent is derived from — deleting the last OPEN one
+      // completes the parent, exactly as completing it would have. Runs after the delete, on the
+      // SAME tx, so the census counts live rows only and the whole thing commits together.
+      if (item.type === 'task' && item.parentId) {
+        await this.reconcileParentScheduleState(actor, item.parentId, tx);
+      }
+    });
     this.logger.log({ workItemId: id }, 'Work item soft-deleted');
   }
 

@@ -148,6 +148,55 @@ export function useTestCaseTypes(projectId: string | undefined) {
  * refetch — the list/badge query invalidates separately since a Test Case's own edit does
  * not change the count.
  */
+// ── Phase F: delete + reorder ────────────────────────────────────────────────
+
+/**
+ * `DELETE /test-cases/:id` (F1/F2). Soft; cascades to the Test Case's Results in the SAME
+ * transaction (server-side) — the FE invalidates the list, which is the tab badge's own count
+ * query (A7/B5's same `pageInfo.total` reasoning), so the row and the badge disappear together.
+ */
+export function useDeleteTestCase(workItemId: string) {
+  return useMutation({
+    mutationFn: async (id: string): Promise<void> => {
+      const { error, response } = await apiClient.DELETE('/v1/test-cases/{id}', {
+        params: { path: { id } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    meta: { invalidateKeys: [testCaseKeys.list(workItemId)] },
+  })
+}
+
+/**
+ * `PATCH /test-cases/:id/rank` (F3) — a single-item NEIGHBOUR-based reorder, the same shape
+ * `useRankAnyWorkItem` uses for Quality's drag-to-rank: `beforeId`/`afterId` name the rows
+ * immediately above/below the target's new position, and the server computes the LexoRank.
+ * `useRowRerank`'s `onReorder` callback hands exactly this shape.
+ */
+export function useReorderTestCase(workItemId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      beforeId,
+      afterId,
+    }: {
+      id: string
+      beforeId?: string | null
+      afterId?: string | null
+    }): Promise<TestCase> => {
+      const { data, error, response } = await apiClient.PATCH('/v1/test-cases/{id}/rank', {
+        params: { path: { id } },
+        body: { workItemId, beforeId, afterId },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as TestCase
+    },
+    onSuccess: (testCase) => qc.setQueryData(testCaseKeys.detail(testCase.id), testCase),
+    meta: { invalidateKeys: [testCaseKeys.list(workItemId)] },
+  })
+}
+
 export function useUpdateTestCase(id: string) {
   const qc = useQueryClient()
   return useMutation({

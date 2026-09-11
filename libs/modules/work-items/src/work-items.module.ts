@@ -16,6 +16,13 @@ import { WORK_ITEM_REPOSITORY } from './domain/ports/work-item.repository';
 import { WORK_ITEM_RELATION_REPOSITORY } from './domain/ports/work-item-relation.repository';
 import { TIME_LOG_REPOSITORY } from './domain/ports/time-log.repository';
 import { WATCHER_REPOSITORY } from './domain/ports/watcher.repository';
+// Repo-level only (F1/F4's Test Case cascade) — NOT `TestCasesModule`, which imports
+// `WorkItemsModule` itself; importing it back here would be a genuine NestJS module cycle. The
+// Drizzle repo classes have no dependency on this module, so providing them directly is safe.
+import { TestCaseDrizzleRepository } from '@modules/test-cases/infrastructure/persistence/test-case.drizzle-repository';
+import { TestResultDrizzleRepository } from '@modules/test-cases/infrastructure/persistence/test-result.drizzle-repository';
+import { TEST_CASE_REPOSITORY } from '@modules/test-cases/domain/ports/test-case.repository';
+import { TEST_RESULT_REPOSITORY } from '@modules/test-cases/domain/ports/test-result.repository';
 
 @Module({
   imports: [ProjectsModule, AccessModule, AttachmentsModule, ActivityModule, MilestonesModule],
@@ -27,6 +34,8 @@ import { WATCHER_REPOSITORY } from './domain/ports/watcher.repository';
     { provide: TIME_LOG_REPOSITORY, useClass: TimeLogDrizzleRepository },
     { provide: WATCHER_REPOSITORY, useClass: WatcherDrizzleRepository },
     { provide: WORK_ITEM_RELATION_REPOSITORY, useClass: WorkItemRelationDrizzleRepository },
+    { provide: TEST_CASE_REPOSITORY, useClass: TestCaseDrizzleRepository },
+    { provide: TEST_RESULT_REPOSITORY, useClass: TestResultDrizzleRepository },
   ],
   exports: [WorkItemsService],
 })

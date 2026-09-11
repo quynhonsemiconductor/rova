@@ -21,6 +21,10 @@ import {
   TestCaseTypeOption,
   UpdateTestCaseInput,
 } from '../domain/ports/test-case.repository';
+import {
+  ITestResultRepository,
+  TEST_RESULT_REPOSITORY,
+} from '../domain/ports/test-result.repository';
 import type { TestCase } from '../domain/test-case.types';
 import { TEST_CASE_ACTIVITY_CONFIG } from './test-case-activity-diff';
 
@@ -39,6 +43,11 @@ export class TestCasesService {
 
   constructor(
     @Inject(TEST_CASE_REPOSITORY) private readonly testCaseRepo: ITestCaseRepository,
+    // Repo-level, not `TestResultsService` — that service already depends on THIS one
+    // (`TestResultsService.getById` authorises through `TestCasesService.getById`), so a service-to-
+    // service dependency the other way would close a cycle. F1/F4's cascade only ever needs one
+    // set-based write (`softDeleteByTestCaseIds`), which the repository port already expresses.
+    @Inject(TEST_RESULT_REPOSITORY) private readonly testResultRepo: ITestResultRepository,
     private readonly workItemsService: WorkItemsService,
     private readonly accessService: AccessService,
     private readonly projectsService: ProjectsService,
@@ -340,6 +349,112 @@ export class TestCasesService {
     });
 
     return updated;
+  }
+
+  /**
+   * Delete ONE Test Case (F1/F2). `test_case:delete` is checked by the route's own
+   * `@RequirePermission`; this method still loads the row and its parent Work Item first (BR19),
+   * matching `update`'s shape. SOFT delete, recoverable in the database — the confirmation dialog
+   * is named, not typed (CLAUDE.md: a typed gate is reserved for the irreversible).
+   *
+   * Its Results are soft-deleted in the SAME transaction — `test_results.test_case_id` carries
+   * `ON DELETE cascade`, but that FK never fires for a soft delete (it is an UPDATE, not a DELETE),
+   * so the app does explicitly what the FK cannot, as ONE set-based UPDATE
+   * (`softDeleteByTestCaseIds`), not a second service loop. That UPDATE still fires
+   * `trg_test_case_last_result`'s `deleted_at` branch, which is a no-op here since the Test Case
+   * itself is about to be invisible too — but it is the same write path F4 uses, so both routes
+   * exercise the identical trigger behaviour.
+   */
+  async delete(actor: JwtPayload, id: string): Promise<void> {
+    const existing = await this.testCaseRepo.findById(id, actor.workspaceId);
+    if (!existing) {
+      throw new NotFoundException('TEST_CASE_NOT_FOUND', 'Test case not found');
+    }
+    if (existing.workItemId) {
+      await this.requireReadableWorkItem(actor, existing.workItemId);
+    }
+
+    await this.uow.run(async (tx) => {
+      await this.testResultRepo.softDeleteByTestCaseIds([id], actor.workspaceId, tx);
+      await this.testCaseRepo.softDelete(id, actor.workspaceId, tx);
+
+      await this.activityLogger.log(
+        [
+          this.activityLogger.build(
+            {
+              workspaceId: actor.workspaceId,
+              projectId: existing.projectId,
+              entityType: 'test_case',
+              entityId: id,
+              contextId: existing.workItemId,
+            },
+            actor.sub,
+            'test_case.deleted',
+            null,
+            { name: existing.name, testCaseKey: existing.testCaseKey },
+          ),
+        ],
+        { tx },
+      );
+    });
+  }
+
+  /**
+   * Rank drag-reorder (F3) — a single-item NEIGHBOUR-based reorder, mirroring
+   * `WorkItemsService.rankWorkItem` exactly: `beforeId`/`afterId` are the rows immediately
+   * above/below the target's NEW position (either may be absent at a list boundary), and the
+   * LexoRank is computed strictly between their stored ranks with `between()` — a single-row
+   * UPDATE, no full re-numbering. `test_case:edit` is checked by the route's own
+   * `@RequirePermission`, scoped to the Work Item in the path.
+   *
+   * Every neighbour is resolved and checked against THIS Work Item — `loadBulkItems`'s own lesson
+   * (CLAUDE.md: a write authorised on the container alone is the cheapest way to move another
+   * row) applies here too: a neighbour id from another Work Item is refused, not silently ranked
+   * against it.
+   */
+  async reorder(
+    actor: JwtPayload,
+    id: string,
+    opts: { workItemId: string; beforeId?: string | null; afterId?: string | null },
+  ): Promise<TestCase> {
+    const existing = await this.testCaseRepo.findById(id, actor.workspaceId);
+    if (!existing) {
+      throw new NotFoundException('TEST_CASE_NOT_FOUND', 'Test case not found');
+    }
+    if (existing.workItemId !== opts.workItemId) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_PARENT_SCOPE_MISMATCH',
+        'Test case does not belong to the given Work Item',
+      );
+    }
+    if (existing.workItemId) {
+      await this.requireReadableWorkItem(actor, existing.workItemId);
+    }
+
+    const neighbourIds = [opts.beforeId, opts.afterId].filter(
+      (n): n is string => typeof n === 'string',
+    );
+    const neighbours = await this.testCaseRepo.findRanksByIds(neighbourIds, actor.workspaceId);
+    const byId = new Map(neighbours.map((n) => [n.id, n]));
+
+    const rankOf = (nid: string | null | undefined): string | null => {
+      if (!nid) return null;
+      const n = byId.get(nid);
+      if (!n || n.workItemId !== opts.workItemId) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_PARENT_SCOPE_MISMATCH',
+          'Neighbour test case is not in the same Work Item',
+        );
+      }
+      return n.rank;
+    };
+
+    const lowRank = rankOf(opts.beforeId);
+    const highRank = rankOf(opts.afterId);
+    const newRank = between(lowRank, highRank);
+
+    await this.uow.run((tx) => this.testCaseRepo.updateRank(id, newRank, actor.workspaceId, tx));
+    return { ...existing, rank: newRank };
   }
 
   // ── Attachments (C4) ─────────────────────────────────────────────────────────

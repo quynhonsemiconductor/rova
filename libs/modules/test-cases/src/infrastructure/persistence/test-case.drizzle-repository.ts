@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, count, desc, eq, getTableColumns, isNull, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, CursorPayload, DbExecutor, PagedResult } from '@platform';
@@ -252,6 +252,76 @@ export class TestCaseDrizzleRepository implements ITestCaseRepository {
         ),
       );
     return this.mapRow(rows[0]);
+  }
+
+  // ── Writes (Phase F) ─────────────────────────────────────────────────────
+
+  async softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void> {
+    const exec = executor ?? this.db;
+    await exec
+      .update(testCases)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(testCases.id, id), eq(testCases.workspaceId, workspaceId)));
+  }
+
+  async listLiveIdsByWorkItem(
+    workItemId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<string[]> {
+    const rows = await executor
+      .select({ id: testCases.id })
+      .from(testCases)
+      .where(
+        and(
+          eq(testCases.workItemId, workItemId),
+          eq(testCases.workspaceId, workspaceId),
+          isNull(testCases.deletedAt),
+        ),
+      );
+    return rows.map((r) => r.id);
+  }
+
+  async softDeleteByWorkItem(
+    workItemId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<void> {
+    await executor
+      .update(testCases)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(testCases.workItemId, workItemId),
+          eq(testCases.workspaceId, workspaceId),
+          isNull(testCases.deletedAt),
+        ),
+      );
+  }
+
+  async findRanksByIds(
+    ids: string[],
+    workspaceId: string,
+  ): Promise<Array<{ id: string; workItemId: string | null; rank: string }>> {
+    if (ids.length === 0) return [];
+    const rows = await this.db
+      .select({ id: testCases.id, workItemId: testCases.workItemId, rank: testCases.rank })
+      .from(testCases)
+      .where(and(inArray(testCases.id, ids), eq(testCases.workspaceId, workspaceId)));
+    return rows;
+  }
+
+  async updateRank(
+    id: string,
+    rank: string,
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<void> {
+    const exec = executor ?? this.db;
+    await exec
+      .update(testCases)
+      .set({ rank, updatedAt: new Date() })
+      .where(and(eq(testCases.id, id), eq(testCases.workspaceId, workspaceId)));
   }
 
   private mapRow(

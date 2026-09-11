@@ -8,14 +8,23 @@ const navigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 const testCases = vi.fn()
+const reorderMutate = vi.fn()
+const deleteMutate = vi.fn()
 let canCreateTestCase = false
+let canEditTestCase = false
+let canDeleteTestCase = false
 vi.mock('@/features/test-cases/api', () => ({
   useTestCases: (...args: unknown[]) => testCases(...args),
+  useReorderTestCase: () => ({ mutate: reorderMutate, isPending: false }),
+  useDeleteTestCase: () => ({ mutateAsync: deleteMutate, isPending: false }),
 }))
 vi.mock('@/features/access/api', () => ({
   useProjectPermissions: () => ({
     can: (code: string) =>
-      code === 'test_case:view' || (code === 'test_case:create' && canCreateTestCase),
+      code === 'test_case:view' ||
+      (code === 'test_case:create' && canCreateTestCase) ||
+      (code === 'test_case:edit' && canEditTestCase) ||
+      (code === 'test_case:delete' && canDeleteTestCase),
   }),
 }))
 vi.mock('@/features/test-cases/ui/create-test-case-modal', () => ({
@@ -57,6 +66,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   canCreateTestCase = false
+  canEditTestCase = false
+  canDeleteTestCase = false
   testCases.mockReturnValue({ data: [], isLoading: false, isError: false })
 })
 
@@ -152,5 +163,45 @@ describe('TestCasesTab', () => {
     renderTab()
 
     expect(screen.queryByText(/test step/i)).not.toBeInTheDocument()
+  })
+
+  // ── Phase F: row delete (F2) ────────────────────────────────────────────────
+
+  it('renders NO row action menu without test_case:delete (F2)', () => {
+    testCases.mockReturnValue({ data: [testCase()], isLoading: false, isError: false })
+    renderTab()
+
+    expect(screen.queryByRole('button', { name: /Actions for TC-1/i })).not.toBeInTheDocument()
+  })
+
+  it('deletes the row after a NAMED confirmation, with test_case:delete (F2)', async () => {
+    canDeleteTestCase = true
+    deleteMutate.mockResolvedValue(undefined)
+    testCases.mockReturnValue({ data: [testCase()], isLoading: false, isError: false })
+    renderTab()
+
+    fireEvent.click(screen.getByRole('button', { name: /Actions for TC-1/i }))
+    fireEvent.click(await screen.findByText('Delete'))
+
+    // Still nothing sent — the dialog is the gate.
+    expect(deleteMutate).not.toHaveBeenCalled()
+    // The confirmation names what survives: Results do NOT survive independently.
+    expect(screen.getByText(/Its Results are deleted with it/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(deleteMutate).toHaveBeenCalledWith('tc-1')
+  })
+
+  // ── Phase F: rank drag-reorder (F3) ──────────────────────────────────────────
+
+  it('renders a focusable drag grip per row with test_case:edit, none without it', () => {
+    testCases.mockReturnValue({ data: [testCase()], isLoading: false, isError: false })
+    const { rerender } = renderTab()
+    // Disabled: an inert, aria-hidden spacer — no accessible grip to find.
+    expect(screen.queryByRole('button', { name: /drag to reorder/i })).not.toBeInTheDocument()
+
+    canEditTestCase = true
+    rerender(<TestCasesTab workItemId="wi-1" projectId="proj-1" />)
+    expect(screen.getByRole('button', { name: /drag to reorder/i })).toBeInTheDocument()
   })
 })

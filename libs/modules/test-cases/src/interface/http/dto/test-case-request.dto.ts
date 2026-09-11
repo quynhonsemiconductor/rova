@@ -36,7 +36,7 @@ export class CreateTestCaseDto extends createZodDto(CreateTestCaseSchema) {}
  * `lastVerdict` / `lastRun` / `lastResultId` (BR9) — all three are maintained EXCLUSIVELY by
  * `trg_test_case_last_result` (D6); the contract does not advertise what the trigger owns, the
  * same reasoning `CreateTaskSchema` uses for `iterationId`. NO `rank` — reordering is
- * `PATCH /work-items/:id/test-cases/reorder`, a separate route. NO `testCaseKey` / `createdBy` /
+ * `PATCH /test-cases/:id/rank`, a separate neighbour-based route (F3). NO `testCaseKey` / `createdBy` /
  * timestamps / `id` / `workspaceId` — identity and audit columns are never patchable anywhere in
  * this codebase.
  *
@@ -61,3 +61,22 @@ export const UpdateTestCaseSchema = z.object({
 });
 
 export class UpdateTestCaseDto extends createZodDto(UpdateTestCaseSchema) {}
+
+// ── Reorder (rank drag, F3) ──────────────────────────────────────────────────
+
+/**
+ * `PATCH /test-cases/:id/rank` — a single-item NEIGHBOUR-based reorder, mirroring
+ * `RankWorkItemSchema`/`WorkItemsService.rankWorkItem` exactly (the shape every other rank-drag
+ * grid in this codebase already uses — Backlog, Quality's `useRankAnyWorkItem` — because
+ * `useRowRerank`'s `onReorder` callback hands `{id, beforeId, afterId}`, not a full recomputed
+ * rank list). `beforeId`/`afterId` are the rows immediately above/below the target's NEW position
+ * (either may be absent at a list boundary); the service computes a LexoRank strictly between
+ * their stored ranks with `between()` — a single-row UPDATE, no full re-numbering.
+ */
+export const RankTestCaseSchema = z.object({
+  workItemId: z.string().uuid(),
+  beforeId: z.string().uuid().nullable().optional(),
+  afterId: z.string().uuid().nullable().optional(),
+});
+
+export class RankTestCaseDto extends createZodDto(RankTestCaseSchema) {}

@@ -27,7 +27,7 @@ import {
 import type { EntityAttachment } from '@modules/attachments';
 import { TestCasesService } from '../../application/test-cases.service';
 import { TestResultsService } from '../../application/test-results.service';
-import { UpdateTestCaseDto } from './dto/test-case-request.dto';
+import { RankTestCaseDto, UpdateTestCaseDto } from './dto/test-case-request.dto';
 import { TestCaseResponseDto, toTestCaseDto } from './dto/test-case-response.dto';
 import { CreateTestResultDto } from './dto/test-result-request.dto';
 import { TestResultResponseDto, toTestResultDto } from './dto/test-result-response.dto';
@@ -115,6 +115,47 @@ export class TestCaseRecordsController {
   ): Promise<TestCaseResponseDto> {
     const testCase = await this.testCasesService.update(user, id, dto);
     return toTestCaseDto(testCase);
+  }
+
+  /**
+   * Rank drag-reorder (F3) — a single-item neighbour-based reorder, the exact shape
+   * `PATCH /work-items/:id/rank` uses. `beforeId`/`afterId` name the rows immediately
+   * above/below the target's NEW position; the service computes a LexoRank between their
+   * stored ranks.
+   */
+  @Patch(':id/rank')
+  @RequirePermission('test_case:edit', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Reorder a Test Case between two neighbours (drag-to-reorder)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: TestCaseResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 412)
+  async rank(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RankTestCaseDto,
+  ): Promise<TestCaseResponseDto> {
+    const testCase = await this.testCasesService.reorder(user, id, dto);
+    return toTestCaseDto(testCase);
+  }
+
+  /**
+   * Delete a Test Case (F1/F2). SOFT — `deleted_at` — and cascades to its Results in the SAME
+   * transaction (`TestCasesService.delete`); the FE confirmation is NAMED, not typed, because the
+   * delete is recoverable in the database (CLAUDE.md: a typed gate is reserved for the
+   * irreversible).
+   */
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermission('test_case:delete', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Delete a Test Case (soft; cascades to its Results)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Test case deleted' })
+  @ApiCommonErrors(401, 403, 404)
+  async delete(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    await this.testCasesService.delete(user, id);
   }
 
   // ── Activity (Revision History, C6) ──────────────────────────────────────────

@@ -17,13 +17,9 @@
  * IF IT COMES BACK: mount it as a real trailing COLUMN that the header renders too, never as an
  * `ml-auto` cell the header knows nothing about. That is the mistake that produced both defects.
  */
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2 } from 'lucide-react'
 
-import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
-import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
-import { notify } from '@/shared/lib/toast'
+import { RowActionsMenu } from '@/shared/ui/row-actions-menu'
 import { useDeleteWorkItem } from '@/features/work-items/api'
 
 /**
@@ -42,6 +38,11 @@ import { useDeleteWorkItem } from '@/features/work-items/api'
  * The confirmation is NAMED, not typed: the delete is SOFT (`P3-QA-FR-020` retains the child Tasks,
  * attachments, comments and relations), so the record is recoverable and the typed gate is reserved
  * for the irreversible.
+ *
+ * The menu/dialog/pending/error-toast plumbing itself now lives in the mutation-agnostic
+ * `RowActionsMenu` (Phase F) — this component supplies only its own labels and `useDeleteWorkItem`
+ * mutation, so `TestCaseRowActions` (the Test Cases tab) can reuse the identical shape without a
+ * second copy of the wiring.
  */
 export function WorkItemRowActions({
   itemId,
@@ -60,44 +61,20 @@ export function WorkItemRowActions({
 }) {
   const { t } = useTranslation('work-items')
   const del = useDeleteWorkItem()
-  const [confirm, setConfirm] = useState(false)
-
-  if (!canDelete) return null
 
   return (
-    <>
-      <ActionMenu ariaLabel={t('rowActions.label', { key: itemKey })}>
-        <ActionMenuItem
-          icon={<Trash2 size={13} />}
-          label={t('delete.action')}
-          destructive
-          onClick={() => setConfirm(true)}
-        />
-      </ActionMenu>
-      <ConfirmDialog
-        open={confirm}
-        destructive
-        title={t('delete.title')}
-        message={t('delete.message', { key: itemKey })}
-        confirmLabel={t('delete.action')}
-        pending={del.isPending}
-        onCancel={() => setConfirm(false)}
-        onConfirm={() => {
-          void del
-            .mutateAsync({ id: itemId, projectId })
-            .then(() => {
-              setConfirm(false)
-              notify.success(t('delete.deleted', { key: itemKey }))
-              onDeleted?.()
-            })
-            .catch((e: unknown) => {
-              // The server's own sentence: a refusal here explains itself (another team's row, an
-              // archived project), and a generic failure toast would hide which.
-              setConfirm(false)
-              notify.error(e instanceof Error ? e.message : t('delete.failed'))
-            })
-        }}
-      />
-    </>
+    <RowActionsMenu
+      menuLabel={t('rowActions.label', { key: itemKey })}
+      deleteActionLabel={t('delete.action')}
+      confirmTitle={t('delete.title')}
+      confirmMessage={t('delete.message', { key: itemKey })}
+      deletedMessage={t('delete.deleted', { key: itemKey })}
+      failedMessage={t('delete.failed')}
+      canDelete={canDelete}
+      onDelete={async () => {
+        await del.mutateAsync({ id: itemId, projectId })
+        onDeleted?.()
+      }}
+    />
   )
 }
