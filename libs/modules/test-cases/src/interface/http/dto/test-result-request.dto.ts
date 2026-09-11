@@ -1,5 +1,12 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { testVerdictEnum } from '../../../../../../../db/schema/enums';
+
+// Derived from the Drizzle enum with `not_run` filtered out (B1) — a Result records an outcome,
+// never its absence (D6). Filtering here, rather than a second enum, is exactly what stops the
+// two audiences of `testVerdictEnum` (a Test Case's `lastVerdict` vs a Result's own `verdict`)
+// from silently drifting apart; see the enum's own docblock in db/schema/enums.ts.
+const TEST_RESULT_VERDICTS = testVerdictEnum.enumValues.filter((v) => v !== 'not_run');
 
 /**
  * Add a Test Result (SRS §8). NO `testCaseId` / `workItemId` (BR13) — both are inherited from the
@@ -10,7 +17,7 @@ import { z } from 'zod';
 export const CreateTestResultSchema = z.object({
   build: z.string().min(1).max(255).trim(), // BR11: required
   runDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // BR11: required, date-only
-  verdict: z.enum(['pass', 'fail', 'blocked', 'error', 'inconclusive']), // not_run excluded (D6)
+  verdict: z.enum(TEST_RESULT_VERDICTS), // not_run excluded (D6)
   durationMinutes: z.number().int().min(0).optional(), // BR11: >= 0; schema default 0
   testerId: z.string().uuid(), // BR11: required; BR8 gated by ProjectsService.assertAssignable
   notes: z.string().max(4000).optional(),
@@ -34,7 +41,7 @@ export const UpdateTestResultSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
-  verdict: z.enum(['pass', 'fail', 'blocked', 'error', 'inconclusive']).optional(),
+  verdict: z.enum(TEST_RESULT_VERDICTS).optional(),
   durationMinutes: z.number().int().min(0).optional(), // BR11: >= 0 on edit too, not just create
   testerId: z.string().uuid().optional(), // BR8: gated by ProjectsService.assertAssignable when changing
   notes: z.string().max(4000).nullable().optional(),

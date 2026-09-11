@@ -26,6 +26,7 @@ const TEST_CASE: TestCase = {
   workspaceId: 'ws-1',
   projectId: 'proj-1',
   teamId: 'team-1',
+  teamName: 'Team Alpha',
   workItemId: 'wi-1',
   testCaseKey: 'TC-1',
   name: 'Login works',
@@ -79,6 +80,9 @@ describe('TestCasesService', () => {
     build: ReturnType<typeof vi.fn>;
     buildDiff: ReturnType<typeof vi.fn>;
     log: ReturnType<typeof vi.fn>;
+    // TX1: the service logs via `logSafe` OUTSIDE the transaction, so the mock must
+    // declare it — the specs below already assert against it.
+    logSafe: ReturnType<typeof vi.fn>;
     listFor: ReturnType<typeof vi.fn>;
   };
   let entityAttachments: {
@@ -127,6 +131,7 @@ describe('TestCasesService', () => {
       build: vi.fn().mockReturnValue({}),
       buildDiff: vi.fn().mockReturnValue([]),
       log: vi.fn().mockResolvedValue(undefined),
+      logSafe: vi.fn().mockResolvedValue(undefined),
       listFor: vi.fn().mockResolvedValue({ data: [], total: 0 }),
     };
     entityAttachments = {
@@ -250,6 +255,27 @@ describe('TestCasesService', () => {
       workItems.getWorkItemForView.mockRejectedValue(new Error('WORK_ITEM_NOT_FOUND'));
 
       await expect(service.getByKey(actor, 'TC-1')).rejects.toThrow('WORK_ITEM_NOT_FOUND');
+    });
+
+    it('AC-audit fix #1: passes the repository-resolved teamName through untouched, for a real Team', async () => {
+      repo.findByKey.mockResolvedValue({
+        ...TEST_CASE,
+        teamId: 'team-1',
+        teamName: 'Team Alpha',
+      });
+
+      const result = await service.getByKey(actor, 'TC-1');
+
+      expect(result.teamName).toBe('Team Alpha');
+    });
+
+    it('AC-audit fix #1: a null teamId resolves teamName null too — the fallback is a DISPLAY rule, not a repository default', async () => {
+      repo.findByKey.mockResolvedValue({ ...TEST_CASE, teamId: null, teamName: null });
+
+      const result = await service.getByKey(actor, 'TC-1');
+
+      expect(result.teamId).toBeNull();
+      expect(result.teamName).toBeNull();
     });
   });
 
@@ -421,7 +447,7 @@ describe('TestCasesService', () => {
       expect(repo.findMaxRank).toHaveBeenCalledWith('wi-1', 'ws-1', expect.anything());
     });
 
-    it('B2: logs test_case.created with contextId = the parent Work Item id', async () => {
+    it('B2/TX1: logs test_case.created with contextId = the parent Work Item id, via logSafe outside the tx', async () => {
       await service.create(actor, 'wi-1', { name: 'New case' });
 
       expect(activity.build).toHaveBeenCalledWith(
@@ -434,7 +460,7 @@ describe('TestCasesService', () => {
         null,
         expect.anything(),
       );
-      expect(activity.log).toHaveBeenCalled();
+      expect(activity.logSafe).toHaveBeenCalledWith(expect.anything());
     });
 
     it('D4: retries ONCE on a duplicate-key race and succeeds on the second attempt', async () => {
@@ -555,7 +581,7 @@ describe('TestCasesService', () => {
       expect(projects.assertAssignable).not.toHaveBeenCalled();
     });
 
-    it('C3: logs a scalar-only diff via buildDiff, contextId = the parent Work Item id', async () => {
+    it('C3/TX1: logs a scalar-only diff via buildDiff, contextId = the parent Work Item id, via logSafe outside the tx', async () => {
       await service.update(actor, 'tc-1', { name: 'Renamed' });
 
       expect(activity.buildDiff).toHaveBeenCalledWith(
@@ -566,7 +592,7 @@ describe('TestCasesService', () => {
         expect.anything(),
         'test_case.updated',
       );
-      expect(activity.log).toHaveBeenCalledWith(expect.anything(), { tx: expect.anything() });
+      expect(activity.logSafe).toHaveBeenCalledWith(expect.anything());
     });
   });
 
@@ -623,7 +649,7 @@ describe('TestCasesService', () => {
       expect(resultsOrder).toBeLessThan(caseOrder);
     });
 
-    it('logs test_case.deleted with contextId = the parent Work Item id', async () => {
+    it('logs test_case.deleted with contextId = the parent Work Item id, via logSafe outside the tx (TX1)', async () => {
       await service.delete(actor, 'tc-1');
 
       expect(activity.build).toHaveBeenCalledWith(
@@ -633,7 +659,7 @@ describe('TestCasesService', () => {
         null,
         expect.objectContaining({ testCaseKey: 'TC-1' }),
       );
-      expect(activity.log).toHaveBeenCalledWith(expect.anything(), { tx: expect.anything() });
+      expect(activity.logSafe).toHaveBeenCalledWith(expect.anything());
     });
   });
 

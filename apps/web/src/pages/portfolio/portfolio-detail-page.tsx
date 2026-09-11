@@ -154,7 +154,7 @@ export function PortfolioDetailPage() {
     save,
     cancel,
   } = usePendingPatch<PortfolioItemDetail, UpdatePortfolioItemBody>(
-    server ?? ({} as PortfolioItemDetail),
+    server ?? null,
     server?.id,
     async (patch) => {
       // Upload any pasted-image previews still sitting as blob: URLs before persisting —
@@ -224,7 +224,8 @@ export function PortfolioDetailPage() {
   const back = useDetailBack({ to: '/portfolio' })
 
   if (isLoading) return <SkeletonList rows={6} />
-  if (!server) return <EmptyState title={t('detail.notFound')} />
+  // N1: `item` (the hook's `value`) is null exactly when `server` is.
+  if (!server || !item) return <EmptyState title={t('detail.notFound')} />
 
   return (
     <DetailLayout

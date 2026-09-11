@@ -94,6 +94,14 @@ describe('TestCaseDrizzleRepository — scope is REQUIRED but never a predicate 
     expect(whereOf(captured[0].sql)).not.toContain('team_id');
   });
 
+  it('findById LEFT JOINs work.teams to resolve teamName — an unfiltered scope join, not a predicate (AC-audit fix #1)', async () => {
+    const { repo, captured } = recordingRepo();
+
+    await repo.findById('tc-1', 'ws-1');
+
+    expect(captured[0].sql).toMatch(/left join "work"\."teams"/);
+  });
+
   it('findByKey is a plain (key, workspace_id) lookup with NO scope parameter at all', async () => {
     const { repo, captured } = recordingRepo();
 

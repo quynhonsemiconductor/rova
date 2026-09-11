@@ -4,7 +4,7 @@
  * control anywhere on this page that could write any of the four.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ testCaseKey: 'TC-1' }),
@@ -131,13 +131,35 @@ describe('TestCaseDetailPage', () => {
   it('BR5: renders Project backlog when teamId is null, with no Team control to edit it', () => {
     canPermission.mockReturnValue(true)
     testCaseByKey.mockReturnValue({
-      data: testCase({ teamId: null }),
+      data: testCase({ teamId: null, teamName: null }),
       isLoading: false,
       isError: false,
     })
     render(<TestCaseDetailPage />)
 
     expect(screen.getByText('Project backlog')).toBeInTheDocument()
+  })
+
+  it('SRS §6.3 / Story 5 AC3: renders the real Team name when teamId is set, never the Project backlog fallback', () => {
+    canPermission.mockReturnValue(true)
+    testCaseByKey.mockReturnValue({
+      data: testCase({ teamId: 'team-1', teamName: 'Team Alpha' }),
+      isLoading: false,
+      isError: false,
+    })
+    render(<TestCaseDetailPage />)
+
+    expect(screen.getByText('Team Alpha')).toBeInTheDocument()
+    expect(screen.queryByText('Project backlog')).not.toBeInTheDocument()
+  })
+
+  it('Story 6 AC1: the Results tab uses the flask icon, not ClipboardList', () => {
+    canPermission.mockReturnValue(false)
+    testCaseByKey.mockReturnValue({ data: testCase(), isLoading: false, isError: false })
+    const { container } = render(<TestCaseDetailPage />)
+
+    expect(container.querySelector('svg.lucide-flask-conical')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-clipboard-list')).toBeNull()
   })
 
   it('links Work Product to the parent Work Item', () => {
@@ -147,6 +169,58 @@ describe('TestCaseDetailPage', () => {
 
     const link = screen.getByRole('link', { name: 'US-1' })
     expect(link).toHaveAttribute('href', '/item/$itemKey')
+  })
+
+  it('the unsaved-changes bar never shows on Results/History even while Details is dirty', () => {
+    canPermission.mockReturnValue(true)
+    testCaseByKey.mockReturnValue({ data: testCase(), isLoading: false, isError: false })
+    render(<TestCaseDetailPage />)
+
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).not.toBeInTheDocument()
+
+    // Genuinely dirty the page via a real click-driven edit (Method: Manual -> Automated), not a
+    // guessed mount-time trigger — `SearchableSelect`'s `onChange` only ever fires from a real
+    // option click (see its `handlePick`), so this exercises the actual `setField` path.
+    fireEvent.click(screen.getByRole('button', { name: 'Method' }))
+    fireEvent.click(screen.getByText('Automated'))
+
+    expect(screen.getByRole('region', { name: 'Unsaved changes' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /Results/i }))
+
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).not.toBeInTheDocument()
+  })
+
+  it('does NOT go dirty across the isLoading:true/data:undefined -> isLoading:false/data:<real> transition (not tested by either prior session)', () => {
+    canPermission.mockReturnValue(true)
+    // First render: genuinely undefined, exactly like a real page load before the query resolves
+    // — both prior sessions' regression tests started already-loaded, which never exercises this
+    // transition at all.
+    testCaseByKey.mockReturnValue({ data: undefined, isLoading: true, isError: false })
+    const { rerender } = render(<TestCaseDetailPage />)
+
+    // Second render, in a SEPARATE act (not the same render pass): the query resolves with a real
+    // row whose content fields are all non-empty, so every RichTextEditor's `value` prop flips
+    // from whatever the `{}` fallback produced to a real string in the same render `reset()` fires.
+    act(() => {
+      testCaseByKey.mockReturnValue({
+        data: testCase({
+          description: '<p>real description</p>',
+          objective: '<p>real objective</p>',
+          preconditions: '<p>real preconditions</p>',
+          validationInput: '<p>real input</p>',
+          validationExpectedResult: '<p>real expected</p>',
+          postconditions: '<p>real postconditions</p>',
+          notes: '<p>real notes</p>',
+        }),
+        isLoading: false,
+        isError: false,
+      })
+      rerender(<TestCaseDetailPage />)
+    })
+
+    // Asserted immediately — before any act() that simulates a user interaction.
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).not.toBeInTheDocument()
   })
 
   it('renders each of the three denied states, not a blank page', () => {

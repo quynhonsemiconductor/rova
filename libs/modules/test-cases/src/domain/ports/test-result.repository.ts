@@ -1,5 +1,5 @@
 import type { DbExecutor } from '@platform';
-import type { TestResult } from '../test-result.types';
+import type { TestResult, TestResultVerdict } from '../test-result.types';
 
 export const TEST_RESULT_REPOSITORY = Symbol('TEST_RESULT_REPOSITORY');
 
@@ -13,7 +13,7 @@ export interface CreateTestResultInput {
   testResultKey: string;
   build: string;
   runDate: string;
-  verdict: 'pass' | 'fail' | 'blocked' | 'error' | 'inconclusive';
+  verdict: TestResultVerdict;
   durationMinutes: number;
   testerId: string;
   notes: string | null;
@@ -28,7 +28,7 @@ export interface CreateTestResultInput {
 export interface UpdateTestResultInput {
   build?: string;
   runDate?: string;
-  verdict?: 'pass' | 'fail' | 'blocked' | 'error' | 'inconclusive';
+  verdict?: TestResultVerdict;
   durationMinutes?: number;
   testerId?: string;
   notes?: string | null;

@@ -25,9 +25,15 @@ import { useResetOnIdChange } from './use-reset-on-id-change'
  *   )
  *   <input value={value.title} onChange={e => setField({ title: e.target.value })} />
  *   {isDirty && <SaveCancelBar onSave={save} onCancel={cancel} saving={saving} />}
+ *
+ * N1: `entity` accepts `null` for the "still loading" case — the caller's own query result is
+ * `TEntity | undefined` before it resolves, so a caller no longer needs `data ?? ({} as TEntity)`
+ * just to satisfy this hook's signature. `value` is `TEntity | null` in that state; a caller that
+ * reaches the loading branch already returns before rendering fields off it (every current caller
+ * does), so this never has to be defended against in practice.
  */
 export function usePendingPatch<TEntity extends object, TPatch extends object = Partial<TEntity>>(
-  entity: TEntity,
+  entity: TEntity | null,
   entityId: string | undefined,
   persist: (patch: TPatch) => Promise<unknown>,
 ) {
@@ -54,8 +60,9 @@ export function usePendingPatch<TEntity extends object, TPatch extends object = 
   }, [pending, persist])
 
   return {
-    /** Entity merged with any pending edits — render this, not the raw entity. */
-    value: { ...entity, ...pending },
+    /** Entity merged with any pending edits — render this, not the raw entity. `null` while the
+     *  entity itself hasn't loaded yet. */
+    value: entity ? { ...entity, ...pending } : null,
     /** The raw accumulated patch, in case a caller needs it directly (e.g. image upload on save). */
     pending,
     isDirty: Object.keys(pending).length > 0,

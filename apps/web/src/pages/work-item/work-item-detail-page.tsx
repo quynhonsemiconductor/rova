@@ -36,6 +36,7 @@ import {
   Bell,
   BellOff,
   FileText,
+  FlaskConical,
   GitPullRequest,
   History,
   ListChecks,
@@ -266,7 +267,7 @@ export function WorkItemDetailPage() {
     save,
     cancel,
   } = usePendingPatch<WorkItem, UpdateWorkItemInput>(
-    itemByKey ?? ({} as WorkItem),
+    itemByKey ?? null,
     itemByKey?.id,
     async (patch) => {
       // Upload any pasted-image previews still sitting as blob: URLs before
@@ -301,7 +302,8 @@ export function WorkItemDetailPage() {
   // `@RequirePermission` for it and `RequirePermission` renders children when its own permission read
   // fails. Before this, every one of the three rendered as "not found" at best, and a blank page in
   // the case the BA retested. See `ui/work-item-unavailable.tsx`.
-  if (!itemByKey) {
+  // N1: `item` (the hook's `value`) is null exactly when `itemByKey` is.
+  if (!itemByKey || !item) {
     return (
       <WorkItemUnavailable
         reason={workItemUnavailableReason(byKeyQuery.isError, byKeyQuery.error)}
@@ -343,7 +345,7 @@ export function WorkItemDetailPage() {
             id: 'test-cases' as DetailTab,
             icon: (
               <span className="flex items-center gap-1.5">
-                <ListChecks size={19} />
+                <FlaskConical size={19} />
                 <span className="text-ui-xs font-semibold tabular-nums">
                   {testCaseCount ?? EMPTY_VALUE}
                 </span>

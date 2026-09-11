@@ -6,13 +6,20 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
-const navigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ testResultId: 'tr-1' }),
-  useNavigate: () => navigate,
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
     <a href={to}>{children}</a>
   ),
+}))
+
+const detailBack = vi.fn()
+const useDetailBackMock = vi.fn((fallback: unknown) => {
+  void fallback
+  return detailBack
+})
+vi.mock('@/shared/lib/use-detail-back', () => ({
+  useDetailBack: (fallback: unknown) => useDetailBackMock(fallback),
 }))
 
 const testResult = vi.fn()
@@ -128,5 +135,44 @@ describe('TestResultDetailPage', () => {
     render(<TestResultDetailPage />)
 
     expect(screen.getByText('No Test Result found')).toBeInTheDocument()
+  })
+
+  // ── Back navigation (real bug: a hardcoded `navigate()` PUSHED a stack entry instead of
+  //    walking history, corrupting the SECOND Back after this page — see `useDetailBack`'s own
+  //    test suite for proof of the walk-vs-fallback mechanism itself; this suite proves only that
+  //    THIS page's call sites feed it the right fallback). ──────────────────────────────────────
+
+  it("calls useDetailBack with the parent Test Case's route as the fallback, not a hardcoded navigate()", () => {
+    canPermission.mockReturnValue(true)
+    testResult.mockReturnValue({ data: result(), isLoading: false, isError: false })
+    render(<TestResultDetailPage />)
+
+    expect(useDetailBackMock).toHaveBeenCalledWith({
+      to: '/test-case/$testCaseKey',
+      params: { testCaseKey: 'TC-1' },
+    })
+
+    screen.getByLabelText('Back').click()
+    expect(detailBack).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to /backlog when the parent Test Case has not resolved yet', () => {
+    canPermission.mockReturnValue(true)
+    testCase.mockReturnValue({ data: undefined })
+    testResult.mockReturnValue({ data: result(), isLoading: false, isError: false })
+    render(<TestResultDetailPage />)
+
+    expect(useDetailBackMock).toHaveBeenCalledWith({ to: '/backlog' })
+  })
+
+  it('the not-found state also routes Back through useDetailBack, not a hardcoded navigate()', () => {
+    canPermission.mockReturnValue(false)
+    testResult.mockReturnValue({ data: undefined, isLoading: false, isError: false })
+    render(<TestResultDetailPage />)
+
+    expect(useDetailBackMock).toHaveBeenCalledWith({
+      to: '/test-case/$testCaseKey',
+      params: { testCaseKey: 'TC-1' },
+    })
   })
 })

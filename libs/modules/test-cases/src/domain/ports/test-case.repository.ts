@@ -1,6 +1,7 @@
 import type { CursorPayload, DbExecutor, PagedResult } from '@platform';
 import type { TestCase } from '../test-case.types';
 import type { TeamReadScope } from '../team-read-scope';
+import type { TestCaseMethod, TestCasePriority } from '../../../../../../db/schema/enums';
 
 export const TEST_CASE_REPOSITORY = Symbol('TEST_CASE_REPOSITORY');
 
@@ -26,8 +27,8 @@ export interface CreateTestCaseInput {
   testCaseKey: string;
   name: string;
   type: string;
-  method: 'manual' | 'automated';
-  priority: 'low' | 'normal' | 'high' | 'urgent';
+  method: TestCaseMethod;
+  priority: TestCasePriority;
   ownerId: string | null;
   assigneeId: string | null;
   rank: string;
@@ -50,8 +51,8 @@ export interface UpdateTestCaseInput {
   postconditions?: string | null;
   notes?: string | null;
   type?: string;
-  method?: 'manual' | 'automated';
-  priority?: 'low' | 'normal' | 'high' | 'urgent';
+  method?: TestCaseMethod;
+  priority?: TestCasePriority;
   ownerId?: string | null;
   assigneeId?: string | null;
 }

@@ -113,7 +113,7 @@ export function ProjectDetailPage() {
     save,
     cancel,
   } = usePendingPatch<Project, UpdateProjectInput>(
-    project ?? ({} as Project),
+    project ?? null,
     project?.id ?? '',
     async (patch) => {
       try {
@@ -126,7 +126,9 @@ export function ProjectDetailPage() {
   )
 
   function handleSave() {
-    if (!(p.name ?? '').trim()) {
+    // N1: `p` is `Project | null` before the entity loads; the rendered form already guards
+    // `!project` (the early return below), but TS can't see that across the function boundary.
+    if (!(p?.name ?? '').trim()) {
       toast.error(t('detail.nameRequired'))
       return
     }
@@ -141,7 +143,8 @@ export function ProjectDetailPage() {
     )
   }
 
-  if (isError || !project) {
+  // N1: `p` (the hook's `value`) is null exactly when `project` is.
+  if (isError || !project || !p) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background">
         <p className="text-ui-lg text-muted-foreground">{t('detail.loadError')}</p>

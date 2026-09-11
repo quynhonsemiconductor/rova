@@ -3,7 +3,7 @@ import { and, asc, count, desc, eq, getTableColumns, inArray, isNull, sql } from
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, CursorPayload, DbExecutor, PagedResult } from '@platform';
-import { testCases } from '../../../../../../db/schema/work';
+import { testCases, teams } from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
 import type { TestCase } from '../../domain/test-case.types';
 import type { TeamReadScope } from '../../domain/team-read-scope';
@@ -28,16 +28,33 @@ const ASSIGNEE_NAME = sql<
   string | null
 >`coalesce(${TC_ASSIGNEE_USER.displayName}, ${TC_ASSIGNEE_USER.email})`;
 
+/**
+ * Team-name join — same shape as the owner/assignee ones above. NULL `teamId` (Project Backlog,
+ * SRS §5) leaves this NULL through the left join; the caller renders the fallback string, never
+ * this repository (CLAUDE.md: a name belongs to the row, an absent one stays absent here).
+ */
+const TC_TEAM = alias(teams, 'tc_team');
+
 @Injectable()
 export class TestCaseDrizzleRepository implements ITestCaseRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  private selectWithNames() {
-    return this.db
-      .select({ ...getTableColumns(testCases), ownerName: OWNER_NAME, assigneeName: ASSIGNEE_NAME })
+  // `exec` defaults to `this.db` but a caller inside a transaction MUST pass its own `tx` — a
+  // stale connection would not yet see a row committed on the transaction's own connection (R1:
+  // this is also why `create`/`update` re-select through this method rather than trusting
+  // `RETURNING` + a null name).
+  private selectWithNames(exec: DbExecutor = this.db) {
+    return exec
+      .select({
+        ...getTableColumns(testCases),
+        ownerName: OWNER_NAME,
+        assigneeName: ASSIGNEE_NAME,
+        teamName: TC_TEAM.name,
+      })
       .from(testCases)
       .leftJoin(TC_OWNER_USER, eq(TC_OWNER_USER.id, testCases.ownerId))
-      .leftJoin(TC_ASSIGNEE_USER, eq(TC_ASSIGNEE_USER.id, testCases.assigneeId));
+      .leftJoin(TC_ASSIGNEE_USER, eq(TC_ASSIGNEE_USER.id, testCases.assigneeId))
+      .leftJoin(TC_TEAM, eq(TC_TEAM.id, testCases.teamId));
   }
 
   // `scope` is accepted but never applied as a predicate — see `team-read-scope.ts`: the
@@ -176,15 +193,9 @@ export class TestCaseDrizzleRepository implements ITestCaseRepository {
       rank: input.rank,
       createdBy: input.createdBy,
     });
-    // Re-select through the same name joins every other read uses (rather than trusting `RETURNING`
-    // + a null name), on the SAME executor: an owner set at create must resolve to a real name in
-    // the response, not `null`, and a stale connection would not yet see the row committed elsewhere.
-    const rows = await executor
-      .select({ ...getTableColumns(testCases), ownerName: OWNER_NAME, assigneeName: ASSIGNEE_NAME })
-      .from(testCases)
-      .leftJoin(TC_OWNER_USER, eq(TC_OWNER_USER.id, testCases.ownerId))
-      .leftJoin(TC_ASSIGNEE_USER, eq(TC_ASSIGNEE_USER.id, testCases.assigneeId))
-      .where(eq(testCases.id, input.id));
+    // Re-select through the same name joins every other read uses, on the SAME executor: an owner
+    // set at create must resolve to a real name in the response, not `null`.
+    const rows = await this.selectWithNames(executor).where(eq(testCases.id, input.id));
     return this.mapRow(rows[0]);
   }
 
@@ -221,18 +232,13 @@ export class TestCaseDrizzleRepository implements ITestCaseRepository {
       .set(set)
       .where(and(eq(testCases.id, id), eq(testCases.workspaceId, workspaceId)));
 
-    const rows = await exec
-      .select({ ...getTableColumns(testCases), ownerName: OWNER_NAME, assigneeName: ASSIGNEE_NAME })
-      .from(testCases)
-      .leftJoin(TC_OWNER_USER, eq(TC_OWNER_USER.id, testCases.ownerId))
-      .leftJoin(TC_ASSIGNEE_USER, eq(TC_ASSIGNEE_USER.id, testCases.assigneeId))
-      .where(
-        and(
-          eq(testCases.id, id),
-          eq(testCases.workspaceId, workspaceId),
-          sql`${testCases.deletedAt} IS NULL`,
-        ),
-      );
+    const rows = await this.selectWithNames(exec).where(
+      and(
+        eq(testCases.id, id),
+        eq(testCases.workspaceId, workspaceId),
+        sql`${testCases.deletedAt} IS NULL`,
+      ),
+    );
     return this.mapRow(rows[0]);
   }
 
@@ -307,13 +313,18 @@ export class TestCaseDrizzleRepository implements ITestCaseRepository {
   }
 
   private mapRow(
-    row: typeof testCases.$inferSelect & { ownerName: string | null; assigneeName: string | null },
+    row: typeof testCases.$inferSelect & {
+      ownerName: string | null;
+      assigneeName: string | null;
+      teamName: string | null;
+    },
   ): TestCase {
     return {
       id: row.id,
       workspaceId: row.workspaceId,
       projectId: row.projectId,
       teamId: row.teamId,
+      teamName: row.teamName,
       workItemId: row.workItemId,
       testCaseKey: row.testCaseKey,
       name: row.name,

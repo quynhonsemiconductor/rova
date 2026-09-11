@@ -9,7 +9,8 @@ import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
-import { useCreateTestCase, useTestCaseTypes } from '@/features/test-cases/api'
+import { useCreateTestCase, useTestCaseTypes, type TestCase } from '@/features/test-cases/api'
+import { METHOD_LABEL, PRIORITY_LABEL } from '@/features/test-cases/model/test-case-columns'
 import { useWorkItem } from '@/features/work-items/api'
 import { useTeamOwnerOptions } from '@/features/teams/api'
 import { useRecordProject } from '@/shared/lib/deep-link-project'
@@ -27,8 +28,10 @@ interface Props {
   onClose: () => void
 }
 
-const METHOD_OPTIONS = ['manual', 'automated'] as const
-const PRIORITY_OPTIONS = ['low', 'normal', 'high', 'urgent'] as const
+// F1: derived from METHOD_LABEL/PRIORITY_LABEL's own keys (test-case-columns.tsx), not a 3rd
+// hardcoded value list. Labels still come from t() below — this only fixes the VALUE enumeration.
+const METHOD_OPTIONS = Object.keys(METHOD_LABEL) as TestCase['method'][]
+const PRIORITY_OPTIONS = Object.keys(PRIORITY_LABEL) as TestCase['priority'][]
 
 export function CreateTestCaseModal({ workItemId, onClose }: Props) {
   const { t } = useTranslation('test-cases')

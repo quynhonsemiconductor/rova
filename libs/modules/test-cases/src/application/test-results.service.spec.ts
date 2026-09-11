@@ -26,6 +26,7 @@ const TEST_CASE: TestCase = {
   workspaceId: 'ws-1',
   projectId: 'proj-1',
   teamId: 'team-1',
+  teamName: 'Team Alpha',
   workItemId: 'wi-1',
   testCaseKey: 'TC-1',
   name: 'Login works',
@@ -85,6 +86,9 @@ describe('TestResultsService', () => {
   let projects: { assertAssignable: ReturnType<typeof vi.fn> };
   let activity: {
     log: ReturnType<typeof vi.fn>;
+    // TX1: the service logs via `logSafe` OUTSIDE the transaction, so the mock must
+    // declare it — the specs below already assert against it.
+    logSafe: ReturnType<typeof vi.fn>;
     build: ReturnType<typeof vi.fn>;
     buildDiff: ReturnType<typeof vi.fn>;
     listFor: ReturnType<typeof vi.fn>;
@@ -110,6 +114,7 @@ describe('TestResultsService', () => {
     projects = { assertAssignable: vi.fn().mockResolvedValue(undefined) };
     activity = {
       log: vi.fn().mockResolvedValue(undefined),
+      logSafe: vi.fn().mockResolvedValue(undefined),
       build: vi.fn().mockReturnValue({}),
       buildDiff: vi.fn().mockReturnValue([]),
       listFor: vi.fn().mockResolvedValue({ data: [], total: 0 }),
@@ -313,7 +318,7 @@ describe('TestResultsService', () => {
       expect(repo.update).not.toHaveBeenCalled();
     });
 
-    it('logs a scalar-only diff, contextId = the Test Case id', async () => {
+    it('logs a scalar-only diff, contextId = the Test Case id, via logSafe outside the tx (TX1)', async () => {
       await service.update(actor, 'tr-1', PATCH);
 
       expect(activity.buildDiff).toHaveBeenCalledWith(
@@ -324,7 +329,7 @@ describe('TestResultsService', () => {
         expect.anything(),
         'test_result.updated',
       );
-      expect(activity.log).toHaveBeenCalled();
+      expect(activity.logSafe).toHaveBeenCalledWith(expect.anything());
     });
 
     it('BR13: never touches testCaseId/workItemId even if handed them', async () => {
@@ -344,15 +349,12 @@ describe('TestResultsService', () => {
       expect(testCases.getById).not.toHaveBeenCalled();
     });
 
-    it('BR19/BR20: authorises the Test Case, then soft-deletes and logs', async () => {
+    it('BR19/BR20/TX1: authorises the Test Case, then soft-deletes and logs via logSafe outside the tx', async () => {
       await service.delete(actor, 'tr-1');
 
       expect(testCases.getById).toHaveBeenCalledWith(actor, 'tc-1');
       expect(repo.softDelete).toHaveBeenCalledWith('tr-1', 'ws-1', expect.anything());
-      expect(activity.log).toHaveBeenCalledWith(
-        [expect.anything()],
-        expect.objectContaining({ tx: expect.anything() }),
-      );
+      expect(activity.logSafe).toHaveBeenCalledWith([expect.anything()]);
     });
   });
 

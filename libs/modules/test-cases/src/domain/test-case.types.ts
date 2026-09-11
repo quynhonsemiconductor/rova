@@ -9,6 +9,7 @@ export interface TestCase {
   projectId: string;
   /** NULL = "Project backlog" (SRS §5) — inherited from the Work Item, read-only. */
   teamId: string | null;
+  teamName: string | null;
   /** NULLABLE (D2) — Phase A exposes only the work-item-scoped routes. */
   workItemId: string | null;
   testCaseKey: string;

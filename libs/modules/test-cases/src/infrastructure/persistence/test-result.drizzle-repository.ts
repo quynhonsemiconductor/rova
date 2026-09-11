@@ -23,8 +23,10 @@ const TESTER_NAME = sql<
 export class TestResultDrizzleRepository implements ITestResultRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  private selectWithNames() {
-    return this.db
+  // `exec` defaults to `this.db` but a caller inside a transaction MUST pass its own `tx` — a
+  // stale connection would not yet see a row committed on the transaction's own connection (R1).
+  private selectWithNames(exec: DbExecutor = this.db) {
+    return exec
       .select({ ...getTableColumns(testResults), testerName: TESTER_NAME })
       .from(testResults)
       .leftJoin(TR_TESTER_USER, eq(TR_TESTER_USER.id, testResults.testerId));
@@ -87,11 +89,7 @@ export class TestResultDrizzleRepository implements ITestResultRepository {
     // Re-select through the tester name join on the SAME executor, matching
     // `TestCaseDrizzleRepository.create`'s reasoning: a stale connection would not yet see the row
     // committed elsewhere, and `RETURNING` alone would leave `testerName` null.
-    const rows = await executor
-      .select({ ...getTableColumns(testResults), testerName: TESTER_NAME })
-      .from(testResults)
-      .leftJoin(TR_TESTER_USER, eq(TR_TESTER_USER.id, testResults.testerId))
-      .where(eq(testResults.id, input.id));
+    const rows = await this.selectWithNames(executor).where(eq(testResults.id, input.id));
     return this.mapRow(rows[0]);
   }
 
@@ -122,11 +120,7 @@ export class TestResultDrizzleRepository implements ITestResultRepository {
 
     // Re-select through the tester name join on the SAME executor — a stale connection would not
     // yet see the row committed elsewhere (same reasoning as `create`'s own re-select).
-    const rows = await exec
-      .select({ ...getTableColumns(testResults), testerName: TESTER_NAME })
-      .from(testResults)
-      .leftJoin(TR_TESTER_USER, eq(TR_TESTER_USER.id, testResults.testerId))
-      .where(eq(testResults.id, id));
+    const rows = await this.selectWithNames(exec).where(eq(testResults.id, id));
     return this.mapRow(rows[0]);
   }
 

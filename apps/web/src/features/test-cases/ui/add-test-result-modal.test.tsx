@@ -3,7 +3,7 @@
  *
  * AC9: Save disabled without Build/Date/Tester. Verdict defaults Pass, Duration defaults 0 with
  * `min=0`. Test Case and Work Product render read-only (BR13 — no field, no picker, could not send
- * either even if it tried).
+ * either even if it tried). Story 7 AC5: success navigates to the new Result's own detail route.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
@@ -12,7 +12,9 @@ const createTestResult = vi.fn()
 const useTestCase = vi.fn()
 const useWorkItem = vi.fn()
 const teamOwnerOptions = vi.fn()
+const navigate = vi.fn()
 
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 vi.mock('@/features/test-cases/api', () => ({
   useCreateTestResult: () => ({ mutateAsync: createTestResult }),
   useTestCase: (...args: unknown[]) => useTestCase(...args),
@@ -119,6 +121,18 @@ describe('AddTestResultModal', () => {
       testerId: 'admin-1',
     })
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('Story 7 AC5: on success, navigates to the new Result detail route', async () => {
+    open()
+    fillRequired()
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
+
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalled())
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/test-result/$testResultId',
+      params: { testResultId: 'tr-1' },
+    })
   })
 
   it('shows a modal-level error banner on a failed submit', async () => {

@@ -1,6 +1,13 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { PageQuerySchema } from '@platform';
+import { testCaseMethodEnum, testCasePriorityEnum } from '../../../../../../../db/schema/enums';
+
+// Derived from the Drizzle enum, never re-typed — the single source of truth every other
+// module's DTOs already follow (work-items' WORK_ITEM_TYPES/SCHEDULE_STATES). Adding a Method or
+// Priority value is then a schema-only change; today it needs editing 4 sites in this file alone.
+const TEST_CASE_METHODS = testCaseMethodEnum.enumValues;
+const TEST_CASE_PRIORITIES = testCasePriorityEnum.enumValues;
 
 // No filters in Phase A — the tab loads one Work Item's Test Cases whole, in rank order (AC2).
 export const TestCaseListQuerySchema = PageQuerySchema;
@@ -20,8 +27,8 @@ export const CreateTestCaseSchema = z.object({
   // Omitted = service defaults to the project's first selectable Type (BR2). A value is validated
   // against the project's live Type list, then stored as a text SNAPSHOT (D8).
   type: z.string().max(60).trim().optional(),
-  method: z.enum(['manual', 'automated']).optional(), // BR3: schema default 'manual'
-  priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(), // BR3: schema default 'normal'
+  method: z.enum(TEST_CASE_METHODS).optional(), // BR3: schema default 'manual'
+  priority: z.enum(TEST_CASE_PRIORITIES).optional(), // BR3: schema default 'normal'
   ownerId: z.string().uuid().optional(), // BR4/BR8: gated by ProjectsService.assertAssignable
   assigneeId: z.string().uuid().optional(), // BR6: absent = Unassigned
 });
@@ -54,8 +61,8 @@ export const UpdateTestCaseSchema = z.object({
   postconditions: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   type: z.string().max(60).trim().optional(),
-  method: z.enum(['manual', 'automated']).optional(),
-  priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+  method: z.enum(TEST_CASE_METHODS).optional(),
+  priority: z.enum(TEST_CASE_PRIORITIES).optional(),
   ownerId: z.string().uuid().nullable().optional(), // BR8: gated by ProjectsService.assertAssignable
   assigneeId: z.string().uuid().nullable().optional(), // BR8: same rule as ownerId
 });

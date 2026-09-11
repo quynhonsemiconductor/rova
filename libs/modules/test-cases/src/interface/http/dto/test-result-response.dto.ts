@@ -1,6 +1,10 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { testVerdictEnum } from '../../../../../../../db/schema/enums';
 import type { TestResult } from '../../../domain/test-result.types';
+
+// Derived, `not_run` filtered (B1) — same reasoning as test-result-request.dto.ts.
+const TEST_RESULT_VERDICTS = testVerdictEnum.enumValues.filter((v) => v !== 'not_run');
 
 export const TestResultResponseSchema = z.object({
   id: z.string().uuid(),
@@ -15,7 +19,7 @@ export const TestResultResponseSchema = z.object({
   testResultKey: z.string().describe('TR-<n>, workspace-unique'),
   build: z.string(),
   runDate: z.string().describe('YYYY-MM-DD'),
-  verdict: z.enum(['pass', 'fail', 'blocked', 'error', 'inconclusive']),
+  verdict: z.enum(TEST_RESULT_VERDICTS),
   durationMinutes: z.number().int(),
   testerId: z.string().uuid(),
   testerName: z.string().nullable(),
