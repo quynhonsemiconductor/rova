@@ -54,7 +54,10 @@ describe('CopyLinkPopover', () => {
     vi.stubGlobal(
       'ClipboardItem',
       class {
-        constructor(public items: Record<string, Blob>) {}
+        items: Record<string, Blob>
+        constructor(items: Record<string, Blob>) {
+          this.items = items
+        }
       },
     )
     openPopover()

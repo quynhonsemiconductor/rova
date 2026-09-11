@@ -44,7 +44,7 @@ import { useWorkspaceTeams } from '@/features/teams/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useProjects } from '@/features/projects/api'
 import { formatWholePercent } from '@/shared/lib/utils'
-import { entityDetailUrl } from '@/shared/lib/entity-link'
+import { entityLinkFor } from '@/shared/lib/entity-link'
 
 // ── Status config ──────────────────────────────────────────────────────────────
 
@@ -189,11 +189,7 @@ export function MilestoneDetailPage() {
       onBack={back}
       badge={<TypeBadge type="milestone" />}
       itemKey={milestone.milestoneKey}
-      copyLink={{
-        key: milestone.milestoneKey,
-        name: milestone.name ?? '',
-        url: entityDetailUrl('milestone', milestone.id),
-      }}
+      copyLink={entityLinkFor('milestone', milestone.id, milestone.milestoneKey, milestone.name)}
       title={
         canManage ? (
           <input
