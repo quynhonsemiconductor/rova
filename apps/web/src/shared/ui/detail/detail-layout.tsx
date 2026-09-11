@@ -22,6 +22,7 @@ import { useState, type ReactNode } from 'react'
 import { Minimize2, PanelRightClose, PanelRightOpen } from 'lucide-react'
 
 import { DetailHeader } from '@/shared/ui/detail-header'
+import type { EntityLinkSubject } from '@/shared/lib/entity-link'
 import { IconButton } from '@/shared/ui/icon-button'
 import { DetailTabBar, type DetailTab } from '@/shared/ui/detail/detail-tab-bar'
 
@@ -42,6 +43,8 @@ interface DetailLayoutProps {
   status?: ReactNode
   /** Right-side action controls (save, delete menu…). */
   actions?: ReactNode
+  /** `Copy link` subject, forwarded to {@link DetailHeader}. Every detail page passes it. */
+  copyLink?: EntityLinkSubject
   /**
    * Collapse this full-page detail back to the *summary panel* on its list
    * surface (WID-FR-003 / WID-AC-07, mockup `shared.tsx` → `WorkItemDetailPage.onMinimize`).
@@ -86,6 +89,7 @@ export function DetailLayout({
   title,
   status,
   actions,
+  copyLink,
   onCollapse,
   collapseLabel,
   summary,
@@ -130,6 +134,7 @@ export function DetailLayout({
           title={title}
           status={status}
           actions={headerActions}
+          copyLink={copyLink}
         />
         {!summary && <DetailTabBar tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} />}
       </div>

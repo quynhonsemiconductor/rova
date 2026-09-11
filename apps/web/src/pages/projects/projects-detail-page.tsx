@@ -26,6 +26,7 @@ import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { PERMISSION } from '@/shared/config/permissions'
+import { entityDetailUrl } from '@/shared/lib/entity-link'
 import {
   useProjects,
   useUpdateProject,
@@ -160,6 +161,7 @@ export function ProjectDetailPage() {
       onBack={back}
       badge={<TypeBadge type="project" />}
       itemKey={project.key}
+      copyLink={{ key: project.key, name: project.name, url: entityDetailUrl('project', project.key) }}
       title={
         canManage ? (
           <input

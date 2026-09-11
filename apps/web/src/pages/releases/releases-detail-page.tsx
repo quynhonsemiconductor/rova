@@ -32,6 +32,7 @@ import { listResource } from '@/shared/lib/query/resource'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from './model/release-states'
 import { useProjectPermissions } from '@/features/access/api'
 import { useRecordProject } from '@/shared/lib/deep-link-project'
+import { entityLinkFor } from '@/shared/lib/entity-link'
 import {
   useRelease,
   useUpdateRelease,
@@ -141,6 +142,7 @@ export function ReleaseDetailPage() {
       onBack={back}
       badge={<TypeBadge type="release" />}
       itemKey={release.releaseKey}
+      copyLink={entityLinkFor('release', release.id, release.releaseKey, release.name)}
       title={
         canManage ? (
           <input

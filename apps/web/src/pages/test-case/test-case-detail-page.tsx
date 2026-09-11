@@ -40,6 +40,7 @@ import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
 import { listResource } from '@/shared/lib/query/resource'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
+import { entityDetailUrl } from '@/shared/lib/entity-link'
 import { testCaseUnavailableReason } from './model/unavailable-reason'
 import { TestCaseUnavailable } from './ui/test-case-unavailable'
 import { HistoryTab } from './ui/history-tab'
@@ -153,6 +154,11 @@ export function TestCaseDetailPage() {
     <DetailLayout
       onBack={back}
       itemKey={testCase.testCaseKey}
+      copyLink={{
+        key: testCase.testCaseKey,
+        name: testCase.name,
+        url: entityDetailUrl('testCase', testCase.testCaseKey),
+      }}
       title={testCase.name}
       tabs={[
         { key: 'details', label: t('detail.tabs.details'), icon: <FileText size={19} /> },

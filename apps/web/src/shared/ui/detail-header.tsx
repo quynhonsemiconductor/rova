@@ -13,6 +13,8 @@ import type { ReactNode } from 'react'
 import { ChevronLeft, X } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
+import { CopyLinkPopover } from '@/shared/ui/detail/copy-link-popover'
+import type { EntityLinkSubject } from '@/shared/lib/entity-link'
 
 interface DetailHeaderProps {
   onBack: () => void
@@ -27,6 +29,17 @@ interface DetailHeaderProps {
   status?: ReactNode
   /** Right-side action controls. */
   actions?: ReactNode
+  /**
+   * Renders the `Copy link` control immediately after {@link itemKey}, Rally's own placement.
+   *
+   * Opt-in because this component is not only a detail page's header: the Backlog mounts it as a
+   * SUMMARY PANEL and Settings' archive rows reuse it, and neither addresses a record a reader
+   * would paste. Pass it from a detail page and the control appears; omit it and nothing renders.
+   *
+   * The `url` must come from `entityDetailUrl`, not from `window.location` — see that module for
+   * why the summary panel makes the current URL the wrong answer.
+   */
+  copyLink?: EntityLinkSubject
 }
 
 export function DetailHeader({
@@ -37,6 +50,7 @@ export function DetailHeader({
   title,
   status,
   actions,
+  copyLink,
 }: DetailHeaderProps) {
   return (
     <div
@@ -54,6 +68,7 @@ export function DetailHeader({
       {itemKey != null && (
         <>
           <span className="font-mono text-ui-lg font-semibold text-white">{itemKey}</span>
+          {copyLink && <CopyLinkPopover subject={copyLink} />}
           <span className="h-5 w-px bg-white/25" />
         </>
       )}

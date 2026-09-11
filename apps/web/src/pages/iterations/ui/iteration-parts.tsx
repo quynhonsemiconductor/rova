@@ -29,6 +29,7 @@ import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { IterationHistoryTab } from './iteration-history-tab'
 import { DetailField, DetailFieldPair, DetailReadonlyValue } from '@/shared/ui/detail/detail-field'
 import { Spinner } from '@/shared/ui/spinner'
+import { entityLinkFor } from '@/shared/lib/entity-link'
 import {
   useIteration,
   useIterations,
@@ -335,6 +336,7 @@ export function IterationDetail({
         onBack={onBack}
         badge={<TypeBadge type="iteration" />}
         itemKey={it.iterationKey ?? 'New'}
+        copyLink={entityLinkFor('iteration', it.id, it.iterationKey, it.name)}
         title={
           disabled ? (
             it.name
