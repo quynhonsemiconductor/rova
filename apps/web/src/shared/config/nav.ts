@@ -323,10 +323,27 @@ export function isNavPathActive(currentPath: string, path: string): boolean {
  * Children are consulted UNFILTERED, permission-hidden ones included: a child the caller cannot see
  * is a child they cannot be standing on, so it can never match, and filtering first would make the
  * answer depend on a permission read this question does not need.
+ *
+ * `NAV_PATH_ALIASES` is consulted too, resolved by the longest matching key `currentPath` STARTS
+ * WITH (the aliases are runtime path prefixes like `/releases`, not the route-template keys the
+ * table also carries for `navPermissionFor`, e.g. `/releases/$releaseId` — those never appear in a
+ * real pathname and are skipped here), because `/releases` and `/milestones` are TYPE MODES of
+ * `/timeboxes` rather than children of their own (see the alias table's docblock) — `Plan`'s own row
+ * lists only `/backlog` and `/timeboxes`, so the Timeboxes screen's Releases/Milestones dropdown
+ * left `currentPath` matching neither, and `Plan` went dark on exactly the two modes that are not
+ * the switcher's default. `/timeboxes/$iterationId` needs no separate case: it already starts with
+ * `/timeboxes` and matches the plain child check above.
  */
 export function isNavGroupActive(currentPath: string, item: NavItem): boolean {
+  const aliasKey = Object.keys(NAV_PATH_ALIASES)
+    .filter((key) => !key.includes('$') && currentPath.startsWith(key))
+    .sort((a, b) => b.length - a.length)[0]
+  const resolvedPath = aliasKey ? NAV_PATH_ALIASES[aliasKey] : currentPath
   return (
     isNavPathActive(currentPath, item.path) ||
-    (item.children ?? []).some((child) => isNavPathActive(currentPath, child.path))
+    (item.children ?? []).some(
+      (child) =>
+        isNavPathActive(currentPath, child.path) || isNavPathActive(resolvedPath, child.path),
+    )
   )
 }
