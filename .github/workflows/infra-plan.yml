@@ -1,5 +1,5 @@
 # =============================================================================
-# Infrastructure · Plan — thin caller of the shared reusable (qnsc-ci).
+# Infrastructure · Plan — thin caller of the shared reusable (ci).
 # Dry-run on every PR touching infra/live/**; posts a plan comment per changed
 # workspace and gates on `tofu fmt`.
 # =============================================================================

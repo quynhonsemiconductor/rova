@@ -1,5 +1,5 @@
 # =============================================================================
-# Web · Deploy — thin caller of the shared reusable (qnsc-ci).
+# Web · Deploy — thin caller of the shared reusable (ci).
 #
 # Triggers:
 #   develop → push to main (auto)

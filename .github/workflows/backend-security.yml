@@ -1,5 +1,5 @@
 # =============================================================================
-# Security · Scan — thin caller of the shared reusable suite (qnsc-ci).
+# Security · Scan — thin caller of the shared reusable suite (ci).
 #
 # One org-wide security standard: Trivy (container CVEs, CRITICAL blocks),
 # Semgrep (SAST — replaces CodeQL, no GHAS needed), Gitleaks (secrets) and

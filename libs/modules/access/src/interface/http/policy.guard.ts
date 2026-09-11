@@ -49,7 +49,7 @@ export const AUTHZ_MODE_KEY = 'authzMode';
  * handlers were in that state, and `assertEveryRouteDeclaresAuthz` now refuses to boot until
  * every one of them says which it is.
  *
- * Ported from opshub (QNSC-VN/opshub#132), where the same fail-open existed.
+ * Ported from opshub (quynhonsemiconductor/opshub#132), where the same fail-open existed.
  */
 export type AuthzMode =
   /** The subject IS the caller; there is no cross-user access to authorize. */

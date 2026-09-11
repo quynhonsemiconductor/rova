@@ -1,5 +1,5 @@
 # =============================================================================
-# Backend · Deploy — thin caller of the shared reusable (qnsc-ci).
+# Backend · Deploy — thin caller of the shared reusable (ci).
 #
 # Triggers:
 #   develop → push to main (auto)
@@ -320,7 +320,7 @@ jobs:
   # covers annotation writes) — no new credential.
   #
   # A SEPARATE job here, not a step inside `deploy`: the actual deploy steps
-  # live in qnsc-ci's shared reusable workflow, a different repo, not edited
+  # live in ci's shared reusable workflow, a different repo, not edited
   # by this change. Own repo, own job — matches how this repo's dashboard/
   # alerting Terraform already lives here rather than in the shared module
   # family (see infra/modules/stack's own reasoning).
