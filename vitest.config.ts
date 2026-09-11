@@ -122,6 +122,7 @@ export default defineConfig({
         'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/test-cases/src/application/test-case-types.service.ts',
         'libs/modules/test-cases/src/application/test-results.service.ts',
+        'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/work-items/src/application/work-items.service.ts',
         'libs/modules/work-items/src/domain/team-read-scope.ts',
         'libs/modules/workspace/src/application/team.service.ts',
