@@ -31,8 +31,16 @@ import { IterationsService } from '@modules/iterations';
 import { MilestonesService } from '@modules/milestones';
 import { ReleasesService } from '@modules/releases';
 import { TestCasesService, TestResultsService } from '@modules/test-cases';
+import { testCaseTypes } from '../../db/schema/work';
 
-import { SEEDED, ALL, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import {
+  SEEDED,
+  ALL,
+  WORKSPACE_ID,
+  adminActor,
+  bootRallyApp,
+  uniqueKey,
+} from './support/flow-harness';
 
 describe('derived invariants (e2e)', () => {
   let app: NestFastifyApplication;
@@ -54,6 +62,23 @@ describe('derived invariants (e2e)', () => {
     releases = app.get(ReleasesService);
     testCases = app.get(TestCasesService);
     testResults = app.get(TestResultsService);
+
+    // NXP gets its five default Test Case Types from migration 0129's backfill, which only
+    // covers projects that ALREADY EXIST when it runs — NXP is created by the demo SEED, which
+    // runs AFTER migrations, so on a fresh CI database NXP has ZERO selectable Types (same root
+    // cause as test-case-routes.e2e.spec.ts's own beforeAll seed). The `Test Case
+    // last_verdict/last_run trigger (D6)` block below calls `testCases.create` with no explicit
+    // `type`, which needs one selectable Type to default to (BR2). Insert one directly, since
+    // Phase G's `POST /projects/:id/test-case-types` route isn't part of this branch yet.
+    await db
+      .insert(testCaseTypes)
+      .values({
+        workspaceId: WORKSPACE_ID,
+        projectId: SEEDED.nxp.projectId,
+        name: 'Acceptance',
+        position: 0,
+      })
+      .onConflictDoNothing();
   });
 
   afterAll(async () => {
