@@ -45,6 +45,16 @@ describe('isNavGroupActive — the reported defect', () => {
     }
   })
 
+  it('lights Plan on the Releases and Milestones type modes, not just the default Iterations mode', () => {
+    // `/releases` and `/milestones` are TYPE MODES of the Timeboxes screen (TimeboxTypeSwitcher),
+    // aliased onto `/timeboxes` in NAV_PATH_ALIASES rather than being children of Plan in their own
+    // right — the trigger went dark switching to either, which the screenshot reported.
+    const plan = group('Plan')
+    for (const path of ['/releases', '/milestones', '/releases/rel-1', '/milestones/ms-1']) {
+      expect(isNavGroupActive(path, plan), `${path} must light Plan`).toBe(true)
+    }
+  })
+
   it('stays dark on another group, so the cue still means something', () => {
     // The control: a rule that answered `true` everywhere would pass every assertion above.
     expect(isNavGroupActive('/backlog', group('Track'))).toBe(false)
