@@ -43,6 +43,7 @@ import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
 import { listResource } from '@/shared/lib/query/resource'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
+import { entityDetailUrl } from '@/shared/lib/entity-link'
 import { testResultUnavailableReason } from './model/unavailable-reason'
 import { TestResultUnavailable } from './ui/test-result-unavailable'
 import { HistoryTab } from './ui/history-tab'
@@ -131,6 +132,11 @@ export function TestResultDetailPage() {
     <DetailLayout
       onBack={back}
       itemKey={testResult.testResultKey}
+      copyLink={{
+        key: testResult.testResultKey,
+        name: testResult.build,
+        url: entityDetailUrl('testResult', testResult.id),
+      }}
       title={testResult.build}
       tabs={[
         { key: 'details', label: t('detail.tabs.details'), icon: <FileText size={19} /> },

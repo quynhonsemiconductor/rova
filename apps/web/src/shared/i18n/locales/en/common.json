@@ -64,5 +64,17 @@
   "noData": "no data",
   "permissionDenied": {
     "write": "You don't have permission to do that."
+  },
+  "copyLink": {
+    "trigger": "Copy link",
+    "title": "Copy link",
+    "copyFormat": "Copy {{format}}",
+    "formats": {
+      "linkAndName": "Link and Name",
+      "markdownWithName": "Markdown Including Name",
+      "markdown": "Markdown",
+      "html": "HTML",
+      "plain": "Plain"
+    }
   }
 }

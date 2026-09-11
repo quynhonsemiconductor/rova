@@ -85,6 +85,7 @@ import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
 import { useUploadPastedImages } from '@/features/collaboration/use-upload-pasted-images'
 import { listResource } from '@/shared/lib/query/resource'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
+import { entityDetailUrl } from '@/shared/lib/entity-link'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -390,6 +391,11 @@ export function WorkItemDetailPage() {
       collapseLabel={t('summary.collapse')}
       badge={<TypeBadge type={item.type} />}
       itemKey={item.itemKey}
+      copyLink={{
+        key: item.itemKey,
+        name: item.title ?? '',
+        url: entityDetailUrl('workItem', item.itemKey),
+      }}
       title={
         readOnly ? (
           item.title
