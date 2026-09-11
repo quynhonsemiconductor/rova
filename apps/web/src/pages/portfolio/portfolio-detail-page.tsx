@@ -65,6 +65,7 @@ import { notify, errorMessage } from '@/shared/lib/toast'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
 import { useUploadPastedImages } from '@/features/collaboration/use-upload-pasted-images'
 import { CommentThread } from '@/features/collaboration/ui/comment-thread'
+import { entityDetailUrl } from '@/shared/lib/entity-link'
 import { PortfolioDetailSidebar } from './ui/detail-sidebar'
 
 export function PortfolioDetailPage() {
@@ -233,6 +234,7 @@ export function PortfolioDetailPage() {
       backLabel={t('title')}
       badge={<TypeBadge type={item.type} />}
       itemKey={item.itemKey}
+      copyLink={{ key: item.itemKey, name: item.name, url: entityDetailUrl('portfolioItem', item.id) }}
       title={item.name}
       /* Icons and the inline count, laid out exactly as Work Item detail builds its tabs:
          the same `size={19}` lucide glyph, and a counted tab renders its number INSIDE the

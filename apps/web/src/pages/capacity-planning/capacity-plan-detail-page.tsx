@@ -77,6 +77,7 @@ import { TeamAvatar } from '@/shared/ui/team-cell'
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 import { SelectionModal } from '@/shared/ui/selection-modal'
 import { useRankPortfolioItem } from '@/features/portfolio/api'
+import { entityLinkFor } from '@/shared/lib/entity-link'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 import { PublishPlanModal } from './ui/publish-plan-modal'
 import { EditCapacityPlanModal } from './ui/edit-capacity-plan-modal'
@@ -513,6 +514,7 @@ export function CapacityPlanDetailPage() {
         // glyph was missing here, so this was the one detail header whose key arrived unannounced.
         badge={<TypeBadge type="capacityPlan" />}
         itemKey={plan.planKey ?? undefined}
+        copyLink={entityLinkFor('capacityPlan', plan.id, plan.planKey, plan.name)}
         title={
           // Editable in place, like a work item's title — a plan's name is the field most often
           // wrong at creation, and the alternative was opening Edit Plan Details for one word.
