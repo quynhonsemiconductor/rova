@@ -14,6 +14,7 @@ non-obvious tooling behaviour. Read this before changing build, auth, or DB code
 | Auth model shared with opshub (+ what opshub must do) | `docs/superpowers/specs/2026-07-28-auth-convergence.md` |
 | Declared differences from opshub                      | `docs/DIVERGENCE.md`                                    |
 | SCM (GitHub App) setup                                | `docs/scm-github-app.md`                                |
+| Incidents behind the rules below                      | `docs/lessons/` (linked per section)                    |
 
 ## Local stack
 
@@ -114,139 +115,12 @@ a barrel would close a cycle (`WorkspaceService` → `ApiTokensService`).
 
 ## Tooling behaviour that surprises people
 
-- **`pnpm db:migrate` also seeds.** It runs the tenant bootstrap seed, not just
-  migrations. `pnpm db:seed` runs the full demo seed on top. Both are idempotent.
-- **Migrations are hand-written.** `drizzle-kit generate` needs a TTY and cannot
-  run unattended, so `db/migrations/*.sql` are authored by hand and must match
-  `db/schema/*`. CI proves a new migration applies on top of `main`'s schema, not
-  just a fresh database — see the `migrations` job in `backend-ci.yml`.
+Coverage floors are a **ratchet** (`pnpm check:coverage-floors` fails when a floor drifts more than 3
+points behind measured — raise them with coverage, never lower them). The SPA API client is
+**generated and committed**, so a contract change needs a codegen round. `pnpm lint` is repo-scoped on
+purpose; a path-scoped `eslint` misses the boundaries rules.
 
-  **Applying a HIGHER-numbered migration first strands the lower one on that database, silently.**
-  Drizzle records the journal's `when` as `created_at` and applies only entries past the newest
-  recorded value, so if `0120` is applied while `0119` is still being written, `pnpm db:migrate`
-  afterwards reports "Migrations applied" and `0119` never runs — its table simply does not exist.
-  Fresh databases and CI are fine, because the journal's array order is still ascending; this bites the
-  local database you are testing on, which is the one you would trust. Two ways in: writing two
-  migrations in parallel (do not — one at a time, even across parallel work), or a `when` that is not
-  strictly greater than its predecessor's. Verify with
-  `select count(*) from drizzle.__drizzle_migrations` against the journal's entry count; recover by
-  applying the stranded file by hand or recreating the database. (Two historical pairs — 0005/0006 and
-  0018/0019 — have non-ascending `when` values and ARE applied, so a non-monotonic journal is not by
-  itself proof of a skip; count the rows.)
-- **`db/permissions.catalog.ts` is the single source of truth** for permission
-  codes and role→permission mappings, imported via the `@db/*` path. It lives
-  outside `libs/` because the standalone migrator image ships `db/**` only.
-  `libs/shared-kernel/src/permissions.ts` re-exports it; two specs
-  (`permissions.spec.ts`, `fe-permission-contract.spec.ts`) stop BE and FE drifting.
-- **The built entrypoint is genuinely `dist/apps/api/apps/api/src/main.js`.** Nest
-  emits one output tree whose common root is the repo root and rewrites path
-  aliases to relative requires, so the nesting is what makes those resolve. Don't
-  "fix" it — flattening breaks every emitted import.
-- **Swagger is opt-in per environment.** `SWAGGER_ENABLED` (default `false`) serves
-  `/api/docs`. It used to be derived from `NODE_ENV !== 'production'`, so anything
-  not literally "production" published the endpoint inventory. CSP is now always on;
-  the Swagger allowance is scoped to `scriptSrc` when that flag is set.
-- **Coverage is a ratchet, not a target.** `vitest.config.ts` lists the files that
-  have specs; `test/coverage-include.spec.ts` fails if a spec's subject is missing
-  from that list or if the list names a deleted file. Raise the floors, never lower.
-  **Re-measure when you raise them.** The floors sat ~11 points under real coverage for two phases
-  (70/66/62/70 against 82/77/81/83), so a ten-point regression would have passed — a ratchet that
-  trails that far measures nothing. Same for `fe-consistency.ratchet.test.ts`: four of its six
-  baselines had drifted below their true counts, so 39 new violations could have landed green. Measure
-  by forcing the baselines to `-1` and reading the counts the failures report — a grep alongside gets
-  it wrong (mine said 8 for `text-[` where the real count is 2).
-- **`ProjectScopeResolver`'s `work_item` kind spans TWO tables.** Tasks left `work_items` for
-  `work.tasks` at the Phase 3 split (migration 0072), but the ROUTES did not split with them —
-  `PATCH /work-items/:id`, `/:id/activity`, `/:id/attachments`, `/:id/watchers` and
-  `PATCH /team-status/tasks/:taskId` all take a TASK's own id. The resolver mapped the kind to
-  `work_items` alone, so the guard threw `WORK_ITEM_NOT_FOUND` for every task id before the handler
-  ran, as a Workspace Admin, regardless of permission. A Task was uneditable everywhere, its Revision
-  History permanently empty and its attachments unreachable — four Phase 1 contracts dead on one line
-  of table mapping. It now falls back to `work.tasks` on a miss, mirroring
-  `WorkItemDrizzleRepository.findById`, whose own docblock already described that fallback as what
-  task surfaces depend on. **Adding a `task` resource kind would NOT have worked**: the routes are
-  shared, so one kind has to cover both tables.
-- **A spec that calls a service directly cannot see a guard defect.** Every task spec called
-  `WorkItemsService` and the whole suite passed over the fault above for as long as it existed. Same
-  blind spot that hid the `report:view` bug. `test/e2e/task-routes.e2e.spec.ts` and
-  `report-authz.e2e.spec.ts` are the shape that catches it: real `AppModule`, `app.inject()`, a Bearer
-  token from `AuthService.devLogin` (Bearer callers are CSRF-exempt by design, so no token dance).
-- **A decorator-counting ratchet is not an authorization test.** `route-policy.ratchet.spec.ts` reads
-  source text, so it cannot tell a correct `@RequirePermission` from a misspelled code or a
-  project-tier code whose scope resolves from the wrong field. `test/e2e/report-authz.e2e.spec.ts` is
-  the shape that does: real `AppModule`, `app.inject()`, both directions. Three things it had to learn
-  the hard way — the test app has **no `/v1` prefix** and **no cookie plugin** (`reply.setCookie is
-not a function`, so use `AuthService.devLogin` for a bearer token), the **ValidationPipe runs before
-  the guard** (an incomplete query is a 400 and never reaches authorization), and a JIT-provisioned SSO
-  user is **not** a denied principal — `assignDefaultRole` grants `project_member`, which the BA gives
-  `report:view`. Use a seeded user with custom roles for the negative case.
-- **The grids are DIVs, so `aria-sort` and `role="columnheader"` are deliberately absent.** They are
-  only meaningful on a real `columnheader`, and `DataTableFrame` renders a scroll container while each
-  page renders its own rows — adding the role to the header alone would announce a one-row table,
-  which is worse than no table semantics. `SortHeader` carries the state in its accessible name
-  instead ("Rank, sorted ascending. Activate to sort."), which is true regardless of the surrounding
-  structure. It is also a real `<button>` now: it was a `div` with `onClick`, so sorting — a
-  documented feature on every grid in the app — was pointer-only.
-- **Rank reorder needs a KEYBOARD sensor AND a focusable grip — both, or neither works.**
-  `KeyboardSensor` appeared nowhere in the SPA, and `DragHandle` was a `div`, so reorder was
-  pointer-only on Backlog, Iteration Status, Quality and Portfolio. Adding the sensor alone would not
-  have helped: dnd-kit activates from the ACTIVATOR's `onKeyDown`, and dnd-kit's `attributes` (which
-  carry `role="button"` and `tabIndex`) were spread on the ROW while `listeners` were on the grip — so
-  focus landed on one node and the key handler lived on another. `attributes` now go on the grip
-  alongside `listeners` (which also stops every row announcing as a button with its own tab stop), and
-  `useRerankSensors()` is the one shared sensor set. Backlog and Iteration Status previously hand-rolled
-  `useSensors(useSensor(PointerSensor…))`, which is exactly why they diverged — there was no single
-  place to add the keyboard sensor. Capacity Planning's grip already did this correctly and was the
-  model.
-- **`EMPTY_VALUE` (`'--'`) is the only placeholder for an absent value**, per its own docblock ("not an
-  em-dash, because that is what real Rally renders"). 15 em-dash literals had drifted back in, two of
-  them colliding *within one screen* — Portfolio detail rendered `'--'` in the sidebar beside `'—'` in
-  both children tables. When replacing these, note that the string also appears in prose comments; a
-  blind find-and-replace edits those too.
-- **The frontend has ratchets too** (`apps/web/src/test/fe-consistency.ratchet.test.ts`):
-  raw `<button>`, inline styles, hardcoded copy, file length, and CSRF headers on
-  raw `fetch` writes. They may only decrease.
-- **The SPA's API client is generated AND committed.** `apps/web/src/shared/api/generated/api.ts`
-  comes from `/api/docs-json`, so any DTO change needs
-  `pnpm --filter rova-web codegen` against a running local API, then a commit. The
-  `OpenAPI contract` job regenerates from the spec it captured and diffs
-  (`codegen:check`), so drift fails CI instead of failing at runtime.
-
-  **`/api/docs-json` can serve a STALE document from a watch-mode restart.** Nest builds the Swagger
-  document once at bootstrap, so `pnpm start:dev` recompiling is not the same thing as the served spec
-  being current — it reported `Found 0 errors`, answered on the port, and still described the DTO as it
-  was before the last edit. Codegen then wrote a client that was *correct for a spec nobody has*, and
-  the only symptom was one absent field: `git diff` on the client was EMPTY, which reads exactly like
-  "no DTO change was needed". **Grep the served spec for a marker before trusting a generated client**
-  (`curl -s localhost:3000/api/docs-json | grep <newField>`), and restart the API rather than relying
-  on the watcher. Worth also knowing the diff is legitimately huge when the module graph changes:
-  `openapi-typescript` emits in spec order, which follows module init order, so adding one module
-  import reordered ~1200 lines with no route added or removed. Compare route INVENTORIES, not the line
-  count, to tell that apart from a real loss — and regenerate twice across a restart if you need to
-  prove the order is deterministic, because a nondeterministic one would flake `codegen:check`.
-- **`waitFor() timed out` in `notification-flow.e2e.spec.ts` is an ENVIRONMENT fault, not a flake.**
-  Two independent causes, both seen in one session:
-  1. **Email is unconfigured.** `.env` ships `EMAIL_PROVIDER=ses`, but `MAIL_FROM_EMAIL` is
-     `.optional()` in `env.schema.ts` despite its own comment saying "Required when
-     EMAIL_PROVIDER != 'dev'". Unset, `resolveFromEmail` returns `''`, every send fails with
-     `Email address not verified "Mini Rally" <>`, and after three failures the email circuit
-     breaker opens and stays open for the process — so the relay never delivers and the test waits
-     out its 10s. Set `MAIL_FROM_EMAIL` and verify it in localstack:
-     `docker exec -i rova-localstack awslocal ses verify-email-identity --email-address <addr>`.
-     (The breaker is in-process, so restarting the API clears it; the failed rows are not retried
-     and can be deleted.)
-  2. **A live worker is a competing consumer** of `messaging.notification_outbox` and claims the
-     rows the test is waiting for. Stop `pnpm start:dev:worker` before a BE e2e run.
-     Neither is a product defect, and both look exactly like one. Check
-     `docker ps` first: localstack dying mid-session produces the same symptom.
-- **Run `pnpm lint`, not path-scoped `eslint`.** CI lints `{apps/api,apps/worker,libs,db}/**/*.ts` in one
-  pass; linting only the paths you touched misses rules that fire elsewhere in that glob — and
-  `no-unused-vars` exempts `^_` for ARGUMENTS only, not for destructured variables, so the
-  `const { X: _unused, ...rest }` idiom is an error here. That combination put a lint failure on `main`.
-- **`tsc -b` can pass on STALE build info.** Two things hid behind that in one session: an
-  error code missing from the `ErrorCode` union, and a client that had never seen a new
-  route (which surfaces only as `Cannot POST /v1/...` in the browser). When a change spans
-  packages, verify with `tsc -b --force`.
+Full account — every invariant with the incident that produced it: [`docs/lessons/tooling.md`](docs/lessons/tooling.md)
 
 ## Fixtures: two projects, one reset, no leaks
 
@@ -291,203 +165,13 @@ exported from `test/e2e/support/flow-harness.ts`.
 
 ## Reporting (Phase 6) — what is frozen, what is live
 
-Four surfaces share one module (`libs/modules/reporting`) but not one data strategy, and the
-difference is the whole design. Read this before changing a report or the snapshot job.
+**Burndown is FROZEN history; Velocity and Team Capacity are LIVE queries. Never unify the two paths.**
+Snapshots run hourly and write only TODAY's *workspace-local* date; a missed day stays a GAP and
+interpolation is prohibited. **Eligibility must be counted in the SAME scope as the measurement**, and a
+LIVE fact must not outrank frozen history. `work_items.accepted_date` and `iterations.timebox_group_id`
+are TRIGGER-maintained because seeds write these tables directly.
 
-- **Burndown is FROZEN history; Velocity and Team Capacity are LIVE queries.** Task To Do is
-  overwritten in place, so yesterday's remaining hours only exist if something wrote them
-  down — hence `iteration_daily_snapshots`. Velocity deliberately has no snapshot: moving an
-  item out of a closed iteration must change that bar. Never "unify" the two paths.
-- **The snapshot cron runs HOURLY and writes only TODAY's workspace-local date.** Date cutoffs
-  are per workspace (`workspace_settings.timezone`), so one UTC-midnight tick is wrong for
-  every workspace that is not on UTC — which is what it used to do. The value that survives a
-  day is the last tick before that workspace's midnight; when the local date rolls over the
-  day stops being addressed and is marked `finalized`. A missed day stays a GAP: the report
-  renders it unavailable, and `buildFallbackSnapshots`-style interpolation is prohibited.
-- **`work_items.accepted_date` is maintained by a TRIGGER** (`trg_sync_accepted_date`,
-  migration 0087), not by the service: `db/seeds/**` and raw SQL write this table directly,
-  and an Accepted row with no acceptance timestamp is a data-quality error the reports refuse
-  to guess about. The trigger never invents a date for a row that was already accepted before
-  0087 — those stay NULL and Velocity reports them as `unclassified`. Verified by experiment:
-  `accepted` sets it, `release` RETAINS it (accepted-equivalent), reopening clears it, and a
-  later re-acceptance writes a fresh, later timestamp. Velocity SRS §3 gives DEV a backfill for the
-  pre-0087 rows and `pnpm db:backfill:accepted-date` (`--dry-run` to report only) is it: the date comes
-  from the LATEST `work_item.schedule_state_changed` activity row into an accepted state — latest, not
-  earliest, because an item can be accepted, reopened and accepted again. It refuses to touch a row that
-  already has a timestamp, and a row with no such history is REPORTED and left NULL rather than dated on
-  no evidence.
-- **The timebox says WHICH window; the WORK says whose it is.** `iterations.team_id` is optional
-  here (real Rally collapses project and team, we do not), so a project may run one shared sprint
-  every team works inside — 195 of 206 local iterations name no team. Filtering reports on
-  `iterations.team_id` therefore returned NOTHING for a selected Team while Team Status showed the
-  hours, and Velocity, which had no team predicate on the work at all, credited every point in a
-  timebox to whatever team the timebox named. A team-scoped report now takes the team's own
-  iterations **plus the shared ones** (`teamOrSharedTimebox`) and narrows the numbers per row by
-  `coalesce(item.team_id, iteration.team_id)` — the same two-tier rule `getScopedTaskHours` and
-  Team Status already used. An unknown `teamId` is a 404, never relabelled `All Teams`.
-- **Nothing keeps `work_items.team_id` and its iteration's team in step by itself.**
-  `assertIterationAssignable` refuses the pair with `ITERATION_TEAM_MISMATCH`, but the update path
-  only checked it when the patch mentioned an iteration — so moving an item to another team left it
-  parked in the old team's sprint, in two steps instead of one. A team change now revalidates the
-  iteration the item already sits in. Seeds bypass the service entirely, which is how `US-D2` came
-  to be Team Beta's story inside Team Alpha's Sprint 26.1.
-- **`iterations.timebox_group_id` is how All Teams fuses per-Team iterations.** It is DERIVED
-  from (project, start, end) — `timeboxGroupIdFor()`, migration 0088 and the trigger added in 0093
-  share one expression, pinned by a spec — and computed ONCE, so a later date edit cannot split a
-  historical bar. The approved mockup shows the failure this prevents: two adjacent velocity
-  bars both labelled 25.1. It is maintained by a **trigger** because the service was demonstrably
-  not the only writer: `create` set it, `update` omitted it, and `db/seeds/**` inserts dated
-  iterations directly — 40 rows had dates and no group, three of them sharing a window with four
-  that were grouped, so each became its own bar.
-- **The Ideal BASELINE is per TEAM too, and All Teams is the SUM** (`iteration_team_baselines`,
-  migration 0098). Two different rules for two different quantities, both stated by IB §4: the
-  snapshot rows' `team_id IS NULL` is a MEASURED All Teams row that is never summed, while here
-  `team_id IS NULL` means "work whose team cannot be resolved" and every row IS summed for All Teams.
-  Migration 0093 gave the rows a team dimension and left the baseline as one column on `iterations`, so
-  a team-scoped chart drew the WHOLE PROJECT's Ideal against one team's bars — and because §6 compares
-  `remainingToDo(d)` with `ideal(d)`, the indicator read "On track" for a team that had burned nothing
-  and could not read "Behind plan" until a team exceeded every other team's estimate as well. Capture
-  groups by the same `coalesce(task, parent, iteration)` team the hours are measured with, so the
-  baseline and its bars can never be scoped differently. The release Ideal target got the same
-  treatment in migration 0099 (`release_team_targets`), which also DROPPED
-  `releases.ideal_target_points` / `_count` — so a note here claiming that target "still has this
-  defect" is stale, and it named two columns that no longer exist. Both quantities are now per-team.
-- **The snapshot job only writes INSIDE the timebox window.** `findActiveIterations` selects on
-  `state = 'committed'` and nothing else, and committing early is legal — so an iteration committed
-  before it started had its *immutable* baseline captured at commit time, commonly zero because tasks
-  are broken down after commitment. A captured `0` is the trap: it is not null, so it passes every "no
-  baseline" check, `idealLine(0, N)` returns zeros, the `noBaseline` note stays hidden, and a flat zero
-  line is drawn as a measured plan. The release loop always had this guard; the iteration loop now does
-  too.
-- **Eligibility must be counted in the SAME scope as the measurement.** Velocity's eligibility join
-  carried no team predicate while `getVelocityItems` narrowed by `coalesce(item, iteration)`, so a
-  shared timebox became an eligible bar for a team whose work was then filtered out of it — a
-  zero-point bar for a sprint the team never worked in, dividing Trend, Last 3, Best 3 and Worst 3.
-  `countScheduledWork` had the mirror image: counted project-wide, a team with nothing in a shared
-  sprint was told its snapshot history was missing. Both now take the scope.
-- **A LIVE fact must not outrank FROZEN history.** `hasScheduledWork` is a live count and the series is
-  frozen, so a rolled-over iteration reported `historyState: 'complete'` with a full recorded series
-  and the screen replaced it with "no scheduled work". §5 makes only MISSING SNAPSHOTS unavailable, so
-  the live emptiness is consulted last. Same mistake as the missing-baseline one, in a different place.
-- **Burndown history carries a TEAM** (`iteration_daily_snapshots.team_id`, migration 0093).
-  `team_id IS NULL` is the All Teams row and every scope is MEASURED independently — the All Teams
-  row is never the sum of the team rows, or a task two teams both touch counts twice. Frozen
-  history cannot be re-sliced on read, so without the column a team-scoped Burndown simply could
-  not be served; a read picks exactly one series (team rows, or the All Teams row), never both.
-  Team rows begin at 0093, so a team-scoped chart of older history is an honest gap.
-- **In Release Tracking, a team-agnostic row counts inside EVERY scope** — `inScope` admits
-  `teamId === null` under a selected Team, not just under All Teams. This is NOT the
-  `coalesce(item, iteration)` two-tier rule used elsewhere: a release owns no timebox, so there is no
-  second tier to fall back to, and the strict `team_id = ?` it replaced dropped the ordinary case
-  (`portfolio_items.team_id` and `work_items.team_id` are both nullable and mostly unset). The
-  per-Team totals therefore do not sum to All Teams, which is already this report's contract.
-  **The predicate is shared by the live report and by `ReportSnapshotService` on purpose** — one rule
-  for a measurement and for its own eligibility, the property whose absence caused the zero-point
-  Velocity bars. The cost of that sharing is that changing the rule changes what the FROZEN writer
-  records, and two things follow, both of which a future rule change must handle again:
-  `release_team_targets` is captured once per (release, team) with `onConflictDoNothing`, so already
-  captured targets keep the OLD population and the Ideal line sits permanently below its own bars —
-  migration 0116 deletes the team rows (never the All Teams row, whose population did not move) so the
-  next tick re-takes them under the same rule that measures the bars. And `release_daily_snapshots`
-  team rows written before 0116 measured the narrower population: an honest series break, recorded
-  here exactly like "team rows begin at 0093" above, never interpolated away.
-- **`GET /releases/:id/burndown` is gone** (with the Release detail progress panel and seven DTO
-  fields). It answered "how far along is this release?" from the same `release_daily_snapshots` rows as
-  Release Tracking but under a different definition — All Teams only, no scope control, no Ideal — so
-  two surfaces gave one release two numbers. FR-037 puts release progress in
-  `Portfolio > Release Tracking`; Phase 3 Release list/detail must not add a progress column or widget.
-  Do not re-add a progress reader here.
-
-  **The `Task Roll-up` + `Accepted` panel went with it, on the BA's 2026-08-17 retest.** It had been kept because
-  FR-018 was once read as putting those numbers in the right panel. The
-  BA re-confirmed `GAP-P3-REL-001` as a **Fail**: FR-018 and AC #10 now list the panel's fields
-  exhaustively (Start Date, Release Date, Project, State, Planned Velocity, Plan Estimate, Version),
-  FR-023 forbids "Task Roll-up, Burndown or another Release progress widget", FR-024 puts
-  accepted/progress totals in `Portfolio > Release Tracking` alone, and `P3-REL-DC-009` is Decided.
-  Real Rally shows a roll-up there; the BA report wins. **The API still SERVES `taskRollup`** — the
-  BA's own §7.4 detail DTO carries it, and its `estimateHours` is the list's `taskEstimate` column
-  (FR-004) — so this is a display rule, not a contract change: the SPA's `Release` mirror does not
-  declare the field, which is what stops a Phase 3 screen rendering it again.
-- **The Phase 6 snapshot tables now have foreign keys.** `iteration_daily_snapshots` and
-  `member_capacity` had NONE (verified against `pg_constraint`). Orphan snapshots happened to be
-  unreachable through the API — deleting an iteration is blocked unless it is still `planning`, and
-  only `committed` iterations are snapshotted — but orphaned `member_capacity` rows were reachable,
-  and Team Capacity inner-joins `teams`/`users`, so an orphan row DROPS out and the Capacity total
-  quietly falls while Estimate/ToDo/Actual stay. "Unreachable today" is a coincidence of two
-  unrelated rules, not an invariant.
-- **`workspace_settings.working_days`** (ISO 1–7, default Mon–Fri) is the Burndown x-axis and
-  the Ideal line's index. The Ideal line is indexed by WORKING day and reaches zero on the
-  last one; the mockup interpolates over calendar days and never reaches zero — the SRS wins.
-- **`release_daily_snapshots.team_id IS NULL` is the All Teams row, and it is MEASURED, not
-  summed** from the Team rows: a work item two Teams both touch must be counted once. Points
-  and count live on the same row because `Chart Unit` is a display switch over one population.
-- **An absent number renders `EMPTY_VALUE` (`--`), never `0`.** `data` is `undefined` both while a
-  request is in flight and after it fails, so `?? 0` turns a network fault into a measured claim:
-  Release Tracking showed three large zeros ("this release has no Features") and Team Capacity four
-  `0h` cards ("this team planned nothing") — the latter directly ABOVE its own error message, because
-  the error branch sat on the table and the KPI strip is above it. `ReportSurface` now takes an `error`
-  slot so the strip and the body go absent together; a report that passes it must also render its
-  `strip` in the absent state, since the strip is the caller's node. Velocity never read `isError` at
-  all and rendered §6's own sentence "no completed iteration with scheduled work exists" for a 500.
-  The KPI row stays MOUNTED through all of this — the BA's structure-preserving rule — which is exactly
-  why the values cannot be coerced.
-- Report series colours are `--report-*` tokens (both themes) in `globals.css`, exposed via
-  `BRAND.report*`. They are data colours fixed by the BA, deliberately not `primary`.
-- **A chart must pass `dataTable` to `ChartFrame`, and the SVG is `aria-hidden`.** A recharts plot is
-  paths plus loose `<text>` nodes, so assistive tech reads a pile of numbers in painting order with
-  nothing to say which series or which day any belongs to — and these reports ARE their values. The
-  frame renders the caller's own row array as a visually hidden `<table>` instead (`sr-only`, never
-  `display:none`), which is why the two cannot disagree. `null` renders as the caller's `noDataLabel`;
-  a gap stays a gap here too.
-- **`ChartFrame.underAxis` is for a SECOND axis row, not a footer.** The burnup's iteration band is
-  part of the x-axis (RT §7, RT-AC-09: "X-axis shows dates and a secondary iteration-name row"). From
-  `footer` it rendered below the legend strip and up to two history notes — ~90px from the dates it
-  labels — where it reads as a third summary block.
-- **`teamName === null` is `All Teams`, and it is the DEFAULT scope.** All four surfaces printed
-  `teamName ?? ''`, so the scope a reader sees FIRST rendered as "NextGen Platform - " and "Team: ".
-  Use `teamScopeLabel` / `reportScopeLabel` (`features/reporting/scope.ts`); the term is `All Teams`
-  per every Phase 6 §6/§7, even though `capacity.json` and `settings.json` spell it "All teams".
-- **A team-scoped iteration PICKER must offer the team's own timeboxes plus the shared ones**
-  (`iterationsInScope`) — the client half of `teamOrSharedTimebox`. Do not pass `teamId` to
-  `useIterations` for this: that filter is a strict `team_id = ?` and drops exactly the shared
-  iterations the report measures, because SQL equality never matches NULL. `listAssignmentOptions`
-  already had the OR-NULL form; the list endpoint does not.
-- **An iteration is assignable by SCOPE, never by LIFECYCLE.** `listAssignmentOptions` filtered on
-  `state IN ('planning','committed')` while the write path — `assertIterationAssignable`, over a
-  `findIterationScope` row that selects `project_id` and `team_id` and no state — accepted a closed
-  timebox happily. So the eligibility feed withheld a target the API allows, and that made HALF of
-  Velocity's own rule unreachable: points follow an item's CURRENT iteration (Velocity SRS §4, the
-  contract's §5.2), so moving a Story out of a finished sprint correctly moved the bar and no
-  selector could ever put it back (P6-VEL-004). The predicate is gone; the team/iteration mismatch
-  rule and `TASK_ITERATION_DERIVED` are untouched. Two consequences worth knowing: the two compact
-  feeds now differ only in PROJECTION (`/iterations/options` also returns `teamId`), kept as two
-  routes because the questions are still two and the SPA client is generated-and-committed; and the
-  Rollover modal's destination picker still hides accepted iterations client-side, which is a
-  deliberate lifecycle choice on `Plan > Timeboxes` ("move unfinished work forward") and NOT the same
-  rule — if the BA rules on it, that filter is the one line to change.
-- **`historyState` describes SNAPSHOTS only.** Both burndown and burnup once folded "no Ideal
-  baseline" into that enum, which made a missing baseline discard measured bars that had really
-  been recorded — IB §3 scopes the baseline to the Ideal LINE, and §5 makes only missing
-  snapshots unavailable. The baseline is now reported separately
-  (`totalTaskEstimateAtStart` / `idealTarget`, null when absent) and a fourth state `no-window`
-  covers an iteration or release with no dates. That state exists because the alternative was a
-  500: the service had nothing but `''` to pass, `'' < ''` slipped past the inverted-range guard
-  in `workingDaysBetween`, and `addDays('')` threw `RangeError`.
-- **`releases.ideal_target_points` / `_count` are captured ONCE, by the snapshot job**, on a
-  release's first snapshot day, from the then-current planned scope — the same `IS NULL`-guarded
-  capture as the iteration baseline, and for the same reason (RT-BR-09): an Ideal derived from
-  today's Planned value silently redraws every past day whenever scope changes. Before this
-  nothing wrote those columns at all, so the Ideal line could never be drawn for any release.
-- **A sparse series needs DOTS, not just lines.** `connectNulls={false}` is right — a bridged gap
-  is a fabrication — but a line segment needs two adjacent points, so a measured day between two
-  gaps drew zero pixels and a young release rendered an empty grid beside populated totals. Give
-  a dot an explicit `fill`: recharts fills dots white by default and draws the series colour as
-  the ring, so `{ r: 2, strokeWidth: 0 }` alone is twelve invisible dots on a white card.
-- **The demo seed writes frozen report history** (`seedReportHistory` in `db/seeds/demo.ts`).
-  Both seeded timeboxes are in the past and the cron only ever writes TODAY, so without it every
-  Phase 6 chart shows its empty state on a fresh database. The rows deliberately include a GAP,
-  weekend audit rows and a sparse burnup — production must never fabricate history, a dev seed
-  must, and those shapes are the ones worth being able to see.
+Full account — every invariant with the incident that produced it: [`docs/lessons/reporting.md`](docs/lessons/reporting.md)
 
 ## Team Status and Team Capacity are ONE population
 
@@ -623,7 +307,7 @@ the worst of the three possible behaviours. BA `c42df59` (2026-08-22) makes the 
   the project AND the team, which no constraint can express, and a user delete must not cascade into
   delivery history.
 
-## Feeds: one rule, and the five ways it has been broken
+## Feeds: one rule, and the five incidents behind it
 
 **When a picker and a write path disagree, the WRITE is the contract.** A feed narrower than the
 write it feeds makes half a documented rule unreachable, and it never presents as a feed bug — it
@@ -680,104 +364,10 @@ one wrote `ownerId || <default>` — where `Unassigned` is `''` and therefore fa
 cleared Owner was handed straight back and the field could not be cleared at all. It tracks the
 CHOICE, never the value. A create form asks the hook; it does not re-derive the rule.
 
-### Incident 1 — empty dropdowns on Iteration Status (Production, 2026-08-21)
-
-Owner AND Dev Owner inline dropdowns showed only `No Entry`; an active Team member could not be
-assigned. Same on `Add Item`.
-
-- Iteration Status called `useProjectMemberOptions(projectId)` — **no team** — so every row got the
-  no-Team list. On a project whose members are Editors that list is empty.
-- **The row could not have passed a team, because the read model did not carry one.** The
-  iteration-status projection selected no `team_id` (added with this fix, plus DTO and a codegen
-  round). The grid is the only place that knows a row's team, so the field is what makes the correct
-  question askable.
-- `useTeamOwnerOptions` fetches NOTHING without a team — deliberate ("No Team offers only
-  Unassigned"), which is why silently falling back to the project-wide feed was worse than an empty
-  list: it looked populated for admins and empty for the role that needed it.
-- **Per ROW** (`useTeamOwnerOptions(projectId, item.teamId ?? fallbackTeamId)`). Rows sharing a team
-  share one query key, so it is one request per distinct team on screen — and under `All Teams` each
-  row asks with its own team instead of the screen's.
-- **`Portfolio > Feature > Children` had the same shape.** Its projection ALREADY selected `team_id`,
-  so no server change was needed — only pointing offers at `useTeamOwnerOptions(child.projectId,
-  child.teamId)` and leaving the project-wide feed as the NAME source. Check the projection before
-  assuming a codegen round.
-- Pinned in `owner-name-resolution.e2e.spec.ts` and `status-row.test.tsx`.
-
-### Incident 2 — assigned items reading `No Entry` (2026-08-22)
-
-An Editor saw `No Entry`/`Unassigned` for items that WERE assigned. The grids carried ids only and
-resolved the name client-side from a PICKER feed:
-
-- `GET /projects/:id/member-options` **excludes Workspace Admins** (AC-16: not assignable owners), so
-  it can never name one — for ANY role.
-- `GET /workspaces/:id/member-options` narrows a non-admin caller to the members and `lead_id`s of
-  their own readable projects (`listMemberOptions`).
-
-A Workspace Admin holds no `work.project_members` row at all (§2.1, migration 0118), so an item they
-own had no name source in either feed. **A Workspace Admin reader never saw it** because
-`listReadableProjectIds` returns `null` — unrestricted — and the seeded case hides it too, because
-every seeded project's `lead_id` IS the admin. Reproduce with an Editor whose projects name no admin
-as lead.
-
-- **The read models join the name now** — `ownerNameJoins` in `WorkItemDrizzleRepository`
-  (`listByProject`, `listBacklog`, `listTasksByParent`) and the iteration-status projection.
-  Portfolio, Releases, Milestones and Quality already did this; work items were the last module
-  resolving a name on the client, which is why they were the only ones with the bug.
-- **NAMING moved; OFFERING did not.** `owner-name-resolution.e2e.spec.ts` asserts both halves, so a
-  later "simplification" that names from the offer list fails.
-- **`work.tasks` has no `dev_owner_id`**, so a task's `devOwnerName` is null by construction.
-- **Blank-name reports are usually this, not persistence.** An absent name and an unset field render
-  identically, which is what made `GAP-P2-IS-004` look like a save that did not stick. Check whether
-  the owner is a Workspace Admin before hunting the write path.
-
-### Incident 3 — a Story with a Team offering only `Unassigned` (`GAP-P1-WID-007`)
-
-BA-confirmed P0-adjacent Fail on the 2026-08-17 retest. Three separate defects:
-
-- **A Workspace Admin on the team roster IS an Owner option.** `listProjectMemberOptions` subtracted
-  Workspace Admins from BOTH branches on the older AC-16 reading; the ruling came. The exclusion now
-  applies only to the PROJECT-WIDE branch, where §2.1 and migration 0118 mean a WA holds no
-  `project_members` row anyway. The retest ACs name exactly two exclusions — outside the selected
-  Team, and inactive.
-- **A Task's options follow its INHERITED parent Team.** `TASK-FR-017` scopes them to "the inherited
-  parent Team", and `work.tasks.team_id` only DEFAULTS to the parent's (SRS P1-04) and is nullable —
-  so reading the Task's own value alone offered `Unassigned` and nothing else. The Tasks tab passes
-  `parentTeamId` and resolves `task.teamId ?? parentTeamId`. NOT the Iteration rule: the Iteration is
-  contractually DERIVED, the Team is merely defaulted.
-- **Dev Owner saved correctly all along** — proven in `test/e2e/dev-owner-persistence.e2e.spec.ts`,
-  the first coverage `devOwnerId` ever had. Names come from the workspace directory
-  (`GET /workspaces/:id/member-options`, which returns inactive members for exactly this reason).
-- **A Team move resets an Owner the new Team does not contain**, in the SAME patch and on the SERVER
-  (`resetOwnerOutsideTeam`). Conditional, not unconditional — the same person can be on both teams.
-  Clearing the Team clears the Owner outright (AC6) without reading any roster. Server-side because
-  every surface can move a Team, and membership is asked of the picker's own feed so the server cannot
-  count a different population than the screen offers.
-
-### Incident 4 — no Defect could name its Parent Story (Production, 2026-08-21)
-
-A Defect's `Parent Story` field offered only `No parent story`, and searching a Story's key answered
-`No matches`. All three surfaces — detail sidebar, Create Work Item, Log Defect — read
-`GET /work-items/backlog?type=story`.
-
-- **The Backlog is a SCREEN, and `iteration_id IS NULL` is its defining rule** (see `listBacklog`).
-  `updateWorkItem` has no such rule: it accepts any non-deleted Story in the same project. So every
-  Story already pulled into a sprint — the ones a Defect is most often raised against — was withheld
-  from a picker whose own server would have taken it. The 50-row first page was a second, quieter cap.
-- **`GET /work-items/story-options` is the fix** — the Story REFERENCE feed, mirroring
-  `GET /portfolio-items/options`: unpaged (a paged picker omits options past its first page without
-  saying so), no schedule-state filter (a Defect against shipped work needs an ACCEPTED parent),
-  `work_item:view` gated on the required `projectId`, and team-scoped in the service because that is a
-  row boundary the guard cannot express. Declared ABOVE `@Get(':id')`, or Nest routes it into
-  `ParseUUIDPipe` as a 400.
-- Pinned in `test/e2e/parent-story-feed.e2e.spec.ts`. A service spec cannot see it: the repository is
-  mocked, so no predicate is exercised.
-
-### Incident 5 — an iteration is assignable by SCOPE, never by LIFECYCLE (`P6-VEL-004`)
-
-The same shape in a different field, recorded under Reporting: `listAssignmentOptions` filtered on
-`state IN ('planning','committed')` while the write path accepted a closed timebox happily, making
-half of Velocity's own rule unreachable. See the Reporting section for the full account — it is listed
-here because it is the canonical instance of "the feed was narrower than the write".
+Five incidents produced this rule — empty Iteration Status dropdowns, assigned items reading
+`No Entry`, a Story with a Team offering only `Unassigned` (`GAP-P1-WID-007`), no Defect able to
+name its Parent Story, and the iteration lifecycle/scope case (`P6-VEL-004`). Each with its
+root cause and the test that pins it: [`docs/lessons/feeds.md`](docs/lessons/feeds.md)
 
 ## A row's VERB needs a row affordance
 
@@ -822,80 +412,10 @@ picker "shows newest first"), so `- 1` is the LATER sprint.
 
 ## Shared chrome: a layer rule, a width rule, and what a table actually is
 
-Six reported UI defects on 2026-08-23 had four causes between them, and every one was a shared
-component that had been copied rather than used. Recorded together because the SHAPE repeats: the
-component existed, the call sites had each solved the problem locally, and the two that had not
-copied the fix were the two that broke.
+One layer rule, one width rule, and a definition of "table" that the shared primitives enforce. Read
+before adding a grid, a modal layer or a column.
 
-- **`AppPopoverContent` owns the z-index, and it is not cosmetic.** A portalled popover paints in
-  document order, so with no layer of its own it loses to any later positioned sibling — and
-  `DataTableHeader` is `sticky top-0 z-10`. Both Manage Filters menus (Backlog, Iteration Status)
-  opened UNDER the grid header they hang over: mounted, focused and keyboard-operable, with their top
-  rows painted behind it, which reads as a truncated menu rather than as a paint order. Every OTHER
-  popover — `SearchableSelect`, `DateField`, `ColumnFieldsMenu`, the action menu, tooltips — had
-  independently hardcoded `z-50` at its own call site, five copies of one decision. The floor now
-  lives in the shared wrapper (a caller may still raise it), so a new popover cannot be born under
-  the header.
-- **A column's width must fit its HEADER, not just its content.** `Block` at 60px fitted its one
-  status glyph and truncated its own five-letter label to `Bl...`; `Fixed In Build` did the same at
-  100px. A sweep found 21 columns across 8 grids in that state, and the ones with a real margin were
-  widened. Worth re-running when adding a column: the label is bold 12px plus a sort caret plus
-  padding, so roughly `label.length * 6.9 + 32` px is the floor.
-- **`grow: true` is NOT the fix for a cramped Name column, and would make it worse.** `styleFor`
-  gives a grow column `minWidth: <current width>` as a floor it may expand PAST, and paired with the
-  row's `min-w-max` that means the TABLE widens to fit a long title instead of the title wrapping
-  inside its cell. Quality, Backlog, Iteration Status and the Portfolio children grid all opt out
-  deliberately (`children-columns.ts` carries the reasoning); a fixed width is what lets `break-words`
-  work. Quality's Name went 200 → 300 for that reason, not by adding `grow`.
-- **`OwnerCell` centres, and clips only where asked.** It was `items-start`, chosen when a name fit
-  one line — but a wrapped two-line name then hung below a top-pinned avatar, so the cell read as
-  top-heavy beside every neighbouring cell. Wrapping is the ordinary case for a full name in a
-  narrow column, not the exception. `truncate` is OPT-IN because the right answer is a property of
-  the COLUMN: Home's 160px Owner column should wrap (the name is the whole value), while Quality
-  renders two people per row and a wrapped name there doubled the height of every row in the grid.
-- **A sorted column's LABEL is no longer coloured** — only its caret and its accessible name carry
-  the state. `BRAND.primaryLight` on the active heading made it read as a different KIND of column
-  rather than the same column in a state, and on a grid with a default sort (Timeboxes sorts Start
-  Date) one blue heading sat among six grey ones before the reader had touched anything. Direction is
-  still stated twice, so nothing was lost by not colouring the word: a colour never said WHICH WAY.
-- **`PanelTable` is the small fixed-column table inside a dashboard CARD**, and it is deliberately
-  NOT `DataTableFrame`. The frame owns a scroll region, resize, drag-reorder, Show-Fields, totals and
-  pagination, and takes its widths from `useDataTable().colStyles`; a panel has none of that, so
-  adopting it there means synthesising a `colStyles` map and an `onResize` for a table that can do
-  neither. Home's two tables hand-rolled the same chrome twice instead. **Their shared defect was one
-  missing `min-w-0`**: a flex item defaults to `min-width: auto`, so `flex-1` on the Project Name
-  column could not shrink below its content, and a long name pushed the fixed columns until every
-  remaining heading wrapped — `OPEN DEFECTS` breaking across two lines while the body rows kept their
-  height. Widths are now declared once per column and applied to the header and the cells through one
-  component, so the two cannot disagree.
-
-  **What was deliberately NOT migrated.** The `<table>` grids in Settings (API tokens, archive,
-  repositories), the iteration scope panel and the attachment block are real semantic tables with
-  3–5 fixed columns, no sort, no resize and no pagination. Moving those onto either shared component
-  would REMOVE accessible table semantics that div-grids cannot express — `DataTableFrame`'s own
-  docblock records why its grids have no `role="columnheader"`. A `<table>` is the right answer for a
-  small static table; the rule is not "everything through the frame".
-
-- **The nav's active state is a property of the GROUP, not of the parent's path.** `isActive(item.path)`
-  asked whether the reader was on the dropdown's DEFAULT destination — its first child — so `Track`
-  went dark on `Team Status`, `Plan` on `Timeboxes`, and `Portfolio` on both Capacity Planning and
-  Release Tracking. `Quality` looked fine only because it has one child. `isGroupActive` consults the
-  children UNFILTERED: a child the caller cannot see is one they cannot be standing on, so filtering
-  first would make the answer depend on a permission read the question does not need.
-- **The workspace mark is a `Link` home.** It was an inert `div` — the most-clicked affordance in a
-  web app, doing nothing. A real anchor, never a `div` with `onClick`, so it carries a focus ring,
-  answers Enter and offers open-in-new-tab; the `fe-consistency` ratchet counts hand-rolled clickable
-  non-buttons for that reason. Its accessible name is the static `Home` rather than the workspace's,
-  because that string has a three-way fallback ending in `Select workspace` and "Select workspace
-  home" would be wrong exactly when the reader needs it to be right.
-- **A create modal's date pair PREFILLS today + `DEFAULT_TIMEBOX_DAYS`** when both fields are
-  REQUIRED, which is the New Iteration case: an empty pair was never a legal submission, so the modal
-  opened asking for two dates that are, for almost every sprint, today and today plus a sprint.
-  `todayIsoDate()` is timezone-correct on purpose — `new Date().toISOString().slice(0,10)` converts to
-  UTC first and hands a planner in UTC+7 yesterday's date before 07:00 local — and `addIsoDays`
-  anchors at UTC NOON so a DST boundary cannot move the calendar day. **Release create is
-  deliberately left empty**: its dates are OPTIONAL there, and prefilling an optional field
-  fabricates a release date nobody chose. Edit modals seed from the record and are unaffected.
+Full account — every invariant with the incident that produced it: [`docs/lessons/shared-chrome.md`](docs/lessons/shared-chrome.md)
 
 ## A parent's Schedule State is DERIVED FROM ITS TASK SET, not nudged by transitions
 
@@ -1149,59 +669,10 @@ changes the **global Project context** first.
 
 ## Declared divergences from the BA, in Capacity Planning
 
-Each was ruled on. None is drift, and none should be "fixed" on sight — and note the first one is a
-divergence that has since been REVERSED, kept here because the reasoning will come up again.
+Publishing is **ONE decision per FEATURE** and the Release rule is EQUALITY; an allocation's value is a
+**FIXED SNAPSHOT with a source label**, never recomputed on read.
 
-- **Rollup and Complete no longer filter children by Project+Release — the BA REVERSED that divergence
-  on 2026-08-17** (`P5-CP-029`, retest, Confirmed Fail, P0). It used to be a declared divergence in
-  Rally's favour: "If a portfolio item includes allocated points/counts, the Project and Release fields
-  in the story must match the plan for that story to be included in the Rollup calculation", on the
-  grounds that without it a long-lived Feature inflates every plan that touches it. `P5-CAP-AC-016` and
-  SRS §311/§318 state the formula with NO qualifier — `SUM(child.planEstimate WHERE child belongs to
-  Feature)` — and the release half is what made the BA's repro read zero: an ordinary Story carries no
-  Release of its own, so a Feature with one Completed 3-point child reported `Rollup = 0, Complete = 0`
-  on the plan header, on the Team row and on the Features tab at once. The predicate is now the link
-  plus `deleted_at is null`, in `capacity-metrics.sql.ts`. **Do not re-add the qualifier without a
-  fresh ruling.**
-
-  Two things had to move with it, and they are the part worth remembering:
-
-  - **A team SLICE cannot be a strict `work_items.team_id = ?`.** That was tier 1 of the rule with no
-    tier 2, and SQL equality never matches NULL — `work_items.team_id` is nullable and mostly unset —
-    so every unteamed child fell out of every team slice. `teamSliceChildScope` attributes a child to
-    its own team when that team holds an allocation of the Feature on this plan, and otherwise to the
-    Feature's OWNER (`is_primary`, Rally's Planned Team Assignment). Exactly one slice, and the slices
-    SUM to the Feature's own total, which is `AC-017`'s reconciliation requirement.
-  - **A team row is the SUM OF ITS OWN ALLOCATION ROWS** (SRS §341/§347 say precisely that), not a
-    separate aggregate query. `repo.teamMetrics` and `childWorkPredicate` are gone: two definitions of
-    one number are what let the Team row, the Feature rows under it and the plan header (which sums the
-    team rows in `planTotals`) disagree about one child.
-- **Nested `Dependencies` renders `0`, not `—`.** The BA's catalog suggests a dash (§205); Rally's column
-  is a COUNT, dependencies are genuinely unimplemented rather than unknown, and `0` is true where a dash
-  would read as "not known". Note this is the one place the app's own absent-value rule (`--` everywhere
-  else) is deliberately not applied.
-- **The cutline keeps the overflowing Feature BELOW the line.** Rally's Items-tab doc is the deciding
-  sentence: "Items above the cutline fit within the defined plan capacity. Items below the line exceed
-  the capacity of the plan." SRS §189 says the line is drawn "after the first Feature where cumulative
-  planning Estimated reaches or exceeds Plan total Capacity", which puts that Feature above the line. The
-  two differ by exactly one row — capacity 100 against 90, 20, 5 puts the 20 below here and above under
-  §189.
-
-  Worth knowing that this one was shipped §189's way and reverted: the BA reading went in under a
-  blanket "align to the BA" instruction, and Broadcom's wording was only checked afterwards.
-
-  This note used to add that `Rollup`, `Complete` and the cutline were "all decided the same way — the
-  product's documented behaviour wins", and to warn that reversing one meant reversing all three. **The
-  BA reversed the Rollup/Complete child filter on 2026-08-17 and left the cutline alone**, so the trio
-  is deliberately split now: the cutline still follows Broadcom, the child filter follows
-  `P5-CAP-AC-016`. Recorded rather than deleted because the next person to read either bullet will
-  wonder which rule governs — the answer is per-rule, and each one names its own source.
-
-  Verified at
-  `techdocs.broadcom.com/us/en/ca-enterprise-software/valueops/rally/rally-help/planning/capacity-planning-page/view-capacity-plan-details/capacity-plan-items-tab.html`
-  (the same page carries the Project/Release sentence above, for Complete and for estimated points).
-  The cutline was removed from Rally and later restored, which is why it may be absent from an older
-  screenshot or a different edition.
+Full account — every invariant with the incident that produced it: [`docs/lessons/capacity-planning.md`](docs/lessons/capacity-planning.md)
 
 ## Publishing a plan is ONE decision per FEATURE, and the Release rule is EQUALITY
 
@@ -1341,81 +812,7 @@ goes out inline. Four consequences worth knowing before touching either half:
 
 ## A cross-project LIST is scoped by `listReadableProjectIds`, not by `workspace_id`
 
-`AccessService.listReadableProjectIds` is the authorization fact behind every cross-project list — its
-own docblock says so, and Portfolio already used it. `GET /v1/projects` did not: no
-`@RequirePermission`, and a query filtering on `workspace_id` + `deleted_at IS NULL` alone, so every
-project's key, name, description, owner, dates and counts was readable by any authenticated principal
-including one with zero role assignments. PRJ-FR-001 and §10 both say otherwise.
-
-**`null` means UNRESTRICTED and an empty array means "nothing".** The sentinel exists precisely because
-those two are different answers, so a caller that flattens `null` to `[]` fails closed and one that
-flattens `[]` to "all" leaks the workspace. The repository short-circuits the empty case rather than
-emitting `inArray(col, [])`, which is not portable as "match nothing".
-
-`GET /projects/:id/members` was open for the same reason and is now `project:view` scoped to the path
-id — **with no `resource` key**, because the param IS the project id and there is nothing to resolve
-(`'project'` is deliberately not a `ScopedResource`).
-
-**That note used to end "still open", and both halves are now CLOSED — recorded because the
-resolution is the pattern, not the exception.** `GET :id/members-with-profile` was deferred behind
-"gating it needs the feed split first", because it fed the Portfolio and Projects owner pickers as
-well as User Management. The split shipped (`:id/member-options` for pickers, `:id/members-with-profile`
-for the administrative roster) and the administrative half now carries `workspace:view`. And
-`GET :id/members` — the third route, paged, with `roleId` and account `status` behind an in-service
-claim that amounted to `assertActive` — is **DELETED**, not gated: it had no consumer anywhere, and a
-gated dead route keeps a payload alive for whoever finds it next while reading, in review, as a
-considered decision about an audience. Its absence is asserted in `authz-cluster.e2e.spec.ts` for a
-Workspace ADMIN, because a 404 for an Editor is also what a gate would produce and would prove
-nothing.
-
-**And the `permission` argument has to actually decide something.** It did not, for the membership half:
-`listReadableProjectIds` unioned a raw `project_members` query in unconditionally, so every project the
-caller held an active row on was readable **regardless of whether that row's access level granted the
-permission being asked about**. It was written when membership was the only per-project fact and it
-survived the move to `access_level`, by which point `effectiveAssignments` already synthesized the same
-rows correctly filtered — so it was duplication for a permission the level grants, and a silent
-over-grant for one it does not. What it opened: `portfolio:view`, which `editor` deliberately withholds,
-so **every project Editor read every field of every Epic and Feature in their projects** — the one
-surface `P5-PI-FR-017` and §3.2:85 hide from them. No other caller was affected, because the rest ask
-for `project:view` or `work_item:view`, which is exactly why it stayed invisible. Membership now reaches
-the result only through the permission-filtered synthesis; the generalisable rule is that **a boundary
-taking a permission must not union in a source that ignores it**, and the failure reads as a boundary in
-review. Two second-order effects, both deliberate: the synthesis filters on `isProjectAccessLevel` where
-the deleted query used `isNotNull`, so an unrecognised level is no longer readable; and it rides the
-5-minute assignment cache, so a membership row written by raw SQL is invisible to cross-project lists
-until `invalidateUser` is called.
-
-**Closing it needed the picker split in the same change**, and that is the pattern now, not a one-off:
-the emptied list was also the only feed for the `Feature` field on a Story/Defect, so the fix is
-`GET /portfolio-items/options` (id, key, name, project) gated on `work_item:view`. The BA is **SILENT**
-on whether an Editor may set a Story's Feature, so this is a **declared reading** and has been put to
-them: §5.2:124 makes that field the only way Feature membership is ever set, §3.2:79 gives an Editor the
-Story, and the closest precedent is the BA's own one field over — `Phase 2/02_Iterations/SRS.md:393`,
-"Timeboxes hidden; may update Work Item Iteration through approved Backlog/Iteration Status flows only"
-— hidden surface, permitted field, therefore a feed. Release is decided the *other* way and says so in
-words ("cannot assign Release", BL §8:294), which is why that one is refused in `WorkItemsService`
-instead. **Where the BA wanted a field withheld from an Editor it wrote a sentence; it wrote none for
-Feature.** If they rule it like Release, the reversal is this route plus one SPA field. The feed is
-single-project per §5.3:133, which is what lets the GUARD check it (`{ from: 'query', field:
-'projectId' }`) instead of a service-side narrowing — so the service deliberately makes **no**
-authorization call, pinned by a spec. Note the API still *accepts* a cross-project Feature link
-(`assertFeatureLinkable` permits it, because Rally's rollup matches `feature_id` alone) while the picker
-no longer offers one: 0 such rows exist, and the BA's field scope wins over offering it.
-
-**HOME's two aggregates were the last cross-project reads still scoped by `workspace_id` alone**, and
-`GET /work-items/summary`'s own `@AuthorizedInService('scoped by listReadableProjectIds')` decorator
-said otherwise — the identical false citation `listProjectHealth` carried until an e2e spec was written
-for it. So after a Workspace Admin removed a user's access to a project, Home still reported that
-project's active sprints, open work items, blocked items and open defects, and `My Work` still named its
-items and project (`GAP-P4-RBAC-003`, against Phase 4 §2.2/§6, which put an unassigned project out of
-"navigation, selectors, search **or results**"). `@SelfScoped` on `/work-items/my` was true and never
-sufficient: *assigned to me* bounds whose the item is, not which project it may be read in, and an item
-stays assigned after access is removed. Both now take `project:view` — the same code the projects list
-and Project Health take, so the tile row, the list it links to and the health table cannot be counted in
-three different populations. **A decorator is a note, not a check**; the four cases in
-`work-items.service.spec.ts` are the check, and they assert BOTH sentinel directions, because a test
-that only forwards an array also passes when `null` is flattened to `[]` — which fails closed and shows
-a Workspace Admin all zeros.
+Full account — every invariant with the incident that produced it: [`docs/lessons/project-scoping.md`](docs/lessons/project-scoping.md)
 
 ## A PERSISTED selection outlives the grant it was made under
 
@@ -1522,160 +919,11 @@ every one of them — exactly how the `report:view` bug survived to migration 00
 
 ## Declared divergences from the BA, in the access model
 
-Three rulings made on 2026-08-14, after an eight-slice audit cross-checked the code against BA main
-(`product-docs` `55e7dbb`) and against real Broadcom Rally. None is drift; none should be "fixed" on
-sight. The audit and its sourced Rally research are in
-`product-docs/projects/mini-rally/09_Gap_Audit/`.
+The permission catalogue is the single source of truth; **custom roles and the editable permission
+matrix are DELETED** (ruling 2026-08-14) and the read-only Permission Model tab is an AC-11 requirement.
+**There is NO `Viewer` level**, and **a per-Project `Admin` has NO structural authority.**
 
-- **There is NO `Viewer` level, and Rally disagrees.** The BA removed it (`product-docs` `55e7dbb`,
-  2026-08-14). It was restored by architect ruling the same day and **removed again on the BA's
-  instruction** — migrations 0113 then 0115. The model is Workspace Admin plus per-Project `admin` or
-  `editor`, with **No Access implicit** when no active `project_members` row exists; `No Access` is
-  never a stored value or a dropdown choice, only the absence of a row reached through `Remove`.
-
-  Recorded because it will come up again, and because the next person to read Broadcom's docs will
-  reach for it. Real Rally's `ProjectPermission.Role` is No Access / Viewer / Editor / Project Admin,
-  and its Viewer is load-bearing five ways: the documented answer to "make this user read-only", the
-  **provisioning default** for a new user, one of four Quick Filter Toggles on the admin permission
-  grid, the demotion target in the team-membership state machine, and a full-licence consumer whose
-  only purpose is access control. So with `admin`/`editor`/absent alone, a read-only stakeholder or
-  auditor is either invisible or a full Editor — the two configurations Rally customers most often
-  need to avoid. If that becomes a real problem it needs a **new ruling**, not a quiet re-add: the
-  CHECK constraint, `ACCESS_LEVEL_PERMISSIONS`, the DTO enums, the SPA's `access-levels.ts` mirror and
-  the generated client all have to move together, and the last attempt showed what happens when one of
-  them lags — `AccessService` filtered its synthesized assignments on a hand-written
-  `'admin' | 'editor'` pair in two places, so a granted row read as No Access. Use
-  `isProjectAccessLevel`, never an inline comparison.
-
-  Sourced evidence: `product-docs/projects/mini-rally/09_Gap_Audit/research/RALLY_PERMISSIONS_MODEL.md`.
-- **Team-scoped Editor is DROPPED as an authorization scope** (ruling 2026-08-14, reversing the
-  earlier "KEPT" ruling of the same day — recorded rather than deleted, because the next person to read
-  the BA's §2.2 will reach for it again). The BA scopes an Editor's writes to their assigned Teams
-  (§2.2, §3.2 "in assigned Teams"), and Rally has **no `Team` object and no team authorization scope**
-  at all — `POST /user/<OID>/teammemberships/add` takes **project** refs, and "Team Member" is a
-  presentational checkbox with auto-promotion to Editor. Our own research file said "do not build a
-  team scope"; it was kept anyway because the BA models Teams as first-class.
-
-  **What reversed it was our own schema, not Rally's docs.** A team scope can only restrict rows that
-  CARRY a team, and `portfolio_items.team_id` and `work_items.team_id` are both nullable and mostly
-  unset (195 of 206 local iterations name no team). `assertTeamScoped` therefore admitted every
-  `teamId === null` row *by design* — so the boundary admitted the ordinary case, which makes it a
-  filter with a security-sounding name rather than a control. It covered 3 of ~14 Editor-reachable
-  writes and **no reads**: the worst available state, because it reads as a boundary in review and is
-  not one. Finishing it honestly would have required making `team_id` MANDATORY on every
-  Editor-writable row — a data-model change across portfolio, work items and iterations, plus
-  team-scoped read models on every list, report and picker.
-
-  **THE FRESH RULING ARRIVED: reinstated 2026-08-17.** `GAP-P4-RBAC-003` is a BA-confirmed P0 Fail —
-  an Editor with no assigned Team read another team's Story in full and was offered `All Teams`,
-  Pegasus and RTCAP in the selector — citing §2.2, §3.1–3.2, §7 and AC #3–#5. The paragraph above is
-  kept because its objection was right, and because the BA's follow-up answer is what finally settles
-  it. Asked directly whether `team_id` had to become mandatory, they ruled:
-
-  > "Keep `team_id` nullable. Null means **Project Backlog**, accessible only to Workspace Admin and
-  > Project Admin. Editor must select one of their assigned Teams when creating a Work Item and cannot
-  > access team-less items. Enforce this consistently in API queries, lists, reports, search, pickers
-  > and direct URLs. No DB migration or backfill is required."
-
-  So the nullable column is not a gap to be closed — it is a **THIRD population with its own
-  audience**, which is why no migration was needed. `AccessService` holds both halves and nothing else
-  may re-implement either:
-
-  - **`assertTeamInScope`** — the per-record decision. For an `editor`: no active roster row on any
-    team actively linked to the project → `EDITOR_NO_TEAM_SCOPE` (AC1); another team's record →
-    `TEAM_NOT_IN_SCOPE` (AC3); a record with NO team → `PROJECT_BACKLOG_ADMIN_ONLY`. That third code
-    exists rather than reusing the second because "this is the Project Backlog" and "this is someone
-    else's Team" are different facts and only one is something the reader can act on.
-  - **`resolveTeamScope`** — the SAME decision in the shape a query needs, and every list, report,
-    search and picker narrows through it. `{ unrestricted: true }` for a Workspace Admin, a
-    per-project `admin`, or a principal with no level at all (whose refusal is
-    `assertProjectPermission`'s — narrowing them to zero teams would turn a 403 into an empty grid,
-    which reads as "this project has no work"). Otherwise their own team ids.
-  - **`team_id IN (…)`, NEVER `IN (…) OR IS NULL`.** That OR-NULL form is right for ITERATIONS
-    (`teamOrSharedTimebox` — a timebox with no team is a shared sprint) and wrong for WORK ROWS. The
-    two rules sit in adjacent queries; say which one a predicate is when you write it.
-  - **An empty array is an answer, not a missing filter.** `{ teamIds: [] }` must return nothing;
-    flattening it to "unrestricted" hands that Editor the whole project, the same `null`-versus-`[]`
-    trap `listReadableProjectIds` documents. Short-circuit rather than emitting `inArray(col, [])`.
-  - **Create is a REQUIRED CHOICE, not a refusal to read.** An Editor omitting the Team gets
-    `WORK_ITEM_TEAM_REQUIRED` (412), because `PROJECT_BACKLOG_ADMIN_ONLY` reads as "you may not open
-    that" — true of a read and useless on a form.
-  - **A per-project `admin` keeps All Teams AND the Project Backlog** (§3.1), so
-    `GET /projects/:id/teams` narrows for a reader through `listProjectTeamsForReader` while the
-    unscoped `listProjectTeams` stays internal — it is also the home of the "team must be linked to
-    this project" rule, and a rule that cannot see every link would make an Editor unassignable
-    inside their own team.
-  - Reached from `WorkItemsService` on read-by-id, read-by-key, create, update (BOTH the current team
-    and a moving destination) and delete. Pinned over real HTTP in
-    `test/e2e/editor-team-scope.e2e.spec.ts`; the zero-team half is in `access.service.spec.ts`,
-    because the e2e cannot express it without emptying a seeded principal's rosters, which other files
-    measure.
-
-  **A boundary the READS do not share is a filter with a security-sounding name** — that is the whole
-  lesson of the removal note above, and it is why the ruling's own sentence lists lists, reports,
-  search, pickers and direct URLs. A new read over work rows inherits nothing automatically: it must
-  take the scope. What that cost, in one pass, and what each half is worth knowing for:
-
-  - **`TeamReadScope` is exported from `@modules/access` and nowhere else.** Four modules had derived or
-    re-declared it within a day of the rule landing; four copies of one decision table is the drift the
-    rule exists to prevent. `libs/modules/{work-items,iterations,quality}/src/domain/team-read-scope.ts`
-    re-export it and keep only their own SQL helpers.
-  - **`scope` is a REQUIRED repository parameter**, not an optional one, in every port it reaches. A new
-    call site that forgets the boundary is then a compile error rather than a silent widening.
-  - **Every sub-resource of a work item is a disclosure of that work item.** `:id/activity`,
-    `:id/labels`, `:id/relations`, `:id/milestones`, `:id/time-logs`, `:id/watchers`, `:id/attachments`
-    and both attachment-download routes all loaded the row through the unscoped `getWorkItem`, so the
-    record was refused while its Revision History, links, logged hours, watchers and attachment BYTES
-    were not. `requireReadable` is the one scoped read path; a signed URL outliving the request is why
-    the download pair was the worst of them. Comment threads had the same hole through
-    `CollaborationService`, which is a different module and needed its own fix.
-  - **Writes leak just as well as reads.** `bulk-release`, `bulk-iteration` and both reorder routes
-    authorised the PROJECT in the body and never the rows, so a bulk call was the cheapest way to move
-    another Team's work — or the Project Backlog's — with no UI involved. `loadBulkItems` now checks
-    every row, all-or-nothing.
-  - **A grid must not offer a row its own record endpoint refuses.** The Tasks tab narrows by
-    `coalesce(task, parent, iteration)` while `GET /work-items/:taskId` read the row's own column, so a
-    task under a teamed Story was listed and then refused. `resolveRowTeam` is the shared resolution,
-    and it asks for the third tier only when the first two are null.
-  - **Frozen Burndown history cannot be re-sliced, so a multi-team Editor gets NO series.** The
-    `team_id IS NULL` snapshot row is a MEASURED All Teams row that spans teams they may not see, and
-    summing the team rows is forbidden (this file, above). So `frozenSeriesScope` serves one team's own
-    rows for a one-team reader and reports the series UNAVAILABLE for two or more, with
-    `hasScheduledWork` still live — "work exists, this scope's history is unavailable" rather than
-    "nothing scheduled". Arithmetically a sum would be exact for `iteration_daily_snapshots` alone; the
-    release burnup cannot follow (a team-agnostic child counts inside every team row), and one report
-    aggregating while its neighbour refuses is worse than both refusing.
-  - **`All Teams` is not a lie for an Editor: it is `My Teams`.** Their default report scope returns
-    that label, because `All Teams` would be false twice over — other teams, and the Project Backlog.
-  - **Two REFUSALS on create, and they are not interchangeable.** Another team is `TEAM_NOT_IN_SCOPE`;
-    no team at all is `WORK_ITEM_TEAM_REQUIRED`. On a form the reader needs to know which field to
-    fill, which is also why `CreateIterationItemDto` gained an optional `teamId`: a SHARED iteration
-    (195 of 206 local ones) has no team to inherit, so without it Add Item was closed to exactly the
-    role §3.2 grants it to. A chosen team wins over the inherited one; the refusals still decide.
-  - **What is still NOT narrowed, deliberately.** `activeProjects` / `activeSprints` on the Home strip
-    count CONTAINERS, and `iterations.team_id` is unset on ~195 of 206 rows, so a strict predicate
-    would drop exactly the shared sprints an Editor works in. And a Release Tracking Direct row's
-    `childCount` / `progress` / `mismatches` stay scope-blind per RT-BR-05, so an Editor can infer
-    aggregate counts for children of a Feature their team owns. Both are recorded here rather than
-    quietly narrowed, because narrowing either would give one number two definitions.
-
-  Everything else about Teams is unchanged: **delivery-model data, and a display filter.** Team
-  membership, `team_members`, Team Status, Team Capacity and every report's team scoping are untouched
-  — and note `RBE-06` grants `editor` from a team roster row, which IS Rally's model arrived at from
-  the other direction.
-- **A per-Project `Admin` has NO structural authority**, following the BA over Rally. §3.1 marks
-  every structural row Hidden for Admin — create/edit/archive/restore/delete Project, create/edit/
-  deactivate/restore Team, assign Project access and Team membership — and gives it Read-only on
-  "View Project Details and Teams". Rally's Project Admin *does* configure its project and edit
-  viewer/editor/team-member permissions, so this is deliberate. In code: `PATCH /projects/:id` and
-  the two `:id/teams` link/unlink routes carry **`workspace:edit`** (workspace-tier, WA-only), not
-  `project:edit`.
-
-  **`project:edit` deliberately STAYS in the Admin set**, because it also gates label and
-  workflow-status configuration — delivery configuration, which §3.1's own summary gives Admin
-  ("`Admin` is powerful for delivery management") — and because `View Permission Model` is a §3.1
-  Admin row gated on that code. So do not read "Admin must not hold `project:edit`" from the rule
-  above; read "the structural routes must not be gated on it".
+Full account — every invariant with the incident that produced it: [`docs/lessons/access-model.md`](docs/lessons/access-model.md)
 
 ## Permissions reach a workspace ONCE
 
@@ -1977,44 +1225,7 @@ either opens a hole or leaks API surface.
 
 ## API tokens: four things that are correct in isolation and wrong in the graph
 
-Machine credentials (`identity.api_tokens`, migration 0125). The design rationale is in the migration;
-these are the integration facts that cost a debugging cycle each, all four found by
-`test/e2e/api-tokens.e2e.spec.ts` and none of them visible to a unit test.
-
-- **The resolver module must be `@Global` AND export the DI token.** `JwtAuthGuard` is constructed in
-  whichever module uses `@Auth()`, so an optional dependency bound only inside `ApiTokensModule`
-  resolves to `undefined` in every one of them — the guard keeps its old behaviour and every API token
-  answers 401 on a route that should accept it. `IdentityModule` is `@Global` for exactly this reason
-  with its BFF bridge; the pattern is not decoration.
-- **A post-authentication guard cannot live on the controller.** Nest runs controller-level guards
-  BEFORE route-level ones, so `@UseGuards(RejectApiTokenAuthGuard)` on the class ran before `@Auth()`
-  had authenticated anything, read an unset `apiTokenId`, and allowed every token through — a token
-  could mint another token, which makes a leaked one permanent. Both guards now go in ONE `UseGuards`
-  array (`SessionAuthOnly`), where array order is execution order.
-- **`z.date()` in a response DTO breaks Swagger metadata, not the DTO.** `nestjs-zod` throws "Date
-  cannot be represented in JSON Schema" when the OpenAPI factory runs, which takes down every suite
-  that boots through `bootstrapApp` — it surfaced in `csrf-protection.e2e.spec.ts`, nowhere near
-  tokens. Response timestamps are `z.string().datetime()` like every other response DTO, and the
-  service→wire conversion is one exported mapper.
-- **`WorkspaceService` deep-imports `ApiTokensService`**, not the barrel. `@modules/api-tokens`
-  re-exports the module and its controllers, which import `@modules/identity`, which imports
-  `@modules/workspace` — a cycle that leaves the injected type `undefined` and fails as "argument at
-  index [11]" with no name.
-
-Two behavioural notes worth knowing before changing either:
-
-- **`scopes` narrow; they never grant.** `PolicyGuard` asks both sides — the database-resolved
-  permissions and the token's scopes — whether they grant the required code (`grantsUnderTokenScopes`).
-  It is two-sided rather than an array intersection because either side can hold a wildcard, and an
-  intersection gets both directions wrong: an admin whose baseline is `workspace:*` minting a
-  `work_item:view` token has no literal overlap, and neither does a `work_item:*` scope over a
-  `work_item:view` baseline. Permissions are still never READ from the token, so this is not the
-  `claims.permissions` snapshot returning.
-- **Offboarding revokes tokens, and cache invalidation is not enough.** Dropping the permission cache
-  makes the principal powerless but leaves the credential AUTHENTICATING for up to a year, and a live
-  401-vs-403 distinction is the difference between a credential that is dead and one that is merely
-  idle. `removeMember` and a suspension both call `revokeAllForUser`, best-effort so a transient
-  failure cannot roll back a removal that already committed.
+Full account — every invariant with the incident that produced it: [`docs/lessons/api-tokens.md`](docs/lessons/api-tokens.md)
 
 ## Sibling repo
 
