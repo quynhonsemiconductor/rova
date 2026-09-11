@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| Status | Planned — not started |
+| Status | All seven phases (A-G) implemented; §10 Definition of done ticked/annotated (2026-09-09) |
 | Author | Solution Architect (with BA SRS + approved mockup) |
 | Created | 2026-09-07 |
 | Sources of truth | `Mini_Rally_pj/04_Developement_tracking/Phase 7 (After MVP)/Test Case/SRS.md`; mockup `03_Mockup Design/src/app/pages/WorkItemDetailPage.tsx`, `WorkspaceProjectsPanel.tsx`, `model.ts`; the User Story AC1–AC4 |
@@ -1281,19 +1281,151 @@ control uses the shared `Button`/`SearchableSelect`/`DateField`).
 
 ### Phase G — Project Test Case Type configuration (SRS §3)
 
-- [ ] **G1** `ITestCaseTypeRepository` + service: list (live only, plus an `includeArchived` read for
-  the Detail select), create (BR16), archive.
-- [ ] **G2** Routes under `/projects/:id/test-case-types` (§3). `POST`/`DELETE` gated
-  `workspace:edit` — WA-only, matching the structural project routes; **not** `project:edit`, which
-  a Project Admin holds.
-- [ ] **G3** Default-Types seeding on project create (the backfill for existing projects shipped in
-  A1).
-- [ ] **G4** `test-case-types-section.tsx` under
-  `Settings > Workspaces & Projects > <Project> > Details`: chip list, `Add New` → modal (Name,
-  Cancel, Save, inline duplicate/length errors), `×` → confirmation dialog whose body is the
-  mockup's ("Existing Test Cases keep their historical Type value"). Controls render only for a
-  Workspace Admin.
-- [ ] **G5** The Create modal and the Detail Type select move onto this feed.
+- [x] **G1** `ITestCaseTypeRepository` + `TestCaseTypeDrizzleRepository` + `TestCaseTypesService`:
+  `listSelectable` (live only), `create` (BR16), `archive` (soft-hide).
+  **Deviation from the plan's literal text, confirmed with user first**: no `includeArchived` read.
+  Phase C's shipped `test-case-detail-page.tsx` already resolves BR17 entirely client-side — it
+  unions the live feed with a synthesized `{id: testCase.type, name: testCase.type}` fallback when
+  the row's current Type isn't in the live list, which works because `type` is a text SNAPSHOT
+  (D8), not an FK. Building a server `includeArchived` param would have been a dead code path
+  nothing calls. `ITestCaseTypeRepository`'s own docblock records this.
+  Also: no second "list for management" read. `TestCaseTypeOption` (the ONE feed's row shape) grew
+  a `position` field so the same `GET /projects/:id/test-case-types` serves both the Create modal's
+  dropdown (Phase B) and G4's chip list — the plan's §3 table names exactly one GET route.
+  Moved `listSelectableTypes` off `ITestCaseRepository` (Phase B's stopgap, per its own docblock)
+  onto the new port; `TestCasesService.create`/`.update` now call `testCaseTypeRepo.listSelectable`.
+  Added `TEST_CASE_TYPE_NAME_TAKEN` / `TEST_CASE_TYPE_NOT_FOUND` to `ErrorCodes`.
+- [x] **G2** Routes under `/projects/:id/test-case-types`. `GET` unchanged (`test_case:view`, no
+  `resource` key). `POST`/`DELETE` (`:typeId`) added, gated `@RequirePermission('workspace:edit')`
+  with **no scope argument** — `workspace:edit` is workspace-tier (the tier-safe overload accepts
+  none), matching `PATCH /projects/:id` and `PATCH :id/estimation-settings` exactly, not the plan's
+  literal "scope: same" table cell (which would be a compile error for a workspace-tier code). The
+  service re-scopes the project id to the caller's own workspace via `getProject`, same shape as
+  `updateEstimationSettings`.
+- [x] **G3** Default-Types seeding on project create. `DEFAULT_TEST_CASE_TYPE_NAMES` constant added
+  to `project.constants.ts` (same 5 names/order as migration 0129's backfill, kept as its own
+  definition rather than re-derived from the SQL). `ProjectsService.createProject` loops it inside
+  the SAME transaction as the project, immediately after the `DEFAULT_WORKFLOW_STATUSES` loop.
+  **Cross-module wiring**: `ProjectsModule` cannot import `TestCasesModule` (already imports
+  `ProjectsModule` for `assertAssignable` — would cycle), so `ProjectsModule` deep-imports
+  `TestCaseTypeDrizzleRepository` + `TEST_CASE_TYPE_REPOSITORY` from `@modules/test-cases/...`
+  directly (repo-level only, no service dependency) — the exact shape F1 established for
+  `WorkItemsModule`/`TestCasesService`, and the same deep-import path `WorkItemsModule` already
+  uses for `TestCaseDrizzleRepository`/`TestResultDrizzleRepository`.
+- [x] **G4** `apps/web/src/pages/settings/ui/test-case-types-section.tsx`, rendered on the Details
+  tab in `workspace-projects-panel.tsx` (`DetailsTab`, alongside `EstimationSettingsBlock` — same
+  `isWA`-gated block shape). Chip list (`useTestCaseTypes`), `Add New` → `AddTestCaseTypeModal`
+  (Name, Cancel, Save; inline length error over 60 chars; a server `TEST_CASE_TYPE_NAME_TAKEN`
+  refusal surfaces inline via the `FormField` error slot, not just a toast), `×` per chip →
+  `ConfirmDialog` (named, not typed — the mockup's own copy, "Existing Test Cases keep their
+  historical Type value..."). `Add New` and every `×` render ONLY for `isWA`; every other reader
+  sees the read-only chip list, since `test_case:view` (the GET route's gate) is held broadly.
+  English-first, no `t()` — matches this file's own surface (`fe-consistency.ratchet.test.ts`'s own
+  comment names "Workspaces & Projects tree/detail/teams/overview/edit" as deferred-i18n).
+  `test-case-types-section.test.tsx`: 9 tests, all green — chip rendering for every reader,
+  controls hidden/shown by `isWA`, Save disabled while blank, BR16 length error, BR16 server-
+  refusal surfaced inline, name trimmed before submit, BR17's confirmation copy + archive-only-
+  after-confirm, empty state.
+- [x] **G5** Confirmed, not rewired: `create-test-case-modal.tsx` (Phase B) and
+  `test-case-detail-page.tsx` (Phase C) already call `useTestCaseTypes` against
+  `GET /projects/:id/test-case-types` — there was never a second Type source to replace. See the
+  "G1 stub" note below for what Phase B's own docblock called a stopgap and what turned out to
+  already be the real feed's read side. BR17's union (Detail page) needs no change either: it
+  synthesizes the fallback option from the row's own `type` string when the live list doesn't
+  contain it, which works because `type` is a text snapshot (D8) — no `includeArchived` server
+  read was built (see G1's note).
+  `useCreateTestCaseType`/`useArchiveTestCaseType` added to `features/test-cases/api.ts` for G4's
+  writes; `useTestCaseTypes` (the shared GET) is now also G4's own feed, unchanged in shape (its
+  `TestCaseTypeOption`/`TestCaseTypeOptionDto` gained a `position` field so one response serves the
+  dropdown default AND the chip list's order).
+
+**G1 stub-feed finding (checked before writing any code, per the task brief).** Phase B's own
+docblock called `GET /projects/:id/test-case-types` "a minimal read-only query, not... the full
+Phase G route", implying G would need to build a NEW feed and rewire the Create modal / Detail
+select onto it. That is not what the code needed: Phase B's minimal route was already the correct
+long-term shape for the READ side (`test_case:view`-gated, live rows only, ordered by position) —
+G2 added `POST`/`DELETE` to the SAME path rather than opening a second one, exactly as the plan's
+own B1 decision anticipated ("G2 later adds write routes to the SAME path rather than a second
+one"). So there was never a stub to replace: `listSelectableTypes` moved off `ITestCaseRepository`
+(where Phase B parked it) onto the new `ITestCaseTypeRepository`, and the FE's `useTestCaseTypes`
+hook needed zero call-site changes in `create-test-case-modal.tsx` or `test-case-detail-page.tsx` —
+only a `position` field added to the response so the SAME feed could also serve G4's chip list.
+Confirmed dangling nothing: `grep -rn "listSelectableTypes" libs/modules/test-cases apps/web` after
+the move shows only the new port/service/repo, no orphaned reference.
+
+**Deviation from the plan's literal text, confirmed with the user before writing (G1).** No
+`includeArchived` read was built. Phase C's shipped Detail page already resolves BR17 without one —
+unions the live feed with a client-synthesized `{id: testCase.type, name: testCase.type}` fallback,
+which works because `type` is a text SNAPSHOT (D8), not an FK to the Type row. Building the plan's
+literal `includeArchived` param would have been a dead code path nothing calls.
+
+**Phase G gate — all green.**
+- `pnpm lint` (backend glob) and `pnpm --filter rova-web lint` — clean (one real issue caught and
+  fixed along the way: an unused `TestCaseType` import left over from an earlier draft of
+  `test-case-response.dto.ts`).
+- `pnpm typecheck` and `tsc -b --force` (repo-wide) — clean.
+- `pnpm build` (api+worker) and `pnpm --filter rova-web build` — both clean (FE build's only
+  warnings are the pre-existing `INEFFECTIVE_DYNAMIC_IMPORT`/plugin-timing ones Phases A/B/D/F
+  already documented).
+- `pnpm test` (backend) — **92 files, 2085 tests**, all green. Net movement from Phase F's 2075:
+  +6 in the new `test-case-types.service.spec.ts`, +5 in the new
+  `test-case-type.drizzle-repository.predicates.spec.ts`, +1 in `projects.service.spec.ts` (the
+  BR18/G3 create-hook assertion), −1 in `test-case.drizzle-repository.predicates.spec.ts` and −1 in
+  `test-cases.service.spec.ts` (the `listSelectableTypes` predicate/service tests, which moved to
+  the new Type-repository files rather than being duplicated) — net +10. One transient failure on
+  the first full run (`scheduled-job-exclusivity.ratchet.spec.ts`, a 5000ms timeout under this
+  session's heavy concurrent load — docker + API dev server + Playwright all live at once);
+  confirmed NOT a regression by isolation (passed clean, 3/3) and a clean full rerun (92/92,
+  2085/2085).
+  Coverage measured (`pnpm test:cov`): stmts 86.51%, branches 79.92%, functions 84.84%,
+  lines 87.43% — all at or above the existing 86/79/84/87 floors. **Not raised** — same precedent
+  as Phases D/E/F: the move is small enough that truncation already absorbs it.
+  `pnpm check:coverage-floors` green.
+- `test/coverage-include.spec.ts` — green; `test-case-types.service.ts` added to
+  `vitest.config.ts`'s include list (the new drizzle repository is never listed, matching every
+  prior phase's precedent).
+- `test/route-policy.ratchet.spec.ts` — unchanged, 5/5 green. New `POST`/`DELETE
+  /projects/:id/test-case-types` routes both decorated (`workspace:edit`, no scope argument).
+- `fe-consistency.ratchet.test.ts` and `query-default.ratchet.test.ts` — both unchanged, all green.
+  `TestCaseTypesSection`/`AddTestCaseTypeModal` use only the shared `Button`/`IconButton`/
+  `ConfirmDialog`/`FormField`/`Input`/`AppModal` — no new raw `<button>`, no new hardcoded-copy
+  surface beyond what this file's own ratchet comment already treats as accepted (English-first,
+  "Workspaces & Projects... detail").
+- `pnpm --filter rova-web test` (FE) — **137 files, 1059 tests**, all green (new
+  `test-case-types-section.test.tsx`, 9 tests).
+- `pnpm --filter rova-web codegen` against a restarted API — grepped `/api/docs-json` for
+  `/v1/projects/{id}/test-case-types/{typeId}` before trusting the client (present). Diff: 126
+  insertions / 1 deletion, purely additive (`git diff --stat`).
+- `pnpm test:e2e` (full suite) — **BLOCKED, same pre-existing `governance-audit-flow.e2e.spec.ts`
+  hang Phases B/C/E/F's own gate notes document** (confirmed by a 10-minute wait with zero
+  additional output past the seed step, matching the documented shape exactly; `git status`
+  confirms this phase's diff touches neither `audit`, the outbox relay, nor that spec). Verified
+  instead, in isolation: `test-case-routes.e2e.spec.ts` + the new `test-case-types.e2e.spec.ts` +
+  `test-result-flow.e2e.spec.ts` + `derived-invariants.e2e.spec.ts` + `authz-cluster.e2e.spec.ts` —
+  **95/95 passed** (54.85s) — and `project-authz.e2e.spec.ts` (the file `workspace:edit`'s own
+  structural-write precedent lives in, since this phase's diff touches `ProjectsService`/
+  `ProjectsModule`) — **20/20 passed** (21.5s). Zero permission regressions.
+  `test-case-types.e2e.spec.ts` (new, 8 tests): GET ordering; `workspace:edit` refuses a per-Project
+  ADMIN on both POST and DELETE (G2); a Workspace Admin can create then archive; BR16 case-
+  insensitive duplicate refused with `TEST_CASE_TYPE_NAME_TAKEN` (409, not a raw constraint error);
+  BR16 an ARCHIVED name is still refused (the unique index has no `WHERE` clause); BR18/G3 a project
+  created over real HTTP starts with the five default Types in the documented order; BR17/AC17 a
+  Test Case's `type` snapshot survives its own Type being archived, re-read fresh from
+  `GET /test-cases/:id` after the archive — sourced from the real feed, never a stub.
+  `test/e2e-fixtures.ratchet.spec.ts` unaffected: the ratchet greps for the harness's own
+  `createProject(` helper call, and this phase's new spec creates its one scratch project via raw
+  `POST /projects` instead (a test ABOUT creation's own side effect, BR18/G3 — within the ratchet's
+  own stated exception, not a workaround of it).
+- `pnpm db:seed:test` — reset + reseeded clean, confirmed no BE e2e or manual session live first
+  (an orphaned `vitest --config test/vitest.e2e.config.ts` process from the killed
+  `governance-audit-flow` hang was found and killed first — CLAUDE.md's documented `TaskStop`-does-
+  not-always-kill-children shape).
+- `pnpm --filter rova-web test:e2e` (Playwright), API confirmed running — **45 passed, 3 failed
+  (17.0m)**. All 3 failures are the documented pre-existing flakes named in this task's own
+  instructions: `capacity-allocation.e2e.ts` ×2, `golden-journey.e2e.ts` ×1. **Zero Test Cases
+  failures** — no `test-cases.e2e.ts` Playwright spec exists yet (§7's own note: future work,
+  unchanged this phase, since Phase G's checklist names no Playwright spec); `role-conformance.e2e.ts`
+  (nearest in shape to a permission-gated new surface) passed clean, all 7 of its cases.
 
 ---
 
@@ -1387,8 +1519,17 @@ None of these blocks Phase A. Each is asked at the phase that needs it.
    sort cannot disagree about where blanks belong. Confirm blanks-last is what the BA wants.
 7. **A read-only `Test Case Type` for a Project Admin.** §3.3 gives `Add New` to a Workspace Admin
    only; a Project Admin can still SEE the chips (they hold `test_case:view`). Confirm.
-
----
+8. **Owner / Assigned To / Tester population wording vs. the 8 BA user stories.** Found by the
+   2026-09-09 post-Phase-G AC audit. All 8 stories' literal text (Story 3 AC2, Story 5 AC1, Story 8
+   AC3) and the SRS's own field tables (§5, §6.3, §8) say only "Project members," with no team
+   qualifier. The shipped behavior offers `ProjectsService.assignmentCandidates`'s TEAM-scoped
+   population (project `admin` project-wide + `editor` on the row's own team + Workspace Admin on
+   that team's roster) — BR4/BR8's rule, and the same one CLAUDE.md documents at length for Owner /
+   Dev Owner everywhere else in the app. **Left as-is, not changed**: widening to a literal
+   project-wide reading would contradict the app's own established convention and could put an
+   Editor in front of another team's work, which is a bigger behavioral change than the wording gap
+   justifies. Confirm with the BA whether "Project members" in these ACs was meant literally or is
+   shorthand for the same team-scoped rule the rest of the app already uses.
 
 ## 9. Risk register
 
@@ -1408,15 +1549,52 @@ None of these blocks Phase A. Each is asked at the phase that needs it.
 
 ## 10. Definition of done (whole feature)
 
-- [ ] All seven phases marked done, each with its gate passed
-- [ ] AC1–AC4 of the User Story, and AC1–AC17 of the SRS, each traceable to a named test
-- [ ] `docs/DIVERGENCE.md` records the five declared divergences of §0
-- [ ] `CLAUDE.md` gains a Test Case section: the trigger, the nullable `work_item_id` reading, the
-      `entity_ref_type` widening and its refusals, and the `Not Run` / `Not run yet` exception to
-      `EMPTY_VALUE`
-- [ ] Coverage floors raised **and re-measured**; every ratchet unchanged or lower
-- [ ] `pnpm --filter rally-web codegen` clean (`codegen:check` green in CI)
-- [ ] The seven §8 questions answered, or explicitly carried as declared readings
-- [ ] Ported to `opshub` where the change is boilerplate — nothing here is
-      (`libs/modules/test-cases` is product code), so this feature adds **no** opshub obligation.
-      Recorded so the next reader does not go looking.
+- [x] **All seven phases marked done, each with its gate passed.** A-F were already done and gated
+  before this session; Phase G's gate is above, all green (the pre-existing `governance-audit-flow`
+  hang exempted, as it was in every prior phase's own gate).
+- [x] **AC1–AC17 traceable to a named test.** Traced through Phases A-G's own per-phase gate notes
+  (each names the spec(s) proving its ACs); not re-audited line-by-line in this session beyond
+  confirming Phase G's own BR16-BR18 traces (`test-case-types.e2e.spec.ts`,
+  `test-case-types.service.spec.ts`).
+- [x] **§0's five declared divergences recorded** — **as a CLAUDE.md section, not
+  `docs/DIVERGENCE.md`.** Confirmed with the user before writing: `docs/DIVERGENCE.md` is scoped
+  entirely to Rally-vs-opshub architectural divergence (tenancy, permission vocabulary, scope
+  dimensions) — writing Rally-vs-Broadcom-product divergence there would be a category error. The
+  established convention for THIS kind of divergence is an inline CLAUDE.md prose section (see
+  "Declared divergences from the BA, in Capacity Planning" / "...in the access model"), so "Declared
+  divergences from Rally, in Test Cases" follows that shape instead. The plan's own literal text is
+  now stale on this point; recorded here rather than silently deviating.
+- [x] **`CLAUDE.md` gains a Test Case section**: the trigger, the nullable `work_item_id` reading,
+  the `entity_ref_type` widening and its refusals, the `Not Run` / `Not run yet` exception to
+  `EMPTY_VALUE`, and the Type catalog's soft-hide + dual seeding — added in this session (see
+  "Test Cases (Phase 7)" above "Observability").
+- [x] **Coverage floors** — not raised this phase (measured value truncates to the existing 86/79/84/87
+  floor, matching Phases D/E/F's own precedent of not forcing a bump when truncation already
+  absorbs the move) — **and re-measured** (`pnpm test:cov`, `pnpm check:coverage-floors` green).
+  **Every ratchet unchanged or lower**: `route-policy.ratchet.spec.ts` (5/5), `fe-consistency.ratchet.test.ts`
+  and `query-default.ratchet.test.ts` (both unchanged, all green), `test/e2e-fixtures.ratchet.spec.ts`
+  (unaffected — see Phase G's own gate note on why).
+- [x] `pnpm --filter rova-web codegen` clean — ran against a restarted, freshly-booted API; grepped
+  the served spec for the new routes before trusting the client; diff purely additive
+  (126 insertions / 1 deletion). (Package is `rova-web`, not `rally-web` — CLAUDE.md's own
+  Tooling-behaviour section is stale on the rename, confirmed again this phase, not re-fixed —
+  out of Phase G's scope to touch CLAUDE.md's command examples.)
+- [ ] **The seven §8 questions — NOT all answered, by design.** Item 1 (Work Item delete cascade)
+  was ruled before Phase F and is implemented. Items 2–7 remain genuinely open BA questions,
+  exactly as the task instructions for this phase required ("do NOT answer them, do NOT implement
+  around them"). None of items 2–7 turned out to matter for anything Phase G built: G1–G5 touch
+  none of comments-on-a-Test-Case (#2), Last Build (#3), duplicate names within a Work Item (#4),
+  bulk actions (#5), Owner/Last-Verdict sorting (#6), or a read-only Type view for a Project Admin
+  (#7) — that seventh one is the closest miss, since a Project Admin CAN see the Type chip list in
+  G4 (via `test_case:view`) but cannot add/remove, which is exactly what §3.3/§8's open question
+  already anticipates and leaves unruled. **Left open, not answered, per the task's explicit
+  instruction** — this line of the Definition of done cannot be ticked without violating that
+  instruction, so it is recorded here as a known, deliberate gap rather than silently checked off.
+- [x] **Ported to opshub where boilerplate — nothing here is.** `libs/modules/test-cases` is
+  product code; this feature adds no opshub obligation. Re-confirmed this phase: G1-G5 touches
+  `libs/modules/projects`, `libs/modules/test-cases`, and two new FE files — all product-specific.
+  The one `libs/platform` edit (`errors/error-codes.ts`, two new `ErrorCode` union members) is data
+  on a FIXED union, the same shape Phase A's A5 already added `TEST_CASE_NOT_FOUND`/
+  `TEST_RESULT_NOT_FOUND` under with no opshub port — the shared-boilerplate paths CLAUDE.md's
+  "Sibling repo" section actually names are the platform's SHARED façades/config/HTTP/observability
+  code, not the product-specific error vocabulary living in the same file.

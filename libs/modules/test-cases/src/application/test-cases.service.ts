@@ -18,13 +18,16 @@ import type { AttachmentRef, EntityAttachment } from '@modules/attachments';
 import {
   ITestCaseRepository,
   TEST_CASE_REPOSITORY,
-  TestCaseTypeOption,
   UpdateTestCaseInput,
 } from '../domain/ports/test-case.repository';
 import {
   ITestResultRepository,
   TEST_RESULT_REPOSITORY,
 } from '../domain/ports/test-result.repository';
+import {
+  ITestCaseTypeRepository,
+  TEST_CASE_TYPE_REPOSITORY,
+} from '../domain/ports/test-case-type.repository';
 import type { TestCase } from '../domain/test-case.types';
 import { TEST_CASE_ACTIVITY_CONFIG } from './test-case-activity-diff';
 
@@ -48,6 +51,7 @@ export class TestCasesService {
     // service dependency the other way would close a cycle. F1/F4's cascade only ever needs one
     // set-based write (`softDeleteByTestCaseIds`), which the repository port already expresses.
     @Inject(TEST_RESULT_REPOSITORY) private readonly testResultRepo: ITestResultRepository,
+    @Inject(TEST_CASE_TYPE_REPOSITORY) private readonly testCaseTypeRepo: ITestCaseTypeRepository,
     private readonly workItemsService: WorkItemsService,
     private readonly accessService: AccessService,
     private readonly projectsService: ProjectsService,
@@ -109,11 +113,6 @@ export class TestCasesService {
     return testCase;
   }
 
-  /** Live Types for the Create modal's dropdown, and BR2's "first selectable" source. */
-  async listSelectableTypes(actor: JwtPayload, projectId: string): Promise<TestCaseTypeOption[]> {
-    return this.testCaseRepo.listSelectableTypes(projectId, actor.workspaceId);
-  }
-
   /**
    * Revision History (C6). BR20: every sub-resource of a Test Case goes through the SAME scoped
    * read as the record itself — this calls `getById` first (which itself calls
@@ -150,7 +149,7 @@ export class TestCasesService {
     // SNAPSHOT, D8, so nothing re-validates it after this) — otherwise default to the first
     // selectable one. No live Types at all (a fresh project ahead of Phase G's create-hook backfill,
     // per Phase A's A16 note) means no default and no explicit value can be honoured either.
-    const selectableTypes = await this.testCaseRepo.listSelectableTypes(
+    const selectableTypes = await this.testCaseTypeRepo.listSelectable(
       workItem.projectId,
       actor.workspaceId,
     );
@@ -291,7 +290,7 @@ export class TestCasesService {
     // Any OTHER value must be one of the project's current selectable Types (BR2's rule, applied
     // the same way on update as on create).
     if (input.type !== undefined && input.type !== existing.type) {
-      const selectableTypes = await this.testCaseRepo.listSelectableTypes(
+      const selectableTypes = await this.testCaseTypeRepo.listSelectable(
         existing.projectId,
         actor.workspaceId,
       );

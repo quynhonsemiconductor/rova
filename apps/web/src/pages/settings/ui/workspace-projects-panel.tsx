@@ -47,6 +47,7 @@ import { SettingsTabHeader } from './settings-tab-header'
 import { ProjectAccessList } from './projects-access-tab'
 import { ProjectTeamsTab } from './project-teams-tab'
 import { NewProjectModal } from '@/pages/projects/ui/project-parts'
+import { TestCaseTypesSection } from './test-case-types-section'
 import { notify } from '@/shared/lib/toast'
 import { Button } from '@/shared/ui/button'
 import { IconButton } from '@/shared/ui/icon-button'
@@ -682,6 +683,7 @@ function DetailsTab({ project, isWA }: { project: Project; isWA: boolean }) {
     <div className="space-y-6">
       <FieldGrid project={project} />
       <EstimationSettingsBlock projectId={project.id} isWA={isWA} />
+      <TestCaseTypesSection projectId={project.id} isWA={isWA} />
     </div>
   )
 }

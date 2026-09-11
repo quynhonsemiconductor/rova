@@ -72,14 +72,20 @@ export function toTestCaseDto(tc: TestCase): TestCaseResponseDto {
   };
 }
 
-/** One live Type — the Create modal's dropdown feed. Minimal shape; Type CRUD itself is Phase G. */
+/**
+ * One live Type — the Create modal's dropdown feed (Phase B) AND, since Phase G adds writes to
+ * this same `GET`, the Settings chip list's row shape too. One feed, one shape: `position` is
+ * included so the chip list can render the catalog's own order without a second route the plan
+ * does not name.
+ */
 export const TestCaseTypeOptionSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
+  position: z.number().int(),
 });
 
 export class TestCaseTypeOptionDto extends createZodDto(TestCaseTypeOptionSchema) {}
 
 export function toTestCaseTypeOptionDto(t: TestCaseTypeOption): TestCaseTypeOptionDto {
-  return { id: t.id, name: t.name };
+  return { id: t.id, name: t.name, position: t.position };
 }

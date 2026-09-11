@@ -80,3 +80,17 @@ export const RankTestCaseSchema = z.object({
 });
 
 export class RankTestCaseDto extends createZodDto(RankTestCaseSchema) {}
+
+// ── Type catalog (SRS §3, Phase G) ────────────────────────────────────────────
+
+/**
+ * `POST /projects/:id/test-case-types` (`workspace:edit`, Workspace-Admin-only). BR16: required,
+ * trimmed, ≤60 chars — the service's own `findByName` pre-check (case-insensitive) is what
+ * produces a clean `TEST_CASE_TYPE_NAME_TAKEN` instead of a raw `uq_test_case_types_name`
+ * violation; this schema only enforces shape.
+ */
+export const CreateTestCaseTypeSchema = z.object({
+  name: z.string().min(1).max(60).trim(),
+});
+
+export class CreateTestCaseTypeDto extends createZodDto(CreateTestCaseTypeSchema) {}

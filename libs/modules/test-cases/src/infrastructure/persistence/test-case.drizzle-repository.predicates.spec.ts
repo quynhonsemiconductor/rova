@@ -120,19 +120,6 @@ describe('TestCaseDrizzleRepository — scope is REQUIRED but never a predicate 
     });
   });
 
-  describe('listSelectableTypes (BR2 — Phase B)', () => {
-    it('scopes by project_id + workspace_id + archived_at IS NULL, ordered by position', async () => {
-      const { repo, captured } = recordingRepo();
-
-      await repo.listSelectableTypes('proj-1', 'ws-1');
-
-      expect(captured).toHaveLength(1);
-      expect(whereOf(captured[0].sql)).toContain('project_id');
-      expect(whereOf(captured[0].sql)).toContain('archived_at');
-      expect(captured[0].sql).toMatch(/order by "work"\."test_case_types"\."position" asc/);
-    });
-  });
-
   describe('delete cascade (F1/F4)', () => {
     it('softDelete is a plain (id, workspace_id) UPDATE of deleted_at', async () => {
       const { repo, captured } = recordingRepo();
