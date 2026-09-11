@@ -21,11 +21,13 @@ const testCaseByKey = vi.fn()
 const updateTestCase = vi.fn()
 const testCaseTypes = vi.fn()
 const testCaseActivity = vi.fn()
+const testResults = vi.fn()
 vi.mock('@/features/test-cases/api', () => ({
   useTestCaseByKey: (...args: unknown[]) => testCaseByKey(...args),
   useUpdateTestCase: () => ({ mutateAsync: updateTestCase }),
   useTestCaseTypes: (...args: unknown[]) => testCaseTypes(...args),
   useTestCaseActivity: (...args: unknown[]) => testCaseActivity(...args),
+  useTestResults: (...args: unknown[]) => testResults(...args),
 }))
 vi.mock('@/features/work-items/api', () => ({
   useWorkItem: () => ({ data: { id: 'wi-1', itemKey: 'US-1' } }),
@@ -84,6 +86,7 @@ beforeEach(() => {
   projectMemberOptions.mockReturnValue({ data: [], isLoading: false, isError: false })
   testCaseTypes.mockReturnValue({ data: [{ id: 'type-1', name: 'Functional' }] })
   testCaseActivity.mockReturnValue({ data: [], isLoading: false, isError: false })
+  testResults.mockReturnValue({ data: [], isLoading: false, isError: false })
 })
 
 describe('TestCaseDetailPage', () => {

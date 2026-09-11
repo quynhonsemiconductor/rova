@@ -26,8 +26,11 @@ import {
 } from '@modules/attachments';
 import type { EntityAttachment } from '@modules/attachments';
 import { TestCasesService } from '../../application/test-cases.service';
+import { TestResultsService } from '../../application/test-results.service';
 import { UpdateTestCaseDto } from './dto/test-case-request.dto';
 import { TestCaseResponseDto, toTestCaseDto } from './dto/test-case-response.dto';
+import { CreateTestResultDto } from './dto/test-result-request.dto';
+import { TestResultResponseDto, toTestResultDto } from './dto/test-result-response.dto';
 
 function toAttachmentDto(a: EntityAttachment): AttachmentResponseDto {
   return {
@@ -61,7 +64,10 @@ function toActivityDto(a: ActivityLog): ActivityResponseDto {
 @Controller('test-cases')
 @AuthPolicy()
 export class TestCaseRecordsController {
-  constructor(private readonly testCasesService: TestCasesService) {}
+  constructor(
+    private readonly testCasesService: TestCasesService,
+    private readonly testResultsService: TestResultsService,
+  ) {}
 
   // Declared before `:id` so the static path is not captured as an :id (ParseUUIDPipe-validated,
   // which would 400 on the literal "by-key") — same ordering reason as `work-items.controller.ts`.
@@ -135,6 +141,37 @@ export class TestCaseRecordsController {
       page,
       pageSize,
     };
+  }
+
+  // ── Test Results (Phase D) ────────────────────────────────────────────────────
+
+  @Get(':id/test-results')
+  @RequirePermission('test_result:view', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiOperation({ summary: "List a Test Case's Results, latest first (BR14)" })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: TestResultResponseDto, isArray: true })
+  @ApiCommonErrors(401, 404)
+  async listResults(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<TestResultResponseDto[]> {
+    const results = await this.testResultsService.list(user, id);
+    return results.map(toTestResultDto);
+  }
+
+  @Post(':id/test-results')
+  @RequirePermission('test_result:create', { resource: 'test_case', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Add a Test Result to a Test Case (SRS §8)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: TestResultResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 412)
+  async createResult(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateTestResultDto,
+  ): Promise<TestResultResponseDto> {
+    const result = await this.testResultsService.create(user, id, dto);
+    return toTestResultDto(result);
   }
 
   // ── Attachments (C4) ──────────────────────────────────────────────────────────

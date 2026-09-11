@@ -12,6 +12,12 @@
  *
  * A THIRD rule joined them for the same reason: a parent's Schedule State follows its tasks, and only
  * two of that rule's three triggers were built. See the `task state drives the parent` block below.
+ *
+ * A FOURTH is `trg_test_case_last_result` (Phase 7 plan D6): `test_cases.last_verdict`/`last_run`/
+ * `last_result_id` are maintained by a DB TRIGGER, never by `TestResultsService` — see the
+ * `Test Case last_verdict/last_run trigger (D6)` block below, which is the first place any of these
+ * three are asserted against a REAL insert (Phase A's seed data only ever asserted the trigger's
+ * output over already-seeded rows).
  */
 import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -24,8 +30,17 @@ import { WorkItemsService } from '@modules/work-items';
 import { IterationsService } from '@modules/iterations';
 import { MilestonesService } from '@modules/milestones';
 import { ReleasesService } from '@modules/releases';
+import { TestCasesService, TestResultsService } from '@modules/test-cases';
+import { testCaseTypes } from '../../db/schema/work';
 
-import { SEEDED, ALL, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import {
+  SEEDED,
+  ALL,
+  WORKSPACE_ID,
+  adminActor,
+  bootRallyApp,
+  uniqueKey,
+} from './support/flow-harness';
 
 describe('derived invariants (e2e)', () => {
   let app: NestFastifyApplication;
@@ -34,6 +49,8 @@ describe('derived invariants (e2e)', () => {
   let iterations: IterationsService;
   let milestones: MilestonesService;
   let releases: ReleasesService;
+  let testCases: TestCasesService;
+  let testResults: TestResultsService;
   const actor = adminActor();
 
   beforeAll(async () => {
@@ -43,6 +60,25 @@ describe('derived invariants (e2e)', () => {
     iterations = app.get(IterationsService);
     milestones = app.get(MilestonesService);
     releases = app.get(ReleasesService);
+    testCases = app.get(TestCasesService);
+    testResults = app.get(TestResultsService);
+
+    // NXP gets its five default Test Case Types from migration 0129's backfill, which only
+    // covers projects that ALREADY EXIST when it runs — NXP is created by the demo SEED, which
+    // runs AFTER migrations, so on a fresh CI database NXP has ZERO selectable Types (same root
+    // cause as test-case-routes.e2e.spec.ts's own beforeAll seed). The `Test Case
+    // last_verdict/last_run trigger (D6)` block below calls `testCases.create` with no explicit
+    // `type`, which needs one selectable Type to default to (BR2). Insert one directly, since
+    // Phase G's `POST /projects/:id/test-case-types` route isn't part of this branch yet.
+    await db
+      .insert(testCaseTypes)
+      .values({
+        workspaceId: WORKSPACE_ID,
+        projectId: SEEDED.nxp.projectId,
+        name: 'Acceptance',
+        position: 0,
+      })
+      .onConflictDoNothing();
   });
 
   afterAll(async () => {
@@ -394,6 +430,131 @@ describe('derived invariants (e2e)', () => {
       );
       expect(rows.rows.length).toBe(1);
       expect(rows.rows[0].metadata.auto).toBe(true);
+    });
+  });
+
+  describe('Test Case last_verdict/last_run trigger (D6)', () => {
+    /** A fresh Test Case under a team-less Story — `assertAssignable` admits the Workspace Admin
+     *  actor as tester with no Team needed, so no team fixture is required here. */
+    async function freshTestCase() {
+      const story = await items.createWorkItem(
+        actor,
+        SEEDED.nxp.projectId,
+        'story',
+        `Trigger fixture ${uniqueKey()}`,
+        {},
+      );
+      return testCases.create(actor, story.id, { name: `Trigger case ${uniqueKey()}` });
+    }
+
+    async function storedColumns(testCaseId: string) {
+      const rows = await db.execute<{
+        last_verdict: string | null;
+        last_run: string | null;
+        last_result_id: string | null;
+      }>(
+        sql`select last_verdict, last_run, last_result_id from work.test_cases where id = ${testCaseId}::uuid`,
+      );
+      return rows.rows[0];
+    }
+
+    it('INSERT: a real Result insert moves the STORED parent columns (BR9)', async () => {
+      const testCase = await freshTestCase();
+      expect(await storedColumns(testCase.id)).toEqual({
+        last_verdict: null,
+        last_run: null,
+        last_result_id: null,
+      });
+
+      const result = await testResults.create(actor, testCase.id, {
+        build: 'build-1',
+        runDate: '2026-09-01',
+        verdict: 'fail',
+        testerId: actor.sub,
+      });
+
+      const after = await storedColumns(testCase.id);
+      expect(after.last_verdict).toBe('fail');
+      expect(after.last_run).toBe('2026-09-01');
+      expect(after.last_result_id).toBe(result.id);
+    });
+
+    it('the LATEST result by run_date wins, not whichever was inserted last', async () => {
+      const testCase = await freshTestCase();
+
+      const earlier = await testResults.create(actor, testCase.id, {
+        build: 'build-early',
+        runDate: '2026-09-01',
+        verdict: 'fail',
+        testerId: actor.sub,
+      });
+      // Inserted AFTER `earlier` but dated BEFORE it — the trigger must order by run_date, not
+      // insertion order, or this would incorrectly become the latest.
+      await testResults.create(actor, testCase.id, {
+        build: 'build-earliest',
+        runDate: '2026-08-20',
+        verdict: 'pass',
+        testerId: actor.sub,
+      });
+      // Dated AFTER both — this one must win.
+      const latest = await testResults.create(actor, testCase.id, {
+        build: 'build-late',
+        runDate: '2026-09-10',
+        verdict: 'pass',
+        testerId: actor.sub,
+      });
+
+      const after = await storedColumns(testCase.id);
+      expect(after.last_verdict).toBe('pass');
+      expect(after.last_run).toBe('2026-09-10');
+      expect(after.last_result_id).toBe(latest.id);
+      expect(after.last_result_id).not.toBe(earlier.id);
+    });
+
+    it('a SAME-run_date pair breaks the tie on created_at (BR9)', async () => {
+      const testCase = await freshTestCase();
+
+      const first = await testResults.create(actor, testCase.id, {
+        build: 'build-a',
+        runDate: '2026-09-05',
+        verdict: 'fail',
+        testerId: actor.sub,
+      });
+      // Same run_date, created AFTER `first` — must win on created_at, since run_date alone ties.
+      const second = await testResults.create(actor, testCase.id, {
+        build: 'build-b',
+        runDate: '2026-09-05',
+        verdict: 'pass',
+        testerId: actor.sub,
+      });
+
+      const after = await storedColumns(testCase.id);
+      expect(after.last_verdict).toBe('pass');
+      expect(after.last_result_id).toBe(second.id);
+      expect(after.last_result_id).not.toBe(first.id);
+    });
+
+    it('UPDATE (soft-delete): removing the only live Result clears all three columns', async () => {
+      const testCase = await freshTestCase();
+      const result = await testResults.create(actor, testCase.id, {
+        build: 'build-1',
+        runDate: '2026-09-01',
+        verdict: 'pass',
+        testerId: actor.sub,
+      });
+      expect((await storedColumns(testCase.id)).last_result_id).toBe(result.id);
+
+      // Phase D ships no delete route (Phase F) — the trigger's DELETE/soft-delete branch is
+      // exercised directly here, over the SAME column the service would eventually write via
+      // `deleted_at`, matching how `db/seeds/**` is allowed to write these tables raw.
+      await db.execute(
+        sql`update work.test_results set deleted_at = now() where id = ${result.id}::uuid`,
+      );
+
+      const after = await storedColumns(testCase.id);
+      expect(after.last_verdict).toBeNull();
+      expect(after.last_run).toBeNull();
+      expect(after.last_result_id).toBeNull();
     });
   });
 

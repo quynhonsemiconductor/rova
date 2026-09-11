@@ -79,5 +79,44 @@
   },
   "history": {
     "subtitle": "Activity log for field changes on this Test Case."
+  },
+  "results": {
+    "tabName": "Results",
+    "addNew": {
+      "label": "Add Result",
+      "noPermission": "You do not have permission to add a Test Result."
+    },
+    "create": {
+      "title": "Add Test Result",
+      "subtitle": "Record a new test run result for this Test Case.",
+      "testCaseLabel": "Test Case",
+      "buildLabel": "Build",
+      "buildPlaceholder": "Enter a build",
+      "dateLabel": "Date",
+      "verdictLabel": "Verdict",
+      "durationLabel": "Duration (minutes)",
+      "testerLabel": "Tester",
+      "testerPlaceholder": "Select a tester",
+      "notesLabel": "Notes",
+      "saveButton": "Save",
+      "saving": "Saving…",
+      "createFailed": "Failed to add Test Result"
+    },
+    "empty": {
+      "title": "No Results yet",
+      "description": "Results recorded against this Test Case will appear here."
+    },
+    "error": {
+      "title": "Could not load Results",
+      "description": "Something went wrong loading this list. Try again shortly."
+    },
+    "columns": {
+      "build": "Build",
+      "runDate": "Date",
+      "workProduct": "Work Product",
+      "verdict": "Verdict",
+      "duration": "Duration",
+      "tester": "Tester"
+    }
   }
 }
