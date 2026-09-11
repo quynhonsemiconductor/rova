@@ -398,9 +398,8 @@ difference is the whole design. Read this before changing a report or the snapsh
   `Portfolio > Release Tracking`; Phase 3 Release list/detail must not add a progress column or widget.
   Do not re-add a progress reader here.
 
-  **The `Task Roll-up` + `Accepted` panel went with it, on the BA's 2026-08-17 retest.** It had been
-  kept — and at one point re-added on real-Rally grounds, which is where a note here claiming the panel
-  "is back" came from — because FR-018 was once read as putting those numbers in the right panel. The
+  **The `Task Roll-up` + `Accepted` panel went with it, on the BA's 2026-08-17 retest.** It had been kept because
+  FR-018 was once read as putting those numbers in the right panel. The
   BA re-confirmed `GAP-P3-REL-001` as a **Fail**: FR-018 and AC #10 now list the panel's fields
   exhaustively (Start Date, Release Date, Project, State, Planned Velocity, Plan Estimate, Version),
   FR-023 forbids "Task Roll-up, Burndown or another Release progress widget", FR-024 puts
@@ -624,7 +623,21 @@ the worst of the three possible behaviours. BA `c42df59` (2026-08-22) makes the 
   the project AND the team, which no constraint can express, and a user delete must not cascade into
   delivery history.
 
-## ONE assignment-eligibility rule, for Owner and for Dev Owner
+## Feeds: one rule, and the five ways it has been broken
+
+**When a picker and a write path disagree, the WRITE is the contract.** A feed narrower than the
+write it feeds makes half a documented rule unreachable, and it never presents as a feed bug — it
+presents as a permission fault, a failed save, or a broken search. Two corollaries, both earned:
+
+- **An OFFER list and a NAME source are two different feeds.** Offers narrow on purpose; names must
+  not. `item.assigneeName ?? map lookup` — prefer the row, keep the feed as fallback. Widening an
+  offer list to name someone is forbidden (`WID-FR-016`/AC-16).
+- **Scope a feed per ROW, never per screen.** The row knows its team; the screen does not.
+
+Read a picker's emptiness as a question about its FEED before touching the control: `SearchableSelect`
+filters the options it was handed, so a missing option and a broken search are the same fault twice.
+
+### The ONE eligibility rule (Owner and Dev Owner)
 
 `ProjectsService.assignmentCandidates` is the only expression of it, read by the picker feed
 (`listProjectMemberOptions`) and by the write (`assertAssignable`, `WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE`).
@@ -636,65 +649,135 @@ and the Project/Team assignment addendum:
 | a Team | project `admin` (project-wide) + `editor` assigned to THAT team + Workspace Admin on its roster |
 | none | project `admin` + Workspace Admin |
 
-- **Two things it replaced, both visible on screen.** The team branch read `team_members` ALONE, so a
-  project Admin who is not on the team was withheld even though §3.1 gives Admin All Teams. The
-  project-wide branch offered every member, so with no Team chosen an Editor could be made Owner of
-  work their own team scope would then refuse them.
-- **The WRITE now applies it too.** It used to check only `assertWorkspaceMember` — orders of magnitude
-  wider than the picker, so any user id in the body was accepted for work no picker would have offered.
-  `reporterId` is deliberately OUTSIDE the rule: a reporter records who raised the item, not who may be
-  given it.
+- **It replaced two visible defects.** The team branch read `team_members` ALONE, withholding a
+  project Admin not on the team even though §3.1 gives Admin All Teams. The project-wide branch
+  offered every member, so with no Team an Editor could be made Owner of work their own team scope
+  would then refuse them.
+- **The WRITE now applies it too.** It used to check only `assertWorkspaceMember` — orders of
+  magnitude wider — so any user id in the body was accepted for work no picker would have offered.
+  `reporterId` is deliberately OUTSIDE the rule: a reporter records who raised the item.
 - **The no-Team branch including Workspace Admins is a DECLARED READING.** `WIC-FR-006A` says "with
   blank Team, Editor/WA **Team members** are not offered", which reads as excluding the team-derived
   qualification rather than the principal — and team-less work IS the Project Backlog, whose audience
-  the team-scope ruling already fixes at Workspace Admin plus Project Admin. Excluding them would also
-  refuse the case the same commit encourages: a WA filing backlog work and being defaulted as its
-  Owner. If the BA means the narrow reading, drop the second half of that branch and nothing else
-  changes.
-- **Owner defaults to the CURRENT USER when the feed offers them** (`WIC-FR-006`), which reverses
-  `GAP-P1-WID-007`/P6-TC-007's "default to Unassigned" — and Rally agrees ("defaults to the user who
-  creates the defect"). The gate is what makes it safe: the old defect seeded the creator
-  UNCONDITIONALLY, which is how a Task inherited an owner nobody chose. The default is DERIVED, never
-  stored — an effect writing it into state cascades renders, and it has to follow every Team change.
-- **A fixture that assigns an owner now needs a Team** (or an admin). Four e2e specs had to change,
-  and that is the rule working: `manage-filters`, `notification-flow`, `team-status-relation-render`
-  and `project-delivery-flow` were all assigning an Editor to team-less work.
+  the team-scope ruling already fixes at Workspace Admin plus Project Admin. If the BA means the
+  narrow reading, drop the second half of that branch and nothing else changes.
+- **A fixture that assigns an owner needs a Team** (or an admin). Four e2e specs had to change, and
+  that is the rule working: `manage-filters`, `notification-flow`, `team-status-relation-render` and
+  `project-delivery-flow` were all assigning an Editor to team-less work.
 
-## An OFFER feed is scoped by the ROW's Team, and a grid that lacks the team asks the wrong question
+### Owner defaults to the CURRENT USER when the feed offers them
 
-Reported from Production 2026-08-21: on `Track > Iteration Status` the inline Owner AND Dev Owner
-dropdowns showed nothing but `No Entry`, and an active Team member could not be assigned — the same
-on Iteration Status' `Add Item`. Not a permission fault and not the naming fault above:
+`WIC-FR-006` reversed `GAP-P1-WID-007`/P6-TC-007's "default to Unassigned" (`P1-WID-01` agrees). **The eligibility gate is
+what makes the reversal safe:** the old defect seeded the creator UNCONDITIONALLY, so work arrived
+owned by whoever opened the form and a Task inherited it — also the upstream cause of
+`GAP-P3-TS-008`'s off-roster member group in Team Status. A surface that defaults an Owner without
+asking its own candidate feed re-creates the defect rather than following the rule.
 
-- **`assignmentCandidates` has two branches, and the no-Team one offers no Editors at all** — with a
-  Team it is project `admin` + `editor` on THAT team + Workspace Admin on its roster; with no Team it
-  is project `admin` + Workspace Admin (`WIC-FR-006A`). Iteration Status called
-  `useProjectMemberOptions(projectId)` — **no team** — so every row got the no-Team list. On a project
-  whose members are Editors, that list is empty, which renders as `No Entry` with nothing selectable.
+The default is DERIVED, never stored — writing it into state cascades renders, and it must follow
+every Team change. `useDefaultOwner` (`shared/lib/hooks/use-default-owner.ts`) is the ONE
+implementation, because four create surfaces answered this four ways: two defaulted to nothing, and
+one wrote `ownerId || <default>` — where `Unassigned` is `''` and therefore falsy, so an explicitly
+cleared Owner was handed straight back and the field could not be cleared at all. It tracks the
+CHOICE, never the value. A create form asks the hook; it does not re-derive the rule.
+
+### Incident 1 — empty dropdowns on Iteration Status (Production, 2026-08-21)
+
+Owner AND Dev Owner inline dropdowns showed only `No Entry`; an active Team member could not be
+assigned. Same on `Add Item`.
+
+- Iteration Status called `useProjectMemberOptions(projectId)` — **no team** — so every row got the
+  no-Team list. On a project whose members are Editors that list is empty.
 - **The row could not have passed a team, because the read model did not carry one.** The
   iteration-status projection selected no `team_id` (added with this fix, plus DTO and a codegen
-  round). The grid is the only place that knows which team a row belongs to, so the field is what
-  makes the correct question askable.
-- **`useTeamOwnerOptions` is the team-scoped feed and it fetches NOTHING without a team** — that is
-  deliberate ("No Team offers only Unassigned"), which is exactly why silently falling back to the
-  project-wide feed was worse than an empty list: it looked populated for admins and empty for the
-  role that needed it.
-- **Per ROW, not per screen** (`useTeamOwnerOptions(projectId, item.teamId ?? fallbackTeamId)`), the
-  shape the Tasks tab already used. Rows sharing a team share one query key, so it is one request per
-  distinct team on screen — and under `All Teams` each row still asks with its own team instead of the
-  screen's.
-- **The "intermittent" half of that report is the naming rule seen from the other side.** The row's
-  own Owner still RESOLVED to a name out of the workspace directory, so the value appeared and
-  vanished depending on which of the two lists a reader consulted. An offer list and a name source are
-  two feeds; when a dropdown is empty but the cell shows a name, it is this.
-- **`Portfolio > Feature > Children` had the same shape and is fixed too.** Its Story/Defect rows
-  carry an `OwnerSelectCell`, and it was fed the project-wide list. That projection ALREADY selected
-  `team_id` (it was added when the children rows became editable), so no server change was needed —
-  only pointing the offers at `useTeamOwnerOptions(child.projectId, child.teamId)` and leaving the
-  project-wide feed as the NAME source. Worth knowing for the next grid: check the projection before
-  assuming a codegen round is needed.
-- Pinned in `owner-name-resolution.e2e.spec.ts` (the read model carries the team) and
-  `status-row.test.tsx` (the row asks the team-scoped hook).
+  round). The grid is the only place that knows a row's team, so the field is what makes the correct
+  question askable.
+- `useTeamOwnerOptions` fetches NOTHING without a team — deliberate ("No Team offers only
+  Unassigned"), which is why silently falling back to the project-wide feed was worse than an empty
+  list: it looked populated for admins and empty for the role that needed it.
+- **Per ROW** (`useTeamOwnerOptions(projectId, item.teamId ?? fallbackTeamId)`). Rows sharing a team
+  share one query key, so it is one request per distinct team on screen — and under `All Teams` each
+  row asks with its own team instead of the screen's.
+- **`Portfolio > Feature > Children` had the same shape.** Its projection ALREADY selected `team_id`,
+  so no server change was needed — only pointing offers at `useTeamOwnerOptions(child.projectId,
+  child.teamId)` and leaving the project-wide feed as the NAME source. Check the projection before
+  assuming a codegen round.
+- Pinned in `owner-name-resolution.e2e.spec.ts` and `status-row.test.tsx`.
+
+### Incident 2 — assigned items reading `No Entry` (2026-08-22)
+
+An Editor saw `No Entry`/`Unassigned` for items that WERE assigned. The grids carried ids only and
+resolved the name client-side from a PICKER feed:
+
+- `GET /projects/:id/member-options` **excludes Workspace Admins** (AC-16: not assignable owners), so
+  it can never name one — for ANY role.
+- `GET /workspaces/:id/member-options` narrows a non-admin caller to the members and `lead_id`s of
+  their own readable projects (`listMemberOptions`).
+
+A Workspace Admin holds no `work.project_members` row at all (§2.1, migration 0118), so an item they
+own had no name source in either feed. **A Workspace Admin reader never saw it** because
+`listReadableProjectIds` returns `null` — unrestricted — and the seeded case hides it too, because
+every seeded project's `lead_id` IS the admin. Reproduce with an Editor whose projects name no admin
+as lead.
+
+- **The read models join the name now** — `ownerNameJoins` in `WorkItemDrizzleRepository`
+  (`listByProject`, `listBacklog`, `listTasksByParent`) and the iteration-status projection.
+  Portfolio, Releases, Milestones and Quality already did this; work items were the last module
+  resolving a name on the client, which is why they were the only ones with the bug.
+- **NAMING moved; OFFERING did not.** `owner-name-resolution.e2e.spec.ts` asserts both halves, so a
+  later "simplification" that names from the offer list fails.
+- **`work.tasks` has no `dev_owner_id`**, so a task's `devOwnerName` is null by construction.
+- **Blank-name reports are usually this, not persistence.** An absent name and an unset field render
+  identically, which is what made `GAP-P2-IS-004` look like a save that did not stick. Check whether
+  the owner is a Workspace Admin before hunting the write path.
+
+### Incident 3 — a Story with a Team offering only `Unassigned` (`GAP-P1-WID-007`)
+
+BA-confirmed P0-adjacent Fail on the 2026-08-17 retest. Three separate defects:
+
+- **A Workspace Admin on the team roster IS an Owner option.** `listProjectMemberOptions` subtracted
+  Workspace Admins from BOTH branches on the older AC-16 reading; the ruling came. The exclusion now
+  applies only to the PROJECT-WIDE branch, where §2.1 and migration 0118 mean a WA holds no
+  `project_members` row anyway. The retest ACs name exactly two exclusions — outside the selected
+  Team, and inactive.
+- **A Task's options follow its INHERITED parent Team.** `TASK-FR-017` scopes them to "the inherited
+  parent Team", and `work.tasks.team_id` only DEFAULTS to the parent's (SRS P1-04) and is nullable —
+  so reading the Task's own value alone offered `Unassigned` and nothing else. The Tasks tab passes
+  `parentTeamId` and resolves `task.teamId ?? parentTeamId`. NOT the Iteration rule: the Iteration is
+  contractually DERIVED, the Team is merely defaulted.
+- **Dev Owner saved correctly all along** — proven in `test/e2e/dev-owner-persistence.e2e.spec.ts`,
+  the first coverage `devOwnerId` ever had. Names come from the workspace directory
+  (`GET /workspaces/:id/member-options`, which returns inactive members for exactly this reason).
+- **A Team move resets an Owner the new Team does not contain**, in the SAME patch and on the SERVER
+  (`resetOwnerOutsideTeam`). Conditional, not unconditional — the same person can be on both teams.
+  Clearing the Team clears the Owner outright (AC6) without reading any roster. Server-side because
+  every surface can move a Team, and membership is asked of the picker's own feed so the server cannot
+  count a different population than the screen offers.
+
+### Incident 4 — no Defect could name its Parent Story (Production, 2026-08-21)
+
+A Defect's `Parent Story` field offered only `No parent story`, and searching a Story's key answered
+`No matches`. All three surfaces — detail sidebar, Create Work Item, Log Defect — read
+`GET /work-items/backlog?type=story`.
+
+- **The Backlog is a SCREEN, and `iteration_id IS NULL` is its defining rule** (see `listBacklog`).
+  `updateWorkItem` has no such rule: it accepts any non-deleted Story in the same project. So every
+  Story already pulled into a sprint — the ones a Defect is most often raised against — was withheld
+  from a picker whose own server would have taken it. The 50-row first page was a second, quieter cap.
+- **`GET /work-items/story-options` is the fix** — the Story REFERENCE feed, mirroring
+  `GET /portfolio-items/options`: unpaged (a paged picker omits options past its first page without
+  saying so), no schedule-state filter (a Defect against shipped work needs an ACCEPTED parent),
+  `work_item:view` gated on the required `projectId`, and team-scoped in the service because that is a
+  row boundary the guard cannot express. Declared ABOVE `@Get(':id')`, or Nest routes it into
+  `ParseUUIDPipe` as a 400.
+- Pinned in `test/e2e/parent-story-feed.e2e.spec.ts`. A service spec cannot see it: the repository is
+  mocked, so no predicate is exercised.
+
+### Incident 5 — an iteration is assignable by SCOPE, never by LIFECYCLE (`P6-VEL-004`)
+
+The same shape in a different field, recorded under Reporting: `listAssignmentOptions` filtered on
+`state IN ('planning','committed')` while the write path accepted a closed timebox happily, making
+half of Velocity's own rule unreachable. See the Reporting section for the full account — it is listed
+here because it is the canonical instance of "the feed was narrower than the write".
 
 ## A row's VERB needs a row affordance
 
@@ -736,88 +819,6 @@ picker "shows newest first"), so `- 1` is the LATER sprint.
   / `hasLater`, both derived from `stepIndexInTime`.
 - The arrows had **no test at all**, which is why a newest-first feed reversed them unnoticed. They
   also had no accessible name; they are `Previous iteration` / `Next iteration` now.
-
-## A NAME belongs to the ROW; a picker feed can never be its source
-
-Reported 2026-08-22: an Editor read `No Entry` / `Unassigned` in Iteration Status' Owner and Dev Owner
-columns for items that WERE assigned. Not a permission fault — the grids carried ids only and resolved
-the name client-side from a PICKER feed, and every picker feed narrows on purpose:
-
-- `GET /projects/:id/member-options` **excludes Workspace Admins** (AC-16: not assignable owners), so it
-  can never name one — for ANY role.
-- `GET /workspaces/:id/member-options` narrows a non-admin caller to the members and the `lead_id`s of
-  their own readable projects (`listMemberOptions`).
-
-A Workspace Admin holds no `work.project_members` row at all (§2.1, migration 0118), so an item they
-own had no name source in either feed. **A Workspace Admin reader never saw it** because
-`listReadableProjectIds` returns `null` — unrestricted — so their directory is the whole workspace; and
-the seeded case hides it too, because every seeded project's `lead_id` IS the admin, which the
-directory's second source picks up. Reproduce with an Editor whose projects name no admin as lead.
-
-- **The read models join the name now** — `ownerNameJoins` in `WorkItemDrizzleRepository` (`listByProject`,
-  `listBacklog`, `listTasksByParent`) and the iteration-status projection. Portfolio, Releases,
-  Milestones and Quality already did this; work items were the last module resolving a name on the
-  client, which is why they were the only ones with the bug.
-- **The client prefers the row and keeps the feed as fallback.** `item.assigneeName ?? map lookup`, on
-  Iteration Status, Backlog and the Tasks tab.
-- **NAMING moved; OFFERING did not.** The feeds still narrow — `WID-FR-016`/AC-16 forbid widening an
-  Owner dropdown to unrelated workspace users — and `owner-name-resolution.e2e.spec.ts` asserts both
-  halves, so a later "simplification" that names from the offer list fails.
-- **`work.tasks` has no `dev_owner_id`**, so a task's `devOwnerName` is null by construction, beside the
-  id the projection already nulls.
-- **Blank-name reports are usually this, not persistence.** An absent name and an unset field render
-  identically, which is what made `GAP-P2-IS-004` look like a save that did not stick. Check whether the
-  owner is a Workspace Admin before hunting the write path.
-
-## The Owner feed: the TEAM roster decides, and a Team move re-decides it
-
-`GAP-P1-WID-007` was a BA-confirmed P0-adjacent Fail on the 2026-08-17 retest — the Owner dropdown for
-a Story that HAD a Team offered nothing but `Unassigned`, so no active Team member could be assigned.
-Four things are now true, and each was a separate defect:
-
-- **A Workspace Admin on the team roster IS an Owner option.** `listProjectMemberOptions` subtracted
-  Workspace Admins from BOTH branches on the older AC-16 reading; its own docblock flagged that as a
-  declared conflict needing a ruling, and the ruling came. The exclusion now applies only to the
-  PROJECT-WIDE branch, where §2.1 and migration 0118 mean a WA holds no `project_members` row anyway.
-  The retest ACs name exactly two exclusions — outside the selected Team, and inactive.
-- **A Task's options follow its INHERITED parent Team.** `TASK-FR-017` scopes them to "the inherited
-  parent Team", and `work.tasks.team_id` only DEFAULTS to the parent's (SRS P1-04) and is nullable — so
-  reading the Task's own value alone offered `Unassigned` and nothing else on an ordinary row. The Tasks
-  tab now passes `parentTeamId` and resolves `task.teamId ?? parentTeamId`. Note this is NOT the
-  Iteration rule: the Iteration is contractually DERIVED, the Team is merely defaulted.
-- **A NAME that fails to resolve is indistinguishable from an unset field**, which is what made
-  `GAP-P2-IS-004` look like a persistence bug. Dev Owner saved correctly — proven over HTTP in
-  `test/e2e/dev-owner-persistence.e2e.spec.ts`, which is also the first coverage `devOwnerId` ever had
-  — and Iteration Status resolved the name from the project OFFER feed, so anyone absent from it read
-  back as `No Entry` after a reload. Names come from the workspace directory
-  (`GET /workspaces/:id/member-options`, which returns inactive members for exactly this reason) and
-  OFFERS from the project/team feed. Two props, never one: widening the offer list would put every
-  workspace user in an Owner dropdown, which `WID-FR-016` forbids.
-- **A Team move resets an Owner the new Team does not contain**, in the SAME patch and on the SERVER
-  (`resetOwnerOutsideTeam`). Conditional, not unconditional — the same person can be on both teams, and
-  clearing them would discard a true value. Clearing the Team clears the Owner outright (AC6) without
-  reading any roster. Server-side because every surface can move a Team, and a client would be deciding
-  it from a roster it may not have fetched; membership is asked of the picker's own feed so the server
-  cannot count a different population than the screen offers.
-
-**The Owner default REVERSED, and this line used to say the opposite.** It read "the Owner is never
-defaulted to the current user (AC7)… `Unassigned` is the default the BA states three times", which was
-true until `WIC-FR-006` (BA `c42df59`, 2026-08-22): "Owner defaults to the authenticated current user
-only when that user is eligible in the selected Project/Team. Otherwise it defaults to `Unassigned`.
-User can always explicitly choose `Unassigned`/`No Entry`." Rally agrees, and `P1-WID-01` says the same.
-Kept rather than deleted because the OLD rule's reason still governs the new one: `GAP-P1-WID-007` /
-`P6-TC-007` was a real defect — the creator's id seeded UNCONDITIONALLY, so work arrived owned by
-whoever opened the form and a Task inherited it, which is also the upstream cause of `GAP-P3-TS-008`'s
-off-roster member group in Team Status. **The eligibility gate is what makes the reversal safe**, so a
-future surface that defaults an Owner without asking its own candidate feed re-creates the defect
-rather than following the rule.
-
-`useDefaultOwner` (`shared/lib/hooks/use-default-owner.ts`) is the ONE implementation, and it exists
-because four create surfaces answered this question four ways: two defaulted to nothing, and of the two
-that defaulted, one wrote `ownerId || <default>` — where `Unassigned` is `''` and therefore falsy, so an
-explicitly cleared Owner was handed straight back and the field could not be cleared at all. It tracks
-the CHOICE, never the value, for exactly that reason. A create form asks the hook; it does not re-derive
-the rule.
 
 ## Shared chrome: a layer rule, a width rule, and what a table actually is
 
@@ -950,35 +951,6 @@ two automatic moves:
   not, so estimating an existing task left To Do empty and the number had to be typed twice.
 - **Completing a task sets To Do to 0**, and **reopening does NOT restore it** — the owner enters a new
   remaining value if there is one. This replaces the older `Estimate = To Do + Actual` display rule.
-
-## A picker feeds from the WRITE's rule, never from a screen's
-
-BA repro, Production, 2026-08-21: a Defect's `Parent Story` field offered nothing but
-`No parent story`, and searching a Story's key answered `No matches`, so no Defect could be traced
-to the User Story it was found against. All three Parent Story surfaces — the detail sidebar, Create
-Work Item, and Log Defect — read `GET /work-items/backlog?type=story`.
-
-- **The Backlog is a SCREEN, and `iteration_id IS NULL` is its defining rule** (see `listBacklog`,
-  which explains why). `updateWorkItem` has no such rule: it accepts any non-deleted Story in the
-  same project. So every Story already pulled into a sprint — the ones a Defect is most often raised
-  against — was withheld from a picker whose own server would have taken it. The 50-row first page
-  was a second, quieter cap on the same feed.
-- **"No matches" was the symptom, not a search bug.** `SearchableSelect` filters the options it was
-  HANDED, so a missing option and a broken search are the same fault seen twice. Read a picker's
-  emptiness as a question about its FEED before touching the control.
-- **`GET /work-items/story-options` is the fix** — the Story REFERENCE feed, mirroring
-  `GET /portfolio-items/options` exactly: unpaged (a paged picker omits options past its first page
-  without saying so), no schedule-state filter (a Defect against shipped work needs an ACCEPTED
-  parent), `work_item:view` gated by the guard on the required `projectId`, and team-scoped in the
-  service because that is a row boundary the guard cannot express. Declared ABOVE `@Get(':id')`, or
-  Nest routes it into `ParseUUIDPipe` as a 400.
-- **This is the Story analogue of "an iteration is assignable by SCOPE, never by LIFECYCLE"**
-  (P6-VEL-004, above). Same shape, different field: a feed narrower than the write it feeds makes
-  half a documented rule unreachable, and it presents as a persistence or search bug rather than as a
-  missing option. When a picker and a write path disagree, the WRITE is the contract.
-- Pinned over real HTTP in `test/e2e/parent-story-feed.e2e.spec.ts` (population, team scope, and the
-  picker-offers-what-the-write-accepts round trip). A service spec cannot see it: the repository is
-  mocked, so no predicate is exercised.
 
 ## A Task's Iteration is DERIVED, not cascaded
 
@@ -1987,7 +1959,6 @@ either opens a hole or leaks API surface.
   (see `ensureViewerGrant` in `test/e2e/support/flow-harness.ts`).
 - **Project scope is additive.** A project-scoped role can only add permissions; it
   cannot subtract a workspace-wide grant. Known limitation, tracked in
-  `RALLY_HARDENING_PLAN.md` (R3).
 - **CSRF is enforced by a hook, not per route.** `requiresCsrfProtection`
   (`libs/platform/src/http/csrf.ts`) is the one place the policy lives. A raw
   `fetch` write in the SPA must send `X-CSRF-Token` via `withCsrfHeader`.
@@ -2061,9 +2032,7 @@ rova is ahead on infra, CI gates, BFF auth and test depth; opshub is ahead on
 authorization scope dimensions, delegation and IdP role mapping. Both now resolve
 permissions from the database — see
 `docs/superpowers/specs/2026-07-28-auth-convergence.md` for the shared model and the
-ordered list of what opshub still has to do. Wider audit:
-`OPSHUB_RALLY_PARITY_PLAN.md` and `RALLY_HARDENING_PLAN.md` one directory up.
-
+ordered list of what opshub still has to do. 
 What may live in a _shared package_ is a separate rule, recorded in
 `app-platform/docs/ADMISSION-TEST.md`: divergence that would be a security
 defect or a cross-repo contract break belongs there; divergence that would merely be
