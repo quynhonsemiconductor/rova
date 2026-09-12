@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { iterationStatusTotals, sortStatusRows, stepIndexInTime } from './iteration-helpers'
+import { iterationStatusTotals, sortStatusRows } from './iteration-helpers'
 
 describe('iterationStatusTotals', () => {
   it('sums Plan Est, and Task Est as To Do + Actual', () => {
@@ -124,41 +124,5 @@ describe('sortStatusRows', () => {
   })
 })
 
-describe('stepIndexInTime — the iteration chevrons follow chronology', () => {
-  /**
-   * The feed is NEWEST FIRST (`desc(startDate)` server-side), so index 0 is the latest sprint. The
-   * arrows used to pass `-1` for left and `+1` for right, which reversed both of them: from KB
-   * Sprint 1 the left chevron advanced to KB Sprint 2 (Production, 2026-08-21).
-   *
-   * Written against a three-sprint list in feed order — [Sprint 3, Sprint 2, Sprint 1] — so the
-   * assertions read as chronology rather than as arithmetic.
-   */
-  const LATEST = 0
-  const MIDDLE = 1
-  const EARLIEST = 2
-  const COUNT = 3
-
-  it('steps EARLIER by moving FORWARD through a newest-first list', () => {
-    expect(stepIndexInTime(LATEST, 'earlier', COUNT)).toBe(MIDDLE)
-    expect(stepIndexInTime(MIDDLE, 'earlier', COUNT)).toBe(EARLIEST)
-  })
-
-  it('steps LATER by moving BACK through it', () => {
-    expect(stepIndexInTime(EARLIEST, 'later', COUNT)).toBe(MIDDLE)
-    expect(stepIndexInTime(MIDDLE, 'later', COUNT)).toBe(LATEST)
-  })
-
-  it('stops at each end, and the end it stops at matches the direction', () => {
-    // Left disabled at the EARLIEST iteration, right disabled at the LATEST — the BA's own
-    // disabled-state rule, and it is the same expression the arrows are greyed out by.
-    expect(stepIndexInTime(EARLIEST, 'earlier', COUNT)).toBeNull()
-    expect(stepIndexInTime(LATEST, 'later', COUNT)).toBeNull()
-  })
-
-  it('answers null for no selection and for an empty feed', () => {
-    // `findIndex` returns -1 while the feed is loading; stepping from there must not select row 0.
-    expect(stepIndexInTime(-1, 'earlier', COUNT)).toBeNull()
-    expect(stepIndexInTime(-1, 'later', COUNT)).toBeNull()
-    expect(stepIndexInTime(0, 'earlier', 0)).toBeNull()
-  })
-})
+// `stepIndexInTime` moved to `shared/lib/step-in-time.ts` (and its tests to
+// `shared/lib/step-in-time.test.ts`) — see the docblock left in `iteration-helpers.ts` for why.

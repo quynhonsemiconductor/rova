@@ -9,11 +9,16 @@
  *
  * Selection persistence (last-viewed per project) is owned by the caller via `selectedId` /
  * `onSelect`; this component is purely presentational.
+ *
+ * The prev/next chevrons step by `stepIndexInTime` (`shared/lib/step-in-time.ts`) — the ONE shared
+ * "step in time, not by index" rule, also used by Iteration Status's own chevrons. See that file's
+ * docblock for why a second implementation of this rule is exactly the bug it exists to prevent.
  */
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 
 import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
+import { stepIndexInTime } from '@/shared/lib/step-in-time'
 
 export interface PickerTimebox {
   id: string
@@ -64,9 +69,9 @@ export function TimeboxPicker({
   const selectedIndex = iterations.findIndex((i) => i.id === selectedId)
   const selected = iterations[selectedIndex]
 
-  function move(dir: -1 | 1) {
-    const next = selectedIndex + dir
-    if (next >= 0 && next < iterations.length) onSelect(iterations[next].id)
+  function move(direction: 'earlier' | 'later') {
+    const next = stepIndexInTime(iterations, selectedIndex, direction)
+    if (next !== null) onSelect(iterations[next].id)
   }
 
   return (
@@ -76,8 +81,8 @@ export function TimeboxPicker({
     >
       <button
         type="button"
-        disabled={selectedIndex <= 0}
-        onClick={() => move(-1)}
+        disabled={stepIndexInTime(iterations, selectedIndex, 'earlier') === null}
+        onClick={() => move('earlier')}
         className="flex h-full items-center border-r border-border-strong px-1.5 text-muted-foreground disabled:opacity-40"
         aria-label={prevLabel}
       >
@@ -140,8 +145,8 @@ export function TimeboxPicker({
       </div>
       <button
         type="button"
-        disabled={selectedIndex < 0 || selectedIndex >= iterations.length - 1}
-        onClick={() => move(1)}
+        disabled={stepIndexInTime(iterations, selectedIndex, 'later') === null}
+        onClick={() => move('later')}
         className="flex h-full items-center border-l border-border-strong px-1.5 text-muted-foreground disabled:opacity-40"
         aria-label={nextLabel}
       >
