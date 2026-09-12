@@ -137,11 +137,11 @@ test.describe('Iteration Status — the BA repro paths', () => {
      * From KB Sprint 1 the LEFT chevron advanced to KB Sprint 2: the feed is newest-first and the
      * handlers were `index - 1` / `index + 1`, so both arrows ran backwards in time.
      *
-     * The CHRONOLOGY is pinned as a unit (`stepIndexInTime` in `iteration-helpers.test.ts`), where a
-     * newest-first list can be stated exactly. What only a browser can show is that the two controls
-     * are WIRED to it: stepping earlier and then later must land back on the same iteration, and the
-     * end each one stops at must be the end its icon implies. The identity is the selector's own
-     * label, which carries the name and the window.
+     * The CHRONOLOGY is pinned as a unit (`stepIndexInTime` in `shared/lib/step-in-time.test.ts`),
+     * where a newest-first list can be stated exactly. What only a browser can show is that the two
+     * controls are WIRED to it: stepping earlier and then later must land back on the same
+     * iteration, and the end each one stops at must be the end its icon implies. The identity is the
+     * selector's own label, which carries the name and the window.
      */
     await loginAndSelectProject(page)
     await page.goto('/iteration-status')

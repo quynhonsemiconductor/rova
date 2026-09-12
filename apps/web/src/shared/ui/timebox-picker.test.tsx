@@ -60,4 +60,26 @@ describe('TimeboxPicker chevrons', () => {
     expect(screen.getByRole('button', { name: 'Previous iteration' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Next iteration' })).not.toBeDisabled()
   })
+
+  describe('an undated row (e.g. capacity-plans-page.tsx\'s "None" release option)', () => {
+    // A real, reachable row — startDate: null — not a hypothetical one, and it must not be a
+    // steppable position in time.
+    const withNone = [
+      { id: 'none', name: 'None', startDate: null, endDate: null },
+      { id: 'earlier', name: '2026Q2', startDate: '2026-04-01', endDate: '2026-06-30' },
+      { id: 'later', name: '2026Q3', startDate: '2026-07-01', endDate: '2026-09-30' },
+    ]
+
+    it('is skipped over, never landed on', async () => {
+      const onSelect = vi.fn()
+      render(<TimeboxPicker items={withNone} selectedId="later" onSelect={onSelect} />)
+      await userEvent.click(screen.getByRole('button', { name: 'Previous iteration' }))
+      expect(onSelect).toHaveBeenCalledWith('earlier')
+    })
+
+    it('disables prev at the earliest DATED row — the None row is not a valid target', () => {
+      render(<TimeboxPicker items={withNone} selectedId="earlier" onSelect={vi.fn()} />)
+      expect(screen.getByRole('button', { name: 'Previous iteration' })).toBeDisabled()
+    })
+  })
 })

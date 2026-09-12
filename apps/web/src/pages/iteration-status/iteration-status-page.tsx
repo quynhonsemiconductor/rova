@@ -39,12 +39,8 @@ import { defaultIterationId } from '@/features/iterations/default-iteration'
 import { StatusRow } from './ui/status-row'
 import { AddItemModal } from './ui/add-item-modal'
 import { IterationHeader, MetricsStrip, Toolbar, TableFooterTotals } from './ui/iteration-chrome'
-import {
-  computeTotalDays,
-  iterationStatusTotals,
-  sortStatusRows,
-  stepIndexInTime,
-} from './model/iteration-helpers'
+import { computeTotalDays, iterationStatusTotals, sortStatusRows } from './model/iteration-helpers'
+import { stepIndexInTime } from '@/shared/lib/step-in-time'
 import { type ColKey, ITERATION_STATUS_COLUMNS, HEADER_META } from './model/columns'
 import { useIterationFilterFields, toIterationStatusQuery } from './model/filter-fields'
 import { useManageFilters } from '@/features/work-items/model/manage-filters'
@@ -194,22 +190,23 @@ export function IterationStatusPage() {
    * direction their icons communicate: from KB Sprint 1 the left chevron advanced to KB Sprint 2.
    * Reported from Production on 2026-08-21.
    *
-   * The signature is the fix, not the arithmetic: a caller now names the DIRECTION IN TIME it
-   * wants, so a later change to the feed's order cannot silently reverse the arrows again. Both
-   * `hasEarlier`/`hasLater` derive from the same mapping, so a disabled state cannot disagree with
-   * the step it guards.
+   * `stepIndexInTime` (`shared/lib/step-in-time.ts`) is the fix, not the arithmetic: a caller now
+   * names the DIRECTION IN TIME it wants, so a later change to the feed's order cannot silently
+   * reverse the arrows again — the same rule `TimeboxPicker`'s chevrons follow. Both
+   * `hasEarlier`/`hasLater` derive from the same call, so a disabled state cannot disagree with the
+   * step it guards.
    */
   const stepIteration = useCallback(
     (direction: 'earlier' | 'later') => {
-      const next = stepIndexInTime(selectedIndex, direction, iterations.length)
+      const next = stepIndexInTime(iterations, selectedIndex, direction)
       if (next !== null) setSelectedId(iterations[next].id)
     },
     [selectedIndex, iterations, setSelectedId],
   )
-  // Derived from the SAME mapping the step uses, so a disabled arrow and the step it guards cannot
+  // Derived from the SAME call the step uses, so a disabled arrow and the step it guards cannot
   // disagree about which end of the list they are at.
-  const hasEarlier = stepIndexInTime(selectedIndex, 'earlier', iterations.length) !== null
-  const hasLater = stepIndexInTime(selectedIndex, 'later', iterations.length) !== null
+  const hasEarlier = stepIndexInTime(iterations, selectedIndex, 'earlier') !== null
+  const hasLater = stepIndexInTime(iterations, selectedIndex, 'later') !== null
   // The selected iteration's own team, read OUTSIDE the row map: `selected` is shadowed in there by
   // each row's own selection flag.
   const selectedIterationTeamId = selected?.teamId ?? null

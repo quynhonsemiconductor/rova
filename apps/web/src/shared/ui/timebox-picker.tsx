@@ -9,11 +9,16 @@
  *
  * Selection persistence (last-viewed per project) is owned by the caller via `selectedId` /
  * `onSelect`; this component is purely presentational.
+ *
+ * The prev/next chevrons step by `stepIndexInTime` (`shared/lib/step-in-time.ts`) — the ONE shared
+ * "step in time, not by index" rule, also used by Iteration Status's own chevrons. See that file's
+ * docblock for why a second implementation of this rule is exactly the bug it exists to prevent.
  */
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 
 import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
+import { stepIndexInTime } from '@/shared/lib/step-in-time'
 
 export interface PickerTimebox {
   id: string
@@ -34,20 +39,6 @@ export type PickerIteration = PickerTimebox
 function fmtRange(it: Pick<PickerTimebox, 'startDate' | 'endDate'>): string | null {
   if (it.startDate === null && it.endDate === null) return null
   return `${it.startDate ?? '--'} - ${it.endDate ?? '--'}`
-}
-
-/**
- * `1` if `items` runs oldest-to-newest, `-1` if newest-to-oldest — read from the first and last
- * dated rows so the prev/next arrows step the right way for whichever feed the caller passed
- * (iterations arrive `desc(startDate)`, releases `asc(startDate)`). Defaults to `1` when there are
- * fewer than two dated rows to compare, which makes `move` a no-op-safe plain array step.
- */
-function feedStepDirection(items: readonly PickerTimebox[]): 1 | -1 {
-  const dated = items.filter((it) => it.startDate !== null)
-  if (dated.length < 2) return 1
-  const first = dated[0].startDate as string
-  const last = dated[dated.length - 1].startDate as string
-  return first <= last ? 1 : -1
 }
 
 export function TimeboxPicker({
@@ -77,20 +68,10 @@ export function TimeboxPicker({
   const pickerRef = useClickOutside<HTMLDivElement>(open, () => setOpen(false))
   const selectedIndex = iterations.findIndex((i) => i.id === selectedId)
   const selected = iterations[selectedIndex]
-  const feedDirection = feedStepDirection(iterations)
 
-  function stepTarget(direction: 'earlier' | 'later'): number {
-    const step = direction === 'earlier' ? -feedDirection : feedDirection
-    return selectedIndex + step
-  }
-  function canMove(direction: 'earlier' | 'later'): boolean {
-    if (selectedIndex < 0) return false
-    const next = stepTarget(direction)
-    return next >= 0 && next < iterations.length
-  }
   function move(direction: 'earlier' | 'later') {
-    const next = stepTarget(direction)
-    if (next >= 0 && next < iterations.length) onSelect(iterations[next].id)
+    const next = stepIndexInTime(iterations, selectedIndex, direction)
+    if (next !== null) onSelect(iterations[next].id)
   }
 
   return (
@@ -100,7 +81,7 @@ export function TimeboxPicker({
     >
       <button
         type="button"
-        disabled={!canMove('earlier')}
+        disabled={stepIndexInTime(iterations, selectedIndex, 'earlier') === null}
         onClick={() => move('earlier')}
         className="flex h-full items-center border-r border-border-strong px-1.5 text-muted-foreground disabled:opacity-40"
         aria-label={prevLabel}
@@ -164,7 +145,7 @@ export function TimeboxPicker({
       </div>
       <button
         type="button"
-        disabled={!canMove('later')}
+        disabled={stepIndexInTime(iterations, selectedIndex, 'later') === null}
         onClick={() => move('later')}
         className="flex h-full items-center border-l border-border-strong px-1.5 text-muted-foreground disabled:opacity-40"
         aria-label={nextLabel}
