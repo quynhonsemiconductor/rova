@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.17](https://github.com/quynhonsemiconductor/rova/compare/v0.7.16...v0.7.17) (2026-09-13)
+
+
+### 🐛 Bug Fixes
+
+* **rds:** rebuild rova-prod into its own DB subnet group ([#606](https://github.com/quynhonsemiconductor/rova/issues/606)) ([a104b00](https://github.com/quynhonsemiconductor/rova/commit/a104b0053cd784a8df8a0bf0d7272346626d7483))
+
 ## [0.7.16](https://github.com/quynhonsemiconductor/rova/compare/v0.7.15...v0.7.16) (2026-09-13)
 
 
