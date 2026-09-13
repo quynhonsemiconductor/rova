@@ -31,6 +31,25 @@ on:
       - "infra/modules/**"
       - ".github/workflows/infra-apply.yml"
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Which environment to apply. Prod still requires the `production` environment's approval."
+        type: choice
+        default: develop
+        options:
+          - develop
+          - prod
+
+# `prod` is reachable by dispatch as well as by tag, because coupling infrastructure applies
+# to product releases is what let prod drift. Between 2026-09-06 and 2026-09-13 no tag was
+# cut, so prod never received a merged `alarm_emails` fix and `rova-prod-alarms` sat with
+# zero subscribers while its CPU alarm fired into nothing. The apply had nowhere to run
+# short of shipping a week of application code.
+#
+# The default is `develop`, deliberately: a dispatch with no thought behind it must not be
+# able to touch production. And the prod job keeps `environment: production`, so a dispatch
+# still waits for that environment's approval — this widens WHO CAN TRIGGER an apply, not
+# who can authorise one.
 
 # Serialize by ENVIRONMENT, matching backend-deploy.yml and web-deploy.yml: all
 # prod (tag) applies share one group, all develop (branch) applies share another,
@@ -50,7 +69,11 @@ on:
 #
 # Never cancel a running apply.
 concurrency:
-  group: infra-apply-${{ github.repository }}-${{ github.ref_type == 'tag' && 'prod' || 'develop' }}
+  # A DISPATCHED prod apply counts as prod. Keyed off ref_type alone, `target: prod` would
+  # land in the develop group and could run concurrently with a develop apply — two applies,
+  # two different state files, one lock table, and the failure only shows up as a lock
+  # timeout at the worst moment.
+  group: infra-apply-${{ github.repository }}-${{ (github.ref_type == 'tag' || inputs.target == 'prod') && 'prod' || 'develop' }}
   cancel-in-progress: false
 
 permissions:
@@ -113,7 +136,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   apply-develop:
     needs: apply-shared
-    if: github.ref_type == 'branch'
+    if: github.ref_type == 'branch' && inputs.target != 'prod'
     runs-on: ubuntu-latest
     environment: develop   # no approval gate
     timeout-minutes: 45
@@ -217,7 +240,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   apply-prod:
     needs: apply-shared
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || inputs.target == 'prod'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 45
