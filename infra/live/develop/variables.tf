@@ -22,7 +22,12 @@ variable "alarm_emails" {
     freshly-added address receives nothing until it does.
   EOT
   type        = list(string)
-  default     = ["nghiavt@qnsc.vn"]
+  # devops@qnsc.vn is an M365 SHARED MAILBOX, deliberately, not an alias on a person.
+  # Recipients are managed in the admin centre rather than here, so adding or removing
+  # someone is not a Terraform change across four repos, and the address survives any
+  # individual leaving. Confirm the subscription once from inside that mailbox — AWS
+  # delivers nothing until someone clicks the link.
+  default = ["devops@qnsc.vn"]
 }
 
 variable "platform_admin_emails" {
