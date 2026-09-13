@@ -269,7 +269,7 @@ module "secrets" {
 
 # ── RDS PostgreSQL 17 ─────────────────────────────────────────────────────────
 module "rds" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/rds?ref=rds-v2.1.2"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/rds?ref=rds-v2.2.0"
 
   identifier        = local.name
   subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
@@ -283,6 +283,12 @@ module "rds" {
   deletion_protection      = var.rds.deletion_protection
   backup_retention_days    = var.rds.backup_retention_days
   monitoring_interval      = var.rds.monitoring_interval
+
+  # Both null in steady state. Set only while finishing the rally->rova subnet-group
+  # rename; see this variable's description and qnsc-infra
+  # docs/rova-subnet-group-rebuild.md for why that rename cannot be done in place.
+  snapshot_identifier = var.rds.snapshot_identifier
+  skip_final_snapshot = var.rds.skip_final_snapshot
 
   tags = local.tags
 }

@@ -324,6 +324,26 @@ variable "rds" {
     deletion_protection      = bool
     backup_retention_days    = number
     monitoring_interval      = optional(number, 0)
+
+    # Restore FROM a snapshot instead of creating an empty database. Exists for one
+    # operation: finishing the rally->rova rename, where AWS refuses to move an instance
+    # between subnet groups in the same VPC (InvalidVPCNetworkStateFault), so the only way
+    # into the correctly-named group is a new instance. See
+    # qnsc-infra docs/rova-subnet-group-rebuild.md.
+    #
+    # Honoured only when the instance is CREATED — the module holds it under
+    # ignore_changes, because the provider marks it ForceNew and an edit that silently
+    # rebuilds a live database is not a tradeoff worth having. Setting this on an existing
+    # instance therefore does nothing at all, which is deliberate.
+    #
+    # Leave null once a rebuild has completed. It is not a rollback mechanism.
+    snapshot_identifier = optional(string, null)
+
+    # Overrides the module's default, which derives from deletion_protection. Needed
+    # because a rebuild requires protection OFF, and taking the safety snapshot away at
+    # exactly that moment is the wrong default — see rds 2.2.0, which fixed the two
+    # settings being able to disagree.
+    skip_final_snapshot = optional(bool, null)
   })
 }
 
