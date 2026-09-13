@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.7.15](https://github.com/quynhonsemiconductor/rova/compare/v0.7.14...v0.7.15) (2026-09-13)
+
+
+### ✨ Features
+
+* **notifications:** deliver work-item assignment in-app only ([#549](https://github.com/quynhonsemiconductor/rova/issues/549)) ([d2fd168](https://github.com/quynhonsemiconductor/rova/commit/d2fd168429a693f4e14a719387fc06bee715c4d5))
+* **test-cases:** add Test Cases tab with list and detail view ([#558](https://github.com/quynhonsemiconductor/rova/issues/558)) ([95bd288](https://github.com/quynhonsemiconductor/rova/commit/95bd288a15420560ef1c5cfcfa21a9cc9c50a612))
+* **test-cases:** add Test Result detail view ([#578](https://github.com/quynhonsemiconductor/rova/issues/578)) ([43ff3c5](https://github.com/quynhonsemiconductor/rova/commit/43ff3c50cdb6b2e93f8b542c9c12e728e283bf9d))
+* **test-cases:** create Test Cases from a work item ([#559](https://github.com/quynhonsemiconductor/rova/issues/559)) ([dcb01b8](https://github.com/quynhonsemiconductor/rova/commit/dcb01b82d4a159d64b597159fe651c629fbd492d))
+* **test-cases:** delete Test Cases and reorder by rank ([#585](https://github.com/quynhonsemiconductor/rova/issues/585)) ([36999d7](https://github.com/quynhonsemiconductor/rova/commit/36999d7ae5594578acdd0deea1233c36c05457aa))
+* **test-cases:** edit Test Case details, attachments and history ([#560](https://github.com/quynhonsemiconductor/rova/issues/560)) ([76d6479](https://github.com/quynhonsemiconductor/rova/commit/76d64799bd23a0c7d793beaa7d5c53728b0d0cff))
+* **test-cases:** per-project Test Case Type configuration ([#588](https://github.com/quynhonsemiconductor/rova/issues/588)) ([0307984](https://github.com/quynhonsemiconductor/rova/commit/03079848b922fdb985920270713369862212cb42))
+* **test-cases:** record and list Test Results ([#566](https://github.com/quynhonsemiconductor/rova/issues/566)) ([9cf261e](https://github.com/quynhonsemiconductor/rova/commit/9cf261e77e979e9d65c00431e630ad78569bf979))
+* **web:** add a Copy link control to every detail page ([#596](https://github.com/quynhonsemiconductor/rova/issues/596)) ([abfbd10](https://github.com/quynhonsemiconductor/rova/commit/abfbd10b294f8858b6615f6d98128835ddd4425b))
+
+
+### 🐛 Bug Fixes
+
+* **ci,alerts:** move the build cache off ECR, and route alarms to devops@ ([#599](https://github.com/quynhonsemiconductor/rova/issues/599)) ([02f5e87](https://github.com/quynhonsemiconductor/rova/commit/02f5e87cdaca170bd2de32dfab7e0cf1e88241b0))
+* **ci:** align workspace filters, CI env and release config with product name ([00bc405](https://github.com/quynhonsemiconductor/rova/commit/00bc40532c0960a1dc4c1e12a5592a557e11b480))
+* **ci:** run CI on stacked pull requests, not only PRs aimed at main ([#591](https://github.com/quynhonsemiconductor/rova/issues/591)) ([59cf5eb](https://github.com/quynhonsemiconductor/rova/commit/59cf5ebb361d718c6487cd63816ee8bb919af3ef))
+* **deps:** restore dependabot npm updates ([#577](https://github.com/quynhonsemiconductor/rova/issues/577)) ([3cb451e](https://github.com/quynhonsemiconductor/rova/commit/3cb451ed90e6fd1539584b943e15fce95128541c))
+* **deps:** update @quynhonsemiconductor/identity and platform-cache ([#582](https://github.com/quynhonsemiconductor/rova/issues/582)) ([c2db896](https://github.com/quynhonsemiconductor/rova/commit/c2db89602a33604fe12fcad0f19bed5b1d0d1eaa))
+* **nav:** light Plan on the Releases and Milestones timebox type modes ([#598](https://github.com/quynhonsemiconductor/rova/issues/598)) ([d23afac](https://github.com/quynhonsemiconductor/rova/commit/d23afac40ee4af2daf6b06372eaef535e0a46b1a))
+* **observability:** align dashboard queries, alert tags and SES grant with product name ([845ae4a](https://github.com/quynhonsemiconductor/rova/commit/845ae4a843d7e0d3c3f3ae09ca77beda195447ff))
+* **platform:** close two header-injection paths and converge the sanitizer ([#583](https://github.com/quynhonsemiconductor/rova/issues/583)) ([86baf21](https://github.com/quynhonsemiconductor/rova/commit/86baf21d1ac2d8780f3477b13bd6c53b170b230a))
+* **reports:** step timebox chevrons by chronological direction, not array index ([#597](https://github.com/quynhonsemiconductor/rova/issues/597)) ([414f450](https://github.com/quynhonsemiconductor/rova/commit/414f450da6f6d0a31be6cea1e62046948398c8f8))
+* **seeds:** align the seeded SCM installation owner with its repository ([#595](https://github.com/quynhonsemiconductor/rova/issues/595)) ([b2dee70](https://github.com/quynhonsemiconductor/rova/commit/b2dee705673d75d358e3ed1c8bd3896972c7b862))
+
+
+### ♻️ Refactors
+
+* **platform:** source runtime primitives from @quynhonsemiconductor/platform-runtime ([#561](https://github.com/quynhonsemiconductor/rova/issues/561)) ([0b50291](https://github.com/quynhonsemiconductor/rova/commit/0b50291cf0ebc6694078ad2495d9193cac3b9a88))
+* **test-cases:** align Team field, Results icon and result navigation ([#590](https://github.com/quynhonsemiconductor/rova/issues/590)) ([b3b0a84](https://github.com/quynhonsemiconductor/rova/commit/b3b0a8495298c1014d30b84a18d67a7427c44542))
+
+
+### 🔒 Security
+
+* **ci:** arm gitleaks — the config was replacing the default ruleset ([#589](https://github.com/quynhonsemiconductor/rova/issues/589)) ([0acee2c](https://github.com/quynhonsemiconductor/rova/commit/0acee2c02fbc7803b53d95434e6d7313d67f7d4c))
+* **deps:** raise js-yaml to 4.3.2 and vitest to 4.1.11 for two 2026-09-08 advisories ([#587](https://github.com/quynhonsemiconductor/rova/issues/587)) ([60552e5](https://github.com/quynhonsemiconductor/rova/commit/60552e5726a2a21684837794d12d1ee493f8387c))
+
 ## [0.7.14](https://github.com/quynhonsemiconductor/rova/compare/v0.7.13...v0.7.14) (2026-09-08)
 
 
