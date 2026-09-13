@@ -441,6 +441,18 @@ module "stack" {
     // makes an AZ failure a recoverable outage rather than data loss. See ../prod.
     backup_retention_days = 0
     monitoring_interval   = 0 # Enhanced Monitoring off — saves CloudWatch cost
+
+    // TEMPORARY, for the rally->rova subnet-group rebuild only. AWS refuses to move a DB
+    // instance between subnet groups in the same VPC, so rova-develop still sits in
+    // rally-develop-db and the only way into rova-develop-db is a new instance.
+    //
+    // Honoured only when the instance is CREATED. With the instance present this is inert
+    // (the module holds it under ignore_changes), so merging this changes nothing. The
+    // rebuild is: delete the instance, then let the next apply create it from this snapshot.
+    //
+    // REVERT TO null once rova-develop reports subnet group rova-develop-db.
+    // Runbook: qnsc-infra docs/rova-subnet-group-rebuild.md
+    snapshot_identifier = "rova-develop-pre-subnet-rebuild-20260913-2110"
   }
 
   // Fargate Spot: ~70% cheaper, and an interruption in develop is harmless.
