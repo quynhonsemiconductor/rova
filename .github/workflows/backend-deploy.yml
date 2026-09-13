@@ -307,6 +307,34 @@ jobs:
       # 2026-08-17). qnsc-kb cannot do this: clamav/clamav is amd64-only on every tag.
       build_runner: ubuntu-24.04-arm
       image_platforms: linux/arm64
+
+      # ── Build cache: GHA, not the `registry` default ─────────────────────────
+      # The registry backend writes a `:buildcache` tag to ECR with `mode=max` and PULLS
+      # it back on every build. GitHub runners are outside AWS, so each pull is ECR
+      # internet egress at ~$0.085/GB.
+      #
+      # MEASURED 2026-09-12 from Cost Explorer, by usage type:
+      #
+      #   August       ECR DataTransfer-Out  $29.49  (345 GB)   Storage  $1.74
+      #   Sept 1-13    ECR DataTransfer-Out   $6.97  (66.7 GB)  Storage  $0.76
+      #
+      # So ECR is ~94% egress, not storage. The August figure was dominated by qnsc-kb's
+      # 4.28 GB cache, since fixed with `cache_backend: none` there. What remains is this
+      # product and opshub: `:buildcache` measures 0.33 GiB per image here, which
+      # build-push-ecr's own note calls "effectively free, keep it" — true PER IMAGE, and
+      # wrong in aggregate. Three images per build, two products, ~5 builds/day is roughly
+      # 167 GB/month, about $14.
+      #
+      # `gha` keeps the cache and removes the egress. The 10 GB per-repository cap that
+      # made GHA unusable for qnsc-kb (a 2.2 GB model re-downloaded on most builds, which
+      # also starved the repo's other caches) does not apply here: three scopes at ~0.33
+      # GiB is ~1 GiB total.
+      #
+      # The trade is a lower cache hit rate on feature branches, since GHA scopes caches
+      # per branch with fallback to the default branch. That costs build MINUTES, which are
+      # unmetered on public repositories — so it trades nothing for $14/month. Prefer this
+      # over `none`, which would keep the saving and lose the cache.
+      cache_backend: gha
     # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
     secrets:
       AWS_ACCOUNT_ID:       ${{ vars.AWS_ACCOUNT_ID }}

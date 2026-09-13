@@ -121,10 +121,14 @@ variable "cache" {
     # Cluster mode is disabled on the shared node (num_cache_clusters = 1), so all 16
     # databases exist and SELECT works.
     #
-    # ALLOCATE CENTRALLY, because two products silently sharing an index is exactly the
-    # collision this exists to prevent, and nothing detects it at plan time:
-    #     0  rally
-    #     1  qnsc-kb   (Celery broker AND result backend — see below)
+    # ALLOCATE CENTRALLY. Two products silently sharing an index is exactly the collision
+    # this exists to prevent, and nothing detects it at plan time.
+    #
+    # THE REGISTRY LIVES IN ONE PLACE: qnsc-infra `allocations.json`, key
+    # `cache_db_index_allocations`. Do not copy the table here. It used to be inline in all
+    # three product stack modules and drifted into three different states — this one said
+    # "0 rally" after the rename and omitted opshub, opshub's was complete, qnsc-kb's was
+    # absent. A registry with three copies is not a registry.
     db_index = optional(number, 0)
   })
   default = {}
