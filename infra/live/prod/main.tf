@@ -402,28 +402,9 @@ module "stack" {
     allocated_storage_gb     = 30
     max_allocated_storage_gb = 500
     multi_az                 = false
+    deletion_protection      = true
     backup_retention_days    = 30
     monitoring_interval      = 0
-
-    // ── TEMPORARY: subnet-group rebuild, 2026-09-14 ─────────────────────────────
-    // Finishing the rally->rova rename. AWS refuses to move a DB instance between
-    // subnet groups in the same VPC (InvalidVPCNetworkStateFault), so rova-prod still
-    // sits in rally-prod-db and the only route into rova-prod-db is a new instance.
-    //
-    // deletion_protection OFF so the instance can be replaced, and skip_final_snapshot
-    // FALSE so a final snapshot is still taken -- rds 2.2.0 made those two independent
-    // precisely because they used to disagree here, silently removing the safety net at
-    // the moment it was needed.
-    //
-    // snapshot_identifier is honoured only at CREATE time (ignore_changes in the module),
-    // so this is inert while the instance exists. The rebuild is: delete the instance,
-    // then let the tag-triggered apply create it from this snapshot.
-    //
-    // REVERT ALL THREE once rova-prod reports subnet group rova-prod-db.
-    // Runbook: qnsc-infra docs/rova-subnet-group-rebuild.md
-    deletion_protection = false
-    skip_final_snapshot = false
-    snapshot_identifier = "rova-prod-pre-rebuild-20260914-0101"
   }
 
   // On-demand, not Spot: an interruption here is user-visible. Tighter autoscale
