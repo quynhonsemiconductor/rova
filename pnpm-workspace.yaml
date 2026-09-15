@@ -95,7 +95,7 @@ overrides:
   #
   # Raise this by hand again if the advisory names a later fix; there is no floor here doing
   # it automatically, and that is the trade for surviving the cooldown window.
-  "nanoid@>=3.0.0 <3.3.18": "3.3.18"
+  "nanoid@>=3.0.0 <3.3.18": "3.3.19"
   # GHSA-r28c-9q8g-f849 — postcss (line-return parsing), fixed in 8.5.18.
   # Transitive via the web build toolchain (vite / tailwind ecosystem). A newly
   # published advisory that also affects main; pinned via override.
