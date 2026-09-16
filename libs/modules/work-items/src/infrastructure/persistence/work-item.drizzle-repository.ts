@@ -56,6 +56,7 @@ import { UNASSIGNED_FILTER, STORY_OPTIONS_LIMIT } from '../../domain/work-item.t
 import { teamRowFilter } from '../../domain/team-read-scope';
 import type { TeamReadScope, ProjectTeamScope } from '../../domain/team-read-scope';
 import { IWorkItemRepository, IterationScope } from '../../domain/ports/work-item.repository';
+import type { SplitIterationCandidateRow } from '../../domain/ports/work-item.repository';
 
 /**
  * Canonical projection of a work-item schedule_state (D1) onto the task_state
@@ -305,6 +306,35 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return rows[0] ?? null;
   }
 
+  /**
+   * Every Iteration in one project — Split's Target-Iteration candidate set.
+   *
+   * No state predicate here on purpose: the eligibility rule is one pure function
+   * (`filterSplitTargets`), and narrowing in SQL as well would be a second copy of it that nothing
+   * tests. `orderBy(asc(startDate), asc(id))` — the `id` terminator is what the query-ordering
+   * ratchet requires, and it is what makes "earliest valid target" deterministic when two sprints
+   * open on the same day.
+   */
+  async listProjectIterations(
+    projectId: string,
+    workspaceId: string,
+  ): Promise<SplitIterationCandidateRow[]> {
+    return this.db
+      .select({
+        id: iterations.id,
+        name: iterations.name,
+        iterationKey: iterations.iterationKey,
+        state: iterations.state,
+        startDate: iterations.startDate,
+        endDate: iterations.endDate,
+        projectId: iterations.projectId,
+        teamId: iterations.teamId,
+      })
+      .from(iterations)
+      .where(and(eq(iterations.projectId, projectId), eq(iterations.workspaceId, workspaceId)))
+      .orderBy(asc(iterations.startDate), asc(iterations.id));
+  }
+
   async findReleaseProject(releaseId: string, workspaceId: string): Promise<string | null> {
     const rows = await this.db
       .select({ projectId: releases.projectId })
@@ -312,6 +342,16 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(and(eq(releases.id, releaseId), eq(releases.workspaceId, workspaceId)))
       .limit(1);
     return rows[0]?.projectId ?? null;
+  }
+
+  /** A release's display name — a NAME source, so it carries no `release:view` audience of its own. */
+  async findReleaseName(releaseId: string, workspaceId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ name: releases.name })
+      .from(releases)
+      .where(and(eq(releases.id, releaseId), eq(releases.workspaceId, workspaceId)))
+      .limit(1);
+    return rows[0]?.name ?? null;
   }
 
   /**

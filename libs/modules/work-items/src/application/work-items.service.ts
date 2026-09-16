@@ -70,6 +70,22 @@ import type {
 } from '../domain/work-item.types';
 import { teamScopeAdmits } from '../domain/team-read-scope';
 import type { TeamReadScope, ProjectTeamScope } from '../domain/team-read-scope';
+import { iterationAssignmentRefusal } from '../domain/iteration-assignable';
+import {
+  DEFAULT_RELATED_SIDE,
+  defaultSplitTitles,
+  defaultTaskSide,
+  earliestTarget,
+  filterSplitTargets,
+  splitIneligibleReason,
+} from './split-story';
+import type {
+  SplitIneligibleReason,
+  SplitPreview,
+  SplitPreviewStory,
+  SplitPreviewTarget,
+  SplitTargetCandidate,
+} from './split-story';
 import type { TimeLog } from '../domain/time-log.types';
 import type { Watcher } from '../domain/watcher.types';
 import { diffWorkItem } from './activity-diff';
@@ -101,6 +117,33 @@ function isDuplicateKeyError(err: unknown): boolean {
       return false;
     }
   }
+}
+
+/**
+ * Page size for the Split preview's three child collections.
+ *
+ * A Story's Tasks, child Defects and Test Cases are curated by hand and bounded in practice — the
+ * Tasks tab and the Test Cases tab already load each set whole for the same reason. 100 is the
+ * house-wide ceiling every list DTO caps `limit` at, so asking for more would be refused by the very
+ * validation the Test Cases tab learned about the hard way.
+ */
+const SPLIT_PREVIEW_COLLECTION_LIMIT = 100;
+
+/** Drizzle returns `numeric` as a string to preserve precision; the read model publishes numbers. */
+function numberOrNull(value: string | null): number | null {
+  return value === null ? null : Number(value);
+}
+
+/** Drop the project/team scope the filter consumed — the client has no use for it and no right to it. */
+function toSplitPreviewTarget(candidate: SplitTargetCandidate): SplitPreviewTarget {
+  return {
+    id: candidate.id,
+    name: candidate.name,
+    iterationKey: candidate.iterationKey,
+    state: candidate.state,
+    startDate: candidate.startDate,
+    endDate: candidate.endDate,
+  };
 }
 
 interface CreateWorkItemOpts {
@@ -978,6 +1021,198 @@ export class WorkItemsService {
       actor.workspaceId,
       await this.teamScopeFor(actor, parent.projectId),
     );
+  }
+
+  // ── Split a User Story (Phase 7 SU) ─────────────────────────────────────────
+
+  /**
+   * Everything the Split modal needs, in ONE round trip — plan §3.1.
+   *
+   * **The server decides eligibility.** The browser reads `eligible` and nothing else: the rules are
+   * `splitIneligibleReason` (BR-01/02/03), `hasProjectPermission(work_item:edit)` (BR-04) and
+   * `filterSplitTargets` (BR-05/06), each expressed exactly once. Re-deriving any of them in the SPA
+   * would be the "picker narrower than the write" fault class (§9) with the two halves in different
+   * languages. `defaultSide` is decided here too (BR-14/15) for the same reason.
+   *
+   * `requireReadable` FIRST, before anything else is read: it resolves the row and applies the Editor
+   * Team boundary, which the route's `resource: 'work_item'` scope cannot see (it resolves the row's
+   * PROJECT and nothing else — the disclosure §7 is about). So an Editor on Team Alpha asking for a
+   * Team Beta Story is refused rather than told its Tasks, Defects and Test Cases.
+   *
+   * **Ineligibility short-circuits.** Both entry points call this — including the Iteration Status
+   * bulk bar, on any single-row selection — so a row that the rule already refuses must not pay for
+   * three collection queries and an iteration scan. The reasons are ordered most-fundamental first:
+   * what the row IS, then whether the caller may act on it, then whether anywhere exists to move it.
+   *
+   * There is NO write path in this PR (§8 Q14): `Split story` renders disabled. `POST /:id/split`
+   * lands whole in SU-06, and it re-runs every rule below rather than trusting this response.
+   */
+  async getSplitPreview(actor: JwtPayload, id: string): Promise<SplitPreview> {
+    const item = await this.requireReadable(actor, id);
+
+    const rowReason = splitIneligibleReason(item);
+    if (rowReason !== null) return this.ineligibleSplitPreview(item, rowReason, null);
+
+    // BR-04 — Split is an edit. The route is gated `work_item:view` so a reader can OPEN a Story and
+    // be told the action is unavailable; asked as a question rather than asserted, because a refusal
+    // here is an ordinary disabled control and not an error path.
+    if (
+      !(await this.accessService.hasProjectPermission(
+        actor,
+        item.projectId,
+        PERMISSION.WORK_ITEM_EDIT,
+      ))
+    ) {
+      return this.ineligibleSplitPreview(item, 'not_editable', null);
+    }
+
+    const projectIterations = await this.workItemRepo.listProjectIterations(
+      item.projectId,
+      actor.workspaceId,
+    );
+    // One name map for the Story's own Iteration AND every child Defect's explicit one — the rows are
+    // already in hand, so neither needs a query of its own.
+    const iterationNames = new Map(projectIterations.map((it) => [it.id, it.name]));
+    const source = projectIterations.find((it) => it.id === item.iterationId) ?? null;
+
+    // A Story whose `iteration_id` names a row this project does not have is a data fault, not an
+    // eligibility case: there is no window to be "later than", so there is no valid target.
+    const targets = source
+      ? filterSplitTargets({ id: source.id, endDate: source.endDate }, projectIterations, item)
+      : [];
+    if (targets.length === 0) return this.ineligibleSplitPreview(item, 'no_target', iterationNames);
+
+    const teamScope = await this.teamScopeFor(actor, item.projectId);
+    const [tasks, defects, testCases] = await Promise.all([
+      this.workItemRepo.listTasksByParent(id, actor.workspaceId, teamScope),
+      this.listChildDefects(actor, item, teamScope),
+      this.testCaseRepo.listByWorkItem(
+        id,
+        actor.workspaceId,
+        { limit: SPLIT_PREVIEW_COLLECTION_LIMIT, cursor: null },
+        teamScope,
+      ),
+    ]);
+
+    return {
+      eligible: true,
+      ineligibleReason: null,
+      story: await this.splitPreviewStory(item, iterationNames),
+      targets: targets.map(toSplitPreviewTarget),
+      defaults: {
+        ...defaultSplitTitles(item.title),
+        // BR-06 — earliest valid target. `targets` is already earliest-first; `earliestTarget` does
+        // not re-sort, so the default and the list order can never disagree.
+        targetIterationId: earliestTarget(targets)?.id ?? null,
+      },
+      tasks: tasks.map((task) => ({
+        id: task.id,
+        itemKey: task.itemKey,
+        title: task.title,
+        state: task.scheduleState,
+        todoHours: numberOrNull(task.todoHours),
+        estimateHours: numberOrNull(task.estimateHours),
+        actualHours: numberOrNull(task.actualHours),
+        defaultSide: defaultTaskSide(task.scheduleState),
+      })),
+      defects: defects.map((defect) => ({
+        id: defect.id,
+        itemKey: defect.itemKey,
+        title: defect.title,
+        scheduleState: defect.scheduleState,
+        priority: defect.priority,
+        // BR-18 — the Defect's OWN Iteration, which Split never writes. NULL means Unscheduled, and
+        // §8 Q8 rules that a no-op: Split does not set it, so such a Defect appears in no Iteration
+        // report either before or after.
+        explicitIterationId: defect.iterationId,
+        explicitIterationName:
+          defect.iterationId === null ? null : (iterationNames.get(defect.iterationId) ?? null),
+        defaultSide: DEFAULT_RELATED_SIDE,
+      })),
+      testCases: testCases.data.map((testCase) => ({
+        id: testCase.id,
+        testCaseKey: testCase.testCaseKey,
+        name: testCase.name,
+        type: testCase.type,
+        lastVerdict: testCase.lastVerdict,
+        defaultSide: DEFAULT_RELATED_SIDE,
+      })),
+    };
+  }
+
+  /**
+   * The refused shape — the Story, no collections, `eligible: false`.
+   *
+   * `defaults` are still filled in: they are pure functions of the title and cost nothing, and a
+   * partially-populated response is one more shape for a consumer to handle.
+   */
+  private async ineligibleSplitPreview(
+    item: WorkItem,
+    reason: SplitIneligibleReason,
+    iterationNames: Map<string, string> | null,
+  ): Promise<SplitPreview> {
+    return {
+      eligible: false,
+      ineligibleReason: reason,
+      story: await this.splitPreviewStory(item, iterationNames),
+      targets: [],
+      defaults: { ...defaultSplitTitles(item.title), targetIterationId: null },
+      tasks: [],
+      defects: [],
+      testCases: [],
+    };
+  }
+
+  /**
+   * The Story header block. `releaseName` is resolved from the row's own `release_id` and NOT from a
+   * release feed: an Editor holds no `release:view`, so a name sourced from an offer list would be
+   * absent for exactly the callers who own the Story (`CLAUDE.md`, Feeds).
+   */
+  private async splitPreviewStory(
+    item: WorkItem,
+    iterationNames: Map<string, string> | null,
+  ): Promise<SplitPreviewStory> {
+    return {
+      id: item.id,
+      itemKey: item.itemKey,
+      title: item.title,
+      planEstimate: numberOrNull(item.storyPoints),
+      scheduleState: item.scheduleState,
+      releaseId: item.releaseId,
+      releaseName:
+        item.releaseId === null
+          ? null
+          : await this.workItemRepo.findReleaseName(item.releaseId, item.workspaceId),
+      iterationId: item.iterationId,
+      iterationName:
+        item.iterationId === null ? null : (iterationNames?.get(item.iterationId) ?? null),
+      teamId: item.teamId,
+      projectId: item.projectId,
+    };
+  }
+
+  /**
+   * The Story's child Defects — `parent_id = :id AND type = 'defect'`, in the SAME Team scope the
+   * Tasks are read in.
+   *
+   * Reuses `listByProject` rather than adding SQL: the filter pair already exists, and a second query
+   * for the same population is a second place for the scope to be forgotten. Paged upstream, so it is
+   * asked for one large page — a Story's children are bounded by hand, exactly as the Tasks tab and
+   * the Test Cases tab already assume.
+   */
+  private async listChildDefects(
+    actor: JwtPayload,
+    item: WorkItem,
+    teamScope: TeamReadScope,
+  ): Promise<WorkItem[]> {
+    const page = await this.workItemRepo.listByProject(
+      item.projectId,
+      actor.workspaceId,
+      { parentId: item.id, type: 'defect' },
+      { limit: SPLIT_PREVIEW_COLLECTION_LIMIT, cursor: null },
+      teamScope,
+    );
+    return page.data;
   }
 
   // ── Activity (Revision History) ──────────────────────────────────────────────
@@ -2198,6 +2433,12 @@ export class WorkItemsService {
    * An iteration is assignable to a work item when it exists in the same workspace,
    * shares the item's project, and — if the iteration is team-scoped — shares
    * the item's team. Team-agnostic iterations (teamId null) accept any team.
+   *
+   * The project/team half itself lives in `domain/iteration-assignable.ts`, NOT here: Split's
+   * Target-Iteration picker has to offer exactly the set this method accepts, and a throwing guard
+   * cannot be used as a filter. This method is now the THROWING half — it resolves the scope and
+   * maps the pure predicate's answer onto the same two error codes, in the same order, as before.
+   * See that file's docblock for why a second copy of the rule is the hazard being avoided.
    */
   private async assertIterationAssignable(
     workspaceId: string,
@@ -2208,17 +2449,19 @@ export class WorkItemsService {
     if (!scope) {
       throw new NotFoundException('ITERATION_NOT_FOUND', 'Iteration not found');
     }
-    if (scope.projectId !== item.projectId) {
-      throw new PreconditionFailedException(
-        'ITERATION_PROJECT_MISMATCH',
-        'Iteration must belong to the same project as the work item',
-      );
-    }
-    if (scope.teamId && item.teamId && scope.teamId !== item.teamId) {
-      throw new PreconditionFailedException(
-        'ITERATION_TEAM_MISMATCH',
-        'Iteration must belong to the same team as the work item',
-      );
+    switch (iterationAssignmentRefusal(scope, item)) {
+      case 'project':
+        throw new PreconditionFailedException(
+          'ITERATION_PROJECT_MISMATCH',
+          'Iteration must belong to the same project as the work item',
+        );
+      case 'team':
+        throw new PreconditionFailedException(
+          'ITERATION_TEAM_MISMATCH',
+          'Iteration must belong to the same team as the work item',
+        );
+      case null:
+        return;
     }
   }
 
