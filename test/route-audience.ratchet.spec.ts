@@ -393,6 +393,12 @@ const AUDIENCE: Record<string, Audience> = {
   'WorkItemsController.getActivity': 'editor',
   'WorkItemsController.getAttachmentContent': 'editor',
   'WorkItemsController.getAttachmentDownloadUrl': 'editor',
+  // Split's preview. `work_item:view`, not `work_item:edit`, DELIBERATELY: a reader may open a Story
+  // and be told the action is unavailable, so the edit check (BR-04) is a FIELD of the answer
+  // (`ineligibleReason: 'not_editable'`) rather than a 403. Audience `editor` because splitting a
+  // Story is an Editor action (§3.2:79) and the preview is what decides whether to offer it — this is
+  // the "a gate chosen for what the action IS, not for where the id lives" reading.
+  'WorkItemsController.getSplitPreview': 'editor',
   'WorkItemsController.getTaskTotals': 'editor',
   'WorkItemsController.getWorkItem': 'editor',
   'WorkItemsController.listAttachments': 'editor',

@@ -20,6 +20,7 @@ import { SkeletonList } from '@/shared/ui/skeleton'
 import { BRAND } from '@/shared/config/brand'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
+import { BulkSplitStory } from '@/features/work-items/ui/bulk-split-story'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -510,13 +511,19 @@ export function IterationStatusPage() {
           bulkActions={
             canEdit
               ? (sel) => (
-                  <BulkDeleteCopy
-                    canDelete={can('work_item:delete')}
-                    selection={sel}
-                    projectId={projectId ?? ''}
-                    onCopy={copySelected}
-                    copyPending={copyItem.isPending}
-                  />
+                  <>
+                    <BulkDeleteCopy
+                      canDelete={can('work_item:delete')}
+                      selection={sel}
+                      projectId={projectId ?? ''}
+                      onCopy={copySelected}
+                      copyPending={copyItem.isPending}
+                    />
+                    {/* Phase 7 SU-01 AC2. Enabled only for exactly one ELIGIBLE Story, and
+                        eligibility is the server's answer — the client only narrows so a doomed
+                        request is never made. Bulk Split is out of scope (SRS §16). */}
+                    <BulkSplitStory selection={sel} rows={localItems} />
+                  </>
                 )
               : undefined
           }

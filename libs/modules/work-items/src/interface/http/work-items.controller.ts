@@ -55,6 +55,7 @@ import {
   WatcherResponseDto,
   StoryOptionResponseDto,
 } from './dto/work-item-response.dto';
+import { SplitPreviewResponseDto } from './dto/split-work-item.dto';
 import type { WorkItem } from '../../domain/work-item.types';
 import { BACKLOG_SORT_FIELDS } from '../../domain/work-item.types';
 import type { ActivityLog } from '@modules/activity';
@@ -609,6 +610,34 @@ export class WorkItemsController {
       actualHours: dto.actualHours,
     });
     return toWorkItemDto(task);
+  }
+
+  // ── Split a User Story (Phase 7 SU) ──────────────────────────────────────────
+
+  /**
+   * Everything the Split modal needs in one round trip (plan §3.1). The SERVER decides eligibility.
+   *
+   * `work_item:view` and not `work_item:edit`, deliberately: a reader may OPEN a Story and be told
+   * the action is unavailable. The edit check (BR-04) is a FIELD of the answer —
+   * `ineligibleReason: 'not_editable'` — because a 403 here would make "you may not split this" and
+   * "this Story cannot be split" the same response, and only one of them is about the caller.
+   *
+   * Two path segments, so `@Get(':id')` above cannot capture it — the same reason `:id/tasks` and
+   * `:id/activity` sit here rather than above the record route.
+   */
+  @Get(':id/split-preview')
+  @ApiOperation({
+    summary: 'Split eligibility, valid target Iterations and the distributable children',
+  })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: SplitPreviewResponseDto })
+  @ApiCommonErrors(401, 403, 404)
+  async getSplitPreview(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<SplitPreviewResponseDto> {
+    return this.workItemsService.getSplitPreview(user, id);
   }
 
   // ── Activity (Revision History) ──────────────────────────────────────────────

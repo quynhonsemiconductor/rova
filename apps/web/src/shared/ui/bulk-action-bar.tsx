@@ -114,18 +114,28 @@ export function BulkBarButton({
   onClick,
   disabled = false,
   danger = false,
+  title,
 }: {
   icon?: ReactNode
   label: string
   onClick: () => void
   disabled?: boolean
   danger?: boolean
+  /**
+   * Why the action is unavailable — shown on hover, since a disabled button cannot explain itself.
+   *
+   * Added here rather than by reaching for `BulkActionButton` (which already had it): two button
+   * families in one bar is the visual inconsistency `fe-consistency` exists to prevent, and the bar
+   * this renders in is already all-`BulkBarButton`. Optional, so no existing call site changes.
+   */
+  title?: string
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={`flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium transition-colors hover:bg-card disabled:cursor-not-allowed disabled:opacity-40 ${
         danger ? 'text-destructive' : 'text-primary-light'
       }`}

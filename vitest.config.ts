@@ -126,6 +126,22 @@ export default defineConfig({
         'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/work-items/src/application/work-items.service.ts',
+        // Phase 7 SU-01. `split-story.ts` is required (it has `split-story.spec.ts`);
+        // `iteration-assignable.ts` is added deliberately even though it has no spec of its own — it
+        // is the ONE expression of the iteration project/team rule, exercised by both
+        // `split-story.spec.ts` and `work-items.service.spec.ts`, and measuring it is how a future
+        // edit to that rule shows up as a coverage change rather than silently.
+        //
+        // `work-item.drizzle-repository.ts` is deliberately NOT here: it has no unit spec (the
+        // queries are proved by the e2e suite), and adding ~1,500 unmeasured lines would drag every
+        // floor down, which §6.0 forbids — floors may rise, never fall. The rule for this list is
+        // "measure every file that HAS a unit spec".
+        //
+        // NOTE, again, because it just bit: no APOSTROPHES in this array. The parser above is a
+        // regex over single-quoted strings, so one apostrophe re-pairs every quote after it and the
+        // ratchet fails with a diff full of comment fragments rather than filenames.
+        'libs/modules/work-items/src/application/split-story.ts',
+        'libs/modules/work-items/src/domain/iteration-assignable.ts',
         'libs/modules/work-items/src/domain/team-read-scope.ts',
         'libs/modules/workspace/src/application/team.service.ts',
         'libs/modules/workspace/src/application/workspace.service.ts',
