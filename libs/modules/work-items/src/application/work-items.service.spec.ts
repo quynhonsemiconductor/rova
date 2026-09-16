@@ -108,6 +108,10 @@ const makeWorkItemRepo = () => ({
   findByIds: vi.fn().mockResolvedValue([]),
   findIterationScope: vi.fn().mockResolvedValue(null),
   findReleaseProject: vi.fn().mockResolvedValue(null),
+  // Phase 7 SU-01 — the Split preview's two reads. Empty / null by default so a test that cares
+  // about targets or a Release name has to say so.
+  listProjectIterations: vi.fn().mockResolvedValue([]),
+  findReleaseName: vi.fn().mockResolvedValue(null),
   findPortfolioItemLinkTarget: vi.fn().mockResolvedValue({ type: 'feature', archived: false }),
   assignIteration: vi.fn().mockResolvedValue(undefined),
   assignRelease: vi.fn().mockResolvedValue(undefined),
@@ -236,6 +240,13 @@ const makeProjectsService = () => {
 // so a test that wants admin authority has to say so.
 const makeAccessService = () => ({
   assertProjectPermission: vi.fn().mockResolvedValue(undefined),
+  /**
+   * The same check as a QUESTION — used where a rule BRANCHES on a permission rather than refusing
+   * without it (Phase 7 SU-01's `not_editable`). Defaults to TRUE, unlike the scope mocks above,
+   * because the callers of this one treat `false` as an ordinary disabled control and a default of
+   * `false` would make every unrelated test assert an ineligible answer.
+   */
+  hasProjectPermission: vi.fn().mockResolvedValue(true),
   // The Editor Team scope, reinstated by the BA on 2026-08-17 (`GAP-P4-RBAC-003`). Replaces the
   // `assertTeamScoped` mock that outlived the method it stood for by three months.
   assertTeamInScope: vi.fn().mockResolvedValue(undefined),
@@ -265,6 +276,10 @@ const makeMilestonesService = () => ({
 const makeTestCaseRepo = () => ({
   listLiveIdsByWorkItem: vi.fn().mockResolvedValue([]),
   softDeleteByWorkItem: vi.fn().mockResolvedValue(undefined),
+  // Phase 7 SU-01 — the Split preview reads a Story's Test Cases through this port, NOT through
+  // `TestCasesService`: `TestCasesModule` imports `WorkItemsModule`, so the other direction is a real
+  // NestJS module cycle (plan D1). Paged, like the route it backs.
+  listByWorkItem: vi.fn().mockResolvedValue({ data: [], pageInfo: { hasNextPage: false } }),
 });
 
 const makeTestResultRepo = () => ({
@@ -2660,6 +2675,337 @@ describe('WorkItemsService', () => {
         ['proj-1', 'proj-2', 'proj-3'],
         expected,
       );
+    });
+  });
+
+  // ── Split a User Story: the preview (Phase 7 SU-01) ─────────────────────────
+
+  /**
+   * `getSplitPreview`'s ORCHESTRATION. The rules themselves are unit-tested predicate by predicate in
+   * `split-story.spec.ts`; what is asserted here is what only the service can get wrong — the order
+   * the reasons are reported in, the short-circuits, the Team scope being applied to every collection,
+   * and the numeric conversion Drizzle forces on `numeric` columns.
+   *
+   * The route-level behaviour (the guard, the serializer, the real database) is
+   * `test/e2e/split-story-routes.e2e.spec.ts`. Neither level can see the other's faults.
+   */
+  describe('getSplitPreview (SU-01)', () => {
+    const SOURCE = {
+      id: 'iter-source',
+      name: 'Sprint 26.1',
+      iterationKey: 'IT-1',
+      state: 'committed' as const,
+      startDate: '2026-06-16',
+      endDate: '2026-06-27',
+      projectId: 'proj-1',
+      teamId: 'team-a',
+    };
+    const LATER = {
+      id: 'iter-later',
+      name: 'Sprint 26.2',
+      iterationKey: 'IT-3',
+      state: 'planning' as const,
+      startDate: '2026-06-29',
+      endDate: '2026-07-10',
+      projectId: 'proj-1',
+      // Team-LESS: a shared sprint, legal for a team-owned Story (§8 Q2).
+      teamId: null,
+    };
+
+    /** An eligible Story: a Story, in progress, scheduled in the source sprint. */
+    function eligibleStory(overrides: Record<string, unknown> = {}) {
+      return mockWorkItem({
+        id: 'wi-1',
+        itemKey: 'US-1',
+        title: 'Upgrade NX workspace to v21',
+        type: 'story',
+        scheduleState: 'in_progress',
+        projectId: 'proj-1',
+        teamId: 'team-a',
+        iterationId: SOURCE.id,
+        storyPoints: '5',
+        ...overrides,
+      });
+    }
+
+    beforeEach(() => {
+      workItemRepo.listProjectIterations.mockResolvedValue([SOURCE, LATER]);
+      workItemRepo.listTasksByParent.mockResolvedValue([]);
+      workItemRepo.listByProject.mockResolvedValue({ data: [], pageInfo: {} });
+      testCaseRepo.listByWorkItem.mockResolvedValue({ data: [], pageInfo: {} });
+    });
+
+    it('is eligible for a scheduled in-progress Story with a later sprint', async () => {
+      workItemRepo.findById.mockResolvedValue(eligibleStory());
+
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+
+      expect(preview.eligible).toBe(true);
+      expect(preview.ineligibleReason).toBeNull();
+      expect(preview.targets.map((target) => target.id)).toEqual(['iter-later']);
+      expect(preview.defaults.targetIterationId).toBe('iter-later');
+    });
+
+    it('applies the Editor Team scope to EVERY collection, not just the Story', async () => {
+      // The disclosure §7 is about: the route's `resource: 'work_item'` scope resolves the row's
+      // PROJECT and nothing else, so the Tasks, Defects and Test Cases have to be narrowed here.
+      const scope = { unrestricted: false, teamIds: ['team-a'] };
+      accessService.resolveTeamScope.mockResolvedValue(scope);
+      workItemRepo.findById.mockResolvedValue(eligibleStory());
+
+      await service.getSplitPreview(mockActor, 'wi-1');
+
+      expect(workItemRepo.listTasksByParent).toHaveBeenCalledWith('wi-1', 'ws-1', scope);
+      expect(workItemRepo.listByProject).toHaveBeenCalledWith(
+        'proj-1',
+        'ws-1',
+        { parentId: 'wi-1', type: 'defect' },
+        expect.objectContaining({ cursor: null }),
+        scope,
+      );
+      expect(testCaseRepo.listByWorkItem).toHaveBeenCalledWith(
+        'wi-1',
+        'ws-1',
+        expect.objectContaining({ cursor: null }),
+        scope,
+      );
+    });
+
+    it('reports `not_a_story` and reads NO collection — the short-circuit', async () => {
+      // Both entry points call this, including the Iteration Status bulk bar on any single-row
+      // selection, so a row the rule already refuses must not pay for three collection queries.
+      workItemRepo.findById.mockResolvedValue(eligibleStory({ type: 'defect' }));
+
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+
+      expect(preview.ineligibleReason).toBe('not_a_story');
+      expect(workItemRepo.listProjectIterations).not.toHaveBeenCalled();
+      expect(workItemRepo.listTasksByParent).not.toHaveBeenCalled();
+      expect(testCaseRepo.listByWorkItem).not.toHaveBeenCalled();
+    });
+
+    it('reports `finished_state` for an accepted Story', async () => {
+      workItemRepo.findById.mockResolvedValue(eligibleStory({ scheduleState: 'accepted' }));
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+      expect(preview.ineligibleReason).toBe('finished_state');
+    });
+
+    it('reports `unscheduled` for a Story with no Iteration', async () => {
+      workItemRepo.findById.mockResolvedValue(eligibleStory({ iterationId: null }));
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+      expect(preview.ineligibleReason).toBe('unscheduled');
+    });
+
+    it('reports `no_target` when nothing is strictly later than the source', async () => {
+      workItemRepo.findById.mockResolvedValue(eligibleStory());
+      workItemRepo.listProjectIterations.mockResolvedValue([SOURCE]);
+
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+
+      expect(preview.eligible).toBe(false);
+      expect(preview.ineligibleReason).toBe('no_target');
+      expect(preview.targets).toEqual([]);
+      expect(preview.defaults.targetIterationId).toBeNull();
+      // The collections are not read either — there is nothing to distribute to.
+      expect(workItemRepo.listTasksByParent).not.toHaveBeenCalled();
+    });
+
+    it('reports `no_target` when the Story names an Iteration this project does not have', async () => {
+      // A data fault, not an eligibility case: with no source window there is nothing to be later
+      // than, so the honest answer is "nowhere to move it" rather than a crash or every sprint.
+      workItemRepo.findById.mockResolvedValue(eligibleStory({ iterationId: 'iter-ghost' }));
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+      expect(preview.ineligibleReason).toBe('no_target');
+    });
+
+    it('BR-04: reports `not_editable` for a caller who may view but not edit', async () => {
+      // Asked as a QUESTION, not asserted: the route is gated `work_item:view` so a reader may OPEN a
+      // Story and be told the action is unavailable. A 403 would make "you may not split this" and
+      // "this cannot be split" the same response.
+      accessService.hasProjectPermission.mockResolvedValue(false);
+      workItemRepo.findById.mockResolvedValue(eligibleStory());
+
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+
+      expect(preview.eligible).toBe(false);
+      expect(preview.ineligibleReason).toBe('not_editable');
+      expect(accessService.hasProjectPermission).toHaveBeenCalledWith(
+        mockActor,
+        'proj-1',
+        'work_item:edit',
+      );
+      expect(workItemRepo.listProjectIterations).not.toHaveBeenCalled();
+    });
+
+    it('reports the reasons MOST FUNDAMENTAL FIRST', async () => {
+      // What the row IS, then whether the caller may act on it, then whether anywhere exists to move
+      // it. A Defect that the caller also cannot edit is `not_a_story`, because that is the fact the
+      // reader can act on.
+      accessService.hasProjectPermission.mockResolvedValue(false);
+      workItemRepo.findById.mockResolvedValue(eligibleStory({ type: 'task' }));
+      expect((await service.getSplitPreview(mockActor, 'wi-1')).ineligibleReason).toBe(
+        'not_a_story',
+      );
+    });
+
+    it('keeps the SAME shape when ineligible, and still fills the defaults', async () => {
+      workItemRepo.findById.mockResolvedValue(eligibleStory({ type: 'defect' }));
+
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+
+      expect(preview.story.itemKey).toBe('US-1');
+      expect(preview.targets).toEqual([]);
+      expect(preview.tasks).toEqual([]);
+      expect(preview.defects).toEqual([]);
+      expect(preview.testCases).toEqual([]);
+      // Pure functions of the title, so they cost nothing — and a partially-populated response is one
+      // more shape for a consumer to handle.
+      expect(preview.defaults.unfinishedTitle).toBe('[Unfinished] Upgrade NX workspace to v21');
+    });
+
+    it('converts `numeric` columns to numbers, since Drizzle hands them back as strings', async () => {
+      workItemRepo.findById.mockResolvedValue(eligibleStory({ storyPoints: '5.00' }));
+      workItemRepo.listTasksByParent.mockResolvedValue([
+        mockWorkItem({
+          id: 'task-1',
+          itemKey: 'TA-1',
+          type: 'task',
+          scheduleState: 'completed',
+          estimateHours: '2.00',
+          todoHours: '0.00',
+          actualHours: '1.50',
+        }),
+      ]);
+
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+
+      expect(preview.story.planEstimate).toBe(5);
+      expect(preview.tasks[0].estimateHours).toBe(2);
+      // 0 is a VALUE, not an absence — a completed Task has exactly this.
+      expect(preview.tasks[0].todoHours).toBe(0);
+      expect(preview.tasks[0].actualHours).toBe(1.5);
+    });
+
+    it('keeps `planEstimate: null` distinct from 0 (an unpointed Story)', async () => {
+      workItemRepo.findById.mockResolvedValue(eligibleStory({ storyPoints: null }));
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+      expect(preview.story.planEstimate).toBeNull();
+    });
+
+    it('BR-14: decides each Task\u2019s default side on the SERVER', async () => {
+      workItemRepo.findById.mockResolvedValue(eligibleStory());
+      workItemRepo.listTasksByParent.mockResolvedValue([
+        mockWorkItem({ id: 't1', itemKey: 'TA-1', type: 'task', scheduleState: 'completed' }),
+        mockWorkItem({ id: 't2', itemKey: 'TA-2', type: 'task', scheduleState: 'in_progress' }),
+        mockWorkItem({ id: 't3', itemKey: 'TA-3', type: 'task', scheduleState: 'defined' }),
+      ]);
+
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+
+      expect(preview.tasks.map((task) => [task.itemKey, task.defaultSide])).toEqual([
+        ['TA-1', 'unfinished'],
+        ['TA-2', 'continued'],
+        ['TA-3', 'continued'],
+      ]);
+    });
+
+    it('BR-15/BR-18: Defects default RIGHT, and their own Iteration is NAMED, not moved', async () => {
+      workItemRepo.findById.mockResolvedValue(eligibleStory());
+      workItemRepo.listByProject.mockResolvedValue({
+        data: [
+          mockWorkItem({
+            id: 'de-1',
+            itemKey: 'DE-1',
+            type: 'defect',
+            iterationId: SOURCE.id,
+            projectId: 'proj-1',
+          }),
+          // §8 Q8 — an unscheduled Defect stays unscheduled. Split sets nothing.
+          mockWorkItem({
+            id: 'de-2',
+            itemKey: 'DE-2',
+            type: 'defect',
+            iterationId: null,
+            projectId: 'proj-1',
+          }),
+        ],
+        pageInfo: {},
+      });
+
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+
+      expect(preview.defects.map((defect) => defect.defaultSide)).toEqual([
+        'continued',
+        'continued',
+      ]);
+      // Resolved from the iteration list already in hand — no extra query per Defect.
+      expect(preview.defects[0].explicitIterationName).toBe('Sprint 26.1');
+      expect(preview.defects[1].explicitIterationId).toBeNull();
+      expect(preview.defects[1].explicitIterationName).toBeNull();
+    });
+
+    it('BR-15: Test Cases default RIGHT, read through the bound repository', async () => {
+      workItemRepo.findById.mockResolvedValue(eligibleStory());
+      testCaseRepo.listByWorkItem.mockResolvedValue({
+        data: [
+          {
+            id: 'tc-1',
+            testCaseKey: 'TC-1',
+            name: 'Login',
+            type: 'Functional',
+            lastVerdict: 'pass',
+          },
+          {
+            id: 'tc-2',
+            testCaseKey: 'TC-2',
+            name: 'Rate limit',
+            type: 'Regression',
+            lastVerdict: null,
+          },
+        ],
+        pageInfo: {},
+      });
+
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+
+      expect(preview.testCases.map((row) => row.defaultSide)).toEqual(['continued', 'continued']);
+      // `null` is a FACT ("no Result yet"), rendered as Not Run — never 0, never `--`.
+      expect(preview.testCases[1].lastVerdict).toBeNull();
+    });
+
+    it('resolves the Release NAME from the row, and asks for none when unscheduled', async () => {
+      workItemRepo.findById.mockResolvedValue(eligibleStory({ releaseId: 'rel-1' }));
+      workItemRepo.findReleaseName.mockResolvedValue('Release 1');
+
+      const withRelease = await service.getSplitPreview(mockActor, 'wi-1');
+      expect(withRelease.story.releaseName).toBe('Release 1');
+      expect(workItemRepo.findReleaseName).toHaveBeenCalledWith('rel-1', 'ws-1');
+
+      workItemRepo.findReleaseName.mockClear();
+      workItemRepo.findById.mockResolvedValue(eligibleStory({ releaseId: null }));
+      const without = await service.getSplitPreview(mockActor, 'wi-1');
+      expect(without.story.releaseName).toBeNull();
+      expect(workItemRepo.findReleaseName).not.toHaveBeenCalled();
+    });
+
+    it('does NOT strip the project/team scope onto the client in `targets`', async () => {
+      // The candidate rows carry `projectId`/`teamId` because the FILTER needs them. The client has no
+      // use for either and no right to the timebox record, so the mapper drops them.
+      workItemRepo.findById.mockResolvedValue(eligibleStory());
+      const preview = await service.getSplitPreview(mockActor, 'wi-1');
+      expect(preview.targets[0]).not.toHaveProperty('teamId');
+      expect(preview.targets[0]).not.toHaveProperty('projectId');
+    });
+
+    it('refuses before reading anything when the Story is not readable', async () => {
+      // `requireReadable` FIRST. An Editor on another team must not learn the Story exists, let alone
+      // its Tasks, Defects and Test Cases.
+      accessService.assertTeamInScope.mockRejectedValue(new Error('TEAM_NOT_IN_SCOPE'));
+      workItemRepo.findById.mockResolvedValue(eligibleStory());
+
+      await expect(service.getSplitPreview(mockActor, 'wi-1')).rejects.toThrow('TEAM_NOT_IN_SCOPE');
+      expect(workItemRepo.listProjectIterations).not.toHaveBeenCalled();
+      expect(testCaseRepo.listByWorkItem).not.toHaveBeenCalled();
     });
   });
 });

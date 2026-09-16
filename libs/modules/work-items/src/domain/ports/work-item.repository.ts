@@ -1,4 +1,5 @@
 import type { CursorPayload, PagedResult, DbExecutor } from '@platform';
+import type { IterationState } from '../../../../../../db/schema/enums';
 import type {
   WorkItem,
   CreateWorkItemInput,
@@ -19,6 +20,27 @@ export interface IterationScope {
   teamId: string | null;
 }
 
+/**
+ * One row of {@link IWorkItemRepository.listProjectIterations}.
+ *
+ * Structurally the same shape as `SplitTargetCandidate` in `application/split-story.ts` and
+ * deliberately declared there as well: the pure helper must not import a persistence port to state
+ * what it needs, and the port must not import an application module. TypeScript's structural typing
+ * makes the two compatible without either depending on the other, and `getSplitPreview` passes rows
+ * straight from one to the other — so a field added here and not there is a compile error at that
+ * call site rather than a silent divergence.
+ */
+export interface SplitIterationCandidateRow {
+  id: string;
+  name: string;
+  iterationKey: string | null;
+  state: IterationState;
+  startDate: string | null;
+  endDate: string | null;
+  projectId: string;
+  teamId: string | null;
+}
+
 export interface IWorkItemRepository {
   findById(id: string, workspaceId: string, executor?: DbExecutor): Promise<WorkItem | null>;
   /** Resolve a work item by its workspace-unique item key (work_items→tasks fallback). */
@@ -27,6 +49,30 @@ export interface IWorkItemRepository {
   findByIds(ids: string[], workspaceId: string): Promise<WorkItem[]>;
   /** Project/team scope of an iteration (any workspace guard is applied by caller). */
   findIterationScope(iterationId: string, workspaceId: string): Promise<IterationScope | null>;
+  /**
+   * Every Iteration in one project, with the window and state Split's Target-Iteration filter needs
+   * (`filterSplitTargets`). Unpaged and unfiltered by state deliberately: the ELIGIBILITY rule lives
+   * in one pure function, and a repository that pre-narrowed the set would be a second, invisible
+   * copy of it — the fault class `listStoryOptions`' docblock describes one entity over.
+   *
+   * Ordered `start_date` then `id` so the earliest-first contract {@link earliestTarget} relies on is
+   * a TOTAL order (query-ordering ratchet: the last key must be unique). A dateless iteration sorts
+   * with the NULLs and is refused by the filter, not here.
+   */
+  listProjectIterations(
+    projectId: string,
+    workspaceId: string,
+  ): Promise<SplitIterationCandidateRow[]>;
+  /**
+   * A release's display NAME, for the Split preview's read-only Release line.
+   *
+   * A NAME source, not an offer list — `CLAUDE.md`'s feeds rule: "An OFFER list and a NAME source are
+   * two different feeds. Offers narrow on purpose; names must not." The Story already holds the
+   * `release_id`, so resolving its name must not depend on the caller being able to READ releases
+   * (`release:view`, which an Editor does not hold) — that is exactly how a released item came to
+   * render as unscheduled.
+   */
+  findReleaseName(releaseId: string, workspaceId: string): Promise<string | null>;
   /** Project id owning a release, or null if not found for this workspace. */
   /**
    * A portfolio item's type + archived state, for validating a Story's Feature link.
