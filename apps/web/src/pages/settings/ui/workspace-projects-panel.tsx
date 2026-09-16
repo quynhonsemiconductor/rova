@@ -266,6 +266,17 @@ function EditProjectModal({ project, onClose }: { project: Project; onClose: () 
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
   const update = useUpdateProject()
   const [name, setName] = useState(project.name)
+  /**
+   * A key is editable here because nothing else could change one. It is required at creation and was
+   * left out of both this form and `UpdateProjectSchema` on the SRS rule that a key is immutable after
+   * creation — written when a project key prefixed every item id in it, which
+   * `0036_type_prefixed_item_keys` ended. A rename therefore left the old name's key in place for good:
+   * `Observability` became `Infrastructure` and kept `OBSE`.
+   *
+   * Seeded from the stored key and never re-derived from the name, so a rename does not re-key the
+   * project — some keys were chosen rather than derived (`KB` for `Knowledge Base`).
+   */
+  const [key, setKey] = useState(project.key)
   const [description, setDescription] = useState(project.description ?? '')
   const [startDate, setStartDate] = useState(project.startDate ?? '')
   const [endDate, setEndDate] = useState(project.endDate ?? '')
@@ -293,6 +304,7 @@ function EditProjectModal({ project, onClose }: { project: Project; onClose: () 
         id: project.id,
         input: {
           name: name.trim(),
+            key,
           description: description.trim() || null,
           startDate: startDate || null,
           endDate: endDate || null,
@@ -315,6 +327,20 @@ function EditProjectModal({ project, onClose }: { project: Project; onClose: () 
         <FormField label="Project name" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </FormField>
+          <FormField label="Project key" hint="2–10 uppercase letters/numbers" required>
+            <Input
+              value={key}
+              onChange={(e) =>
+                setKey(
+                  e.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9]/g, '')
+                    .slice(0, 10),
+                )
+              }
+              className="font-mono"
+            />
+          </FormField>
         <FormField label="Description">
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
         </FormField>
@@ -343,7 +369,7 @@ function EditProjectModal({ project, onClose }: { project: Project; onClose: () 
         </Button>
         <Button
           type="button"
-          disabled={name.trim().length < 2 || update.isPending}
+          disabled={name.trim().length < 2 || key.length < 2 || update.isPending}
           onClick={handleSave}
         >
           {update.isPending && <Loader2 size={12} className="animate-spin" />}

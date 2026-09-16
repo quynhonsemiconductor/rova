@@ -421,6 +421,28 @@ export class ProjectsService {
       );
     }
 
+    /**
+     * A key change is checked against the same per-workspace uniqueness as create, and against the
+     * project itself first: re-sending the current key is what a form that posts every field does on
+     * any edit, and that must stay a no-op rather than colliding with its own row.
+     *
+     * Normalised the same way create normalises, so a key cannot arrive here in a case the schema
+     * would have refused on the way in.
+     */
+    if (input.key !== undefined) {
+      const normalizedKey = input.key.toUpperCase().trim();
+      if (normalizedKey !== project.key) {
+        const clash = await this.projectRepo.findByKey(actor.workspaceId, normalizedKey);
+        if (clash && clash.id !== projectId) {
+          throw new ConflictException(
+            'PROJECT_KEY_TAKEN',
+            `Project key "${normalizedKey}" is already taken`,
+          );
+        }
+      }
+      input = { ...input, key: normalizedKey };
+    }
+
     // SRS §9: end date must not precede start date, checked against the merged
     // (post-patch) values so changing either side alone is validated too.
     const nextStart = input.startDate !== undefined ? input.startDate : project.startDate;

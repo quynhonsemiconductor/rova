@@ -315,6 +315,7 @@ export class ProjectDrizzleRepository implements IProjectRepository {
     const rows = await (tx ?? this.db)
       .update(projects)
       .set({
+        ...(input.key !== undefined && { key: input.key }),
         ...(input.name !== undefined && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
         ...(input.leadId !== undefined && { leadId: input.leadId }),

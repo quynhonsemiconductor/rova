@@ -370,6 +370,8 @@ export function useCreateTeam() {
 }
 
 export interface UpdateTeamInput {
+  /** Correcting a key a rename left behind — see `UpdateProjectInput.key`. */
+  key?: string
   name?: string
   description?: string | null
   leadId?: string | null
