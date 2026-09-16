@@ -19,6 +19,8 @@ dist-ssr
 # Test output
 coverage/
 playwright-report/
+# Written by the json reporter in CI so the run can be inspected for retries.
+playwright-results.json
 test-results/
 
 # Editor directories and files
