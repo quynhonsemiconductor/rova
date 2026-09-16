@@ -21,6 +21,7 @@ import settings from './locales/en/settings.json'
 import notifications from './locales/en/notifications.json'
 import errors from './locales/en/errors.json'
 import testCases from './locales/en/test-cases.json'
+import splitStory from './locales/en/split-story.json'
 
 export const defaultNS = 'common'
 
@@ -50,6 +51,9 @@ i18n.use(initReactI18next).init({
       notifications,
       errors,
       'test-cases': testCases,
+      // Namespaces are STATIC imports, not auto-discovered: a missing line here is a screen full of
+      // raw `split-story.modal.title` keys, which no test catches unless it asserts the copy.
+      'split-story': splitStory,
     },
   },
   interpolation: { escapeValue: false },

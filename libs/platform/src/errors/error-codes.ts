@@ -99,6 +99,35 @@ export const ErrorCodes = {
   TASK_NESTING_NOT_ALLOWED: 'TASK_NESTING_NOT_ALLOWED',
   TASK_ITERATION_DERIVED: 'TASK_ITERATION_DERIVED',
 
+  // Split a User Story (Phase 7 SU — docs/PLAN-phase7-split-unfinished.md §3.2)
+  //
+  // All four are thrown by SU-06's `POST /work-items/:id/split`, and NONE by SU-01's
+  // `GET /work-items/:id/split-preview` — the preview REPORTS ineligibility as a field
+  // (`ineligibleReason`) rather than refusing, because SRS §11 requires a disabled control with no
+  // message. They are added with the preview, not with the write, because `ErrorCode` is a fixed
+  // union and this map is append-only: landing the whole set once keeps the contract stable instead
+  // of growing it twice.
+  /** The Story is not splittable — not a Story, already finished, unscheduled, or no valid target. */
+  SPLIT_NOT_ELIGIBLE: 'SPLIT_NOT_ELIGIBLE',
+  /** The chosen Target Iteration fails a Split predicate (later than source, not accepted) or `assertIterationAssignable`. */
+  SPLIT_TARGET_INVALID: 'SPLIT_TARGET_INVALID',
+  /**
+   * The Story moved Iteration between the modal opening and the confirm (D9's optimistic guard).
+   *
+   * There is no version column anywhere on `work_items` — the repository's update is last-write-wins
+   * — so the client echoes back the `sourceIterationId` it rendered and this refuses a stale confirm.
+   * Without it, two confirms of the same modal mint two placeholders.
+   */
+  SPLIT_SOURCE_ITERATION_CHANGED: 'SPLIT_SOURCE_ITERATION_CHANGED',
+  /**
+   * A submitted Task / Defect / Test Case id is not a child of the Story being split.
+   *
+   * A refusal, never a silent skip: the request names the `[Unfinished]` side only and the server
+   * derives `[Continued]` as the complement, so quietly dropping an unknown id would distribute a
+   * child the caller never saw.
+   */
+  SPLIT_ITEM_NOT_IN_STORY: 'SPLIT_ITEM_NOT_IN_STORY',
+
   // Milestones
   MILESTONE_NOT_FOUND: 'MILESTONE_NOT_FOUND',
   MILESTONE_INVALID_TRANSITION: 'MILESTONE_INVALID_TRANSITION',
