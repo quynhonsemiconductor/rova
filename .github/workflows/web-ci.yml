@@ -241,6 +241,13 @@ jobs:
       - name: Run E2E
         run: pnpm --filter rova-web exec playwright test --reporter=line
 
+      # `always()`: the interesting case is a run that PASSED, because a pass hiding a retry is
+      # exactly what went unnoticed. Never fails the job — see the script for why the ratchet
+      # (`--fail-on-flaky-tests`) is not on yet.
+      - name: Flaky tests (passed only on retry)
+        if: always()
+        run: node scripts/report-flaky-e2e.mjs apps/web/playwright-results.json
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
