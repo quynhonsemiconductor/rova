@@ -441,8 +441,13 @@ function TeamFormModal({
    * promised) and stays editable: a touched value always wins, and clearing the box hands control back
    * to the suggestion rather than sticking on an empty required field.
    *
-   * Editing an existing team keeps the stored key and the input disabled — a key is an identity, and
-   * re-deriving it from a rename would silently re-key the team.
+   * Editing an existing team starts from the stored key and can change it, but only by typing: the
+   * suggestion is never re-applied to an existing team, so a rename does not re-key it on its own.
+   *
+   * The input was disabled here on `PM-FR-022`/AC16's "immutable after" — a rule from when a key
+   * prefixed every item id, which `0036_type_prefixed_item_keys` ended. What it left behind was a name
+   * that could be edited beside a key derived from it that could not, so `Observability` renamed to
+   * `DevOps` kept `OBSERVABIL` and the only fix left was an UPDATE against the database.
    */
   // The stored roster, for the Team Lead options while EDITING (`PM-FR-021`: a lead is a member).
   // Skipped on create — there is no team yet and the ticked rows are the roster.
@@ -493,14 +498,16 @@ function TeamFormModal({
     return projectMembers.some((pm) => pm.userId === m.userId && pm.status === 'active')
   })
   /**
-   * Auto-generated from the name, editable until the first save, immutable after (`PM-FR-022`, AC16).
+   * Auto-generated from the name while creating, and correctable afterwards.
    *
-   * Reads the saved key directly while editing instead of relying on `keyTouched` having been seeded
-   * from it — same rendered value, but the immutability is now a property of this expression rather
-   * than of an initial state a later edit could stop setting. `max: 10` is the column's own ceiling
-   * (`varchar(10)`) and the server takes `^[A-Z][A-Z0-9]{1,9}$`.
+   * `keyTouched` first in both branches, so what was typed always wins; the stored key is the fallback
+   * while editing and the derived suggestion is the fallback while creating. The suggestion is never
+   * re-applied to an existing team, which is what keeps a rename from re-keying it silently.
+   * `max: 10` is the column's own ceiling (`varchar(10)`) and the server takes `^[A-Z][A-Z0-9]{1,9}$`.
    */
-  const key = team ? team.key : keyTouched || suggestKey(name, { style: 'initials', max: 10 })
+  const key = team
+    ? keyTouched || team.key
+    : keyTouched || suggestKey(name, { style: 'initials', max: 10 })
 
   /**
    * A TEAM LEAD MUST BE AN ACTIVE MEMBER OF THIS TEAM (`PM-FR-021`, AC15).
@@ -541,10 +548,10 @@ function TeamFormModal({
   async function handleSave() {
     if (!valid) return
     if (team) {
-      // No projectIds (links are not this modal's concern) and no key (immutable
-      // after create) in the PATCH.
+      // No projectIds — links are not this modal's concern. The key IS sent: it is the only way to
+      // correct one that a rename left behind, and it is only ever what the reader typed.
       updateTeam.mutate(
-        { name: name.trim(), leadId: leadId ?? null },
+        { name: name.trim(), key, leadId: leadId ?? null },
         {
           onSuccess: () => {
             notify.success('Team updated')
@@ -589,7 +596,6 @@ function TeamFormModal({
         <FormField label="Team key" hint="2–10 uppercase letters/numbers" required>
           <Input
             value={key}
-            disabled={!!team}
             onChange={(e) =>
               setKeyTouched(
                 e.target.value

@@ -212,6 +212,7 @@ export class TeamDrizzleRepository implements ITeamRepository {
     const rows = await (tx ?? this.db)
       .update(teams)
       .set({
+        ...(input.key !== undefined && { key: input.key }),
         ...(input.name !== undefined && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
         ...(input.leadId !== undefined && { leadId: input.leadId }),

@@ -63,6 +63,9 @@ export interface CreateProjectInput {
 }
 
 export interface UpdateProjectInput {
+  /** Correcting a key a rename left behind. Only ever what the reader typed — never derived from the
+   * new name, which would re-key a project whose key was chosen rather than generated. */
+  key?: string
   name?: string
   description?: string | null
   leadId?: string | null

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  ConflictException,
   NotFoundException,
   PreconditionFailedException,
   UnitOfWork,
@@ -469,6 +470,58 @@ describe('TeamService — team reads are scoped to readable projects', () => {
    * `member_capacity` / `iteration_daily_snapshots` / the two baseline tables are ON DELETE CASCADE. The
    * database would accept this delete and take frozen report history with it.
    */
+  /**
+   * A team key could not be changed through any supported path, while the create form fills one in
+   * from the name — so renaming a team left the old name's key behind. `OBSERVABIL`, the 10-character
+   * truncation of `Observability`, stayed on a team called `DevOps` until it was fixed in the database
+   * by hand. A team key never prefixed an item id, so nothing but display depended on it.
+   */
+  describe('correcting a team key after a rename', () => {
+    it('changes the key when one is supplied, uppercased like create does', async () => {
+      teamRepo.findById.mockResolvedValue(mockTeam({ key: 'OBSERVABIL' }));
+      teamRepo.findByKey.mockResolvedValue(null);
+
+      await service.updateTeam('team-1', { key: 'devops' }, 'ws-1', 'actor-1');
+
+      expect(teamRepo.update).toHaveBeenCalledWith(
+        'team-1',
+        expect.objectContaining({ key: 'DEVOPS' }),
+        expect.anything(),
+      );
+    });
+
+    it('leaves the key alone when only the name changes', async () => {
+      teamRepo.findById.mockResolvedValue(mockTeam({ key: 'MT' }));
+
+      await service.updateTeam('team-1', { name: 'Maintainer' }, 'ws-1', 'actor-1');
+
+      expect(teamRepo.findByKey).not.toHaveBeenCalled();
+      expect(teamRepo.update).toHaveBeenCalledWith(
+        'team-1',
+        expect.not.objectContaining({ key: expect.anything() }),
+        expect.anything(),
+      );
+    });
+
+    it('refuses a key already held by another team in the workspace', async () => {
+      teamRepo.findById.mockResolvedValue(mockTeam({ id: 'team-1', key: 'OBSERVABIL' }));
+      teamRepo.findByKey.mockResolvedValue(mockTeam({ id: 'team-2', key: 'DEVOPS' }));
+
+      await expect(
+        service.updateTeam('team-1', { key: 'DEVOPS' }, 'ws-1', 'actor-1'),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('accepts the key the team already has', async () => {
+      teamRepo.findById.mockResolvedValue(mockTeam({ id: 'team-1', key: 'AIP' }));
+
+      await expect(
+        service.updateTeam('team-1', { key: 'AIP', name: 'AI Platform' }, 'ws-1', 'actor-1'),
+      ).resolves.toBeDefined();
+      expect(teamRepo.findByKey).not.toHaveBeenCalled();
+    });
+  });
+
   describe('deleteTeam', () => {
     it('refuses an ACTIVE team — delete is an operation on the archive', async () => {
       teamRepo.findById.mockResolvedValue(mockTeam({ status: 'active' }));

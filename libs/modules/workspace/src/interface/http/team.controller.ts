@@ -46,6 +46,26 @@ const CreateTeamSchema = z.object({
 class CreateTeamDto extends createZodDto(CreateTeamSchema) {}
 
 const UpdateTeamSchema = z.object({
+  /**
+   * Correcting a key after a rename. This schema deliberately carried no key, on the SRS rule that
+   * a key is immutable after creation — written when a project key prefixed every item id, so changing it would have rewritten every identifier at once.
+   *
+   * `0036_type_prefixed_item_keys` gave items a type prefix (`US-1`) and `0060` moved the counters
+   * to the workspace. No item key has contained a project key since, so the rule outlived its
+   * reason, and what remained was a name that could be edited beside a key derived from it that
+   * could not — leaving `OBSE` on a project called `Infrastructure` with no supported way to fix it.
+   *
+   * Optional, and never inferred from a rename: a key is displayed beside the name, in the project
+   * switcher and in search, and some are chosen rather than derived, so regenerating one from a new
+   * name would overwrite a deliberate value. Same shape as create, and uniqueness is re-checked
+   * there, since the constraint is per workspace.
+   */
+  key: z
+    .string()
+    .min(2)
+    .max(10)
+    .regex(/^[A-Z][A-Z0-9]*$/, 'Key must be 2-10 uppercase letters/numbers, starting with a letter')
+    .optional(),
   name: z.string().min(1).max(255).trim().optional(),
   description: z.string().max(1000).trim().nullable().optional(),
   leadId: z.string().uuid().nullable().optional(),

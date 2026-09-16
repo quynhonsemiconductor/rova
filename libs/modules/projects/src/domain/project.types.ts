@@ -130,6 +130,18 @@ export interface ProjectEstimationSettings {
 }
 
 export interface UpdateProjectInput {
+  /**
+   * Correcting a key after a rename. The key was specified immutable when it prefixed every item
+   * id in the project (`PROJ-NN`), so changing it would have rewritten every identifier in sight.
+   * `0036_type_prefixed_item_keys` moved item keys to a type prefix (`US-1`) and `0060` moved the
+   * counters to the workspace, which left the key a display badge and the immutability without the
+   * reason it was written for.
+   *
+   * Optional, and only ever changed when supplied: a rename must not silently rewrite it, because a
+   * key is on screen, in the project switcher and in search, and several were chosen rather than
+   * derived (`KB` for `Knowledge Base`).
+   */
+  key?: string;
   name?: string;
   description?: string | null;
   leadId?: string | null;

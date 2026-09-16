@@ -310,6 +310,51 @@ describe('TeamFormModal — a Workspace Admin is a Team candidate, but never a p
       expect(keyField().value).toBe('CP')
     })
 
+    /**
+     * A key could not be changed once saved: this input was disabled while editing, and the PATCH left
+     * the key out entirely. So renaming a team stranded the old name's key on it — `Observability`
+     * became `DevOps` and kept `OBSERVABIL`, which had to be corrected with SQL against production.
+     *
+     * The rule came from a project key prefixing every item id, which `0036_type_prefixed_item_keys`
+     * ended.
+     */
+    it('offers the stored key for editing rather than disabling it', async () => {
+      renderTab()
+      fireEvent.click((await screen.findAllByLabelText('Edit team')).at(0)!)
+
+      const field = (await screen.findByDisplayValue('ALPHA')) as HTMLInputElement
+      expect(field).toBeEnabled()
+    })
+
+    /** A rename must not re-key the team: `KB` and `MT` were chosen, not derived from a name. */
+    it('does not re-derive the key when the name is edited', async () => {
+      renderTab()
+      fireEvent.click((await screen.findAllByLabelText('Edit team')).at(0)!)
+      const field = (await screen.findByDisplayValue('ALPHA')) as HTMLInputElement
+
+      fireEvent.change(screen.getByPlaceholderText('e.g. Core Platform'), {
+        target: { value: 'Something Entirely Different' },
+      })
+
+      expect(field.value).toBe('ALPHA')
+    })
+
+    it('sends the corrected key in the PATCH', async () => {
+      renderTab()
+      fireEvent.click((await screen.findAllByLabelText('Edit team')).at(0)!)
+      const field = (await screen.findByDisplayValue('ALPHA')) as HTMLInputElement
+
+      fireEvent.change(field, { target: { value: 'devops' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      await waitFor(() =>
+        expect(mockPATCH).toHaveBeenCalledWith(
+          expect.stringContaining('/teams/'),
+          expect.objectContaining({ body: expect.objectContaining({ key: 'DEVOPS' }) }),
+        ),
+      )
+    })
+
     it('enables Create team on the derived key alone', async () => {
       const nameField = await openCreate()
       fireEvent.change(nameField, { target: { value: 'Core Platform' } })
