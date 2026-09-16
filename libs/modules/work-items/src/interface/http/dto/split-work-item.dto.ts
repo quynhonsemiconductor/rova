@@ -25,12 +25,17 @@ import {
   workItemPriorityEnum,
   workItemScheduleStateEnum,
 } from '../../../../../../../db/schema/enums';
+import { SPLIT_INELIGIBLE_REASONS, SPLIT_SIDES } from '../../../application/split-story';
 
 /**
  * Which resulting Story an item starts on. `unfinished` is the historical placeholder that stays in
  * the source Iteration; `continued` is the original Story, moved to the target.
+ *
+ * The members come from `SPLIT_SIDES` rather than being re-typed here — same rule as the three
+ * Drizzle enums above, which read `enumValues`: a member list is declared once and every other
+ * mention derives from it, so the wire contract cannot disagree with the domain type.
  */
-export const SplitSideSchema = z.enum(['unfinished', 'continued']);
+export const SplitSideSchema = z.enum(SPLIT_SIDES);
 
 /**
  * Why Split is unavailable — **for telemetry and tests only.**
@@ -38,14 +43,10 @@ export const SplitSideSchema = z.enum(['unfinished', 'continued']);
  * SRS §11 and every AC require the control to be disabled with NO explanatory message, so the SPA
  * reads `eligible` alone and must never render this. It is in the contract so an e2e can assert which
  * rule refused, which a boolean cannot distinguish.
+ *
+ * Members from `SPLIT_INELIGIBLE_REASONS`; see {@link SplitSideSchema}.
  */
-export const SplitIneligibleReasonSchema = z.enum([
-  'not_a_story',
-  'finished_state',
-  'unscheduled',
-  'no_target',
-  'not_editable',
-]);
+export const SplitIneligibleReasonSchema = z.enum(SPLIT_INELIGIBLE_REASONS);
 
 export const SplitPreviewStorySchema = z.object({
   id: z.string().uuid(),

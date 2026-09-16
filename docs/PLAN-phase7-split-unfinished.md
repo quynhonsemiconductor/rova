@@ -467,6 +467,25 @@ panel headings and nothing else. `Split story` renders **disabled with a tooltip
       refused), strict-vs-overlapping Q3 separately, and "excludes the source itself" separately from
       the date rule *because both would reject it* and fusing them is how the wrong one ships green.
       Coverage: lines 100, funcs 100, stmts 100, branch 76.92.
+      **Review follow-up (SU-01 review, 2026-09-16): the two Split-local unions are now DERIVED, not
+      declared twice.** `SplitSide` and `SplitIneligibleReason` had been hand-copied into
+      `split-work-item.dto.ts` as `z.enum([…])` literal arrays, so a sixth reason meant two edits and
+      nothing failed if only one was made — the type and the wire contract could disagree silently.
+      They are now `SPLIT_SIDES` / `SPLIT_INELIGIBLE_REASONS` `as const` arrays with the types derived
+      via `(typeof …)[number]`, and the DTO imports the arrays and hands them to `z.enum`. This is the
+      house convention already used by `SCM_CHANGE_ACTIONS` (`scm.types.ts` → `scm-response.dto.ts`)
+      and the same rule as the Drizzle `enumValues` derivation the DTO's other three enums use.
+      `SplitRowIneligibleReason` is unchanged — `Extract` over a derived union behaves identically.
+      **SU-06 must not add a third copy:** when `0131_story_splits.sql` introduces `storySplitSideEnum`,
+      invert the derivation (`enumValues` becomes the source, `SPLIT_SIDES` goes away) rather than
+      letting Drizzle enum + domain union + zod enum coexist — noted in the docblock too.
+      **Evidence:** `typecheck` clean, `lint` clean, work-items unit **293 green**,
+      `split-story-routes.e2e.spec.ts` **18/18** (which boots the OpenAPI factory, so a broken schema
+      would fail at bootstrap). No codegen change: the arrays preserve member ORDER, so
+      `SplitSideSchema.options` / `SplitIneligibleReasonSchema.options` are byte-identical to the
+      literals the committed `generated/api.ts` already carries (`api.ts:3980`, `:4038`). The BR-14/15
+      `.describe()` text stays on the FIELD usages, not on the shared constant — the meaning is
+      per-field.
 - [x] **1.1a** *(ADDED during SU-01 — not in the original plan)*
       `libs/modules/work-items/src/domain/iteration-assignable.ts` — the ONE pure project/team
       predicate, `iterationAssignmentRefusal(scope, item): 'project'｜'team'｜null`.

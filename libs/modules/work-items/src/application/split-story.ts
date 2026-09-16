@@ -34,8 +34,16 @@ import type { WorkItem } from '../domain/work-item.types';
  * original Story, moved forward to the target. Named for the two Stories rather than for screen
  * position ("left"/"right"), which is what the mockup calls them and what a future layout change
  * would falsify.
+ *
+ * **The array is the single declaration of the member list and the type is derived from it**, the
+ * `SCM_CHANGE_ACTIONS` convention, so `split-work-item.dto.ts` can hand the SAME array to `z.enum`
+ * instead of re-typing the members. Adding a side is then one edit, and the wire contract cannot
+ * disagree with the domain type. When SU-06's `0131_story_splits.sql` introduces a `split_side`
+ * column, invert the derivation exactly as the other enums do — `storySplitSideEnum.enumValues`
+ * becomes the source and this array goes away — rather than adding a third copy.
  */
-export type SplitSide = 'unfinished' | 'continued';
+export const SPLIT_SIDES = ['unfinished', 'continued'] as const;
+export type SplitSide = (typeof SPLIT_SIDES)[number];
 
 /**
  * Why Split is unavailable. Returned by the preview for TELEMETRY AND TESTS ONLY — SRS §11 and every
@@ -45,9 +53,19 @@ export type SplitSide = 'unfinished' | 'continued';
  * Five members, decided in three different places, which is why no single function returns all of
  * them: `not_a_story`/`finished_state`/`unscheduled` come from the row ({@link splitIneligibleReason}),
  * `no_target` from the filtered candidate set, and `not_editable` from the permission check.
+ *
+ * Derived from the array for the same reason as {@link SPLIT_SIDES}: the DTO's
+ * `SplitIneligibleReasonSchema` reads this array, so a sixth reason is one edit and never a silent
+ * disagreement between the type and the response schema.
  */
-export type SplitIneligibleReason =
-  'not_a_story' | 'finished_state' | 'unscheduled' | 'no_target' | 'not_editable';
+export const SPLIT_INELIGIBLE_REASONS = [
+  'not_a_story',
+  'finished_state',
+  'unscheduled',
+  'no_target',
+  'not_editable',
+] as const;
+export type SplitIneligibleReason = (typeof SPLIT_INELIGIBLE_REASONS)[number];
 
 /** The subset of {@link SplitIneligibleReason} decidable from the Story row alone. */
 export type SplitRowIneligibleReason = Extract<
