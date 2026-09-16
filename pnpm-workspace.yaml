@@ -45,7 +45,7 @@ overrides:
   # GHSA-c96f-x56v-gq3h — HIGH "DDoS with HTTP2", fixed in 9.7.0. Transitive
   # via fastify@5.10.0 / @nestjs/platform-fastify (declared range ^9.6.0, so
   # 9.7.0 is in-range). A newly published advisory that also affects main.
-  "find-my-way@<9.7.0": "9.7.0"
+  "find-my-way@<9.7.0": "9.9.0"
   # GHSA-4c8g-83qw-93j6, GHSA-7p8r-x3mc-p8w7 and now GHSA-5jgf-p345-68v8 /
   # GHSA-f65p-4m7j-42xc / GHSA-fph4-wmhf-6fwf / GHSA-jqff-g426-hqxp (CVSS 7.5 each) — host
   # confusion and SSRF in the same URI parser, six advisories running: failed IDN
