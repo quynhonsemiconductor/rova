@@ -3514,6 +3514,7 @@ export interface components {
       memberUserIds?: string[]
     }
     UpdateTeamDto: {
+      key?: string
       name?: string
       description?: string | null
       leadId?: string | null
@@ -3612,6 +3613,7 @@ export interface components {
       pageSize: number
     }
     UpdateProjectDto: {
+      key?: string
       name?: string
       description?: string | null
       leadId?: string | null
