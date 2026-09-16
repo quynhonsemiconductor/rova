@@ -1,0 +1,25 @@
+{
+  "action": {
+    "label": "Split unfinished story",
+    "menuLabel": "More work item actions",
+    "bulkLabel": "Split",
+    "disabledOneStory": "Select exactly one User Story to split",
+    "disabledNotEligible": "This story cannot be split"
+  },
+  "modal": {
+    "title": "Splitting {{key}}: {{title}}",
+    "cancel": "Cancel",
+    "confirm": "Split story",
+    "confirmDisabled": "Saving a split is not available yet"
+  },
+  "panels": {
+    "unfinished": "[Unfinished] — stays in {{iteration}}",
+    "unfinishedNoIteration": "[Unfinished]",
+    "continued": "[Continued] — moves to a later iteration"
+  },
+  "error": {
+    "title": "Could not load the split",
+    "description": "Something went wrong preparing this split. Try again shortly."
+  },
+  "loading": "Preparing the split…"
+}

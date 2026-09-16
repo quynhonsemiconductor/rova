@@ -66,6 +66,7 @@ import { notify } from '@/shared/lib/toast'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { DetailLayout } from '@/shared/ui/detail/detail-layout'
 import { DetailHeaderButton } from '@/shared/ui/detail-header'
+import { WorkItemActionsMenu } from '@/pages/work-item/ui/work-item-actions-menu'
 import { TasksTab } from './ui/tasks-tab'
 import { HistoryTab } from './ui/detail-tabs'
 import { ConnectionsTab } from './ui/connections-tab'
@@ -453,6 +454,18 @@ export function WorkItemDetailPage() {
               <span>{t('delete.action')}</span>
             </DetailHeaderButton>
           )}
+
+          {/* "More work item actions" — NEW in Phase 7 SU-01, and it holds only `Split unfinished
+              story`. Nothing above is moved into it: Watch and Delete are shipped, tested
+              affordances and no AC asks for them to be relocated. Renders nothing for a non-Story
+              or a caller without `work_item:edit`. */}
+          <WorkItemActionsMenu
+            workItemId={item.id}
+            itemKey={item.itemKey}
+            title={item.title ?? ''}
+            type={item.type}
+            canEdit={!readOnly}
+          />
         </>
       }
     >

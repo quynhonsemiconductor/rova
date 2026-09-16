@@ -1029,6 +1029,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/work-items/{id}/split-preview': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Split eligibility, valid target Iterations and the distributable children */
+    get: operations['WorkItemsController_getSplitPreview']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/work-items/{id}/activity': {
     parameters: {
       query?: never
@@ -3953,6 +3970,105 @@ export interface components {
       estimateHours?: number
       todoHours?: number
       actualHours?: number
+    }
+    SplitPreviewResponseDto: {
+      /** @description The ONLY field the UI branches on (SRS §11). */
+      eligible: boolean
+      ineligibleReason:
+        ('not_a_story' | 'finished_state' | 'unscheduled' | 'no_target' | 'not_editable') | null
+      story: {
+        /** Format: uuid */
+        id: string
+        itemKey: string
+        title: string
+        /** @description work_items.story_points — the BA’s "Plan Estimate". null = unpointed, not 0. */
+        planEstimate: number | null
+        /** @enum {string} */
+        scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
+        releaseId: string | null
+        /** @description Resolved from the row’s own release_id, not from a release feed: an Editor holds no release:view, so a name sourced from an offer list would be absent for the callers who own the Story. */
+        releaseName: string | null
+        iterationId: string | null
+        iterationName: string | null
+        teamId: string | null
+        /** Format: uuid */
+        projectId: string
+      }
+      /** @description BR-05 — the valid targets, EARLIEST FIRST. Exactly the set the write path accepts. */
+      targets: {
+        /** Format: uuid */
+        id: string
+        /** @description iterations.name */
+        name: string
+        iterationKey: string | null
+        /** @enum {string} */
+        state: 'planning' | 'committed' | 'accepted'
+        /** @description ISO date YYYY-MM-DD — a date column, never .datetime() */
+        startDate: string | null
+        /** @description ISO date YYYY-MM-DD */
+        endDate: string | null
+      }[]
+      defaults: {
+        /** @description BR-12 — "[Unfinished] " + the bare title (Q10 strips any existing prefix) */
+        unfinishedTitle: string
+        /** @description BR-12 — "[Continued] " + the bare title */
+        continuedTitle: string
+        /** @description BR-06 — the EARLIEST valid target. null when there is none (⇒ ineligible, no_target). */
+        targetIterationId: string | null
+      }
+      tasks: {
+        /** Format: uuid */
+        id: string
+        itemKey: string
+        title: string
+        /**
+         * @description work.tasks.state — defined｜in_progress｜completed, a subset of the schedule states
+         * @enum {string}
+         */
+        state: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
+        todoHours: number | null
+        estimateHours: number | null
+        actualHours: number | null
+        /**
+         * @description BR-14 — a Completed Task defaults to [Unfinished]; every other Task to [Continued]. Decided server-side and never re-derived in the browser.
+         * @enum {string}
+         */
+        defaultSide: 'unfinished' | 'continued'
+      }[]
+      defects: {
+        /** Format: uuid */
+        id: string
+        itemKey: string
+        title: string
+        /** @enum {string} */
+        scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
+        /** @enum {string} */
+        priority: 'none' | 'low' | 'normal' | 'high' | 'urgent'
+        /** @description BR-18 — the Defect’s OWN Iteration, which Split never writes. null = Unscheduled. */
+        explicitIterationId: string | null
+        explicitIterationName: string | null
+        /**
+         * @description BR-15 — always continued
+         * @enum {string}
+         */
+        defaultSide: 'unfinished' | 'continued'
+      }[]
+      testCases: {
+        /** Format: uuid */
+        id: string
+        testCaseKey: string
+        /** @description test_cases.name */
+        name: string
+        /** @description Text SNAPSHOT of the Type name — survives the Type being archived */
+        type: string
+        /** @description Trigger-maintained. null is a fact ("no Result yet"), rendered as Not Run — never 0. */
+        lastVerdict: string | null
+        /**
+         * @description BR-15 — always continued
+         * @enum {string}
+         */
+        defaultSide: 'unfinished' | 'continued'
+      }[]
     }
     ActivityResponseDto: {
       /** Format: uuid */
@@ -9763,6 +9879,48 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkItemsController_getSplitPreview: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SplitPreviewResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }
