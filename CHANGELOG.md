@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.18](https://github.com/quynhonsemiconductor/rova/compare/v0.7.17...v0.7.18) (2026-09-16)
+
+
+### ✨ Features
+
+* **work-items:** open split for an eligible user story ([#615](https://github.com/quynhonsemiconductor/rova/issues/615)) ([1815aa2](https://github.com/quynhonsemiconductor/rova/commit/1815aa2da91b8849ef60778a5ccc52994de0f847))
+
+
+### 🐛 Bug Fixes
+
+* **codeowners:** rally-maintainers does not exist ([#612](https://github.com/quynhonsemiconductor/rova/issues/612)) ([fb41021](https://github.com/quynhonsemiconductor/rova/commit/fb41021f1b6dd3f8e6583fb2392dc42d68b506c2))
+* let a key be corrected after a rename ([#614](https://github.com/quynhonsemiconductor/rova/issues/614)) ([b287c7c](https://github.com/quynhonsemiconductor/rova/commit/b287c7c6162ab294a73d73e857bc241e0ffb4b4d))
+
 ## [0.7.17](https://github.com/quynhonsemiconductor/rova/compare/v0.7.16...v0.7.17) (2026-09-13)
 
 
