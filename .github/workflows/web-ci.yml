@@ -239,7 +239,17 @@ jobs:
         run: pnpm --filter rova-web exec playwright install --with-deps chromium
 
       - name: Run E2E
-        run: pnpm --filter rova-web exec playwright test --reporter=line
+        # No `--reporter=` here: the CLI flag REPLACES the config's reporter array rather than
+        # adding to it, which is why the json report was missing and the flake step below had
+        # nothing to read. playwright.config.ts picks `list` plus `json` when CI is set.
+        run: pnpm --filter rova-web exec playwright test
+
+      # `always()`: the interesting case is a run that PASSED, because a pass hiding a retry is
+      # exactly what went unnoticed. Never fails the job — see the script for why the ratchet
+      # (`--fail-on-flaky-tests`) is not on yet.
+      - name: Flaky tests (passed only on retry)
+        if: always()
+        run: node scripts/report-flaky-e2e.mjs apps/web/playwright-results.json
 
       - name: Upload Playwright report
         if: always()
