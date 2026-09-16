@@ -60,6 +60,9 @@ export interface CreateTeamInput {
 }
 
 export interface UpdateTeamInput {
+  /** Correcting a key after a rename — see `UpdateProjectInput.key`. A team key never prefixed an
+   * item id at all, so it was only ever a badge beside a name that is already on screen. */
+  key?: string;
   name?: string;
   description?: string | null;
   leadId?: string | null;

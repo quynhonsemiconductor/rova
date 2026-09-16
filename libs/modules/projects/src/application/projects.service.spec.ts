@@ -1128,6 +1128,76 @@ describe('ProjectsService', () => {
   // ── updateProject ─────────────────────────────────────────────────────────
 
   describe('updateProject', () => {
+    /**
+     * A key could not be changed through any supported path, while the form that creates one fills it
+     * in from the name — so a rename left a key derived from the old name with no way to correct it.
+     * `OBSE` sat on a project called `Infrastructure` until it was fixed by hand in the database.
+     */
+    it('changes the key when one is supplied, uppercased like create does', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject({ key: 'OBSE' }));
+      projectRepo.findByKey.mockResolvedValue(null);
+      projectRepo.update.mockResolvedValue(mockProject({ key: 'INFRA' }));
+
+      await service.updateProject(mockActor, 'proj-1', { key: 'infra' });
+
+      expect(projectRepo.update).toHaveBeenCalledWith(
+        'proj-1',
+        expect.objectContaining({ key: 'INFRA' }),
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    /** A rename on its own must not touch the key: some keys are chosen, not derived from a name. */
+    it('leaves the key alone when only the name changes', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject({ key: 'KB' }));
+      projectRepo.update.mockResolvedValue(mockProject({ name: 'Renamed', key: 'KB' }));
+
+      await service.updateProject(mockActor, 'proj-1', { name: 'Renamed' });
+
+      expect(projectRepo.findByKey).not.toHaveBeenCalled();
+      expect(projectRepo.update).toHaveBeenCalledWith(
+        'proj-1',
+        expect.not.objectContaining({ key: expect.anything() }),
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('refuses a key already held by another project in the workspace', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject({ id: 'proj-1', key: 'OBSE' }));
+      projectRepo.findByKey.mockResolvedValue(mockProject({ id: 'proj-2', key: 'INFRA' }));
+
+      await expect(
+        service.updateProject(mockActor, 'proj-1', { key: 'INFRA' }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    /**
+     * A form that posts every field re-sends the current key on any edit. That has to stay a no-op
+     * rather than colliding with the project's own row.
+     */
+    it('accepts the key the project already has', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject({ id: 'proj-1', key: 'AIP' }));
+      projectRepo.update.mockResolvedValue(mockProject({ id: 'proj-1', key: 'AIP' }));
+
+      await expect(
+        service.updateProject(mockActor, 'proj-1', { key: 'AIP', name: 'AI Platform' }),
+      ).resolves.toBeDefined();
+      expect(projectRepo.findByKey).not.toHaveBeenCalled();
+    });
+
+    /** Uniqueness is per workspace, so a row found under a different id is the only real clash. */
+    it('accepts a key whose only match is the project itself', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject({ id: 'proj-1', key: 'OLD' }));
+      projectRepo.findByKey.mockResolvedValue(mockProject({ id: 'proj-1', key: 'AIP' }));
+      projectRepo.update.mockResolvedValue(mockProject({ id: 'proj-1', key: 'AIP' }));
+
+      await expect(
+        service.updateProject(mockActor, 'proj-1', { key: 'AIP' }),
+      ).resolves.toBeDefined();
+    });
+
     it('updates project', async () => {
       projectRepo.findById.mockResolvedValue(mockProject());
       projectRepo.update.mockResolvedValue(mockProject({ name: 'Renamed' }));

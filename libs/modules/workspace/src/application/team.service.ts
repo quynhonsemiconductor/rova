@@ -273,6 +273,22 @@ export class TeamService {
   ): Promise<Team> {
     const team = await this.getTeam(id, workspaceId);
 
+    // Same per-workspace uniqueness as create, and the team's own row first so that re-sending an
+    // unchanged key stays a no-op. See `UpdateProjectInput.key` for why this is editable at all.
+    if (input.key !== undefined) {
+      const normalizedKey = input.key.toUpperCase().trim();
+      if (normalizedKey !== team.key) {
+        const clash = await this.teamRepo.findByKey(workspaceId, normalizedKey);
+        if (clash && clash.id !== id) {
+          throw new ConflictException(
+            'TEAM_KEY_TAKEN',
+            `Team key "${normalizedKey}" is already taken in this workspace`,
+          );
+        }
+      }
+      input = { ...input, key: normalizedKey };
+    }
+
     if (input.status === 'archived' && team.status === 'archived') {
       throw new ConflictException('TEAM_ALREADY_ARCHIVED', 'Team is already archived');
     }
@@ -324,6 +340,9 @@ export class TeamService {
       const after = await this.teamRepo.update(
         id,
         {
+          // Listed explicitly, so a field absent here never reaches the row however the schema
+          // changes — which is why a key had to be added in two places, not one.
+          key: input.key,
           name: input.name,
           description: input.description,
           leadId: input.leadId,
