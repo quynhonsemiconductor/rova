@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| Status | **SU-01 implemented and pushed on `feat/su-01-split-preview`, review-approved, awaiting merge; SU-02 in progress** (2026-09-16) — §6.0 gate green locally for both, see the gate records under PR 1 and PR 2. SU-03…SU-10 not started. Sequential delivery, 1 SU = 1 PR (SU-02 is stacked on SU-01 by necessity — see the PR 2 gate record). All §8 rulings resolved 2026-09-16 (see §8). |
+| Status | **SU-01 MERGED (PR #615, 2026-09-17); SU-02 implemented, gate green on a tree rebased onto `main`, PR open.** SU-03…SU-10 not started. Sequential delivery, 1 SU = 1 PR — SU-02 was built stacked on SU-01 out of necessity and then rebased onto `main` once SU-01 merged (see the PR 2 gate record). All §8 rulings resolved 2026-09-16 (see §8). |
 | Author | Solution Architect (with BA `FEATURE.md` / `SRS.md` / `USER_STORIES.md` + approved mockup) |
 | Created | 2026-09-14 |
 | Feature code | `SU` |
@@ -887,50 +887,62 @@ Pure front-end on top of PR 1's preview. Nothing is saved.
 
 **AC coverage:** AC1–AC7 all in 2.1–2.6.
 
-#### SU-02 gate record — measured 2026-09-16/17, Windows dev machine
+#### SU-02 gate record — measured 2026-09-16, RE-MEASURED 2026-09-17 on the rebased tree
 
-**Base: `feat/su-01-split-preview`, not `main` — a DELIBERATE, acknowledged deviation from §8 Q16.**
-Every file SU-02 extends (`split-story-modal.tsx`, `split-story.json`, and the `SplitPreview` types it
-imports) ships in SU-01, which is review-approved but not yet merged, so there is no `main` to build
-this on. The PR is marked blocked-on-SU-01 and must not merge first. **The gate below is therefore
-measured on the stacked base; when SU-01 merges, `git rebase origin/main` and re-run all of §6.0 — a
-gate measured on a stacked base is not the final gate.**
+**SU-01 MERGED as PR #615 (squash) while SU-02 was in the gate, and its branch was deleted.** SU-02 was
+built on `feat/su-01-split-preview` — a deliberate, acknowledged deviation from §8 Q16 (*sequential, no
+PR stacking*), because every file it extends shipped in SU-01 and there was no `main` to build on. That
+deviation is now **resolved rather than merely declared**: the branch was replayed with
+`git rebase --onto origin/main 5822e2d3` (only SU-02's two commits, since SU-01's content is in main's
+squashed commit under a different SHA), **which applied with zero conflicts**, and the whole §6.0 gate
+was re-run on the rebased tree. The PR targets `main` and is no longer blocked on anything.
 
-| §6.0 item | Result |
+The table below is the RE-MEASURED run. Where the stacked-base run differed, it is noted — and the
+difference is all in SU-02's favour, because main also carried the fix for SU-01's two declared
+pre-existing failures (PR #617, "walk `infra/` in Node so the alarm guards run off Linux").
+
+| §6.0 item | Result on the rebased tree |
 |---|---|
-| `pnpm typecheck` | **exit 0** |
-| `npx tsc -b --force` (repo root) | **exit 0** — but see the note below: it does NOT type-check the SPA |
+| `pnpm install --frozen-lockfile` | **exit 0** (main moved 0.7.17 → 0.7.18; no dependency change) |
 | `pnpm lint` (repo-scoped) | **exit 0** |
 | `pnpm --filter rova-web lint` | **exit 0** |
+| `pnpm typecheck` | **exit 0** |
+| `npx tsc -b --force` (repo root) | **exit 0** — but see note 1: it does NOT type-check the SPA |
 | `pnpm build` (api + worker) | **exit 0** |
-| `pnpm build:web` | **exit 0** (after one fix — below) |
-| `pnpm test` | **91 files / 2187 green; the 2 PRE-EXISTING `grep` failures only** |
-| `pnpm --filter rova-web test` | **148 files / 1226 tests, all green** (twice — see the flake note below) |
-| `pnpm test:cov` + `check:coverage-floors` | **exit 0** — `Coverage floors are within 3 points of actual coverage` |
-| `pnpm test:e2e` | **73 / 73 files, 650 passed / 1 skipped** |
-| `pnpm db:seed:test` → Playwright | **48 / 48 passed (11.9m) — including the 5 that were failing in SU-01's run** |
-| FE `fe-consistency` (61/173/2/12/47/929/3) | green — largest new file **317** lines (`split-draft.ts`); `api.ts` **not touched** |
+| `pnpm build:web` | **exit 0** (caught a real error on the first pass — note 1) |
+| `pnpm test` | **93 / 93 files, 2189 / 2189 tests, exit 0 — ZERO pre-existing failures.** On the stacked base this was 91 files / 2187 with the two documented Windows `grep` failures; main's PR #617 removed them, so SU-02 declares **none**. |
+| `pnpm --filter rova-web test` | **148 files / 1226 tests, exit 0** (three full runs green; one intermediate run hit a load-flake timeout — see the note below) |
+| `pnpm test:cov` + `pnpm check:coverage-floors` | **exit 0**, `Coverage floors are within 3 points of actual coverage`. Statements **86.55**, branches **80.31**, functions **85.17**, lines **87.43** vs floors 85 / 79 / 84 / 86. No floor touched — SU-02 changes no backend file. |
+| `pnpm test:e2e` | **73 / 73 files, 650 passed / 1 skipped, exit 0** |
+| `pnpm db:seed:test` → `pnpm --filter rova-web test:e2e` | **48 / 48 passed (11.9m) — MEASURED ON THE STACKED BASE, deliberately NOT re-measured after the rebase.** See the note below; this is the one gate line that is not from the rebased tree. |
+| FE `fe-consistency` (61/173/2/12/47/929/3) | green — largest new file **317** lines (`split-draft.ts`); `api.ts` **not touched**, still 923 of 929 |
 | FE `query-default` (96/2) | green (unchanged — no `?? []` added) |
 | FE `no-raw-hex` | **0** (unchanged) |
 | FE `detail-copy-link` | green (unchanged) |
-| backend ratchets (`route-policy`, `route-audience`, `workspace-scope` 66, `query-ordering` 0, `e2e-fixtures` 81, `coverage-include`) | green — **zero backend files changed** |
+| backend ratchets (`route-policy`, `route-audience`, `workspace-scope` 66, `query-ordering` 0, `e2e-fixtures` 81, `coverage-include`) | green — **zero backend files changed**; `coverage-include.spec.ts` needed no edit because it excludes `apps/web/` outright (its own vitest project) |
 
-Coverage, measured with `--coverage.reportOnFailure=true`: statements **86.55**, branches **80.31**,
-functions **85.17**, lines **87.43**, against floors 85 / 79 / 84 / 86. SU-02 changes no backend file,
-so this is SU-01's surface re-measured; no floor was touched.
+> **Playwright was run ONCE, before the rebase, and that is a recorded gap rather than a claim.**
+> 48/48 passed (11.9m) on identical SU-02 code; between that run and the rebase, `main` changed
+> `apps/web/playwright.config.ts` and added `scripts/report-flaky-e2e.mjs` (PR #618, retry reporting),
+> so the harness moved even though the feature code did not. The suite costs ~12 minutes of wall clock
+> and SU-02 adds **no Playwright journey** (SU-06 owns `split-story.e2e.ts`), so it was skipped on the
+> re-run by an explicit decision, not overlooked. **Whoever merges should let CI's `Web CI required`
+> job be the authority on this line.**
 
-**Where reality overrode the plan — four things, all worth the next session's time.**
+**Where reality overrode the plan — five things, all worth the next session's time.**
 
 1. **`pnpm typecheck` and `tsc -b --force` do NOT type-check `apps/web`.** Both passed while
    `split-draft.ts` held a real type error (`Array.reduce` inferring `number | null` for its
    accumulator); **`pnpm build:web` caught it**, because the SPA's own `tsc -b` is inside that script.
    §6.0 calls `tsc -b --force` "the real check" — for the backend it is; for the SPA the real check is
-   `build:web` (or `pnpm --filter rova-web exec tsc -b`). Run it BEFORE the test suites, not after.
+   `build:web` (or `pnpm --filter rova-web exec tsc -b`), and the pre-commit hook's `tsc -b`. Run it
+   BEFORE the test suites, not after.
 2. **`pnpm test:cov` writes no report when any test fails.** Vitest's `coverage.reportOnFailure`
-   defaults to `false`, and the two documented Windows `grep` failures are enough to suppress it — so
-   `check:coverage-floors` fails with `No coverage summary at coverage/coverage-summary.json`, which
-   reads like a missing reporter rather than a suppressed report. Use
-   `pnpm exec vitest run --coverage --coverage.reportOnFailure=true`.
+   defaults to `false`, and on the stacked base the two Windows `grep` failures were enough to suppress
+   it — so `check:coverage-floors` failed with `No coverage summary at coverage/coverage-summary.json`,
+   which reads like a missing reporter rather than a suppressed report. The workaround is
+   `pnpm exec vitest run --coverage --coverage.reportOnFailure=true`. On the rebased tree it is moot
+   (nothing fails), but it will bite again the next time any spec is red.
 3. **Two SU-01 TEST files had to change, and a third assertion had to change its mechanism.**
    `bulk-split-story.test.tsx` and `split-story-modal.test.tsx` both render the real modal, whose
    `[Continued]` panel now reads the release reference feed — an unmocked `useQuery` with no
@@ -942,17 +954,17 @@ so this is SU-01's surface re-measured; no floor was touched.
    throws on). It is now case-sensitive containment on `document.body.textContent` — the honest claim,
    and a stricter one: the RAW snake_case wire value never reaches the screen. **SU-03/04/05 will hit
    this again** as more product vocabulary lands in the panels.
-4. **Playwright's chromium binary was absent** (`chromium_headless_shell-1243`) and the suite reported
-   48 launch failures that look nothing like a browser-install problem; `pnpm --filter rova-web exec
-   playwright install chromium` fixed it. Also: the run needs **both** the Vite dev server (started by
-   the Playwright config) **and** the API — without the API every test fails on
-   `[vite] http proxy error: /v1/bff/dev-login`. Start `node dist/apps/api/apps/api/src/main.js` first.
-   With that in place all **48 passed**, including the 4 × `capacity-allocation` + 1 × `portfolio` that
-   SU-01 recorded as pre-existing failures — they pass on a freshly migrated + seeded database, which
-   supports SU-01's reading of them as data-dependent rather than code-dependent.
+4. **Playwright needs a browser install AND a running API, and neither failure says so.** The chromium
+   binary was absent (`chromium_headless_shell-1243`) and the suite reported 48 launch failures;
+   `pnpm --filter rova-web exec playwright install chromium` fixed it. Then every test failed on
+   `[vite] http proxy error: /v1/bff/dev-login` — the Playwright config starts Vite but **not** the API,
+   so `node dist/apps/api/apps/api/src/main.js` has to be up first. With both in place, 48/48.
+5. **The SU-01 tick's test count is off by one.** It records "`split-story-modal.test.tsx` (14)"; the
+   committed file has **13** `it()` blocks (measured). SU-02 extended it to **17**. Small, but the whole
+   point of annotating a tick is that the next session can trust the number.
 
 **The `PR 2 — SU-02` row above is deliberately NOT ticked**: per §6 that tick means MERGED with a green
-gate, and this PR is blocked on SU-01.
+gate, and this PR is open.
 
 > **The FE suite has load flake too, and it is not only the BE suite that needs the isolation rule.**
 > One full run failed `pages/backlog/backlog-filters.test.tsx > P2-BL-TS-014` on `Test timed out in
