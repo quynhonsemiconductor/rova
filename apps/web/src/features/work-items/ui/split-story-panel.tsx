@@ -32,14 +32,22 @@ import {
   SCHEDULE_STATE_LABEL,
   SCHEDULE_STATE_VALUES,
 } from '@/entities/work-item/model/types'
+import { ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
 import { useReleaseOptions } from '@/features/releases/api'
+import { VerdictBadge } from '@/features/test-cases/ui/verdict-badge'
+import { TEST_VERDICT_STYLE } from '@/features/test-cases/status-colors'
 import type { SplitPreview, SplitSide } from '@/features/work-items/api'
-import type {
-  SplitDerived,
-  SplitDraft,
-  SplitDraftAction,
+import {
+  rowsOnSide,
+  unfinishedIdsFor,
+  type SplitDerived,
+  type SplitDraft,
+  type SplitDraftAction,
+  type SplitItemKind,
 } from '@/features/work-items/model/split-draft'
+import { SplitCollection } from '@/features/work-items/ui/split-collection'
 import { listResource } from '@/shared/lib/query/resource'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { DetailReadonlyValue } from '@/shared/ui/detail'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
@@ -66,7 +74,12 @@ interface PanelProps {
  * the SU-01 review closed by deriving both unions from one `as const` array.
  */
 export function SplitStoryPanel({ side, ...props }: PanelProps & { side: SplitSide }) {
-  return side === 'unfinished' ? <UnfinishedFields {...props} /> : <ContinuedFields {...props} />
+  return (
+    <>
+      {side === 'unfinished' ? <UnfinishedFields {...props} /> : <ContinuedFields {...props} />}
+      <SplitCollections side={side} {...props} />
+    </>
+  )
 }
 
 function UnfinishedFields({ preview, draft, derived, dispatch }: PanelProps) {
@@ -243,4 +256,128 @@ function ContinuedFields({ preview, draft, derived, dispatch }: PanelProps) {
       </FormField>
     </div>
   )
+}
+
+/**
+ * The three distributions for ONE side (SU-03/04/05).
+ *
+ * Which side an item sits on is the draft's answer, seeded from the server's `defaultSide` (BR-14: a
+ * Completed Task defaults left; BR-15: Defects and Test Cases default right) and never re-derived
+ * here — a Task's `state` is NOT consulted to decide its side, which is why the model test asserts
+ * that a `defaultSide` contradicting the state still wins.
+ *
+ * `rowsOnSide` reads the `[Continued]` side as the COMPLEMENT of the stored `[Unfinished]` set, in
+ * the preview's own array order, so an item moved across and back lands where it started rather than
+ * at the end of the list.
+ */
+function SplitCollections({ side, preview, draft, dispatch }: PanelProps & { side: SplitSide }) {
+  const { t } = useTranslation('split-story')
+  const move = (kind: SplitItemKind) => (id: string) =>
+    // The arrow always sends the row to the OTHER side.
+    dispatch({
+      type: 'move',
+      kind,
+      id,
+      side: side === 'unfinished' ? 'continued' : 'unfinished',
+    })
+
+  return (
+    <div className="space-y-3 pt-1">
+      <SplitCollection
+        kind="task"
+        side={side}
+        label={t('collections.tasks')}
+        rows={rowsOnSide(preview.tasks, unfinishedIdsFor(draft, 'task'), side)}
+        keyOf={(task) => task.itemKey}
+        titleOf={(task) => task.title}
+        meta={(task) => (
+          <>
+            {/*
+              THE 6-vs-3 STATE WART, inherited from SU-01 and handled here as §6 PR 3.2 requires.
+              `tasks[].state` is typed `WorkItemScheduleState` (six values) because the read model
+              projects `tasks.state` onto that field, while only `defined｜in_progress｜completed` can
+              occur. `ScheduleStateBadge` takes all six from the SHARED config with a fallback, so
+              there is no `switch` here and therefore no unreachable arm — condition (a) satisfied
+              without writing dead branches. Narrowing the DTO is a BACKEND change and is out of
+              scope for a front-end PR (it would also need the `openapi` breaking-change check
+              condition (b) warns about); the canonical projection is still file-private in
+              `work-item.drizzle-repository.ts`, so promoting it — never copying it — remains SU-06's
+              option.
+            */}
+            <ScheduleStateBadge state={task.state} />
+            <span className="text-ui-xs whitespace-nowrap text-foreground-subtle">
+              {task.todoHours === null
+                ? EMPTY_VALUE
+                : t('collections.todo', { hours: task.todoHours })}
+            </span>
+          </>
+        )}
+        onMove={move('task')}
+      />
+
+      <SplitCollection
+        kind="defect"
+        side={side}
+        label={t('collections.defects')}
+        rows={rowsOnSide(preview.defects, unfinishedIdsFor(draft, 'defect'), side)}
+        keyOf={(defect) => defect.itemKey}
+        titleOf={(defect) => defect.title}
+        meta={(defect) => (
+          <>
+            {/*
+              BR-18 / SU-04 AC4 — a Defect's OWN Iteration, which Split never writes. Stated inline in
+              an amber token because it is a fact the reader should see before distributing the row,
+              and stated in NO other way: no warning sentence, no icon, and it blocks nothing
+              (SRS §12). Absent when the Defect has none — which per §8 Q8's ruling stays unscheduled
+              and appears in no Iteration report, a no-op Split does not change.
+            */}
+            {defect.explicitIterationName && (
+              <span className="text-ui-xs whitespace-nowrap text-warning">
+                {t('collections.explicit', { iteration: defect.explicitIterationName })}
+              </span>
+            )}
+            <ScheduleStateBadge state={defect.scheduleState} />
+            <PriorityBadge priority={defect.priority} />
+          </>
+        )}
+        onMove={move('defect')}
+      />
+
+      <SplitCollection
+        kind="testCase"
+        side={side}
+        label={t('collections.testCases')}
+        rows={rowsOnSide(preview.testCases, unfinishedIdsFor(draft, 'testCase'), side)}
+        // A Test Case carries `testCaseKey` and `name` where a work item carries `itemKey`/`title`
+        // (§3.1's per-entity field ruling) — which is exactly why these two are props.
+        keyOf={(testCase) => testCase.testCaseKey}
+        titleOf={(testCase) => testCase.name}
+        meta={(testCase) => (
+          <>
+            <span className="text-ui-xs whitespace-nowrap text-foreground-subtle">
+              {testCase.type}
+            </span>
+            {/*
+              REUSES `VerdictBadge` + `TEST_VERDICT_STYLE` rather than re-styling verdicts (§8 Q17).
+              The boundaries lint does NOT refuse this: FSD allows same-layer imports
+              (`features` → `features`), so promoting the badge to `shared/ui` — which §6 PR 5.1
+              expected to be necessary — would have been a bigger diff for no rule.
+              The guard exists because the preview types `lastVerdict` as `string | null` while the
+              badge takes the six-member union: an unknown verdict renders as `Not Run` (BR10's
+              null case) instead of indexing the style map with a missing key and crashing the modal.
+            */}
+            <VerdictBadge verdict={knownVerdict(testCase.lastVerdict)} />
+          </>
+        )}
+        onMove={move('testCase')}
+      />
+    </div>
+  )
+}
+
+/** `null` for anything the verdict style map does not know — rendered as `Not Run`. */
+function knownVerdict(value: string | null): keyof typeof TEST_VERDICT_STYLE | null {
+  return value !== null && value in TEST_VERDICT_STYLE
+    ? (value as keyof typeof TEST_VERDICT_STYLE)
+    : null
 }

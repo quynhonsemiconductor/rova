@@ -303,9 +303,15 @@ describe('SplitStoryPanel', () => {
     // The field is marked, so the state IS being rendered…
     expect(document.body.querySelectorAll('[aria-invalid="true"]')).toHaveLength(2)
     // …and nothing anywhere says a word about it. `FormField`'s `error` prop renders
-    // `role="alert"`, which is exactly why it is never passed.
+    // `role="alert"`, which is exactly why it is never passed. `role="status"` is checked by TEXT,
+    // not by presence: `DndContext` (SU-03) renders an empty `aria-live` announcer for drag
+    // accessibility, and an empty live region announces nothing — a toast would have words.
     expect(document.body.querySelector('[role="alert"]')).toBeNull()
-    expect(document.body.querySelector('[role="status"]')).toBeNull()
+    expect(
+      [...document.body.querySelectorAll('[role="status"]')]
+        .map((n) => n.textContent ?? '')
+        .join(''),
+    ).toBe('')
     expect(screen.queryByText(/required/i)).toBeNull()
     expect(screen.queryByText(/invalid/i)).toBeNull()
     expect(screen.queryByText(/must be/i)).toBeNull()

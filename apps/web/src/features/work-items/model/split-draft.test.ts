@@ -18,8 +18,10 @@ import {
   deriveSplitDraft,
   initSplitDraft,
   parsePlanEstimate,
+  rowsOnSide,
   splitDraftReducer,
   splitPreviewTotals,
+  unfinishedIdsFor,
   type SplitDraft,
 } from './split-draft'
 
@@ -432,5 +434,130 @@ describe('splitPreviewTotals — the footer counts and hours', () => {
       actualHours: 0,
       todoHours: 0,
     })
+  })
+})
+
+// ── SU-03 / SU-04 / SU-05: distribution ───────────────────────────────────────
+
+describe('move — the three distributions', () => {
+  const kinds = [
+    { kind: 'task' as const, id: 'ta-2', field: 'unfinishedTaskIds' as const },
+    { kind: 'defect' as const, id: 'de-1', field: 'unfinishedDefectIds' as const },
+    { kind: 'testCase' as const, id: 'tc-1', field: 'unfinishedTestCaseIds' as const },
+  ]
+
+  for (const { kind, id, field } of kinds) {
+    it(`moves a ${kind} left and right again`, () => {
+      const draft = initSplitDraft(preview())
+      const left = splitDraftReducer(draft, { type: 'move', kind, id, side: 'unfinished' })!
+      expect(left[field].has(id)).toBe(true)
+      const right = splitDraftReducer(left, { type: 'move', kind, id, side: 'continued' })!
+      expect(right[field].has(id)).toBe(false)
+    })
+
+    it(`moving a ${kind} does not disturb the other two kinds`, () => {
+      const draft = initSplitDraft(preview())
+      const next = splitDraftReducer(draft, { type: 'move', kind, id, side: 'unfinished' })!
+      for (const other of kinds.filter((k) => k.kind !== kind)) {
+        expect(next[other.field], other.kind).toBe(draft[other.field])
+      }
+    })
+  }
+
+  it('is a NO-OP, and identity-stable, when the item is already on that side', () => {
+    // Returning the same object means React re-renders nothing — and it means a "moved" test cannot
+    // pass by asserting against a state that never changed.
+    const draft = initSplitDraft(preview())
+    // TA-1 already defaults to `[Unfinished]` (BR-14), TA-2 to `[Continued]` (BR-15).
+    expect(
+      splitDraftReducer(draft, { type: 'move', kind: 'task', id: 'ta-1', side: 'unfinished' }),
+    ).toBe(draft)
+    expect(
+      splitDraftReducer(draft, { type: 'move', kind: 'task', id: 'ta-2', side: 'continued' }),
+    ).toBe(draft)
+  })
+
+  it('never mutates the set it replaces', () => {
+    const draft = initSplitDraft(preview())
+    const before = [...draft.unfinishedTaskIds]
+    splitDraftReducer(draft, { type: 'move', kind: 'task', id: 'ta-2', side: 'unfinished' })
+    expect([...draft.unfinishedTaskIds]).toEqual(before)
+  })
+
+  it('moves an item the preview never mentioned without inventing a row', () => {
+    // The reducer holds ids, not rows: an id the preview does not carry ends up in the set and simply
+    // matches nothing in `rowsOnSide`. Nothing renders and nothing throws — which is what should
+    // happen if a child was deleted between the preview and a drop.
+    const draft = initSplitDraft(preview())
+    const next = splitDraftReducer(draft, {
+      type: 'move',
+      kind: 'task',
+      id: 'ta-does-not-exist',
+      side: 'unfinished',
+    })!
+    expect(
+      rowsOnSide(preview().tasks, next.unfinishedTaskIds, 'unfinished').map((t) => t.id),
+    ).toEqual(['ta-1'])
+  })
+})
+
+describe('unfinishedIdsFor / rowsOnSide', () => {
+  it('reads each kind’s own set', () => {
+    const draft = initSplitDraft(preview())
+    expect([...unfinishedIdsFor(draft, 'task')]).toEqual(['ta-1'])
+    expect([...unfinishedIdsFor(draft, 'defect')]).toEqual([])
+    expect([...unfinishedIdsFor(draft, 'testCase')]).toEqual([])
+  })
+
+  it('treats `[Continued]` as the COMPLEMENT, never as a second stored list', () => {
+    const draft = initSplitDraft(preview())
+    const tasks = preview().tasks
+    expect(rowsOnSide(tasks, draft.unfinishedTaskIds, 'unfinished').map((t) => t.id)).toEqual([
+      'ta-1',
+    ])
+    expect(rowsOnSide(tasks, draft.unfinishedTaskIds, 'continued').map((t) => t.id)).toEqual([
+      'ta-2',
+      'ta-3',
+    ])
+  })
+
+  it('keeps the PREVIEW’s order, so a row moved away and back does not jump to the end', () => {
+    const tasks = preview().tasks
+    const draft = initSplitDraft(preview())
+    const moved = splitDraftReducer(draft, {
+      type: 'move',
+      kind: 'task',
+      id: 'ta-2',
+      side: 'unfinished',
+    })!
+    const back = splitDraftReducer(moved, {
+      type: 'move',
+      kind: 'task',
+      id: 'ta-2',
+      side: 'continued',
+    })!
+    expect(rowsOnSide(tasks, back.unfinishedTaskIds, 'continued').map((t) => t.id)).toEqual([
+      'ta-2',
+      'ta-3',
+    ])
+  })
+
+  it('reads an absent collection as no rows', () => {
+    const draft = initSplitDraft(preview())
+    expect(rowsOnSide(undefined, draft.unfinishedTaskIds, 'continued')).toEqual([])
+  })
+
+  it('an ALL-on-one-side distribution is still confirmable (AC5 — an empty side blocks nothing)', () => {
+    let draft = initSplitDraft(preview())
+    for (const task of preview().tasks) {
+      draft = splitDraftReducer(draft, {
+        type: 'move',
+        kind: 'task',
+        id: task.id,
+        side: 'continued',
+      })!
+    }
+    expect(rowsOnSide(preview().tasks, draft.unfinishedTaskIds, 'unfinished')).toEqual([])
+    expect(deriveSplitDraft(draft).canConfirm).toBe(true)
   })
 })

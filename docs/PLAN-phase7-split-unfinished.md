@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| Status | **SU-01 MERGED (PR #615, 2026-09-17); SU-02 implemented, gate green on a tree rebased onto `main`, PR #619 open — tech-lead review received and both items fixed 2026-09-17 (see the SU-02 review follow-up under PR 2).** SU-03…SU-10 not started. Sequential delivery, 1 SU = 1 PR — SU-02 was built stacked on SU-01 out of necessity and then rebased onto `main` once SU-01 merged (see the PR 2 gate record). All §8 rulings resolved 2026-09-16 (see §8). |
+| Status | **SU-01 MERGED (PR #615); SU-02 MERGED (PR #619, 2026-09-17 — tech-lead review received and both items fixed before merge, see the SU-02 review follow-up under PR 2); SU-03+SU-04+SU-05 implemented as ONE PR (#621, §8 Q16 amendment (a)), gate green, rebased onto `main` after #619 merged.** SU-06…SU-10 not started. All §8 rulings resolved 2026-09-16; §6.0 and Q16 amended 2026-09-17 (see those sections). |
 | Author | Solution Architect (with BA `FEATURE.md` / `SRS.md` / `USER_STORIES.md` + approved mockup) |
 | Created | 2026-09-14 |
 | Feature code | `SU` |
@@ -1074,14 +1074,64 @@ and CI's `Backend CI required` is the authority on that line.
 > `ui/split-collection.tsx` and the same reducer move action; the AC coverage notes below are unchanged
 > and each SU's tick is still annotated separately.
 
-- [ ] **3.1** `ui/split-collection.tsx` — one reusable collection: header, count pill, empty
+- [x] **3.1** `ui/split-collection.tsx` — one reusable collection: header, count pill, empty
       drop-state, rows, and a direction-arrow `IconButton` per row (`aria-label`:
       `Move {key} to {Unfinished|Continued}`). Built on **`@dnd-kit/core`** with
       `useRerankSensors()` (pointer **and keyboard** — a drag-only affordance is inaccessible), NOT
       the mockup's `dataTransfer` handlers.
-- [ ] **3.2** Tasks collection: columns `ID · Name · State · To Do · move`. Default side from the
+      **DONE 2026-09-17.** 181 lines, ONE component for all three kinds: they differ by a `meta`
+      render prop and nothing else, so the drop behaviour — the part that can be wrong — exists once.
+      The `DndContext` lives in `split-story-modal.tsx`, not here, because a drag must cross from one
+      panel to the other and dnd-kit only pairs a draggable with a droppable under a common context;
+      `onDragEnd` reads `active.data`/`over.data` (never parses the id string) and **refuses a drop
+      whose KIND differs**, so a Task cannot land in the Test Cases list. Sensors are the shared
+      `useRerankSensors()` (§8 Q17), whose 4px pointer activation constraint is also what stops a
+      CLICK on a row's arrow from being read as a drag. Each `<ul>` is named by its own `<h4>` via
+      `aria-labelledby`, so "the Tasks list in this panel" is addressable without a second landmark
+      competing with the panel's region.
+      **⚠ REALITY OVERRODE THE PLAN ON KEYBOARD DRAGGING, and this is the one to read.** The plan says
+      `useRerankSensors` "supplies keyboard dragging". It does not — not for this surface.
+      `sortableKeyboardCoordinates` answers "which SIBLING do I swap with" inside one sortable list; it
+      does not compute a cross-CONTAINER drop. So spreading `useDraggable().attributes` (which adds
+      `role="button"`, `tabIndex={0}`, `aria-roledescription="draggable"` to every row) would advertise
+      a gesture that does nothing — an affordance that lies, the same fault the read-only fields avoid
+      one file over. **The arrow `IconButton` IS the keyboard and screen-reader path** (that is what the
+      plan's accessibility section actually requires), the row carries pointer `listeners` only, and a
+      test pins the absence of the fake affordance so a later PR cannot add `attributes` without also
+      making keyboard dropping real.
+- [x] **3.2** Tasks collection: columns `ID · Name · State · To Do · move`. Default side from the
       preview's `defaultSide` (BR-14), never re-derived in the browser.
-      ⚠ **NAMED WART INHERITED FROM SU-01, and this is the PR that must deal with it.**
+      **DONE.** `itemKey · title · ScheduleStateBadge · {n}h To Do · arrow`. `todoHours: null` renders
+      `EMPTY_VALUE` (`--`), never `0h` — `0` is a measurement the server made and `null` is one it did
+      not, and TA-1's real `0` renders as `0h To Do` beside it.
+      **The 6-vs-3 state wart is handled by condition (a), not by narrowing.** `ScheduleStateBadge`
+      takes all six values from the SHARED `SCHEDULE_STATE_CONFIG`/`SCHEDULE_STATE_LABEL` maps with a
+      fallback, so there is no `switch` here and therefore **no unreachable arm** — which is what (a)
+      asks for. Narrowing the DTO is a BACKEND change, out of scope for a front-end PR, and would need
+      the `openapi` breaking-change check (b) warns about; the canonical
+      `SCHEDULE_STATE_TO_TASK_STATE` projection is still file-private in
+      `work-item.drizzle-repository.ts`, so **promoting it — never copying it — remains SU-06's
+      option**. Recorded rather than silently left wide.
+- [x] **3.3** Empty panel renders the drop state and does **not** block confirm (AC5).
+      **DONE.** `Drop items here` inside the droppable — a drop TARGET's empty state, not a validation
+      message: no `role="alert"`, no `aria-invalid`, nothing added to `canConfirm`. Asserted twice: in
+      the UI (both `[Unfinished]` lists start empty per BR-15, and the Tasks list is then emptied by a
+      move) and in the model (`canConfirm` is still `true` with every Task moved to one side).
+- [x] **3.4** Tests: `split-collection.test.tsx` (arrow moves a row and it disappears from the
+      source side; keyboard drag; empty state), `split-draft.test.ts` extended for Task moves.
+      Effort preservation (AC3) and rollups (AC4) are **auto** (D3/D4) and are asserted in PR 6's
+      e2e, not here — there is no write path yet to assert against.
+      **DONE. `split-collection.test.tsx` 16 tests; `split-draft.test.ts` 37 → 51 (+14).** The
+      collection spec renders **through `SplitStoryModal`**, so a click provably reaches the reducer and
+      the row LEAVES one side and APPEARS on the other; a collection mounted alone would only prove a
+      callback fired. The model spec covers all three kinds symmetrically (a loop, one `it` per kind),
+      the **no-op identity** case (moving an item to the side it already occupies returns the SAME
+      object, so a "moved" test cannot pass on a no-op), that a move does not disturb the other two
+      kinds, that the stored set is never mutated, and that an id the preview never mentioned neither
+      renders nor throws. **"Keyboard drag" is asserted as the arrow BUTTON** (see 3.1) plus the absence
+      of `aria-roledescription="draggable"` / a tabbable row. AC3/AC4 remain PR 6's, as planned.
+      ⚠ **NAMED WART INHERITED FROM SU-01** *(original 3.2 wording, kept for traceability — dealt with
+      under the ticked 3.2 above, by condition (a))*.
       `tasks[].state` advertises **6** `WorkItemScheduleState` values where only **3** task states can
       occur: `listTasksByParent` projects `tasks.state` onto the read model's `scheduleState`, which is
       typed `WorkItemScheduleState`, so the generated client says
@@ -1094,11 +1144,6 @@ and CI's `Backend CI required` is the authority on that line.
       three unreachable arms; narrow if it is cheap at that point, otherwise handle only the reachable
       three behind a single `default`; (b) if you DO narrow, **check the `openapi` CI job** — an enum
       change in a response can trip the breaking-change diff even though a narrowing is safe.
-- [ ] **3.3** Empty panel renders the drop state and does **not** block confirm (AC5).
-- [ ] **3.4** Tests: `split-collection.test.tsx` (arrow moves a row and it disappears from the
-      source side; keyboard drag; empty state), `split-draft.test.ts` extended for Task moves.
-      Effort preservation (AC3) and rollups (AC4) are **auto** (D3/D4) and are asserted in PR 6's
-      e2e, not here — there is no write path yet to assert against.
 
 **AC coverage:** AC1 (3.2), AC2 (3.1), AC5 (3.3). AC3/AC4 deferred to PR 6's e2e — **note it in the
 PR description so the reviewer does not read the gap as an omission.**
@@ -1112,14 +1157,31 @@ PR description so the reviewer does not read the gap as an omission.**
 > **Ships in the PR 3 combined PR** as its second commit (§8 Q16 amendment (a)). The title above is the
 > COMMIT subject, not a PR title.
 
-- [ ] **4.1** Defects collection: `ID · Name · State · Priority · move`. All default to
+- [x] **4.1** Defects collection: `ID · Name · State · Priority · move`. All default to
       `[Continued]` (BR-15).
-- [ ] **4.2** `Explicit: {Iteration}` rendered inline in the row when the Defect has its own
+      **DONE 2026-09-17.** `itemKey · title · ScheduleStateBadge · PriorityBadge · arrow`, through the
+      same `SplitCollection` as Tasks — the only difference is the `meta` render prop. Default side is
+      the preview's `defaultSide`, asserted rather than assumed: both seeded Defects start on
+      `[Continued]` and the `[Unfinished]` Defects list starts empty.
+- [x] **4.2** `Explicit: {Iteration}` rendered inline in the row when the Defect has its own
       Iteration, from the preview's `explicitIterationName`. Amber token, **no warning message**,
       never blocking (AC4, SRS §12).
-- [ ] **4.3** Tests: `split-collection.test.tsx` extended — default side, the inline `Explicit:`
+      **DONE.** `text-warning` token, inline in the row, and rendered **only** when the Defect has one —
+      DE-2 (no explicit Iteration) shows nothing, which is the correct reading of §8 Q8's ruling that an
+      unscheduled Defect stays unscheduled and appears in no Iteration report. No sentence, no icon,
+      nothing added to `canConfirm`.
+      **Evidence:** exactly ONE `Explicit:` line across two Defects; `/warning/i`, `/will be/i` and
+      `/unchanged/i` all asserted absent; the line follows the row when it is moved, and BR-18's actual
+      claim — that the Iteration is untouched by the Split — is left to PR 6's e2e, where a stored
+      column can be read.
+- [x] **4.3** Tests: `split-collection.test.tsx` extended — default side, the inline `Explicit:`
       line present/absent, confirm still enabled. AC3 (Iteration preserved) and AC5 (no explicit
       Iteration) are backend assertions in PR 6's e2e.
+      **DONE**, inside the 16 tests of `split-collection.test.tsx`. One correction to the wording:
+      "confirm still **enabled**" cannot be asserted in this PR — `Split story` is unconditionally
+      DISABLED until SU-06 (§8 Q14). What is asserted instead is the claim that matters and is
+      assertable: the distribution never makes anything MORE disabled, `canConfirm` stays `true` in the
+      model across moves, and no message appears. AC3/AC5 remain PR 6's.
 
 **AC coverage:** AC1, AC2, AC4 here. AC3, AC5 in PR 6 — **and AC5 is blocked on §8 Q8**: Rova has
 no "Defect inherits its parent's Iteration" mechanism at all (`work_items.iteration_id` on a Defect
@@ -1136,22 +1198,102 @@ report). Do not implement an inheritance the reports cannot see.
 > COMMIT subject, not a PR title. **5.3's live-database check still applies** — it is evidence for a
 > "no code needed" claim and does not become optional because the PR grew.
 
-- [ ] **5.1** Test Cases collection: `ID · Name · Type · Last Verdict · move`. All default to
+- [x] **5.1** Test Cases collection: `ID · Name · Type · Last Verdict · move`. All default to
       `[Continued]` (BR-15). Reuse `VerdictBadge` + `TEST_VERDICT_STYLE` from `features/test-cases`
       — do not re-style verdicts (and note the FSD rule: a `features/work-items` file must not deep
       -import `features/test-cases`; promote `VerdictBadge` to `shared/ui` in this PR if the
       boundaries lint refuses, which it will).
-- [ ] **5.2** Tests: `split-collection.test.tsx` extended (default side, every verdict incl.
+      **DONE 2026-09-17, and the boundaries lint did NOT refuse.** `testCaseKey · name · type ·
+      VerdictBadge · arrow` — `testCaseKey`/`name` rather than `itemKey`/`title`, which is §3.1's
+      per-entity field ruling and exactly why `SplitCollection` takes `keyOf`/`titleOf` as props.
+      **The plan's prediction was wrong and the promotion was not needed:** `eslint.config.js` builds
+      its FSD policy as "each layer may import from ITSELF and everything below"
+      (`allow: FSD_LAYERS.slice(index)`), so `features/work-items` → `features/test-cases` is a
+      same-layer import and legal. `pnpm --filter rova-web lint` is green with the direct import.
+      Promoting `VerdictBadge` to `shared/ui` would have touched the badge, its style map and every
+      existing call site for no rule — recorded so the next reader does not "fix" it.
+      **One guard the plan did not anticipate:** the preview types `lastVerdict` as `string | null`
+      (widened on the wire) while the badge takes the six-member union, so an unrecognised verdict would
+      index `TEST_VERDICT_STYLE` with a missing key and crash the modal. `knownVerdict()` maps anything
+      the map does not know to `null`, which `VerdictBadge` already renders as `Not Run` (BR10).
+- [x] **5.2** Tests: `split-collection.test.tsx` extended (default side, every verdict incl.
       `not_run` renders, arrow move).
-- [ ] **5.3** Confirm on a live DB that AC4/AC5/AC6 need **no** code: read a Test Case's Results
+      **DONE.** All six verdicts render their own label (`Pass`, `Fail`, `Blocked`, `Error`,
+      `Inconclusive`, `Not Run`) plus a **seventh, deliberately unknown** value (`something-new`) that
+      reads `Not Run` — the assertion that the `string | null` widening cannot take the modal down. A
+      null verdict renders `Not Run`, never `--` and never blank (BR10, the app's second declared
+      exception to the absent-value rule). The arrow move asserts TC-2 crosses while TC-1, DE-1 and TA-1
+      stay put, so a move is proved to be scoped to its own kind AND its own row.
+- [x] **5.3** Confirm on a live DB that AC4/AC5/AC6 need **no** code: read a Test Case's Results
       before and after a manual `UPDATE test_cases SET work_item_id = …`, and assert
       `test_results.work_item_id` did not move and `last_verdict`/`last_run` still come from the
       newest Result (`trg_test_case_last_result` recomputes on `test_case_id` changes, not on
       `work_item_id`). **Write this up in the PR description** — "no code needed" is a claim that
       needs evidence.
+      **DONE — measured against `rally_dev` on 2026-09-17, inside `BEGIN … ROLLBACK` so the database was
+      left untouched.** `TC-1` (2 Results, Work Product `…030`):
+
+      == BEFORE ==        work_item_id …030 · last_verdict pass · last_run 2026-06-21
+        results:          fail 2026-06-20 → work_item_id …030
+                          pass 2026-06-21 → work_item_id …030
+      == AFTER  UPDATE work.test_cases SET work_item_id = …0a4 ==
+                          work_item_id …0a4 · last_verdict pass · last_run 2026-06-21   ← unchanged
+        results:          fail 2026-06-20 → work_item_id …030                            ← unchanged
+                          pass 2026-06-21 → work_item_id …030                            ← unchanged
+      == ROLLBACK ==      work_item_id …030 · last_verdict pass
+
+      **Both claims hold, and the mechanism is confirmed rather than inferred:** `\d work.test_results`
+      shows `trg_test_case_last_result AFTER INSERT OR DELETE OR UPDATE **OF run_date, verdict,
+      deleted_at, test_case_id**` — `work_item_id` is not in that column list, which is why moving the
+      Work Product cannot disturb `last_verdict`/`last_run` (AC6), and `test_results.work_item_id` is its
+      own snapshotted column (D10), which is why the historical evidence does not follow the Test Case
+      (AC4/AC5). SU-06 moves `test_cases.work_item_id` and nothing else.
 
 **AC coverage:** AC1, AC2 here. AC3 in PR 6. AC4, AC5, AC6 are **auto** (D10), regression-asserted
 in PR 6's e2e.
+
+#### SU-03 / SU-04 / SU-05 gate record — measured 2026-09-17, one combined PR
+
+**Delivered as ONE PR per the §8 Q16 amendment (a).** Base: branched off `feat/su-02-split-configure`
+(SU-02, PR #619, green and awaiting merge) — necessity stacking under amendment (b), because the
+collections mount inside SU-02's panels and dispatch onto SU-02's reducer. It carries the plan
+amendment itself as its first commit, and **rebases onto `main` once #619 merges**, at which point the
+gate is re-run.
+
+| §6.0 item (as amended) | Result |
+|---|---|
+| `pnpm --filter rova-web lint` | **exit 0** |
+| `pnpm build:web` (the SPA's real typecheck) | **exit 0** |
+| `pnpm --filter rova-web test` | **149 files / 1256 tests, exit 0** (148/1226 before; +1 file, +30 tests) |
+| affected specs, per file | `split-draft.test.ts` **51**, `split-collection.test.tsx` **16**, `split-story-panel.test.tsx` **18**, `split-story-modal.test.tsx` **17**, `bulk-split-story.test.tsx` **13**, `work-item-actions-menu.test.tsx` **7** — 122 together, all green |
+| FE ratchets (`fe-consistency`, `query-default`, `no-raw-hex`, `detail-copy-link`) | green — `split-collection.tsx` 181 lines, `split-story-panel.tsx` 370, both under the 500 soft cap; **zero raw `<button>`** (the arrows are `IconButton`), zero raw hex, no new `?? []` |
+| backend | **not run locally, and nothing to run**: zero backend files changed. CI owns it. |
+| Playwright | **CI owns it** (amended §6.0). SU-03/04/05 add no journey — SU-06 owns `split-story.e2e.ts`. |
+| live-DB check (5.3) | **done**, transaction-rolled-back, evidence under 5.3 |
+
+**Two things reality overrode, both recorded above in full:**
+
+1. **`useRerankSensors` does not give this surface keyboard dragging** (3.1). It is the right sensor set
+   and §8 Q17 requires it, but `sortableKeyboardCoordinates` solves sibling reordering, not
+   cross-container dropping — so `useDraggable().attributes` are deliberately NOT spread, and the arrow
+   `IconButton` is the keyboard path. A test pins the absence of the fake affordance.
+2. **The FSD boundary did not refuse `VerdictBadge`** (5.1). The plan said promoting it to `shared/ui`
+   "will" be necessary; the lint config allows same-layer imports, so the promotion was skipped and the
+   badge is reused where it lives.
+
+**And one about this PR's own shape, since the amendment that authorised it is in the same PR:** the
+plan says three commits, one per User Story. It landed as **one implementation commit** covering all
+three, because the three are not separable edits — SU-04 and SU-05 are `meta` render props of the
+component SU-03 introduces, and every file SU-04/05 touch is a file SU-03 creates or extends. A
+three-way split would have been staged by hand for the appearance of separability, and each part would
+have been unreviewable alone. The per-SU annotation above is where the per-story reviewability actually
+lives.
+
+> **`role="status"` is no longer a valid "no toast" probe, and this bit the panel spec.** `DndContext`
+> renders its own empty `aria-live` announcer with `role="status"` for drag accessibility, so
+> `querySelector('[role="status"]') === null` started failing the moment SU-03 added the context — in a
+> test SU-02 wrote. Both specs now assert that nothing is **announced** (the joined text of every live
+> region is empty), which is the real claim: an empty live region says nothing, a toast has words.
 
 ---
 
