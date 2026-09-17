@@ -905,7 +905,7 @@ gate measured on a stacked base is not the final gate.**
 | `pnpm build` (api + worker) | **exit 0** |
 | `pnpm build:web` | **exit 0** (after one fix — below) |
 | `pnpm test` | **91 files / 2187 green; the 2 PRE-EXISTING `grep` failures only** |
-| `pnpm --filter rova-web test` | **148 files / 1226 tests, all green** |
+| `pnpm --filter rova-web test` | **148 files / 1226 tests, all green** (twice — see the flake note below) |
 | `pnpm test:cov` + `check:coverage-floors` | **exit 0** — `Coverage floors are within 3 points of actual coverage` |
 | `pnpm test:e2e` | **73 / 73 files, 650 passed / 1 skipped** |
 | `pnpm db:seed:test` → Playwright | **48 / 48 passed (11.9m) — including the 5 that were failing in SU-01's run** |
@@ -953,6 +953,12 @@ so this is SU-01's surface re-measured; no floor was touched.
 
 **The `PR 2 — SU-02` row above is deliberately NOT ticked**: per §6 that tick means MERGED with a green
 gate, and this PR is blocked on SU-01.
+
+> **The FE suite has load flake too, and it is not only the BE suite that needs the isolation rule.**
+> One full run failed `pages/backlog/backlog-filters.test.tsx > P2-BL-TS-014` on `Test timed out in
+> 5000ms` — a file SU-02 does not touch, in a run between two all-green runs of the same tree. It
+> passes **4/4 in isolation**. Same treatment as §6 PR 1's note: re-run in isolation before believing
+> it, and do not "fix" another spec's timeout from inside a Split PR.
 
 ---
 
