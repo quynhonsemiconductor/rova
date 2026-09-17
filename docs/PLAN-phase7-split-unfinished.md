@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| Status | **SU-01 IMPLEMENTED, not yet committed (2026-09-16) — §6.0 gate green locally, see the SU-01 gate record under PR 1. SU-02…SU-10 not started.** Sequential delivery, 1 SU = 1 PR, no stacking. All §8 rulings resolved 2026-09-16 (see §8). |
+| Status | **SU-01 MERGED (PR #615, 2026-09-17); SU-02 implemented, gate green on a tree rebased onto `main`, PR #619 open — tech-lead review received and both items fixed 2026-09-17 (see the SU-02 review follow-up under PR 2).** SU-03…SU-10 not started. Sequential delivery, 1 SU = 1 PR — SU-02 was built stacked on SU-01 out of necessity and then rebased onto `main` once SU-01 merged (see the PR 2 gate record). All §8 rulings resolved 2026-09-16 (see §8). |
 | Author | Solution Architect (with BA `FEATURE.md` / `SRS.md` / `USER_STORIES.md` + approved mockup) |
 | Created | 2026-09-14 |
 | Feature code | `SU` |
@@ -759,33 +759,267 @@ four metrics; nothing was lowered.
 
 Pure front-end on top of PR 1's preview. Nothing is saved.
 
-- [ ] **2.1** `features/work-items/model/split-draft.ts` — a reducer, not scattered `useState`:
+- [x] **2.1** `features/work-items/model/split-draft.ts` — a reducer, not scattered `useState`:
       draft for both sides (name, planEstimate as **text** plus a parsed number, releaseId,
       scheduleState), `targetIterationId`, the three distribution sets, and derived
       `{ nameInvalid, estimateInvalid, canConfirm, originalPoints, combinedPoints, delta }`.
       Estimate is held as text so a half-typed `-` or `` isn't coerced to `0`. Pure + unit-tested.
-- [ ] **2.2** `ui/split-story-panel.tsx` — the field block. `[Unfinished]`: Name editable; Release
+      **DONE 2026-09-16.** 317 lines, no React import at all. Exports `initSplitDraft`,
+      `splitDraftReducer`, `deriveSplitDraft`, `parsePlanEstimate`, `splitPreviewTotals`.
+      **Three deliberate departures from the wording above, each recorded because it changes what the
+      next PR can rely on:**
+      (a) `nameInvalid` → **`titleInvalid`**, and the field is `title`, per §3.1's 2026-09-16 field-naming
+      ruling — the same rename SU-01 made to `defaultSplitTitles`. Mixed naming is the trap that ruling
+      exists to prevent.
+      (b) the draft holds **`allowedTargetIds`** (the preview's `targets`, ids only, order preserved) and
+      the reducer **IGNORES a `targetIteration` action naming anything else**. The plan asked only that
+      the picker be restricted; putting the restriction in the reducer means the draft itself cannot come
+      to name a target the write path would refuse, which is the "picker wider than the write" risk in
+      §9 closed at the state layer rather than at the view.
+      (c) it also holds `originalPlanEstimate` and the server's `eligible`, so **`deriveSplitDraft` is a
+      pure function of the draft alone** — no preview argument, no second source. It is the ANSWER that is
+      copied, never the rule (SRS §11).
+      Plus `splitPreviewTotals(preview)` for 2.5's counts/hours, in the model rather than the view
+      because it is arithmetic (§9: "the reducer holds the logic, not the view").
+      **`canConfirm` is computed and exported and is NOT wired to the button** — the docblock says so and
+      names `deriveSplitDraft(draft).canConfirm` as SU-06's plug-in point. It already folds in `eligible`,
+      a chosen target and both validity rules, so SU-06 adds no new condition.
+      **NO `stripSplitPrefix` in the browser** (§8 Q17): the no-stacking claim is asserted against the
+      value the preview hands over, which is a stronger test — it fails if the component ignores
+      `defaults`, where a re-run of the regex would not.
+      **Evidence:** `model/split-draft.test.ts`, **37 tests green**, no DOM. Covers null≠0 in both
+      directions (`planEstimate: null` round-trips while the arithmetic reads 0), `-`/`.`/`abc`/`1,5`/
+      `Infinity`/`-1` each refused, empty accepted, delta positive / negative / zero, the
+      `1.1 + 2.2 = 3.3` rounding (`numeric(6,2)`), the target restriction (three refused ids), a null
+      `targets` **and** a null `targetIterationId` handled, and `defaultSide` trusted even when it
+      contradicts the Task state.
+- [x] **2.2** `ui/split-story-panel.tsx` — the field block. `[Unfinished]`: Name editable; Release
       shows `Unscheduled` **read-only**; Iteration shows the Source **read-only**; Schedule State
       shows `Accepted` **read-only**; Plan Estimate editable. A read-only field renders as a
       `DetailReadonlyValue`-style value, **not a disabled `<select>`** as the mockup does — the FE
       conventions treat a disabled control as an affordance that lies.
-- [ ] **2.3** `[Continued]` panel: Name, Release (reference feed — `useReleaseOptions`, **never**
+      **DONE.** 243 lines, its own file so the modal keeps room for SU-03/04/05. `DetailReadonlyValue`
+      from `@/shared/ui/detail` for the three fixed fields — it carries `aria-readonly` rather than
+      `disabled`, so a screen reader hears the VALUE instead of skipping an unusable control. The
+      `Accepted` label comes from `SCHEDULE_STATE_LABEL`, not a literal, so this side and the
+      `[Continued]` picker beside it speak one vocabulary.
+      **Evidence:** `split-story-panel.test.tsx` asserts `queryByRole('combobox')` is **null** inside the
+      `[Unfinished]` region and that **neither panel contains a single `[disabled]` node** — so the
+      mockup's disabled-select shape cannot come back without failing a test that says why.
+- [x] **2.3** `[Continued]` panel: Name, Release (reference feed — `useReleaseOptions`, **never**
       `useReleaseRecords`; the `MAX_ADMIN_FEED_CALL_SITES` ratchet counts admin-feed reads),
       Iteration (the preview's `targets` only — BR-05/AC5), Schedule State, Plan Estimate.
-- [ ] **2.4** AC2's "the Feature/parent Portfolio relationship is identified as removed by the
+      **DONE.** One export, two internal components (`UnfinishedFields` / `ContinuedFields`), because
+      only the `[Continued]` side reads the release feed and a hook cannot be called conditionally — a
+      single component would have subscribed the read-only side to a feed it never renders.
+      `useReleaseOptions(preview.story.projectId)`, bound to its own const before `listResource` (the
+      two-line form `resource.ts` requires); **no `?? []` anywhere — `MAX_QUERY_DEFAULTS` unchanged at 96.**
+      Iteration offers `preview.targets` **unfiltered, unsorted, unwidened**, with an empty placeholder
+      option ONLY while nothing is selected (once a target is chosen there is nothing to un-choose — the
+      write requires one). Schedule State is `SCHEDULE_STATE_VALUES` + `SCHEDULE_STATE_LABEL`, never a
+      hand-list.
+      **One addition beyond the plan, for a defect the plan does not name:** when the release feed does not
+      contain the Story's current `releaseId` (cold cache, or a release the feed does not carry), the select
+      offers it from the preview's own **`releaseName`**. Without that the select falls back to its first
+      option and renders a scheduled Story as `Unscheduled` while the draft still holds the id — exactly
+      the fault SU-01's `findReleaseName` exists to prevent, one layer up. Asserted with an empty feed.
+      **Evidence:** target option ids are `['iter-3','iter-4']` in the preview's order and the SOURCE
+      iteration is asserted ABSENT; the six schedule states are asserted in order; `useReleaseOptions` is
+      asserted to have been called with the Story's `projectId`.
+- [x] **2.4** AC2's "the Feature/parent Portfolio relationship is identified as removed by the
       Split" — render it as a read-only `Feature: <name> → cleared` line on the `[Unfinished]` panel.
       No warning styling, no message (SRS §11).
-- [ ] **2.5** Footer: `{n} Tasks · {n} Defects · {n} Test Cases | {n}h Actual · {n}h To Do |
+      **DONE, WITHOUT the feature name, and this is the one place reality narrowed the AC.** The preview
+      carries no feature name, and **neither entry point can pass one**: the detail header's kebab holds
+      `itemKey`/`title`/`type`/`canEdit` and nothing else, and the page's Feature NAME is not on the work
+      item either — `detail-sidebar.tsx` resolves it from `featureId` through its own portfolio feed. The
+      Iteration Status bulk bar has even less. So a name would need either a new backend field (out of
+      scope for a pure front-end PR, and 2.4 forbids it) or a new prop threaded through two SU-01 files.
+      The line therefore states the resulting STATE — `Feature: Cleared by the split` — which is true
+      whether or not the Story had a Feature, on the side that always clears it (BR-10). No warning token,
+      no message. **Recorded in the PR description as the chosen option and why.**
+      **Evidence:** asserted present on the `[Unfinished]` side and ABSENT on the `[Continued]` side, so a
+      later PR cannot quietly render "cleared" beside the Story that keeps its Feature.
+- [x] **2.5** Footer: `{n} Tasks · {n} Defects · {n} Test Cases | {n}h Actual · {n}h To Do |
       Points: {original} → {combined} ({±delta})`. Amber-token when `delta ≠ 0`, success-token when
       `0`. Non-blocking (BR-13/AC7).
-- [ ] **2.6** Invalid state: `aria-invalid` + an error-token border on the offending field only,
+      **DONE**, in the `ModalFooter` (now `justify-between`), computed from `splitPreviewTotals(preview)`
+      + `deriveSplitDraft(draft)`. **Whole-story counts, not per side** — SU-02 has no collections to
+      distribute yet, so a per-side count would be a number with no control behind it; the per-side split
+      arrives with the collections in SU-03/04/05. `text-warning` / `text-success` tokens, **zero raw
+      hex**, every string through `t()` (`footer.counts` / `footer.hours` / `footer.points`).
+      **Evidence:** `split-story-modal.test.tsx` +4 tests — `2 Tasks · 1 Defects · 1 Test Cases`,
+      `6.5h Actual · 3h To Do` (null hours summed as absent, not 0-padded), `Points: 5 → 10 (+5)` for an
+      untouched draft (both sides default to the original, BR-12), the token FLIPPING to `text-success`
+      once the sides are edited to 2 + 3, `Points: 5 → 104 (+99)` leaving Cancel enabled and no
+      `role="alert"` anywhere, and no summary at all while the preview is in flight.
+- [x] **2.6** Invalid state: `aria-invalid` + an error-token border on the offending field only,
       `Split story` disabled, **no validation text** (AC6, SRS §12).
-- [ ] **2.7** Tests: `split-draft.test.ts` (defaults, prefix stripping, blank name, negative /
+      **DONE.** The border comes from the shared primitive — `Input` already carries
+      `aria-invalid:border-destructive aria-invalid:ring-destructive/20`, so the error token is not
+      re-declared here. `aria-invalid={invalid || undefined}`, so a valid field has **no attribute at
+      all** rather than `aria-invalid="false"`; a test cannot pass by finding the negative form.
+      **`FormField`'s `error` prop is never passed** — it renders `role="alert"` red text, which is
+      precisely what AC6 forbids — and the docblock says so, so the next reader does not "finish" the
+      form by adding it.
+      **Evidence:** blank/whitespace title marks that field and provably NOT the other side's title nor
+      its own estimate; `-`, `-2`, `abc` each mark the estimate and ``, `0`, `2.5` each un-mark it;
+      with two fields invalid the body holds **exactly 2** `[aria-invalid="true"]` nodes and **zero**
+      `role="alert"` / `role="status"` nodes and no `/required/i`, `/invalid/i`, `/must be/i`,
+      `/warning/i` text.
+- [x] **2.7** Tests: `split-draft.test.ts` (defaults, prefix stripping, blank name, negative /
       non-numeric / empty estimate, delta arithmetic, target list restriction);
       `split-story-panel.test.tsx` (which fields are read-only on which side, `aria-invalid`,
       confirm stays disabled, no validation copy rendered).
+      **DONE. 37 + 18 + 4 = 59 new tests; FE suite 148 files / 1226 tests, all green.**
+      `split-story-panel.test.tsx` (18) renders **through `SplitStoryModal`** rather than mounting the
+      panel with a hand-built draft — the claims worth making are about the wiring (a keystroke reaches
+      the reducer and comes back as `aria-invalid` on that field and no other, and `Split story` stays
+      disabled across valid → invalid → valid), and an isolated panel proves none of them. Every absence
+      is queried against **`document.body`**, because `AppModal` renders through a Radix Portal and a
+      container-scoped absence passes VACUOUSLY — the mistake SU-01 made and fixed, which this PR would
+      have inherited since SU-02 is where real validation arrives.
+      `split-story-modal.test.tsx` was **extended, not replaced** (13 → 17; note the SU-01 tick says 14,
+      the measured count in the committed file is **13**).
+      **`vitest.config.ts` `coverage.include` is untouched, correctly:** `coverage-include.spec.ts`
+      excludes `apps/web/` outright (it runs under its own vitest project), and SU-02 adds no backend
+      subject.
 
 **AC coverage:** AC1–AC7 all in 2.1–2.6.
+
+#### SU-02 gate record — measured 2026-09-16, RE-MEASURED 2026-09-17 on the rebased tree
+
+**SU-01 MERGED as PR #615 (squash) while SU-02 was in the gate, and its branch was deleted.** SU-02 was
+built on `feat/su-01-split-preview` — a deliberate, acknowledged deviation from §8 Q16 (*sequential, no
+PR stacking*), because every file it extends shipped in SU-01 and there was no `main` to build on. That
+deviation is now **resolved rather than merely declared**: the branch was replayed with
+`git rebase --onto origin/main 5822e2d3` (only SU-02's two commits, since SU-01's content is in main's
+squashed commit under a different SHA), **which applied with zero conflicts**, and the whole §6.0 gate
+was re-run on the rebased tree. The PR targets `main` and is no longer blocked on anything.
+
+The table below is the RE-MEASURED run. Where the stacked-base run differed, it is noted — and the
+difference is all in SU-02's favour, because main also carried the fix for SU-01's two declared
+pre-existing failures (PR #617, "walk `infra/` in Node so the alarm guards run off Linux").
+
+| §6.0 item | Result on the rebased tree |
+|---|---|
+| `pnpm install --frozen-lockfile` | **exit 0** (main moved 0.7.17 → 0.7.18; no dependency change) |
+| `pnpm lint` (repo-scoped) | **exit 0** |
+| `pnpm --filter rova-web lint` | **exit 0** |
+| `pnpm typecheck` | **exit 0** |
+| `npx tsc -b --force` (repo root) | **exit 0** — but see note 1: it does NOT type-check the SPA |
+| `pnpm build` (api + worker) | **exit 0** |
+| `pnpm build:web` | **exit 0** (caught a real error on the first pass — note 1) |
+| `pnpm test` | **93 / 93 files, 2189 / 2189 tests, exit 0 — ZERO pre-existing failures.** On the stacked base this was 91 files / 2187 with the two documented Windows `grep` failures; main's PR #617 removed them, so SU-02 declares **none**. |
+| `pnpm --filter rova-web test` | **148 files / 1226 tests, exit 0** (three full runs green; one intermediate run hit a load-flake timeout — see the note below) |
+| `pnpm test:cov` + `pnpm check:coverage-floors` | **exit 0**, `Coverage floors are within 3 points of actual coverage`. Statements **86.55**, branches **80.31**, functions **85.17**, lines **87.43** vs floors 85 / 79 / 84 / 86. No floor touched — SU-02 changes no backend file. |
+| `pnpm test:e2e` | **73 / 73 files, 650 passed / 1 skipped, exit 0** |
+| `pnpm db:seed:test` → `pnpm --filter rova-web test:e2e` | **48 / 48 passed (11.9m) — MEASURED ON THE STACKED BASE, deliberately NOT re-measured after the rebase.** See the note below; this is the one gate line that is not from the rebased tree. |
+| FE `fe-consistency` (61/173/2/12/47/929/3) | green — largest new file **317** lines (`split-draft.ts`); `api.ts` **not touched**, still 923 of 929 |
+| FE `query-default` (96/2) | green (unchanged — no `?? []` added) |
+| FE `no-raw-hex` | **0** (unchanged) |
+| FE `detail-copy-link` | green (unchanged) |
+| backend ratchets (`route-policy`, `route-audience`, `workspace-scope` 66, `query-ordering` 0, `e2e-fixtures` 81, `coverage-include`) | green — **zero backend files changed**; `coverage-include.spec.ts` needed no edit because it excludes `apps/web/` outright (its own vitest project) |
+
+> **Playwright was run ONCE, before the rebase, and that is a recorded gap rather than a claim.**
+> 48/48 passed (11.9m) on identical SU-02 code; between that run and the rebase, `main` changed
+> `apps/web/playwright.config.ts` and added `scripts/report-flaky-e2e.mjs` (PR #618, retry reporting),
+> so the harness moved even though the feature code did not. The suite costs ~12 minutes of wall clock
+> and SU-02 adds **no Playwright journey** (SU-06 owns `split-story.e2e.ts`), so it was skipped on the
+> re-run by an explicit decision, not overlooked. **Whoever merges should let CI's `Web CI required`
+> job be the authority on this line.**
+
+**Where reality overrode the plan — five things, all worth the next session's time.**
+
+1. **`pnpm typecheck` and `tsc -b --force` do NOT type-check `apps/web`.** Both passed while
+   `split-draft.ts` held a real type error (`Array.reduce` inferring `number | null` for its
+   accumulator); **`pnpm build:web` caught it**, because the SPA's own `tsc -b` is inside that script.
+   §6.0 calls `tsc -b --force` "the real check" — for the backend it is; for the SPA the real check is
+   `build:web` (or `pnpm --filter rova-web exec tsc -b`), and the pre-commit hook's `tsc -b`. Run it
+   BEFORE the test suites, not after.
+2. **`pnpm test:cov` writes no report when any test fails.** Vitest's `coverage.reportOnFailure`
+   defaults to `false`, and on the stacked base the two Windows `grep` failures were enough to suppress
+   it — so `check:coverage-floors` failed with `No coverage summary at coverage/coverage-summary.json`,
+   which reads like a missing reporter rather than a suppressed report. The workaround is
+   `pnpm exec vitest run --coverage --coverage.reportOnFailure=true`. On the rebased tree it is moot
+   (nothing fails), but it will bite again the next time any spec is red.
+3. **Two SU-01 TEST files had to change, and a third assertion had to change its mechanism.**
+   `bulk-split-story.test.tsx` and `split-story-modal.test.tsx` both render the real modal, whose
+   `[Continued]` panel now reads the release reference feed — an unmocked `useQuery` with no
+   `QueryClientProvider` throws, and it took 1 of the 13 bulk-bar tests down before the mock was added.
+   And the `ineligibleReason` absence assertion could no longer be
+   `queryByText(new RegExp(reason, 'i'))`: **`unscheduled` is both an ineligibility reason and the
+   product's own word for "no release"**, which the `[Unfinished]` panel now renders twice, so the
+   case-insensitive probe began matching legitimate copy (and matching it twice, which `queryByText`
+   throws on). It is now case-sensitive containment on `document.body.textContent` — the honest claim,
+   and a stricter one: the RAW snake_case wire value never reaches the screen. **SU-03/04/05 will hit
+   this again** as more product vocabulary lands in the panels.
+4. **Playwright needs a browser install AND a running API, and neither failure says so.** The chromium
+   binary was absent (`chromium_headless_shell-1243`) and the suite reported 48 launch failures;
+   `pnpm --filter rova-web exec playwright install chromium` fixed it. Then every test failed on
+   `[vite] http proxy error: /v1/bff/dev-login` — the Playwright config starts Vite but **not** the API,
+   so `node dist/apps/api/apps/api/src/main.js` has to be up first. With both in place, 48/48.
+5. **The SU-01 tick's test count is off by one.** It records "`split-story-modal.test.tsx` (14)"; the
+   committed file has **13** `it()` blocks (measured). SU-02 extended it to **17**. Small, but the whole
+   point of annotating a tick is that the next session can trust the number.
+
+**The `PR 2 — SU-02` row above is deliberately NOT ticked**: per §6 that tick means MERGED with a green
+gate, and this PR is open.
+
+> **The FE suite has load flake too, and it is not only the BE suite that needs the isolation rule.**
+> One full run failed `pages/backlog/backlog-filters.test.tsx > P2-BL-TS-014` on `Test timed out in
+> 5000ms` — a file SU-02 does not touch, in a run between two all-green runs of the same tree. It
+> passes **4/4 in isolation**. Same treatment as §6 PR 1's note: re-run in isolation before believing
+> it, and do not "fix" another spec's timeout from inside a Split PR.
+
+#### SU-02 review follow-up — tech-lead review on PR #619, both items fixed 2026-09-17
+
+Two items, both accepted as raised. Nothing about the reducer, the read-only rendering or the absence
+assertions changed.
+
+1. **Every footer number now goes through `Intl`, via `formatPoints` / `formatNumber`
+   (`shared/lib/utils.ts`).** The footer was interpolating raw numbers, so it rendered `1234.5` where
+   every other numeric surface in the app renders `1,234.5` (`en`) or `1.234,5` (`de`/`vi`). Verified,
+   not assumed: `formatPoints` → `formatNumber` → `toLocaleString(getFormatPrefs().locale, …)`, and the
+   locale is per-user then per-workspace (`resolveFormatPrefs`: `user?.locale || workspace?.locale ||
+   'en'`). The i18n layer does **not** compensate — `i18n.ts` sets only
+   `interpolation: { escapeValue: false }` with no format function, and the strings interpolate a bare
+   `{{original}}`, not `{{original, number}}`. `formatDelta` stays (there is no signed formatter in
+   `shared/lib` — checked) but now **delegates the number** and only adds the `+`.
+   The **counts** were left to my discretion and were routed through `formatNumber` as well, for a
+   reason beyond a thousands separator: on a locale with a non-Latin numbering system, counts bypassing
+   `Intl` would print one digit system while the hours beside them printed another, on one line.
+   `roundPoints` in `split-draft.ts` was explicitly **kept** — it fixes the VALUE that `delta === 0`
+   compares (which selects the success token), not the display, so the two are not duplicates.
+   **This was the first production call site of `formatPoints`** (grep: only its own spec), so it was a
+   missed helper rather than a diverged convention — and now the helper has a consumer.
+   **Evidence:** `split-story-modal.test.tsx` +3 tests (17 → 20). Two of them are DISCRIMINATING, not
+   decorative: reverting only the component (patch-revert, test file untouched) fails
+   `1,234.5h Actual · 2,000h To Do` and `1.234,5h Actual · 2.000h To Do` — measured, 2 failed / 18
+   passed — and passes 20/20 with the fix. The third pins `formatDelta`'s sign contract (`-3`, never
+   `+-3`), which the old code also satisfied; it is a guard, not a discriminator. `format-prefs` is a
+   module **singleton**, so `beforeEach` resets it to `en`/`UTC` — otherwise the `de` test leaks its
+   locale into every test declared after it.
+2. **`SplitStoryPanel`'s `side` prop is typed `SplitSide`**, which `split-api.ts` derives from the
+   generated schema (`SplitPreviewTask['defaultSide']`). The inline `'unfinished' | 'continued'` was a
+   third copy of that member list after the domain's `SPLIT_SIDES` and the DTO's `z.enum` — the same
+   fault the SU-01 review closed. `model/split-draft.ts` was already importing the derived type, so the
+   panel was the only production copy; the modal spec's local `estimateField` helper was switched too,
+   so **no copy remains in the SU-02 surface** — `grep` for the literal union under
+   `features/work-items` now matches only the docblock sentence explaining why it must not come back. A type-only import, so the spec's `vi.mock` of the api barrel is unaffected.
+
+**Not fixed here, by the reviewer's own framing:** `SCHEDULE_STATE_LABEL` is a hardcoded English map,
+so the split modal `t()`s its own labels while the schedule-state names bypass i18n. Reusing the shared
+map was still correct (the alternative is a second copy); it is the same gap as the verdict labels and
+wants its own change, not a Split PR.
+
+**Gate after the fix (FE-only diff — three files, all under `apps/web`, zero backend files):**
+`pnpm lint` **0** · `pnpm --filter rova-web lint` **0** · `pnpm typecheck` **0** ·
+`npx tsc -b --force` **0** · `pnpm build:web` **0** · `pnpm --filter rova-web test`
+**148 files / 1229 tests, exit 0** (1226 → 1229), which includes the FE ratchets — `no-raw-hex`,
+`fe-consistency`, `query-default`, `detail-copy-link` all green and unmoved. The backend suites were
+**not** re-run and that is deliberate: no file outside `apps/web/src/features/work-items/ui` changed,
+and CI's `Backend CI required` is the authority on that line.
 
 ---
 

@@ -10,9 +10,24 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
-const { useSplitPreview } = vi.hoisted(() => ({ useSplitPreview: vi.fn() }))
+const { useSplitPreview, useReleaseOptions } = vi.hoisted(() => ({
+  useSplitPreview: vi.fn(),
+  useReleaseOptions: vi.fn(() => ({
+    data: [],
+    isLoading: false,
+    isPending: false,
+    isError: false,
+    error: undefined,
+  })),
+}))
 
 vi.mock('@/features/work-items/api', () => ({ useSplitPreview }))
+/**
+ * ADDED BY SU-02. One test here opens the real `SplitStoryModal`, whose `[Continued]` panel now reads
+ * the release REFERENCE feed — an unmocked `useQuery` with no `QueryClientProvider` throws, and this
+ * file is about the Iteration Status bar, not about releases.
+ */
+vi.mock('@/features/releases/api', () => ({ useReleaseOptions }))
 
 import '@/shared/i18n/i18n'
 import { BulkSplitStory } from './bulk-split-story'

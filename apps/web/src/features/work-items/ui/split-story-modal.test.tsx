@@ -8,15 +8,30 @@
  *
  * The confirm button being DISABLED is also an assertion about this PR specifically (§8 Q14): there is
  * no write path until SU-06, and a control wired to nothing would be worse than one that says so.
+ *
+ * EXTENDED BY SU-02 (2.5), not replaced: the 14 shell tests are the regression net, and the footer
+ * summary + the release-feed mock are what SU-02 adds. Field-level behaviour lives in
+ * `split-story-panel.test.tsx`.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-const { useSplitPreview } = vi.hoisted(() => ({ useSplitPreview: vi.fn() }))
+const { useSplitPreview, useReleaseOptions } = vi.hoisted(() => ({
+  useSplitPreview: vi.fn(),
+  useReleaseOptions: vi.fn(),
+}))
 
 vi.mock('@/features/work-items/api', () => ({ useSplitPreview }))
+/**
+ * The `[Continued]` panel reads the release REFERENCE feed (SU-02), so this file has to mock it now:
+ * an unmocked `useQuery` in a test with no `QueryClientProvider` throws, and it would take all 14
+ * shell tests with it.
+ */
+vi.mock('@/features/releases/api', () => ({ useReleaseOptions }))
 
 import '@/shared/i18n/i18n'
+import { setFormatPrefs } from '@/shared/lib/format-prefs'
+import type { SplitSide } from '@/features/work-items/api'
 import { SplitStoryModal } from './split-story-modal'
 
 /** A preview as the server sends it — eligible, with the seeded Sprint 26.1 → 26.2 shape. */
@@ -92,8 +107,24 @@ function renderModal(onClose = vi.fn()) {
 
 describe('SplitStoryModal', () => {
   beforeEach(() => {
+    // `format-prefs` is a module SINGLETON, so the `de` test below would otherwise leak its locale
+    // into every test declared after it. Reset rather than restore-in-afterEach: a failing test that
+    // throws before its cleanup would leak just the same.
+    setFormatPrefs({ locale: 'en', timeZone: 'UTC' })
     useSplitPreview.mockReset()
     useSplitPreview.mockReturnValue(queryReady(eligiblePreview()))
+    useReleaseOptions.mockReset()
+    useReleaseOptions.mockReturnValue(
+      queryReady([
+        {
+          id: 'rel-1',
+          projectId: 'p-1',
+          releaseKey: 'RE-1',
+          name: 'Release 1',
+          status: 'planning',
+        },
+      ]),
+    )
   })
 
   it('opens with the Story named in its title (AC1)', () => {
@@ -181,6 +212,15 @@ describe('SplitStoryModal', () => {
       }),
     )
     renderModal()
+    /**
+     * CASE-SENSITIVE containment, changed by SU-02 from `queryByText(new RegExp(reason, 'i'))`.
+     *
+     * `unscheduled` is both an ineligibility reason and the product's own word for "no release",
+     * which the `[Unfinished]` panel now renders — so the case-insensitive probe began matching
+     * legitimate copy (and matching it twice, which `queryByText` throws on). The reasons are raw
+     * snake_case wire values, so "the raw value never reaches the screen" is both the real claim and
+     * a stricter one.
+     */
     for (const reason of [
       'no_target',
       'not_a_story',
@@ -188,7 +228,7 @@ describe('SplitStoryModal', () => {
       'unscheduled',
       'not_editable',
     ]) {
-      expect(screen.queryByText(new RegExp(reason, 'i'))).not.toBeInTheDocument()
+      expect(document.body.textContent, reason).not.toContain(reason)
     }
   })
 
@@ -200,12 +240,156 @@ describe('SplitStoryModal', () => {
     expect(screen.queryByText(/cannot be/i)).not.toBeInTheDocument()
   })
 
-  it('has no aria-invalid field — there is nothing to validate in this PR', () => {
+  it('has no aria-invalid field while every default is valid', () => {
     renderModal()
     // `document.body`, not `render(...).container`: `AppModal` renders through a Radix Portal, so the
     // dialog is NOT inside the container RTL hands back. A container query here would pass
-    // vacuously — and would keep passing after SU-02 adds real validation.
+    // vacuously — and would keep passing now that SU-02 has added real validation.
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(document.body.querySelector('[aria-invalid="true"]')).toBeNull()
+  })
+
+  // ── SU-02 2.5: the footer summary ───────────────────────────────────────────
+
+  /** A preview carrying children, so the counts and the hour sums have something to report. */
+  function previewWithChildren() {
+    const base = eligiblePreview()
+    return {
+      ...base,
+      tasks: [
+        {
+          id: 'ta-1',
+          itemKey: 'TA-1',
+          title: 'Bump the packages',
+          state: 'completed',
+          todoHours: 0,
+          estimateHours: 4,
+          actualHours: 4.5,
+          defaultSide: 'unfinished',
+        },
+        {
+          id: 'ta-2',
+          itemKey: 'TA-2',
+          title: 'Fix the build',
+          state: 'in_progress',
+          todoHours: 3,
+          estimateHours: 5,
+          actualHours: 2,
+          defaultSide: 'continued',
+        },
+      ],
+      defects: [
+        {
+          id: 'de-1',
+          itemKey: 'DE-1',
+          title: 'Watch mode crashes',
+          scheduleState: 'defined',
+          priority: 'high',
+          explicitIterationId: null,
+          explicitIterationName: null,
+          defaultSide: 'continued',
+        },
+      ],
+      testCases: [
+        {
+          id: 'tc-1',
+          testCaseKey: 'TC-1',
+          name: 'Build succeeds on a clean checkout',
+          type: 'Functional',
+          lastVerdict: 'pass',
+          defaultSide: 'continued',
+        },
+      ],
+    }
+  }
+
+  const estimateField = (side: SplitSide) =>
+    screen.getByLabelText('Plan Estimate (pts)', { selector: `#split-${side}-estimate` })
+
+  it('summarises what the split carries, and the point comparison (BR-13)', () => {
+    useSplitPreview.mockReturnValue(queryReady(previewWithChildren()))
+    renderModal()
+    expect(screen.getByText('2 Tasks · 1 Defects · 1 Test Cases')).toBeInTheDocument()
+    expect(screen.getByText('6.5h Actual · 3h To Do')).toBeInTheDocument()
+    // Both sides default to the original 5 (BR-12), so an untouched draft already reads +5.
+    expect(screen.getByText('Points: 5 → 10 (+5)')).toBeInTheDocument()
+  })
+
+  it('reads the WARNING token on a difference and the SUCCESS token on none', () => {
+    renderModal()
+    expect(screen.getByText(/^Points:/)).toHaveClass('text-warning')
+    fireEvent.change(estimateField('unfinished'), { target: { value: '2' } })
+    fireEvent.change(estimateField('continued'), { target: { value: '3' } })
+    expect(screen.getByText('Points: 5 → 5 (0)')).toHaveClass('text-success')
+  })
+
+  it('a difference blocks NOTHING and says nothing (BR-13/AC7)', () => {
+    // The delta is a comparison, not a rule: it reaches no `disabled` and carries no message.
+    renderModal()
+    fireEvent.change(estimateField('continued'), { target: { value: '99' } })
+    expect(screen.getByText('Points: 5 → 104 (+99)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+    expect(document.body.querySelector('[role="alert"]')).toBeNull()
+  })
+
+  it('shows no summary while the preview is in flight', () => {
+    useSplitPreview.mockReturnValue(queryLoading)
+    renderModal()
+    expect(screen.queryByText(/^Points:/)).toBeNull()
+  })
+
+  // ── Review follow-up (2026-09-17): every footer number through `Intl` ────────
+  //
+  // The footer's four numbers now go through `formatPoints`/`formatNumber`, which resolve the locale
+  // from `getFormatPrefs()` — per-user, then per-workspace (`resolveFormatPrefs`). The i18n layer does
+  // NOT compensate: the strings interpolate a bare `{{original}}`, and `i18n.ts` sets no format
+  // function. So without the helpers these values render through default JS stringification, which
+  // diverges from every other numeric surface in the app on both the group separator and the decimal
+  // mark. These two tests fail on the pre-review code (`1234.5h`, `Points: 1500 → 3000 (+1500)`).
+
+  /** Values big enough for a group separator, and fractional enough for a decimal mark. */
+  function previewWithBigNumbers() {
+    const base = eligiblePreview()
+    return {
+      ...base,
+      story: { ...base.story, planEstimate: 1500 },
+      tasks: [
+        {
+          id: 'ta-9',
+          itemKey: 'TA-9',
+          title: 'A long-running task',
+          state: 'in_progress',
+          todoHours: 2000,
+          estimateHours: 3000,
+          actualHours: 1234.5,
+          defaultSide: 'continued',
+        },
+      ],
+    }
+  }
+
+  it('formats every footer number with the reader locale (en)', () => {
+    useSplitPreview.mockReturnValue(queryReady(previewWithBigNumbers()))
+    renderModal()
+    expect(screen.getByText('1,234.5h Actual · 2,000h To Do')).toBeInTheDocument()
+    // Both sides default to the original 1500 (BR-12), so an untouched draft reads +1,500.
+    expect(screen.getByText('Points: 1,500 → 3,000 (+1,500)')).toBeInTheDocument()
+  })
+
+  it('follows the locale to a comma decimal mark and a dot group separator (de)', () => {
+    setFormatPrefs({ locale: 'de' })
+    useSplitPreview.mockReturnValue(queryReady(previewWithBigNumbers()))
+    renderModal()
+    expect(screen.getByText('1.234,5h Actual · 2.000h To Do')).toBeInTheDocument()
+    expect(screen.getByText('Points: 1.500 → 3.000 (+1.500)')).toBeInTheDocument()
+  })
+
+  it('signs a NEGATIVE delta once, and lets the formatter own the digits', () => {
+    // `formatDelta` adds `+` only when positive: a negative number already carries its own sign, and
+    // `+-3` is the bug this pins.
+    renderModal()
+    fireEvent.change(estimateField('unfinished'), { target: { value: '1' } })
+    fireEvent.change(estimateField('continued'), { target: { value: '1' } })
+    expect(screen.getByText('Points: 5 → 2 (-3)')).toHaveClass('text-warning')
   })
 })
