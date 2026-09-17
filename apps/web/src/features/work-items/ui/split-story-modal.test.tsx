@@ -30,6 +30,8 @@ vi.mock('@/features/work-items/api', () => ({ useSplitPreview }))
 vi.mock('@/features/releases/api', () => ({ useReleaseOptions }))
 
 import '@/shared/i18n/i18n'
+import { setFormatPrefs } from '@/shared/lib/format-prefs'
+import type { SplitSide } from '@/features/work-items/api'
 import { SplitStoryModal } from './split-story-modal'
 
 /** A preview as the server sends it — eligible, with the seeded Sprint 26.1 → 26.2 shape. */
@@ -105,6 +107,10 @@ function renderModal(onClose = vi.fn()) {
 
 describe('SplitStoryModal', () => {
   beforeEach(() => {
+    // `format-prefs` is a module SINGLETON, so the `de` test below would otherwise leak its locale
+    // into every test declared after it. Reset rather than restore-in-afterEach: a failing test that
+    // throws before its cleanup would leak just the same.
+    setFormatPrefs({ locale: 'en', timeZone: 'UTC' })
     useSplitPreview.mockReset()
     useSplitPreview.mockReturnValue(queryReady(eligiblePreview()))
     useReleaseOptions.mockReset()
@@ -297,7 +303,7 @@ describe('SplitStoryModal', () => {
     }
   }
 
-  const estimateField = (side: 'unfinished' | 'continued') =>
+  const estimateField = (side: SplitSide) =>
     screen.getByLabelText('Plan Estimate (pts)', { selector: `#split-${side}-estimate` })
 
   it('summarises what the split carries, and the point comparison (BR-13)', () => {
@@ -330,5 +336,60 @@ describe('SplitStoryModal', () => {
     useSplitPreview.mockReturnValue(queryLoading)
     renderModal()
     expect(screen.queryByText(/^Points:/)).toBeNull()
+  })
+
+  // ── Review follow-up (2026-09-17): every footer number through `Intl` ────────
+  //
+  // The footer's four numbers now go through `formatPoints`/`formatNumber`, which resolve the locale
+  // from `getFormatPrefs()` — per-user, then per-workspace (`resolveFormatPrefs`). The i18n layer does
+  // NOT compensate: the strings interpolate a bare `{{original}}`, and `i18n.ts` sets no format
+  // function. So without the helpers these values render through default JS stringification, which
+  // diverges from every other numeric surface in the app on both the group separator and the decimal
+  // mark. These two tests fail on the pre-review code (`1234.5h`, `Points: 1500 → 3000 (+1500)`).
+
+  /** Values big enough for a group separator, and fractional enough for a decimal mark. */
+  function previewWithBigNumbers() {
+    const base = eligiblePreview()
+    return {
+      ...base,
+      story: { ...base.story, planEstimate: 1500 },
+      tasks: [
+        {
+          id: 'ta-9',
+          itemKey: 'TA-9',
+          title: 'A long-running task',
+          state: 'in_progress',
+          todoHours: 2000,
+          estimateHours: 3000,
+          actualHours: 1234.5,
+          defaultSide: 'continued',
+        },
+      ],
+    }
+  }
+
+  it('formats every footer number with the reader locale (en)', () => {
+    useSplitPreview.mockReturnValue(queryReady(previewWithBigNumbers()))
+    renderModal()
+    expect(screen.getByText('1,234.5h Actual · 2,000h To Do')).toBeInTheDocument()
+    // Both sides default to the original 1500 (BR-12), so an untouched draft reads +1,500.
+    expect(screen.getByText('Points: 1,500 → 3,000 (+1,500)')).toBeInTheDocument()
+  })
+
+  it('follows the locale to a comma decimal mark and a dot group separator (de)', () => {
+    setFormatPrefs({ locale: 'de' })
+    useSplitPreview.mockReturnValue(queryReady(previewWithBigNumbers()))
+    renderModal()
+    expect(screen.getByText('1.234,5h Actual · 2.000h To Do')).toBeInTheDocument()
+    expect(screen.getByText('Points: 1.500 → 3.000 (+1.500)')).toBeInTheDocument()
+  })
+
+  it('signs a NEGATIVE delta once, and lets the formatter own the digits', () => {
+    // `formatDelta` adds `+` only when positive: a negative number already carries its own sign, and
+    // `+-3` is the bug this pins.
+    renderModal()
+    fireEvent.change(estimateField('unfinished'), { target: { value: '1' } })
+    fireEvent.change(estimateField('continued'), { target: { value: '1' } })
+    expect(screen.getByText('Points: 5 → 2 (-3)')).toHaveClass('text-warning')
   })
 })

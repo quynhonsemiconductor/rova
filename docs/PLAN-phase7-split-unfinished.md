@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| Status | **SU-01 MERGED (PR #615, 2026-09-17); SU-02 implemented, gate green on a tree rebased onto `main`, PR open.** SU-03…SU-10 not started. Sequential delivery, 1 SU = 1 PR — SU-02 was built stacked on SU-01 out of necessity and then rebased onto `main` once SU-01 merged (see the PR 2 gate record). All §8 rulings resolved 2026-09-16 (see §8). |
+| Status | **SU-01 MERGED (PR #615, 2026-09-17); SU-02 implemented, gate green on a tree rebased onto `main`, PR #619 open — tech-lead review received and both items fixed 2026-09-17 (see the SU-02 review follow-up under PR 2).** SU-03…SU-10 not started. Sequential delivery, 1 SU = 1 PR — SU-02 was built stacked on SU-01 out of necessity and then rebased onto `main` once SU-01 merged (see the PR 2 gate record). All §8 rulings resolved 2026-09-16 (see §8). |
 | Author | Solution Architect (with BA `FEATURE.md` / `SRS.md` / `USER_STORIES.md` + approved mockup) |
 | Created | 2026-09-14 |
 | Feature code | `SU` |
@@ -971,6 +971,55 @@ gate, and this PR is open.
 > 5000ms` — a file SU-02 does not touch, in a run between two all-green runs of the same tree. It
 > passes **4/4 in isolation**. Same treatment as §6 PR 1's note: re-run in isolation before believing
 > it, and do not "fix" another spec's timeout from inside a Split PR.
+
+#### SU-02 review follow-up — tech-lead review on PR #619, both items fixed 2026-09-17
+
+Two items, both accepted as raised. Nothing about the reducer, the read-only rendering or the absence
+assertions changed.
+
+1. **Every footer number now goes through `Intl`, via `formatPoints` / `formatNumber`
+   (`shared/lib/utils.ts`).** The footer was interpolating raw numbers, so it rendered `1234.5` where
+   every other numeric surface in the app renders `1,234.5` (`en`) or `1.234,5` (`de`/`vi`). Verified,
+   not assumed: `formatPoints` → `formatNumber` → `toLocaleString(getFormatPrefs().locale, …)`, and the
+   locale is per-user then per-workspace (`resolveFormatPrefs`: `user?.locale || workspace?.locale ||
+   'en'`). The i18n layer does **not** compensate — `i18n.ts` sets only
+   `interpolation: { escapeValue: false }` with no format function, and the strings interpolate a bare
+   `{{original}}`, not `{{original, number}}`. `formatDelta` stays (there is no signed formatter in
+   `shared/lib` — checked) but now **delegates the number** and only adds the `+`.
+   The **counts** were left to my discretion and were routed through `formatNumber` as well, for a
+   reason beyond a thousands separator: on a locale with a non-Latin numbering system, counts bypassing
+   `Intl` would print one digit system while the hours beside them printed another, on one line.
+   `roundPoints` in `split-draft.ts` was explicitly **kept** — it fixes the VALUE that `delta === 0`
+   compares (which selects the success token), not the display, so the two are not duplicates.
+   **This was the first production call site of `formatPoints`** (grep: only its own spec), so it was a
+   missed helper rather than a diverged convention — and now the helper has a consumer.
+   **Evidence:** `split-story-modal.test.tsx` +3 tests (17 → 20). Two of them are DISCRIMINATING, not
+   decorative: reverting only the component (patch-revert, test file untouched) fails
+   `1,234.5h Actual · 2,000h To Do` and `1.234,5h Actual · 2.000h To Do` — measured, 2 failed / 18
+   passed — and passes 20/20 with the fix. The third pins `formatDelta`'s sign contract (`-3`, never
+   `+-3`), which the old code also satisfied; it is a guard, not a discriminator. `format-prefs` is a
+   module **singleton**, so `beforeEach` resets it to `en`/`UTC` — otherwise the `de` test leaks its
+   locale into every test declared after it.
+2. **`SplitStoryPanel`'s `side` prop is typed `SplitSide`**, which `split-api.ts` derives from the
+   generated schema (`SplitPreviewTask['defaultSide']`). The inline `'unfinished' | 'continued'` was a
+   third copy of that member list after the domain's `SPLIT_SIDES` and the DTO's `z.enum` — the same
+   fault the SU-01 review closed. `model/split-draft.ts` was already importing the derived type, so the
+   panel was the only production copy; the modal spec's local `estimateField` helper was switched too,
+   so **no copy remains in the SU-02 surface** — `grep` for the literal union under
+   `features/work-items` now matches only the docblock sentence explaining why it must not come back. A type-only import, so the spec's `vi.mock` of the api barrel is unaffected.
+
+**Not fixed here, by the reviewer's own framing:** `SCHEDULE_STATE_LABEL` is a hardcoded English map,
+so the split modal `t()`s its own labels while the schedule-state names bypass i18n. Reusing the shared
+map was still correct (the alternative is a second copy); it is the same gap as the verdict labels and
+wants its own change, not a Split PR.
+
+**Gate after the fix (FE-only diff — three files, all under `apps/web`, zero backend files):**
+`pnpm lint` **0** · `pnpm --filter rova-web lint` **0** · `pnpm typecheck` **0** ·
+`npx tsc -b --force` **0** · `pnpm build:web` **0** · `pnpm --filter rova-web test`
+**148 files / 1229 tests, exit 0** (1226 → 1229), which includes the FE ratchets — `no-raw-hex`,
+`fe-consistency`, `query-default`, `detail-copy-link` all green and unmoved. The backend suites were
+**not** re-run and that is deliberate: no file outside `apps/web/src/features/work-items/ui` changed,
+and CI's `Backend CI required` is the authority on that line.
 
 ---
 

@@ -33,7 +33,7 @@ import {
   SCHEDULE_STATE_VALUES,
 } from '@/entities/work-item/model/types'
 import { useReleaseOptions } from '@/features/releases/api'
-import type { SplitPreview } from '@/features/work-items/api'
+import type { SplitPreview, SplitSide } from '@/features/work-items/api'
 import type {
   SplitDerived,
   SplitDraft,
@@ -58,11 +58,14 @@ interface PanelProps {
  * The two sides are separate components behind one export because only the `[Continued]` side reads
  * the release feed, and a hook cannot be called conditionally — putting `useReleaseOptions` in a
  * single component would subscribe the read-only side to a feed it never renders.
+ *
+ * `side` is typed `SplitSide`, which `split-api.ts` DERIVES from the generated schema
+ * (`SplitPreviewTask['defaultSide']`), so it traces back to the OpenAPI response and cannot drift
+ * from the server. Spelling `'unfinished' | 'continued'` here again would be a THIRD copy of that
+ * member list — after the domain's `SPLIT_SIDES` and the DTO's `z.enum` — which is the same fault
+ * the SU-01 review closed by deriving both unions from one `as const` array.
  */
-export function SplitStoryPanel({
-  side,
-  ...props
-}: PanelProps & { side: 'unfinished' | 'continued' }) {
+export function SplitStoryPanel({ side, ...props }: PanelProps & { side: SplitSide }) {
   return side === 'unfinished' ? <UnfinishedFields {...props} /> : <ContinuedFields {...props} />
 }
 

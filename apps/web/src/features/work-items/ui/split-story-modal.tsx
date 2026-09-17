@@ -36,6 +36,7 @@ import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { LoadErrorState } from '@/shared/ui/load-error-state'
 import { valueResource } from '@/shared/lib/query/resource'
+import { formatNumber, formatPoints } from '@/shared/lib/utils'
 import { useSplitPreview } from '@/features/work-items/api'
 import type { SplitPreview } from '@/features/work-items/api'
 import {
@@ -161,9 +162,17 @@ export function SplitStoryModal({
   )
 }
 
-/** `+3` / `-2` / `0` — the sign is the whole point of the comparison (BR-13). */
+/**
+ * `+3` / `-2` / `0` — the sign is the whole point of the comparison (BR-13).
+ *
+ * The NUMBER is delegated to `formatPoints`, so the digits, the decimal mark and the group separator
+ * are the reader's locale's; only the leading `+` is added here. There is no existing signed
+ * formatter in `shared/lib` to reuse — `formatPoints`/`formatNumber`/`formatPercent` are all
+ * unsigned — so this stays local, but it must never format the number itself.
+ */
 function formatDelta(delta: number): string {
-  return delta > 0 ? `+${delta}` : String(delta)
+  const formatted = formatPoints(delta)
+  return delta > 0 ? `+${formatted}` : formatted
 }
 
 /**
@@ -173,6 +182,20 @@ function formatDelta(delta: number): string {
  * 5 points into 3 + 4 and save it. So the token shifts (success when the sides still add up to the
  * original, warning when they do not) and NOTHING else changes — the delta reaches no `disabled` and
  * no message. Tokens, never raw hex.
+ *
+ * EVERY NUMBER GOES THROUGH `Intl`, via `formatPoints`/`formatNumber` (review follow-up, 2026-09-17).
+ * The locale is per-user then per-workspace (`resolveFormatPrefs`: `user?.locale || workspace?.locale
+ * || 'en'`), and the i18n layer does NOT compensate — `i18n.ts` configures only
+ * `interpolation: { escapeValue: false }`, with no format function, and these strings interpolate a
+ * bare `{{original}}` rather than `{{original, number}}`. So a raw number here would render through
+ * default JS stringification (`1234.5`) while every other numeric surface in the app renders through
+ * `Intl` (`1,234.5` on `en`, `1.234,5` on `de`/`vi`). The counts go through `formatNumber` for the
+ * same reason and not merely for a thousands separator: a locale on a non-Latin numbering system
+ * would otherwise print the counts in one digit system and the hours in another, on one line.
+ *
+ * `roundPoints` in `split-draft.ts` is NOT redundant with this and must stay: it fixes the VALUE that
+ * `delta === 0` compares — which is what selects the success token — whereas these helpers only fix
+ * what is displayed.
  */
 function SplitFooterSummary({
   preview,
@@ -188,18 +211,23 @@ function SplitFooterSummary({
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-ui-sm text-foreground-subtle">
       <span>
         {t('footer.counts', {
-          tasks: totals.tasks,
-          defects: totals.defects,
-          testCases: totals.testCases,
+          tasks: formatNumber(totals.tasks),
+          defects: formatNumber(totals.defects),
+          testCases: formatNumber(totals.testCases),
         })}
       </span>
       <span aria-hidden="true">|</span>
-      <span>{t('footer.hours', { actual: totals.actualHours, todo: totals.todoHours })}</span>
+      <span>
+        {t('footer.hours', {
+          actual: formatPoints(totals.actualHours),
+          todo: formatPoints(totals.todoHours),
+        })}
+      </span>
       <span aria-hidden="true">|</span>
       <span className={derived.delta === 0 ? 'text-success' : 'text-warning'}>
         {t('footer.points', {
-          original: derived.originalPoints,
-          combined: derived.combinedPoints,
+          original: formatPoints(derived.originalPoints),
+          combined: formatPoints(derived.combinedPoints),
           delta: formatDelta(derived.delta),
         })}
       </span>
