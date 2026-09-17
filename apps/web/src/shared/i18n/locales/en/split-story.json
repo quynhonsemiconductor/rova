@@ -32,6 +32,17 @@
     "noIteration": "No iteration",
     "featureCleared": "Cleared by the split"
   },
+  "collections": {
+    "tasks": "Tasks",
+    "defects": "Defects",
+    "testCases": "Test Cases",
+    "empty": "No items — use the arrow buttons or drag here",
+    "move": "Move {{key}} to {{destination}}",
+    "destinationUnfinished": "[Unfinished]",
+    "destinationContinued": "[Continued]",
+    "todo": "{{hours}}h To Do",
+    "explicit": "Explicit: {{iteration}}"
+  },
   "footer": {
     "counts": "{{tasks}} Tasks · {{defects}} Defects · {{testCases}} Test Cases",
     "hours": "{{actual}}h Actual · {{todo}}h To Do",

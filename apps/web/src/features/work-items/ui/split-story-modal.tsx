@@ -30,6 +30,7 @@
  * together. The three collections (Tasks / Defects / Test Cases) are SU-03/04/05.
  */
 import { useEffect, useReducer } from 'react'
+import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { useTranslation } from 'react-i18next'
 
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -37,13 +38,15 @@ import { Button } from '@/shared/ui/button'
 import { LoadErrorState } from '@/shared/ui/load-error-state'
 import { valueResource } from '@/shared/lib/query/resource'
 import { formatNumber, formatPoints } from '@/shared/lib/utils'
+import { useRerankSensors } from '@/shared/ui/table/use-row-rerank'
 import { useSplitPreview } from '@/features/work-items/api'
-import type { SplitPreview } from '@/features/work-items/api'
+import type { SplitPreview, SplitSide } from '@/features/work-items/api'
 import {
   deriveSplitDraft,
   splitDraftReducer,
   splitPreviewTotals,
   type SplitDerived,
+  type SplitItemKind,
 } from '@/features/work-items/model/split-draft'
 import { SplitStoryPanel } from '@/features/work-items/ui/split-story-panel'
 
@@ -88,6 +91,25 @@ export function SplitStoryModal({
   }, [previewValue])
   const derived = draft ? deriveSplitDraft(draft) : null
 
+  /**
+   * The `DndContext` lives HERE, not in the collection, because a drag has to cross from one panel to
+   * the other — dnd-kit only pairs a draggable with a droppable under a common context. The sensors
+   * are the shared `useRerankSensors()` set (§8 Q17: never a hand-rolled drag), whose 4px pointer
+   * activation constraint is also what keeps a click on a row's arrow button from starting a drag.
+   */
+  const sensors = useRerankSensors()
+
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    if (!over) return
+    const from = active.data.current as { kind?: SplitItemKind; id?: string; side?: SplitSide }
+    const to = over.data.current as { kind?: SplitItemKind; side?: SplitSide }
+    // Same KIND only: a Task dropped on the Test Cases list is not a move, it is a miss. And a drop
+    // on the side the row already occupies is refused here rather than dispatched as a no-op.
+    if (!from?.kind || !from.id || !to?.side) return
+    if (from.kind !== to.kind || from.side === to.side) return
+    dispatch({ type: 'move', kind: from.kind, id: from.id, side: to.side })
+  }
+
   return (
     <AppModal
       open={open}
@@ -103,38 +125,47 @@ export function SplitStoryModal({
           // so a surface that only checked for absence would render an empty split as a fact.
           <LoadErrorState error={preview.error} title={t('error.title')} size="sm" />
         ) : previewValue ? (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <section aria-labelledby="split-panel-unfinished" className="space-y-2">
-              <h3 id="split-panel-unfinished" className="text-ui-sm font-semibold text-foreground">
-                {previewValue.story.iterationName
-                  ? t('panels.unfinished', { iteration: previewValue.story.iterationName })
-                  : t('panels.unfinishedNoIteration')}
-              </h3>
-              {draft && derived && (
-                <SplitStoryPanel
-                  side="unfinished"
-                  preview={previewValue}
-                  draft={draft}
-                  derived={derived}
-                  dispatch={dispatch}
-                />
-              )}
-            </section>
-            <section aria-labelledby="split-panel-continued" className="space-y-2">
-              <h3 id="split-panel-continued" className="text-ui-sm font-semibold text-foreground">
-                {t('panels.continued')}
-              </h3>
-              {draft && derived && (
-                <SplitStoryPanel
-                  side="continued"
-                  preview={previewValue}
-                  draft={draft}
-                  derived={derived}
-                  dispatch={dispatch}
-                />
-              )}
-            </section>
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <section aria-labelledby="split-panel-unfinished" className="space-y-2">
+                <h3
+                  id="split-panel-unfinished"
+                  className="text-ui-sm font-semibold text-foreground"
+                >
+                  {previewValue.story.iterationName
+                    ? t('panels.unfinished', { iteration: previewValue.story.iterationName })
+                    : t('panels.unfinishedNoIteration')}
+                </h3>
+                {draft && derived && (
+                  <SplitStoryPanel
+                    side="unfinished"
+                    preview={previewValue}
+                    draft={draft}
+                    derived={derived}
+                    dispatch={dispatch}
+                  />
+                )}
+              </section>
+              <section aria-labelledby="split-panel-continued" className="space-y-2">
+                <h3 id="split-panel-continued" className="text-ui-sm font-semibold text-foreground">
+                  {t('panels.continued')}
+                </h3>
+                {draft && derived && (
+                  <SplitStoryPanel
+                    side="continued"
+                    preview={previewValue}
+                    draft={draft}
+                    derived={derived}
+                    dispatch={dispatch}
+                  />
+                )}
+              </section>
+            </div>
+          </DndContext>
         ) : null}
       </ModalBody>
       <ModalFooter className="justify-between">

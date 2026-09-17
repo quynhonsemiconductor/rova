@@ -103,6 +103,12 @@ export interface SplitDraft {
  */
 export type SplitDraftState = SplitDraft | null
 
+/**
+ * The three distributable child kinds. Named for the preview's own collection keys (`tasks`,
+ * `defects`, `testCases`) so a move action, a droppable id and a payload field cannot drift apart.
+ */
+export type SplitItemKind = 'task' | 'defect' | 'testCase'
+
 export type SplitDraftAction =
   /** (Re-)seed from a preview. The only action that can create a draft. */
   | { type: 'reset'; preview: SplitPreview }
@@ -111,6 +117,8 @@ export type SplitDraftAction =
   | { type: 'releaseId'; value: string | null }
   | { type: 'scheduleState'; value: ScheduleState }
   | { type: 'targetIteration'; value: string }
+  /** SU-03/04/05 — move one child to one side. Idempotent: moving it where it already is is a no-op. */
+  | { type: 'move'; kind: SplitItemKind; id: string; side: SplitSide }
 
 // ── Parsing ───────────────────────────────────────────────────────────────────
 
@@ -192,6 +200,54 @@ function withSide(state: SplitDraft, side: SplitSide, patch: Partial<SplitSideDr
     : { ...state, continued: { ...state.continued, ...patch } }
 }
 
+/** The draft field holding the `[Unfinished]`-side ids for one kind. One map, no `switch` per call. */
+const UNFINISHED_FIELD = {
+  task: 'unfinishedTaskIds',
+  defect: 'unfinishedDefectIds',
+  testCase: 'unfinishedTestCaseIds',
+} as const satisfies Record<SplitItemKind, keyof SplitDraft>
+
+/**
+ * The ids on the `[Unfinished]` side for one kind.
+ *
+ * Exported so a view never reaches for `draft.unfinishedTestCaseIds` by name: the kind is the thing
+ * the view knows (it is rendering a Test Case collection), and the field name is this module's
+ * business. It is also what makes {@link rowsOnSide} usable from one generic component.
+ */
+export function unfinishedIdsFor(draft: SplitDraft, kind: SplitItemKind): ReadonlySet<string> {
+  return draft[UNFINISHED_FIELD[kind]]
+}
+
+/**
+ * The rows belonging to one side — the `[Continued]` side being the COMPLEMENT of the
+ * `[Unfinished]` set, never a second stored list.
+ *
+ * One stored set per kind rather than two lists, because two lists can disagree: an id in both, or
+ * in neither, is representable, and the write path (§3.2) submits the `unfinished*` side and derives
+ * the complement server-side for the same reason. Order always comes from the PREVIEW's array, so a
+ * row that moves right and back lands where it started instead of at the end of the list.
+ */
+export function rowsOnSide<T extends { id: string }>(
+  rows: readonly T[] | undefined,
+  unfinished: ReadonlySet<string>,
+  side: SplitSide,
+): T[] {
+  const wanted = side === 'unfinished'
+  return (rows ?? []).filter((row) => unfinished.has(row.id) === wanted)
+}
+
+function withMove(state: SplitDraft, kind: SplitItemKind, id: string, side: SplitSide): SplitDraft {
+  const field = UNFINISHED_FIELD[kind]
+  const current = state[field]
+  // Idempotent, and identity-stable: a drop onto the side an item already occupies returns the SAME
+  // state object, so React re-renders nothing and a "moved" test cannot pass on a no-op.
+  if (current.has(id) === (side === 'unfinished')) return state
+  const next = new Set(current)
+  if (side === 'unfinished') next.add(id)
+  else next.delete(id)
+  return { ...state, [field]: next }
+}
+
 export function splitDraftReducer(
   state: SplitDraftState,
   action: SplitDraftAction,
@@ -214,6 +270,8 @@ export function splitDraftReducer(
       return state.allowedTargetIds.includes(action.value)
         ? { ...state, targetIterationId: action.value }
         : state
+    case 'move':
+      return withMove(state, action.kind, action.id, action.side)
   }
 }
 
