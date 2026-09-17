@@ -1295,6 +1295,47 @@ lives.
 > test SU-02 wrote. Both specs now assert that nothing is **announced** (the joined text of every live
 > region is empty), which is the real claim: an empty live region says nothing, a toast has words.
 
+#### SU-03/04/05 review follow-up — tech-lead review on PR #621, fixed 2026-09-17
+
+One thread plus one optional aside; both taken, plus one surface the review did not name.
+
+1. **The per-row To Do hours now go through `formatPoints`** (`split-story-panel.tsx`). This is the
+   SU-02 footer rule one surface further in, and it was the sharper case: the footer's To Do total is
+   the **sum of these rows**, so before the fix one modal showed the same quantity two ways —
+   `1234.5h` on a row, `1,234.5h` in the footer adding it up.
+   **The ternary was deliberately KEPT**, on the reviewer's own reasoning: `formatPoints(null)` is
+   already `EMPTY_VALUE`, so collapsing it *looks* safe, but the em-dash would land INSIDE the string
+   and render `—h To Do` — "an amount of hours we are not showing" rather than "no estimate". The
+   ternary chooses between a bare em-dash and a value **with its unit**; `formatPoints` chooses how the
+   number looks. The docblock now says so, because the redundancy is exactly what a later cleanup
+   would remove. `0` still renders `0h To Do` — a real measurement, asserted separately from null.
+   `Explicit: {{iteration}}` on the Defect meta is a NAME and was left alone.
+2. **The count pill goes through `formatNumber` — not raised in the review, found while fixing (1).**
+   Same argument as SU-02's footer counts: on a locale whose numbering system is not Latin, a raw
+   count prints in one digit system while the hours on the rows below print in another. Visible at
+   `2`, not only past a thousand. The pill's per-side meaning is unchanged (it is not the footer's
+   whole-story total), and the existing `Tasks1`/`Tasks0` assertions still hold because single digits
+   are identical under `Intl`.
+3. **The empty-state copy now names both paths** — `No items — use the arrow buttons or drag here`,
+   replacing `Drop items here`. Offered as optional ("your call, changes no behaviour") and taken,
+   because it is the same reasoning that made SU-03 withhold `useDraggable`'s `attributes`: the arrow
+   button is the primary and the ONLY keyboard path, so copy naming only the pointer gesture told a
+   screen-reader user to do the one thing they cannot. Still not a validation message — an empty side
+   is a legal split (AC5), and the test still asserts no `role="alert"` and no `aria-invalid`.
+
+**Evidence.** `split-collection.test.tsx` 18 → 20 (three specs together 56 → 58). The two new ones are
+**discriminating**: patch-reverting only the two components, specs untouched, fails
+`1,234.5h To Do` and `1.234,5h To Do` — measured, **2 failed / 16 passed** — and passes with the fix.
+Each asserts the ROW and the FOOTER in the same locale, which is the actual claim (one quantity, one
+rendering), not merely that a formatter was called. `format-prefs` is a module singleton, so this spec
+gained the same `beforeEach` locale reset SU-02's has.
+
+**Gate after the fix (FE-only diff — four files under `apps/web`):** `pnpm lint` **0** ·
+`pnpm --filter rova-web lint` **0** · `pnpm typecheck` **0** · `npx tsc -b --force` **0** ·
+`pnpm build:web` **0** · `pnpm --filter rova-web test` **149 files / 1261 tests, exit 0** (1259 → 1261),
+FE ratchets green and unmoved — `MAX_HARDCODED_TEXT` untouched because the new copy is in the i18n
+bundle, not in JSX. Backend suites not re-run: nothing outside `apps/web` changed.
+
 ---
 
 ### PR 6 — `SU-06` Commit one complete Split ⟵ **the integration point**

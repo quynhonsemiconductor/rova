@@ -26,6 +26,7 @@ vi.mock('@/features/work-items/api', () => ({ useSplitPreview }))
 vi.mock('@/features/releases/api', () => ({ useReleaseOptions }))
 
 import '@/shared/i18n/i18n'
+import { setFormatPrefs } from '@/shared/lib/format-prefs'
 import { SplitStoryModal } from './split-story-modal'
 
 /** The seeded NXP shape: TA-1 completed (defaults left), everything else right. */
@@ -171,6 +172,9 @@ function announcedText(): string {
 
 describe('SplitCollection', () => {
   beforeEach(() => {
+    // `format-prefs` is a module singleton; the `de` case below would otherwise leak its locale into
+    // every test declared after it.
+    setFormatPrefs({ locale: 'en', timeZone: 'UTC' })
     useSplitPreview.mockReset()
     useSplitPreview.mockReturnValue(queryReady(preview()))
     useReleaseOptions.mockReset()
@@ -201,6 +205,36 @@ describe('SplitCollection', () => {
     expect(within(tasks).getByText('In-Progress')).toBeInTheDocument()
     // TA-1's `0` IS a measurement, and reads as such on the other side.
     expect(within(list(unfinishedPanel(), 'Tasks')).getByText('0h To Do')).toBeInTheDocument()
+  })
+
+  // ── Review follow-up (2026-09-17): a row and the footer are the same quantity ─
+  //
+  // The footer's To Do total is the SUM of these rows, so the two must be formatted by the same
+  // helper or one modal shows one quantity two ways. Both of these fail on the pre-review code, which
+  // interpolated `task.todoHours` raw: `1234.5h To Do` beside a footer reading `1,234.5h To Do`.
+
+  /** One Task carrying enough hours for a group separator and a fractional part. */
+  function previewWithBigHours() {
+    const base = preview()
+    return {
+      ...base,
+      tasks: [{ ...base.tasks[1], id: 'ta-9', itemKey: 'TA-9', todoHours: 1234.5, actualHours: 0 }],
+    }
+  }
+
+  it('formats a row’s To Do exactly as the footer that sums it (en)', () => {
+    useSplitPreview.mockReturnValue(queryReady(previewWithBigHours()))
+    renderModal()
+    expect(within(list(continuedPanel(), 'Tasks')).getByText('1,234.5h To Do')).toBeInTheDocument()
+    expect(screen.getByText('0h Actual · 1,234.5h To Do')).toBeInTheDocument()
+  })
+
+  it('follows the reader’s locale on the row, not only in the footer (de)', () => {
+    setFormatPrefs({ locale: 'de' })
+    useSplitPreview.mockReturnValue(queryReady(previewWithBigHours()))
+    renderModal()
+    expect(within(list(continuedPanel(), 'Tasks')).getByText('1.234,5h To Do')).toBeInTheDocument()
+    expect(screen.getByText('0h Actual · 1.234,5h To Do')).toBeInTheDocument()
   })
 
   it('moves a row to the other side, and it LEAVES the one it came from (AC1/AC2)', () => {
@@ -256,18 +290,17 @@ describe('SplitCollection', () => {
 
   it('renders the drop state on an empty side and blocks nothing (AC5)', () => {
     renderModal()
+    // The copy names BOTH paths — "use the arrow buttons or drag here" — deliberately (review
+    // follow-up): the arrow button is the primary and the only KEYBOARD path, so an empty state that
+    // said only "Drop items here" told a screen-reader user to do the one thing they cannot. It is
+    // still not a validation message: an empty side is a legal split.
+    const emptyCopy = 'No items — use the arrow buttons or drag here'
     // The `[Unfinished]` Defects and Test Cases lists start empty (BR-15).
-    expect(
-      within(list(unfinishedPanel(), 'Defects')).getByText('Drop items here'),
-    ).toBeInTheDocument()
-    expect(
-      within(list(unfinishedPanel(), 'Test Cases')).getByText('Drop items here'),
-    ).toBeInTheDocument()
+    expect(within(list(unfinishedPanel(), 'Defects')).getByText(emptyCopy)).toBeInTheDocument()
+    expect(within(list(unfinishedPanel(), 'Test Cases')).getByText(emptyCopy)).toBeInTheDocument()
     // Emptying the Tasks side too — still no message, still no alert.
     fireEvent.click(screen.getByRole('button', { name: 'Move TA-1 to [Continued]' }))
-    expect(
-      within(list(unfinishedPanel(), 'Tasks')).getByText('Drop items here'),
-    ).toBeInTheDocument()
+    expect(within(list(unfinishedPanel(), 'Tasks')).getByText(emptyCopy)).toBeInTheDocument()
     expect(document.body.querySelector('[role="alert"]')).toBeNull()
     expect(document.body.querySelector('[aria-invalid="true"]')).toBeNull()
   })

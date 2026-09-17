@@ -47,7 +47,7 @@ import {
 } from '@/features/work-items/model/split-draft'
 import { SplitCollection } from '@/features/work-items/ui/split-collection'
 import { listResource } from '@/shared/lib/query/resource'
-import { EMPTY_VALUE } from '@/shared/lib/utils'
+import { EMPTY_VALUE, formatPoints } from '@/shared/lib/utils'
 import { DetailReadonlyValue } from '@/shared/ui/detail'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
@@ -306,9 +306,18 @@ function SplitCollections({ side, preview, draft, dispatch }: PanelProps & { sid
             */}
             <ScheduleStateBadge state={task.state} />
             <span className="text-ui-xs whitespace-nowrap text-foreground-subtle">
+              {/*
+                THE TERNARY IS NOT REDUNDANT, even though `formatPoints(null)` is already
+                `EMPTY_VALUE`. Collapsing it puts the em-dash INSIDE the string and renders
+                `—h To Do`, which reads as "an amount of hours we are not showing" instead of "no
+                estimate". The ternary chooses between a bare em-dash and a value WITH ITS UNIT;
+                `formatPoints` chooses how the number looks. Two decisions, both needed.
+                `0` is a real measurement and must still render `0h To Do`, which is why the test
+                asserts it separately from the null case.
+              */}
               {task.todoHours === null
                 ? EMPTY_VALUE
-                : t('collections.todo', { hours: task.todoHours })}
+                : t('collections.todo', { hours: formatPoints(task.todoHours) })}
             </span>
           </>
         )}

@@ -36,7 +36,7 @@
     "tasks": "Tasks",
     "defects": "Defects",
     "testCases": "Test Cases",
-    "empty": "Drop items here",
+    "empty": "No items — use the arrow buttons or drag here",
     "move": "Move {{key}} to {{destination}}",
     "destinationUnfinished": "[Unfinished]",
     "destinationContinued": "[Continued]",

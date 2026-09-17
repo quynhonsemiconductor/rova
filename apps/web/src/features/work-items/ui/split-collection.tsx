@@ -34,7 +34,7 @@ import { useTranslation } from 'react-i18next'
 
 import type { SplitSide } from '@/features/work-items/api'
 import type { SplitItemKind } from '@/features/work-items/model/split-draft'
-import { cn } from '@/shared/lib/utils'
+import { cn, formatNumber } from '@/shared/lib/utils'
 import { IconButton } from '@/shared/ui/icon-button'
 
 interface SplitCollectionProps<T extends { id: string }> {
@@ -88,7 +88,13 @@ export function SplitCollection<T extends { id: string }>({
           {label}
         </h4>
         <span className="rounded-full bg-surface-hover px-1.5 text-ui-xs text-foreground-subtle">
-          {rows.length}
+          {/*
+            Through `formatNumber` for the same reason the footer's counts are (SU-02 review): on a
+            locale whose numbering system is not Latin, a raw count would print in one digit system
+            while the hours on the rows below printed in another. That divergence is visible at `2`,
+            not only past a thousand.
+          */}
+          {formatNumber(rows.length)}
         </span>
       </div>
       {/*
