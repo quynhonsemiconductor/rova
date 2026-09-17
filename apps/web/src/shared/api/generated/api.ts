@@ -1046,6 +1046,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/work-items/{id}/split': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Split a user story into an [Unfinished] placeholder and a [Continued] story */
+    post: operations['WorkItemsController_splitWorkItem']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/work-items/{id}/activity': {
     parameters: {
       query?: never
@@ -4071,6 +4088,187 @@ export interface components {
          */
         defaultSide: 'unfinished' | 'continued'
       }[]
+    }
+    SplitWorkItemDto: {
+      /**
+       * Format: uuid
+       * @description D9 — the source Iteration the client rendered. A mismatch is a 412.
+       */
+      expectedSourceIterationId: string
+      /**
+       * Format: uuid
+       * @description BR-05 — must be one of the preview `targets`; the write re-checks with the same rule.
+       */
+      targetIterationId: string
+      unfinished: {
+        title: string
+        /** @description Plan Estimate (story points). null = unpointed, which is NOT 0. */
+        planEstimate: number | null
+      }
+      continued: {
+        title: string
+        /** @description Plan Estimate (story points). null = unpointed, which is NOT 0. */
+        planEstimate: number | null
+        releaseId: string | null
+        /** @enum {string} */
+        scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
+      }
+      unfinishedTaskIds: string[]
+      unfinishedDefectIds: string[]
+      unfinishedTestCaseIds: string[]
+    }
+    SplitWorkItemResponseDto: {
+      split: {
+        /** Format: uuid */
+        id: string
+        /** Format: uuid */
+        projectId: string
+        teamId: string | null
+        /**
+         * Format: uuid
+         * @description SU-BR-08 — the ORIGINAL Story id, unchanged.
+         */
+        continuedStoryId: string
+        /**
+         * Format: uuid
+         * @description SU-BR-07 — the new placeholder.
+         */
+        unfinishedStoryId: string
+        /** Format: uuid */
+        sourceIterationId: string
+        /** Format: uuid */
+        targetIterationId: string
+        /** Format: date-time */
+        splitAt: string
+        /** @description ISO date YYYY-MM-DD, clamped into the source window. */
+        sourceMarkerDate: string
+        /** @description ISO date YYYY-MM-DD, clamped into the target window. */
+        targetMarkerDate: string
+        originalPlanEstimate: number | null
+        unfinishedPlanEstimate: number | null
+        continuedPlanEstimate: number | null
+        /** @description Σ To Do of the Tasks that went to [Continued]. */
+        movedTodoHours: number
+        /** @description Σ Actual across ALL distributed Tasks. */
+        actualHoursAtSplit: number
+        actorId: string | null
+        /** Format: date-time */
+        createdAt: string
+      }
+      unfinished: {
+        /** Format: uuid */
+        id: string
+        /** Format: uuid */
+        workspaceId: string
+        /** Format: uuid */
+        projectId: string
+        /** @description Sequential key e.g. PROJ-42 */
+        itemKey: string
+        type: string
+        title: string
+        description: string | null
+        /** Format: uuid */
+        statusId: string
+        scheduleState: string
+        flowState: string
+        priority: string
+        assigneeId: string | null
+        /** @description Owner display name, joined server-side on the grid reads. A picker feed cannot name a Workspace Admin (no project_members row, §2.1), so the row carries its own name. */
+        assigneeName: string | null
+        devOwnerName: string | null
+        reporterId: string | null
+        parentId: string | null
+        teamId: string | null
+        iterationId: string | null
+        releaseId: string | null
+        /** @description The Feature this item rolls up to. Always null for a task. */
+        featureId: string | null
+        storyPoints: number | null
+        estimateHours: number | null
+        todoHours: number | null
+        actualHours: number | null
+        acceptanceCriteria: string | null
+        notes: string | null
+        releaseNotes: string | null
+        isBlocked: boolean
+        blockedReason: string | null
+        rank: string
+        customFields: {
+          [key: string]: unknown
+        }
+        /** Format: uuid */
+        createdBy: string
+        updatedBy: string | null
+        /** Format: date-time */
+        createdAt: string
+        /** Format: date-time */
+        updatedAt: string
+        severity: string | null
+        foundInEnvironment: string | null
+        foundInReleaseId: string | null
+        rootCause: string | null
+        resolution: string | null
+        devOwnerId: string | null
+        defectState: string | null
+        fixedInBuild: string | null
+      }
+      continued: {
+        /** Format: uuid */
+        id: string
+        /** Format: uuid */
+        workspaceId: string
+        /** Format: uuid */
+        projectId: string
+        /** @description Sequential key e.g. PROJ-42 */
+        itemKey: string
+        type: string
+        title: string
+        description: string | null
+        /** Format: uuid */
+        statusId: string
+        scheduleState: string
+        flowState: string
+        priority: string
+        assigneeId: string | null
+        /** @description Owner display name, joined server-side on the grid reads. A picker feed cannot name a Workspace Admin (no project_members row, §2.1), so the row carries its own name. */
+        assigneeName: string | null
+        devOwnerName: string | null
+        reporterId: string | null
+        parentId: string | null
+        teamId: string | null
+        iterationId: string | null
+        releaseId: string | null
+        /** @description The Feature this item rolls up to. Always null for a task. */
+        featureId: string | null
+        storyPoints: number | null
+        estimateHours: number | null
+        todoHours: number | null
+        actualHours: number | null
+        acceptanceCriteria: string | null
+        notes: string | null
+        releaseNotes: string | null
+        isBlocked: boolean
+        blockedReason: string | null
+        rank: string
+        customFields: {
+          [key: string]: unknown
+        }
+        /** Format: uuid */
+        createdBy: string
+        updatedBy: string | null
+        /** Format: date-time */
+        createdAt: string
+        /** Format: date-time */
+        updatedAt: string
+        severity: string | null
+        foundInEnvironment: string | null
+        foundInReleaseId: string | null
+        rootCause: string | null
+        resolution: string | null
+        devOwnerId: string | null
+        defectState: string | null
+        fixedInBuild: string | null
+      }
     }
     ActivityResponseDto: {
       /** Format: uuid */
@@ -9930,6 +10128,66 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkItemsController_splitWorkItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SplitWorkItemDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SplitWorkItemResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Precondition Failed — the target is not in a state that allows this */
+      412: {
         headers: {
           [name: string]: unknown
         }

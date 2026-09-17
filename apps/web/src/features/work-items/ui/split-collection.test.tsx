@@ -17,13 +17,20 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 
-const { useSplitPreview, useReleaseOptions } = vi.hoisted(() => ({
+const { useSplitPreview, useReleaseOptions, useSplitWorkItem, navigate } = vi.hoisted(() => ({
   useSplitPreview: vi.fn(),
   useReleaseOptions: vi.fn(),
+  // SU-06 — never resolves: this file distributes items, it does not confirm.
+  useSplitWorkItem: vi.fn(() => ({
+    mutateAsync: vi.fn(() => new Promise(() => {})),
+    isPending: false,
+  })),
+  navigate: vi.fn(),
 }))
 
-vi.mock('@/features/work-items/api', () => ({ useSplitPreview }))
+vi.mock('@/features/work-items/api', () => ({ useSplitPreview, useSplitWorkItem }))
 vi.mock('@/features/releases/api', () => ({ useReleaseOptions }))
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 import '@/shared/i18n/i18n'
 import { setFormatPrefs } from '@/shared/lib/format-prefs'
@@ -388,15 +395,19 @@ describe('SplitCollection', () => {
     expect(within(list(unfinishedPanel(), 'Tasks')).getByText('TA-1')).toBeInTheDocument()
   })
 
-  // ── Still nothing is saved ──────────────────────────────────────────────────
+  // ── Distribution never blocks the write ─────────────────────────────────────
 
-  it('keeps `Split story` disabled through every move (§8 Q14 — the write path is SU-06)', () => {
+  it('keeps `Split story` available through every move (AC5 — any distribution is legal)', () => {
+    // SU-02/03 asserted "disabled throughout" because there was no write path. Now that there is, the
+    // claim that matters is the opposite one: moving items — including emptying a side entirely — never
+    // makes the split unsavable, and says nothing (`announcedText` covers the toast absence, since
+    // `DndContext` renders an empty live region of its own).
     renderModal()
-    expect(confirmButton()).toBeDisabled()
+    expect(confirmButton()).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Move TA-1 to [Continued]' }))
     fireEvent.click(screen.getByRole('button', { name: 'Move DE-1 to [Unfinished]' }))
     fireEvent.click(screen.getByRole('button', { name: 'Move TC-1 to [Unfinished]' }))
-    expect(confirmButton()).toBeDisabled()
+    expect(confirmButton()).toBeEnabled()
     expect(announcedText()).toBe('')
   })
 

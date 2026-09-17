@@ -407,6 +407,30 @@ export const testVerdictEnum = pgEnum('test_verdict', [
   'not_run',
 ]);
 
+// ── P7 Split Unfinished User Story ────────────────────────────────────────
+
+/**
+ * Which resulting Story a distributed child belongs to — and the SOURCE OF TRUTH for the whole
+ * feature's side vocabulary.
+ *
+ * `split-story.ts` declared `SPLIT_SIDES` as a hand-written `as const` array in SU-01 only because
+ * this enum did not exist yet, and its docblock says to invert the derivation the moment it does.
+ * That inversion happens here: the domain union is now `(typeof storySplitSideEnum.enumValues)[number]`
+ * and the zod schema reads the same array, so a Drizzle enum, a domain union and a wire contract
+ * cannot drift into three different answers.
+ */
+export const storySplitSideEnum = pgEnum('story_split_side', ['unfinished', 'continued']);
+
+/**
+ * What KIND of child a `story_split_items` row snapshots. Not `work_item_type`: that enum has no
+ * `test_case` member and never should — a Test Case is not a work item.
+ */
+export const storySplitItemKindEnum = pgEnum('story_split_item_kind', [
+  'task',
+  'defect',
+  'test_case',
+]);
+
 // ── TypeScript types (derived — never drift from DB) ──────────────────────
 
 export type UserStatus = (typeof userStatusEnum.enumValues)[number];
@@ -450,6 +474,8 @@ export type WorkItemRelationType = (typeof workItemRelationTypeEnum.enumValues)[
 export type TestCaseMethod = (typeof testCaseMethodEnum.enumValues)[number];
 export type TestCasePriority = (typeof testCasePriorityEnum.enumValues)[number];
 export type TestVerdict = (typeof testVerdictEnum.enumValues)[number];
+export type StorySplitSide = (typeof storySplitSideEnum.enumValues)[number];
+export type StorySplitItemKind = (typeof storySplitItemKindEnum.enumValues)[number];
 
 // ── Semantic groupings (single source of truth for roll-up / progress logic) ──
 // Used by reporting, releases, milestones, quality and iteration-status so the

@@ -23,7 +23,7 @@
  * exists because the OTHER side of its comparison was a timestamp; here neither side is.
  */
 import type { IterationState } from '../../../../../db/schema/enums';
-import { isCompletedScheduleState } from '../../../../../db/schema/enums';
+import { isCompletedScheduleState, storySplitSideEnum } from '../../../../../db/schema/enums';
 import { iterationAssignmentRefusal } from '../domain/iteration-assignable';
 import type { WorkItem } from '../domain/work-item.types';
 
@@ -35,14 +35,15 @@ import type { WorkItem } from '../domain/work-item.types';
  * position ("left"/"right"), which is what the mockup calls them and what a future layout change
  * would falsify.
  *
- * **The array is the single declaration of the member list and the type is derived from it**, the
- * `SCM_CHANGE_ACTIONS` convention, so `split-work-item.dto.ts` can hand the SAME array to `z.enum`
- * instead of re-typing the members. Adding a side is then one edit, and the wire contract cannot
- * disagree with the domain type. When SU-06's `0131_story_splits.sql` introduces a `split_side`
- * column, invert the derivation exactly as the other enums do — `storySplitSideEnum.enumValues`
- * becomes the source and this array goes away — rather than adding a third copy.
+ * **DERIVATION INVERTED IN SU-06, exactly as SU-01's note here said to.** The member list was a
+ * hand-written `as const` array only because `story_split_side` did not exist yet; migration 0131
+ * introduces it, so the DRIZZLE ENUM is now the single declaration and `SPLIT_SIDES` is a re-export
+ * of `storySplitSideEnum.enumValues` — kept as a name so `split-work-item.dto.ts` can keep handing
+ * the same array to `z.enum` and so the ~15 existing usages did not all have to move. One
+ * vocabulary, declared once, in the place the database agrees with: a Drizzle enum, a domain union
+ * and a zod schema cannot now give three different answers.
  */
-export const SPLIT_SIDES = ['unfinished', 'continued'] as const;
+export const SPLIT_SIDES = storySplitSideEnum.enumValues;
 export type SplitSide = (typeof SPLIT_SIDES)[number];
 
 /**
@@ -252,6 +253,32 @@ export function defaultTaskSide(state: WorkItem['scheduleState']): SplitSide {
  * collections, and if it ever becomes conditional there must be one place to make it so.
  */
 export const DEFAULT_RELATED_SIDE: SplitSide = 'continued';
+
+/**
+ * Where a Split lands on ONE iteration's burndown x-axis (SU-06, SRS §10.3).
+ *
+ * The marker date is the Split's own workspace-local day, CLAMPED into that iteration's window:
+ *   • a Split confirmed AFTER the source sprint ended has no x-position on the source chart, so it
+ *     pins to the source's last day rather than falling off the end;
+ *   • a Split confirmed BEFORE the target sprint opens must appear "at its opening value", so it
+ *     pins to the target's first day.
+ *
+ * Pure, and string-only: `YYYY-MM-DD` compares correctly lexicographically, which is why no `Date`
+ * and therefore no timezone enters a comparison that has none (the same discipline as
+ * {@link isLaterThanSource}). The caller resolves the workspace-local date once — clamping is the
+ * rule, and it lives only here.
+ *
+ * An OPEN-ENDED window (either date null, which `iterations.start_date`/`end_date` allow) clamps on
+ * the side it has and leaves the other alone: a sprint with no end date cannot be "after its end".
+ */
+export function clampMarkerDate(
+  localDate: string,
+  window: { startDate: string | null; endDate: string | null },
+): string {
+  if (window.startDate !== null && localDate < window.startDate) return window.startDate;
+  if (window.endDate !== null && localDate > window.endDate) return window.endDate;
+  return localDate;
+}
 
 // ── The preview read model ───────────────────────────────────────────────────
 //

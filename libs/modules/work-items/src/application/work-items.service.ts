@@ -21,6 +21,7 @@ import {
   Span,
   UnitOfWork,
   between,
+  workspaceLocalDate,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
 import { PERMISSION, permissionGrants } from '@shared-kernel';
@@ -73,6 +74,7 @@ import type { TeamReadScope, ProjectTeamScope } from '../domain/team-read-scope'
 import { iterationAssignmentRefusal } from '../domain/iteration-assignable';
 import {
   DEFAULT_RELATED_SIDE,
+  clampMarkerDate,
   defaultSplitTitles,
   defaultTaskSide,
   earliestTarget,
@@ -86,6 +88,15 @@ import type {
   SplitPreviewTarget,
   SplitTargetCandidate,
 } from './split-story';
+import {
+  STORY_SPLIT_REPOSITORY,
+  type IStorySplitRepository,
+} from '../domain/ports/story-split.repository';
+import type {
+  CreateStorySplitItemInput,
+  SplitWorkItemInput,
+  SplitWorkItemResult,
+} from '../domain/story-split.types';
 import type { TimeLog } from '../domain/time-log.types';
 import type { Watcher } from '../domain/watcher.types';
 import { diffWorkItem } from './activity-diff';
@@ -132,6 +143,57 @@ const SPLIT_PREVIEW_COLLECTION_LIMIT = 100;
 /** Drizzle returns `numeric` as a string to preserve precision; the read model publishes numbers. */
 function numberOrNull(value: string | null): number | null {
   return value === null ? null : Number(value);
+}
+
+/**
+ * The reverse, for a write: `numeric` takes a STRING, and `null` must survive as `null`.
+ *
+ * Two functions rather than one, because `CreateWorkItemInput` distinguishes `undefined` ("do not
+ * write this column, let the default stand") from `UpdateWorkItemInput`'s `null` ("write NULL"), and
+ * an unpointed Story is exactly the case where those two must not be confused.
+ */
+function numericTextOrUndefined(value: number | null): string | undefined {
+  return value === null ? undefined : String(value);
+}
+
+function numericTextOrNull(value: number | null): string | null {
+  return value === null ? null : String(value);
+}
+
+/** Σ of a `numeric` column across rows, absent values counted as absent rather than as 0. */
+function sumHours(values: readonly (string | null)[]): number {
+  const total = values.reduce<number>(
+    (sum, value) => sum + (value === null ? 0 : Number(value)),
+    0,
+  );
+  // `numeric(8,2)` is the domain, so two decimals is the whole of it — and it keeps a Σ of 0.1 + 0.2
+  // from being stored as 0.30000000000000004.
+  return Math.round(total * 100) / 100;
+}
+
+/**
+ * Every submitted child id must belong to the Story's LIVE children (BR-32).
+ *
+ * A 412 rather than a silent skip: an id that names nothing is either a stale modal or a crafted
+ * request, and both deserve an answer. The `kind` word is in the message because "one of the items
+ * you selected" is useless when three collections are on screen.
+ *
+ * Returns a `Set` — the caller asks "is this one on the `[Unfinished]` side" once per row after this.
+ */
+function assertSubmittedIdsBelong(
+  submitted: readonly string[],
+  live: readonly { id: string }[],
+  kind: string,
+): ReadonlySet<string> {
+  const liveIds = new Set(live.map((row) => row.id));
+  const stranger = submitted.find((submittedId) => !liveIds.has(submittedId));
+  if (stranger !== undefined) {
+    throw new PreconditionFailedException(
+      'SPLIT_ITEM_NOT_IN_STORY',
+      `A selected ${kind} is no longer part of this story`,
+    );
+  }
+  return new Set(submitted);
 }
 
 /** Drop the project/team scope the filter consumed — the client has no use for it and no right to it. */
@@ -199,6 +261,8 @@ export class WorkItemsService {
     // logic of their own (the Work Item delete above has already authorised the whole operation).
     @Inject(TEST_CASE_REPOSITORY) private readonly testCaseRepo: ITestCaseRepository,
     @Inject(TEST_RESULT_REPOSITORY) private readonly testResultRepo: ITestResultRepository,
+    // SU-06's Split Event. One writer, inside the Split transaction.
+    @Inject(STORY_SPLIT_REPOSITORY) private readonly storySplitRepo: IStorySplitRepository,
   ) {}
 
   // ── Activity helpers ────────────────────────────────────────────────────────
@@ -1213,6 +1277,532 @@ export class WorkItemsService {
       teamScope,
     );
     return page.data;
+  }
+
+  // ── The Split write path (SU-06) ─────────────────────────────────────────────
+
+  /**
+   * Split a User Story in ONE transaction (plan §6.3, SU-BR-07…BR-20 / BR-29 / BR-31 / BR-32).
+   *
+   * The shape, and why it is this shape:
+   *
+   * EVERYTHING THAT CAN REFUSE, REFUSES FIRST — outside the transaction. Eligibility, the optimistic
+   * source-iteration check, target validity and child membership are all reads; running them inside
+   * would hold a rank advisory lock while deciding to do nothing. The transaction opens only once the
+   * answer is yes.
+   *
+   * THE TARGET IS VALIDATED BY THE SAME FUNCTION THE PICKER READS (`filterSplitTargets`). This is the
+   * plan's "a picker narrower than the write" risk, inverted: a write that accepted MORE than the
+   * modal offers would let a crafted request move a Story into an iteration the product refuses, and
+   * one that accepted less would break the modal. One rule, one expression, two callers.
+   *
+   * THE REQUEST NAMES ONE SIDE and the complement is derived from the LIVE children — see
+   * {@link SplitWorkItemInput}.
+   *
+   * WHAT DOES NOT RUN, and both are §8 rulings rather than oversights:
+   *   • `reconcileParentScheduleState` is SKIPPED for `[Unfinished]` (Q5). Every Completed Task lands
+   *     on the placeholder, so reconciliation would immediately derive `completed` and overwrite the
+   *     `accepted` that BR-09 requires — the hook is designed to beat manual edits, and here the
+   *     "manual edit" is a business rule. It DOES run for `[Continued]` (Q6): the derived state wins
+   *     there, exactly as everywhere else in the product, so the modal's Schedule State is the
+   *     initial value and reconciliation settles it.
+   *   • `autoAcceptIterationIfComplete` is NOT called for the source Iteration (Q9). A Split must not
+   *     silently close a sprint, and it easily could: the original Story leaves and an `accepted`
+   *     placeholder lands in its place, which can make every remaining item accepted. Note the
+   *     mechanism this depends on — the placeholder is written through `workItemRepo.create` and the
+   *     original through `workItemRepo.update`, NOT through `updateWorkItem`, which is the method
+   *     that calls the auto-accept hook. If this ever moves onto `updateWorkItem`, the suppression
+   *     disappears with it, which is why the e2e asserts the source Iteration's state is unchanged.
+   */
+  @Span('work-items.split')
+  async splitWorkItem(
+    actor: JwtPayload,
+    id: string,
+    input: SplitWorkItemInput,
+  ): Promise<SplitWorkItemResult> {
+    // `requireReadable` first: it applies the Editor TEAM boundary, which the route's
+    // `resource: 'work_item'` scope cannot see (that resolves the row's PROJECT and nothing else).
+    const story = await this.requireReadable(actor, id);
+    await this.assertProjectWritable(actor.workspaceId, story.projectId);
+
+    // BR-01/02/03 again. The preview said this once already, but a preview is a read from seconds
+    // ago: the Story may have been accepted, unscheduled or re-typed since.
+    const rowReason = splitIneligibleReason(story);
+    if (rowReason !== null) {
+      throw new PreconditionFailedException(
+        'SPLIT_NOT_ELIGIBLE',
+        'This user story can no longer be split',
+      );
+    }
+
+    /**
+     * D9 — the optimistic concurrency check, and the reason it is an ECHO rather than a version
+     * number: `work_items` has no version column anywhere (the repository is last-write-wins). The
+     * client sends the source Iteration it RENDERED; if the Story has since moved, the modal's whole
+     * picture — target list included — was computed against a different sprint.
+     */
+    if (story.iterationId !== input.expectedSourceIterationId) {
+      throw new PreconditionFailedException(
+        'SPLIT_SOURCE_ITERATION_CHANGED',
+        'This story has moved to a different iteration since the split was opened',
+      );
+    }
+
+    // Project / team / existence, with the same three error codes every other iteration assignment
+    // uses — so "that iteration is not yours" does not arrive as a generic split refusal.
+    await this.assertIterationAssignable(actor.workspaceId, story, input.targetIterationId);
+
+    const projectIterations = await this.workItemRepo.listProjectIterations(
+      story.projectId,
+      actor.workspaceId,
+    );
+    const source = projectIterations.find((it) => it.id === story.iterationId) ?? null;
+    if (!source) {
+      // The Story names an iteration this project does not have: a data fault, and there is no
+      // window for a target to be "later than".
+      throw new PreconditionFailedException(
+        'SPLIT_NOT_ELIGIBLE',
+        'This user story can no longer be split',
+      );
+    }
+    const target =
+      filterSplitTargets({ id: source.id, endDate: source.endDate }, projectIterations, story).find(
+        (candidate) => candidate.id === input.targetIterationId,
+      ) ?? null;
+    if (!target) {
+      throw new PreconditionFailedException(
+        'SPLIT_TARGET_INVALID',
+        'Choose a later iteration that this story can move to',
+      );
+    }
+
+    // The LIVE children, read exactly as the preview reads them.
+    const teamScope = await this.teamScopeFor(actor, story.projectId);
+    const [tasks, defects, testCasePage] = await Promise.all([
+      this.workItemRepo.listTasksByParent(id, actor.workspaceId, teamScope),
+      this.listChildDefects(actor, story, teamScope),
+      this.testCaseRepo.listByWorkItem(
+        id,
+        actor.workspaceId,
+        { limit: SPLIT_PREVIEW_COLLECTION_LIMIT, cursor: null },
+        teamScope,
+      ),
+    ]);
+    const testCases = testCasePage.data;
+
+    // BR-32 — an unknown id is a REFUSAL, not a silent skip. A silent skip would leave the reader
+    // believing they distributed a child that stayed where it was.
+    const unfinishedTaskIds = assertSubmittedIdsBelong(input.unfinishedTaskIds, tasks, 'task');
+    const unfinishedDefectIds = assertSubmittedIdsBelong(
+      input.unfinishedDefectIds,
+      defects,
+      'defect',
+    );
+    const unfinishedTestCaseIds = assertSubmittedIdsBelong(
+      input.unfinishedTestCaseIds,
+      testCases,
+      'test case',
+    );
+
+    /**
+     * The Split instant, and the two burndown marker dates derived from it.
+     *
+     * Resolved ONCE, here, so `story_splits.split_at`, `[Unfinished].accepted_date` and both marker
+     * dates describe the same moment. `'UTC'` is the fallback for a workspace with no settings row —
+     * a choice about behaviour, which is why the repository returns `null` and this line makes it.
+     */
+    const splitAt = new Date();
+    const timeZone = (await this.workItemRepo.findWorkspaceTimeZone(actor.workspaceId)) ?? 'UTC';
+    const localDate = workspaceLocalDate(splitAt, timeZone);
+    const sourceMarkerDate = clampMarkerDate(localDate, source);
+    const targetMarkerDate = clampMarkerDate(localDate, target);
+
+    /**
+     * The effort snapshot (§2.1). `movedTodoHours` counts the Tasks going to `[Continued]` — the
+     * complement — because that is the To Do the SOURCE burndown loses and the TARGET gains.
+     * `actualHoursAtSplit` spans every distributed Task, since SU-10 attributes hours on both sides.
+     */
+    const movedTodoHours = sumHours(
+      tasks.filter((task) => !unfinishedTaskIds.has(task.id)).map((task) => task.todoHours),
+    );
+    const actualHoursAtSplit = sumHours(tasks.map((task) => task.actualHours));
+
+    const splitId = uuidv7();
+    const MAX_KEY_RETRIES = 2;
+    let result: SplitWorkItemResult | undefined;
+    let lastErr: unknown;
+
+    for (let attempt = 0; attempt < MAX_KEY_RETRIES; attempt++) {
+      // BR-07 — a FRESH key, minted the same way `createWorkItem` mints one. Never derived from the
+      // original's key: `US-4a` is not a key this product has.
+      const itemKey = await this.projectsService.generateItemKey(
+        actor.workspaceId,
+        story.projectId,
+        'story',
+      );
+      try {
+        result = await this.uow.run(async (tx) => {
+          /**
+           * 0. TAKE THE ROW LOCK, and re-check D9's echo with it held.
+           *
+           * The check outside this transaction is not enough, and an e2e proved it: two confirms that
+           * arrive together both read the pre-Split iteration, both pass, and both mint a placeholder.
+           * The rank advisory lock below does not help — it serialises the INSERTs without making the
+           * second transaction notice that the Story has moved. Here the second one BLOCKS until the
+           * first commits, then reads the moved `iteration_id` and refuses with the same 412 the
+           * pre-flight check uses, because it is the same fact: the Story is no longer where the modal
+           * rendered it.
+           */
+          const locked = await this.workItemRepo.lockRow(id, actor.workspaceId, tx);
+          if (!locked || locked.iterationId !== input.expectedSourceIterationId) {
+            throw new PreconditionFailedException(
+              'SPLIT_SOURCE_ITERATION_CHANGED',
+              'This story has moved to a different iteration since the split was opened',
+            );
+          }
+
+          const rankScope = { projectId: story.projectId, parentId: null };
+          await this.workItemRepo.lockRankScope(rankScope, tx);
+          const maxRank = await this.workItemRepo.findMaxRank(rankScope, actor.workspaceId, tx);
+
+          /**
+           * 1. INSERT the `[Unfinished]` placeholder.
+           *
+           * CONTENT is copied, COLLABORATION is not (D12): description, acceptance criteria, notes,
+           * priority, team, project, Owner and Dev Owner come across — attachments, comments,
+           * watchers, labels and milestone links do not, because duplicating them would duplicate
+           * `storage_files` rows and double-notify every watcher.
+           *
+           * `release_id`, `feature_id` and `parent_id` are simply NOT PASSED, so they are NULL
+           * (BR-10). `iteration_id` is the SOURCE — the placeholder is what stays behind (BR-09) —
+           * and `accepted_date` is the Split instant, explicitly, because `trg_sync_accepted_date`
+           * COALESCEs an explicit value instead of stamping `now()`.
+           *
+           * Rank: END OF SCOPE, matching `createWorkItem` (§8 Q12).
+           */
+          const unfinished = await this.workItemRepo.create(
+            {
+              id: uuidv7(),
+              workspaceId: actor.workspaceId,
+              projectId: story.projectId,
+              itemKey,
+              type: 'story',
+              title: input.unfinished.title,
+              description: story.description ?? undefined,
+              statusId: story.statusId,
+              scheduleState: 'accepted',
+              flowState: 'accepted',
+              acceptedDate: splitAt,
+              priority: story.priority,
+              assigneeId: story.assigneeId ?? undefined,
+              reporterId: story.reporterId ?? undefined,
+              devOwnerId: story.devOwnerId,
+              teamId: story.teamId ?? undefined,
+              iterationId: story.iterationId ?? undefined,
+              storyPoints: numericTextOrUndefined(input.unfinished.planEstimate),
+              acceptanceCriteria: story.acceptanceCriteria ?? undefined,
+              notes: story.notes ?? undefined,
+              rank: between(maxRank, null),
+              createdBy: actor.sub,
+            },
+            tx,
+          );
+
+          /**
+           * 2. UPDATE the original as `[Continued]` (BR-08/BR-11).
+           *
+           * The ORIGINAL row is updated, never re-created, which is the whole of BR-08: its id,
+           * comments, attachments, watchers and Revision History are untouched by construction. Only
+           * the five fields the modal owns are written; project, team and Feature are absent from the
+           * payload, so they keep their values.
+           */
+          const continuedChanges = {
+            title: input.continued.title,
+            iterationId: input.targetIterationId,
+            releaseId: input.continued.releaseId,
+            scheduleState: input.continued.scheduleState,
+            flowState: input.continued.scheduleState,
+            storyPoints: numericTextOrNull(input.continued.planEstimate),
+            updatedBy: actor.sub,
+          };
+          const continued = await this.workItemRepo.update(
+            id,
+            continuedChanges,
+            actor.workspaceId,
+            tx,
+          );
+
+          /**
+           * 3. Re-parent the chosen Tasks — `parent_id` ONLY (BR-17).
+           *
+           * Nothing else is written: not the state, not the hours, not the owner, and NOT the
+           * iteration. `trg_task_iteration_from_parent` derives `tasks.iteration_id` from the new
+           * parent on this very UPDATE (D4), so a Task following `[Unfinished]` stays in the source
+           * Iteration and one left on `[Continued]` is carried forward by
+           * `trg_cascade_iteration_to_tasks`. Passing an iteration here is a documented refusal
+           * (`TASK_ITERATION_DERIVED`).
+           */
+          for (const taskId of unfinishedTaskIds) {
+            await this.workItemRepo.update(
+              taskId,
+              { parentId: unfinished.id },
+              actor.workspaceId,
+              tx,
+            );
+          }
+
+          /**
+           * 4. Re-parent the chosen Defects — `parent_id` ONLY (BR-18).
+           *
+           * A Defect's `iteration_id` is its OWN and Split never touches it. §8 Q8 ruled the "a
+           * Defect without an explicit Iteration follows its parent" line a no-op: there is no such
+           * mechanism in this product, and inventing one here would be net-new write scope.
+           */
+          for (const defectId of unfinishedDefectIds) {
+            await this.workItemRepo.update(
+              defectId,
+              { parentId: unfinished.id },
+              actor.workspaceId,
+              tx,
+            );
+          }
+
+          /**
+           * 5. Move the chosen Test Cases' Work Product (BR-19) — `work_item_id` only.
+           *
+           * Their Results do NOT follow: `test_results.work_item_id` is a snapshot taken at
+           * result-entry time (D10 / BR-20), and `last_verdict`/`last_run` are untouched because
+           * `trg_test_case_last_result` does not fire on this column. Both verified against a live
+           * database in SU-05 5.3.
+           */
+          await this.testCaseRepo.reparentToWorkItem(
+            [...unfinishedTestCaseIds],
+            unfinished.id,
+            actor.workspaceId,
+            tx,
+          );
+
+          /**
+           * 6. The Split Event + one row per distributed child (BR-29).
+           *
+           * EVERY child gets a row, not only the moved ones: the report layer asks "where was this
+           * Task at the Split, and what had it accrued by then", and a child that stayed on
+           * `[Continued]` has an answer to both.
+           */
+          const items: CreateStorySplitItemInput[] = [
+            ...tasks.map((task) => ({
+              id: uuidv7(),
+              workspaceId: actor.workspaceId,
+              splitId,
+              itemKind: 'task' as const,
+              taskId: task.id,
+              workItemId: null,
+              testCaseId: null,
+              splitSide: unfinishedTaskIds.has(task.id)
+                ? ('unfinished' as const)
+                : ('continued' as const),
+              estimateHoursAtSplit: numberOrNull(task.estimateHours),
+              todoHoursAtSplit: numberOrNull(task.todoHours),
+              actualHoursAtSplit: numberOrNull(task.actualHours),
+              explicitIterationId: null,
+            })),
+            ...defects.map((defect) => ({
+              id: uuidv7(),
+              workspaceId: actor.workspaceId,
+              splitId,
+              itemKind: 'defect' as const,
+              taskId: null,
+              workItemId: defect.id,
+              testCaseId: null,
+              splitSide: unfinishedDefectIds.has(defect.id)
+                ? ('unfinished' as const)
+                : ('continued' as const),
+              estimateHoursAtSplit: null,
+              todoHoursAtSplit: null,
+              actualHoursAtSplit: null,
+              // The Iteration Split did NOT touch, recorded so a later reader does not have to trust
+              // that it was left alone.
+              explicitIterationId: defect.iterationId,
+            })),
+            ...testCases.map((testCase) => ({
+              id: uuidv7(),
+              workspaceId: actor.workspaceId,
+              splitId,
+              itemKind: 'test_case' as const,
+              taskId: null,
+              workItemId: null,
+              testCaseId: testCase.id,
+              splitSide: unfinishedTestCaseIds.has(testCase.id)
+                ? ('unfinished' as const)
+                : ('continued' as const),
+              estimateHoursAtSplit: null,
+              todoHoursAtSplit: null,
+              actualHoursAtSplit: null,
+              explicitIterationId: null,
+            })),
+          ];
+
+          const split = await this.storySplitRepo.create(
+            {
+              id: splitId,
+              workspaceId: actor.workspaceId,
+              projectId: story.projectId,
+              teamId: story.teamId,
+              continuedStoryId: id,
+              unfinishedStoryId: unfinished.id,
+              sourceIterationId: source.id,
+              targetIterationId: target.id,
+              splitAt,
+              sourceMarkerDate,
+              targetMarkerDate,
+              originalPlanEstimate: numberOrNull(story.storyPoints),
+              unfinishedPlanEstimate: input.unfinished.planEstimate,
+              continuedPlanEstimate: input.continued.planEstimate,
+              movedTodoHours,
+              actualHoursAtSplit,
+              actorId: actor.sub,
+            },
+            items,
+            tx,
+          );
+
+          // 7. §2.4's third statement — the placeholder points back at the Event it belongs to.
+          await this.workItemRepo.markSplitPlaceholder(
+            unfinished.id,
+            splitId,
+            actor.workspaceId,
+            tx,
+          );
+
+          /**
+           * 8. Revision History (BR-31) — ONE multi-row insert.
+           *
+           * `work_item.split_out` on the placeholder and `work_item.split_in` on the Story that moved
+           * forward, each naming the counterpart so either detail page can trace the other; the
+           * `[Continued]` field diff, so its Iteration/Release/Points changes read like any other
+           * edit; and one entry per moved child, on the child itself, because "why is this Task
+           * suddenly under another Story" is a question asked from the Task.
+           */
+          const splitMetadata = {
+            splitId,
+            sourceIterationId: source.id,
+            targetIterationId: target.id,
+          };
+          await this.appendMany(
+            [
+              this.buildActivityInput(
+                unfinished,
+                'work_item',
+                actor.sub,
+                'work_item.split_out',
+                null,
+                {
+                  ...splitMetadata,
+                  counterpartId: id,
+                },
+              ),
+              this.buildActivityInput(
+                continued,
+                'work_item',
+                actor.sub,
+                'work_item.split_in',
+                null,
+                {
+                  ...splitMetadata,
+                  counterpartId: unfinished.id,
+                },
+              ),
+              ...diffWorkItem(story, continuedChanges, false).map((entry) =>
+                this.buildActivityInput(
+                  continued,
+                  'work_item',
+                  actor.sub,
+                  entry.action,
+                  entry.change,
+                ),
+              ),
+              ...tasks
+                .filter((task) => unfinishedTaskIds.has(task.id))
+                .map((task) =>
+                  this.buildActivityInput(task, 'task', actor.sub, 'task.parent_changed', {
+                    field: 'parentId',
+                    old: id,
+                    new: unfinished.id,
+                  }),
+                ),
+              ...defects
+                .filter((defect) => unfinishedDefectIds.has(defect.id))
+                .map((defect) =>
+                  this.buildActivityInput(
+                    defect,
+                    'work_item',
+                    actor.sub,
+                    'work_item.parent_changed',
+                    { field: 'parentId', old: id, new: unfinished.id },
+                  ),
+                ),
+              ...testCases
+                .filter((testCase) => unfinishedTestCaseIds.has(testCase.id))
+                .map((testCase) =>
+                  this.activity.build(
+                    {
+                      workspaceId: actor.workspaceId,
+                      projectId: story.projectId,
+                      entityType: 'test_case',
+                      entityId: testCase.id,
+                      contextId: unfinished.id,
+                    },
+                    actor.sub,
+                    'test_case.work_product_changed',
+                    { field: 'workItemId', old: id, new: unfinished.id },
+                    splitMetadata,
+                  ),
+                ),
+            ],
+            tx,
+          );
+
+          /**
+           * 9. Q6 — reconcile `[Continued]` from its Task set, and NOT `[Unfinished]` (Q5).
+           *
+           * Last, so it sees the re-parented rows: whatever Tasks remain on `[Continued]` are what
+           * its state is derived from. If that overrides the Schedule State chosen in the modal, that
+           * is the ruling, not a defect — the derived rule wins everywhere else in the product too.
+           */
+          await this.reconcileParentScheduleState(actor, id, tx);
+          const settled = await this.workItemRepo.findById(id, actor.workspaceId, tx);
+
+          return { split, unfinished, continued: settled ?? continued };
+        });
+        break;
+      } catch (err: unknown) {
+        lastErr = err;
+        if (isDuplicateKeyError(err) && attempt < MAX_KEY_RETRIES - 1) {
+          this.logger.warn(
+            { storyId: id, itemKey, attempt: attempt + 1 },
+            'Duplicate item key while splitting — retrying with the next key',
+          );
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!result) throw lastErr;
+
+    this.logger.log(
+      {
+        splitId: result.split.id,
+        storyId: id,
+        placeholderId: result.unfinished.id,
+        placeholderKey: result.unfinished.itemKey,
+        sourceIterationId: source.id,
+        targetIterationId: target.id,
+        userId: actor.sub,
+      },
+      'User story split',
+    );
+    return result;
   }
 
   // ── Activity (Revision History) ──────────────────────────────────────────────

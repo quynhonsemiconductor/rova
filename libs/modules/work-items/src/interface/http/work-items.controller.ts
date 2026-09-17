@@ -55,7 +55,11 @@ import {
   WatcherResponseDto,
   StoryOptionResponseDto,
 } from './dto/work-item-response.dto';
-import { SplitPreviewResponseDto } from './dto/split-work-item.dto';
+import {
+  SplitPreviewResponseDto,
+  SplitWorkItemDto,
+  SplitWorkItemResponseDto,
+} from './dto/split-work-item.dto';
 import type { WorkItem } from '../../domain/work-item.types';
 import { BACKLOG_SORT_FIELDS } from '../../domain/work-item.types';
 import type { ActivityLog } from '@modules/activity';
@@ -638,6 +642,42 @@ export class WorkItemsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<SplitPreviewResponseDto> {
     return this.workItemsService.getSplitPreview(user, id);
+  }
+
+  /**
+   * Commit one complete Split (SU-06).
+   *
+   * `work_item:edit`, NOT `create` (plan D7): all three tier roles already hold the whole
+   * `work_item:view/create/edit/delete` set, so requiring `create` as well would change nothing and
+   * would put a second policy on one route. `edit` is also the honest verb — the Story that matters
+   * most here is the one being MODIFIED.
+   *
+   * The route is the counterpart of `:id/split-preview` above and shares its scope shape
+   * (`resource: 'work_item'`, from the path param). The TEAM boundary is not expressible in a
+   * decorator — the guard resolves the row's project, not its team — so the service applies it first
+   * thing, before anything is read or written.
+   *
+   * 201, because a Split CREATES a Story (the placeholder) even though it also updates one.
+   */
+  @Post(':id/split')
+  @ApiOperation({ summary: 'Split a user story into an [Unfinished] placeholder and a [Continued] story' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: SplitWorkItemResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 412)
+  async splitWorkItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SplitWorkItemDto,
+  ): Promise<SplitWorkItemResponseDto> {
+    const result = await this.workItemsService.splitWorkItem(user, id, dto);
+    // Both Stories go through the SAME mapper every other work-item response uses, so a Split's
+    // payload cannot describe a Story in a different vocabulary from `GET /work-items/:id`.
+    return {
+      split: result.split,
+      unfinished: toWorkItemDto(result.unfinished),
+      continued: toWorkItemDto(result.continued),
+    };
   }
 
   // ── Activity (Revision History) ──────────────────────────────────────────────

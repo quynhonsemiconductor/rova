@@ -156,4 +156,30 @@ export interface ITestCaseRepository {
 
   /** Single-row rank UPDATE — the write half of the neighbour-based reorder (F3). */
   updateRank(id: string, rank: string, workspaceId: string, executor?: DbExecutor): Promise<void>;
+
+  /**
+   * Move a set of Test Cases' WORK PRODUCT to another Work Item — the Split write path's step 7
+   * (SU-BR-19), and the only caller.
+   *
+   * **This port had no way to write `work_item_id` before SU-06, and that was deliberate rather than
+   * an oversight:** `UpdateTestCaseInput` excludes it by design (its docblock says so), because the
+   * Phase C PATCH must not let a client re-file a Test Case under another Story as a side effect of
+   * editing its name. Split is a different verb with its own authorization, so it gets its own
+   * method instead of a widened one — the same reasoning that keeps `split_id` out of every
+   * `Update*` schema.
+   *
+   * `work_item_id` ONLY. `test_results.work_item_id` is a SNAPSHOT of the Work Product at
+   * result-entry time and must not follow (plan D10, SU-BR-20), and
+   * `trg_test_case_last_result` fires on `run_date, verdict, deleted_at, test_case_id` — not on
+   * `work_item_id` — so `last_verdict`/`last_run` keep pointing at the newest Result by
+   * construction. Both facts were verified against a live database in SU-05 5.3.
+   *
+   * Set-based: one UPDATE for the whole selection, inside the Split transaction.
+   */
+  reparentToWorkItem(
+    ids: string[],
+    workItemId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<void>;
 }

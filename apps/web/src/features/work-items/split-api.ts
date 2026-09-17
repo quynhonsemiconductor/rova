@@ -11,7 +11,7 @@
  * Re-deriving "is this splittable" in the browser would put half a rule in TypeScript and half in
  * SQL, which is the fault class the plan risk register calls "a picker narrower than the write".
  */
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
@@ -72,5 +72,52 @@ export function useSplitPreview(
     // Short: eligibility turns on the Story schedule state and its Iteration, both of which the
     // reader can change on the same page seconds before opening the menu.
     staleTime: 10_000,
+  })
+}
+
+// ── The write (SU-06) ─────────────────────────────────────────────────────────
+
+/** Generated from the served spec — the body the server accepts, never hand-typed. */
+export type SplitWorkItemInput = components['schemas']['SplitWorkItemDto']
+export type SplitWorkItemResult = components['schemas']['SplitWorkItemResponseDto']
+export type StorySplit = SplitWorkItemResult['split']
+
+/**
+ * Commit one complete Split.
+ *
+ * HERE AND NOT IN `api.ts`, like `useSplitPreview` above: that module holds the SPA's file-length
+ * ratchet at 929 and sat at 923 before this PR. SU-01's 1.7 note said everything the Split adds to
+ * the api layer lands in this file, and this is that.
+ *
+ * **`meta: { invalidates: ['work-item'] }` plus TWO explicit keys.** The shared `work-item` fan-out
+ * covers every work-item-derived read model (Backlog, Iteration Status, Team Status, Quality,
+ * Portfolio, My Work, counts) — but a Split also changes two things that are NOT keyed on a work
+ * item: the split PREVIEW of the Story that just moved (its eligibility, defaults and target list are
+ * all now different), and the REPORTS, because points and To Do have crossed an iteration boundary.
+ * Invalidating those explicitly is cheaper than widening the shared prefix for every other mutation.
+ *
+ * The caller owns navigation: `onSuccess` in the modal closes it and routes to `[Continued]`, which is
+ * SU-07 AC1's landing. Putting the `navigate` here would make this hook un-callable from anywhere
+ * without a router.
+ */
+export function useSplitWorkItem(workItemId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: SplitWorkItemInput): Promise<SplitWorkItemResult> => {
+      const { data, error, response } = await apiClient.POST('/v1/work-items/{id}/split', {
+        params: { path: { id: workItemId } },
+        body: input,
+      })
+      // The server's own message is kept: every refusal here is one the reader can act on — the
+      // Story moved, the target is no longer valid, a child is gone — and a generic "split failed"
+      // would throw that away.
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as SplitWorkItemResult
+    },
+    meta: { invalidates: ['work-item'] },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: splitPreviewKey(workItemId) })
+      void qc.invalidateQueries({ queryKey: ['reports'] })
+    },
   })
 }

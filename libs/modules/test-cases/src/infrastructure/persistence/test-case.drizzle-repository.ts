@@ -312,6 +312,37 @@ export class TestCaseDrizzleRepository implements ITestCaseRepository {
       .where(and(eq(testCases.id, id), eq(testCases.workspaceId, workspaceId)));
   }
 
+  /**
+   * SU-06 step 7 — move the WORK PRODUCT and nothing else.
+   *
+   * `work_item_id` + `updated_at` only. Not `rank`: the rank scope is the Work Item, so a moved Test
+   * Case keeps a rank minted under its old parent — which is a real (cosmetic) ordering wart, and
+   * re-minting it here would be a second rank policy living outside the service that owns rank. Noted
+   * rather than fixed silently; SU-07's read path is what would notice.
+   *
+   * `test_results.work_item_id` is untouched by design (plan D10 / SU-BR-20) and
+   * `last_verdict`/`last_run` are untouched by construction — `trg_test_case_last_result` does not
+   * fire on this column. Verified against a live database in SU-05 5.3.
+   */
+  async reparentToWorkItem(
+    ids: string[],
+    workItemId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<void> {
+    if (ids.length === 0) return;
+    await executor
+      .update(testCases)
+      .set({ workItemId, updatedAt: new Date() })
+      .where(
+        and(
+          inArray(testCases.id, ids),
+          eq(testCases.workspaceId, workspaceId),
+          isNull(testCases.deletedAt),
+        ),
+      );
+  }
+
   private mapRow(
     row: typeof testCases.$inferSelect & {
       ownerName: string | null;

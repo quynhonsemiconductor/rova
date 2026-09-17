@@ -30,6 +30,7 @@ import {
   projects,
   workflowStatuses,
 } from '../../../../../../db/schema/work';
+import { workspaceSettings } from '../../../../../../db/schema/workspace';
 import { users } from '../../../../../../db/schema/identity';
 import type {
   DefectSeverity,
@@ -352,6 +353,69 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(and(eq(releases.id, releaseId), eq(releases.workspaceId, workspaceId)))
       .limit(1);
     return rows[0]?.name ?? null;
+  }
+
+  /**
+   * The workspace's IANA time zone. `null` when the row or the column is unset, and the CALLER
+   * decides the fallback — `'UTC'` is a choice about behaviour, not a property of an absent row, and
+   * defaulting here would hide a workspace with no settings from whoever cares.
+   *
+   * The Split write path's only DB read of `workspace_settings`; see the port's note on why it is not
+   * borrowed from `@modules/reporting`.
+   */
+  async findWorkspaceTimeZone(workspaceId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ timeZone: workspaceSettings.timezone })
+      .from(workspaceSettings)
+      .where(eq(workspaceSettings.workspaceId, workspaceId))
+      .limit(1);
+    return rows[0]?.timeZone ?? null;
+  }
+
+  /**
+   * SU-06 step 0 — `SELECT … FOR UPDATE` on the Story about to be split.
+   *
+   * The executor is REQUIRED: a row lock outside a transaction is released immediately and would be
+   * theatre. Returns only what the caller compares — the point is the LOCK, not the row.
+   */
+  async lockRow(
+    id: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<{ id: string; iterationId: string | null } | null> {
+    const rows = await executor
+      .select({ id: workItems.id, iterationId: workItems.iterationId })
+      .from(workItems)
+      .where(
+        and(
+          eq(workItems.id, id),
+          eq(workItems.workspaceId, workspaceId),
+          isNull(workItems.deletedAt),
+        ),
+      )
+      .limit(1)
+      .for('update');
+    return rows[0] ?? null;
+  }
+
+  /**
+   * SU-06 step 9 (§2.4's third statement) — `split_id` ONLY.
+   *
+   * Deliberately not reachable through `update`: see the port's note. `updatedAt` is touched because
+   * the row did change; `updatedBy` is not, because the Split's actor is already recorded on the
+   * Split Event and in the activity entries, and stamping it here would make the placeholder look
+   * hand-edited.
+   */
+  async markSplitPlaceholder(
+    id: string,
+    splitId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<void> {
+    await executor
+      .update(workItems)
+      .set({ splitId, updatedAt: new Date() })
+      .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)));
   }
 
   /**
@@ -1256,6 +1320,11 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         iterationId: input.iterationId,
         releaseId: input.releaseId,
         storyPoints: input.storyPoints,
+        // SU-06's `[Unfinished]` placeholder passes the Split timestamp (SU-BR-09).
+        // `trg_sync_accepted_date` COALESCEs an explicit value rather than overwriting it with
+        // `now()`, so the stored date IS the Split's, not "a moment later". Undefined everywhere
+        // else, which leaves the trigger in charge as before.
+        acceptedDate: input.acceptedDate,
         // No hours: dropped from `work_items` by migration 0074. A Story/Defect derives them
         // from its child tasks, and a Task's own values are written to `tasks` by the task
         // branch of `update()` / `createTask`.

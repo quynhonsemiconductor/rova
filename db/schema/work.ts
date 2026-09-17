@@ -21,6 +21,7 @@ import {
   check,
   primaryKey,
   customType,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -58,6 +59,8 @@ import {
   testCaseMethodEnum,
   testCasePriorityEnum,
   testVerdictEnum,
+  storySplitSideEnum,
+  storySplitItemKindEnum,
 } from './enums';
 import { files } from './storage';
 
@@ -197,6 +200,26 @@ export const workItems = workSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    /**
+     * `split_id IS NOT NULL` ⇔ "this Story is a Split/Carryover historical PLACEHOLDER; it never
+     * earns delivery credit" (Phase 7 Split plan D6, migration 0131).
+     *
+     * A flag rather than a join, because two report paths need a cheap, index-friendly predicate on
+     * it: the hourly snapshot job's Accepted-Points sum and the live Velocity classifier. Only the
+     * placeholder needs the durable mark — the `[Continued]` side is found through
+     * `story_splits.continued_story_id`, and cannot carry a "role" column because a `[Continued]`
+     * Story may legitimately be split again.
+     *
+     * A FORWARD reference (`story_splits` is declared at the foot of this file), so it takes
+     * Drizzle's callback form with an explicit `AnyPgColumn` return type — the circular pair
+     * `work_items ↔ story_splits` has no declaration order that avoids it.
+     *
+     * It belongs to NO `Create*`/`Update*` schema: only the Split write path may set it (the
+     * `last_verdict` precedent).
+     */
+    splitId: uuid('split_id').references((): AnyPgColumn => storySplits.id, {
+      onDelete: 'set null',
+    }),
     // GENERATED ALWAYS AS (STORED) tsvector — maintained by migration 0012.
     // Read-only from the application layer; updated by Postgres on every write.
     searchVector: tsvector('search_vector'),
@@ -237,6 +260,11 @@ export const workItems = workSchema.table(
     ftsIdx: index('ix_wi_fts')
       .on(t.searchVector)
       .where(sql`deleted_at IS NULL`),
+    // Partial: the column is null for every Story that is not a Split placeholder, which is very
+    // nearly all of them.
+    splitIdx: index('ix_wi_split_id')
+      .on(t.splitId)
+      .where(sql`split_id IS NOT NULL`),
   }),
 );
 
@@ -1484,5 +1512,121 @@ export const testResults = workSchema.table(
     // `not_run` is a Test Case-only concept (D6) — a Result records an outcome, never its
     // absence. One enum, two audiences, one excluded member: see `testVerdictEnum`'s comment.
     verdictNotNotRun: check('ck_test_results_verdict_not_not_run', sql`${t.verdict} <> 'not_run'`),
+  }),
+);
+
+// ── story_splits ──────────────────────────────────────────────────────────
+/**
+ * One row per Split Event (Phase 7 Split plan D5 / §2.1, migration 0131).
+ *
+ * A CHILD TABLE, not a jsonb payload on the Story, because SRS §10.1 needs per-Task Actual captured
+ * at Split time looked up BY TASK ID from a LIVE query (Team Capacity re-runs on every render). A
+ * blob would force a lateral `jsonb_to_recordset` unnest inside that query; `story_split_items` +
+ * `ix_ssi_task` is a plain join.
+ *
+ * The two marker dates are STORED rather than derived because clamping `split_at` into each
+ * iteration's window needs the workspace time zone, which the report read path must not resolve per
+ * row — and because a Split confirmed after the source sprint closed otherwise has no x-position on
+ * the source burndown at all (SRS §10.3).
+ */
+export const storySplits = workSchema.table(
+  'story_splits',
+  {
+    id: uuid('id').primaryKey(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    /** The Story's team AT SPLIT TIME. NULL = project backlog, as everywhere else. */
+    teamId: uuid('team_id'),
+    /** SU-BR-08 — the ORIGINAL Story id. It is UPDATEd, never re-created, so it keeps its history. */
+    continuedStoryId: uuid('continued_story_id')
+      .notNull()
+      .references(() => workItems.id),
+    /** SU-BR-07 — the NEW placeholder, minted with a fresh `US-n` key. */
+    unfinishedStoryId: uuid('unfinished_story_id')
+      .notNull()
+      .references(() => workItems.id),
+    sourceIterationId: uuid('source_iteration_id')
+      .notNull()
+      .references(() => iterations.id),
+    targetIterationId: uuid('target_iteration_id')
+      .notNull()
+      .references(() => iterations.id),
+    /** `[Unfinished].accepted_date` is set from this (SU-BR-09). */
+    splitAt: timestamp('split_at', { withTimezone: true }).notNull().defaultNow(),
+    sourceMarkerDate: date('source_marker_date').notNull(),
+    targetMarkerDate: date('target_marker_date').notNull(),
+    /** SU-BR-13's before/after. NULL is legal and is NOT 0 — an unpointed Story has no estimate. */
+    originalPlanEstimate: numeric('original_plan_estimate', { precision: 6, scale: 2 }),
+    unfinishedPlanEstimate: numeric('unfinished_plan_estimate', { precision: 6, scale: 2 }),
+    continuedPlanEstimate: numeric('continued_plan_estimate', { precision: 6, scale: 2 }),
+    /** Σ To Do of the Tasks that went to `[Continued]`; Σ Actual across ALL distributed Tasks. */
+    movedTodoHours: numeric('moved_todo_hours', { precision: 10, scale: 2 }).notNull().default('0'),
+    actualHoursAtSplit: numeric('actual_hours_at_split', { precision: 10, scale: 2 })
+      .notNull()
+      .default('0'),
+    /** `created_by` semantics. NULL = system; no such path exists today. */
+    actorId: uuid('actor_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    /**
+     * A Story is the placeholder of EXACTLY ONE Split. This is what makes two concurrent confirms of
+     * the same modal unable to both succeed — the service's `expectedSourceIterationId` check is a
+     * read-then-write and this is not, so both exist deliberately (plan D9).
+     */
+    unfinishedIdx: uniqueIndex('uq_story_splits_unfinished').on(t.unfinishedStoryId),
+    /** NOT unique: a `[Continued]` Story may be split again, and the banner reads the history. */
+    continuedIdx: index('ix_story_splits_continued').on(t.continuedStoryId, t.splitAt),
+    sourceIdx: index('ix_story_splits_source').on(t.sourceIterationId, t.sourceMarkerDate),
+    targetIdx: index('ix_story_splits_target').on(t.targetIterationId, t.targetMarkerDate),
+  }),
+);
+
+// ── story_split_items ─────────────────────────────────────────────────────
+/**
+ * One row per distributed Task / Defect / Test Case, carrying the per-item effort SNAPSHOT
+ * (plan §2.2, migration 0131).
+ *
+ * Polymorphic COLUMNS, not one bare `subject_id` — the pattern
+ * `0083_attachments_polymorphic.sql` uses. A single untyped id would take no foreign key, so a
+ * deleted Task would leave a snapshot the report layer joins to nothing. The CHECK enforces that
+ * exactly one subject is set AND that it agrees with `item_kind`.
+ */
+export const storySplitItems = workSchema.table(
+  'story_split_items',
+  {
+    id: uuid('id').primaryKey(),
+    workspaceId: uuid('workspace_id').notNull(),
+    splitId: uuid('split_id')
+      .notNull()
+      .references(() => storySplits.id, { onDelete: 'cascade' }),
+    itemKind: storySplitItemKindEnum('item_kind').notNull(),
+    taskId: uuid('task_id').references(() => tasks.id),
+    workItemId: uuid('work_item_id').references(() => workItems.id),
+    testCaseId: uuid('test_case_id').references(() => testCases.id),
+    splitSide: storySplitSideEnum('split_side').notNull(),
+    /** Tasks only. `actualHoursAtSplit` is the lower bound SU-10's attribution arithmetic reads. */
+    estimateHoursAtSplit: numeric('estimate_hours_at_split', { precision: 8, scale: 2 }),
+    todoHoursAtSplit: numeric('todo_hours_at_split', { precision: 8, scale: 2 }),
+    actualHoursAtSplit: numeric('actual_hours_at_split', { precision: 8, scale: 2 }),
+    /** Defects only — the Iteration Split did NOT touch (SU-BR-18), recorded so a report can say so. */
+    explicitIterationId: uuid('explicit_iteration_id').references(() => iterations.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    splitIdx: index('ix_ssi_split').on(t.splitId, t.itemKind),
+    /**
+     * LOAD-BEARING: this is SU-10's Team Capacity join. Partial, because two thirds of the rows are
+     * Defects and Test Cases that the join never wants.
+     */
+    taskIdx: index('ix_ssi_task')
+      .on(t.taskId)
+      .where(sql`task_id IS NOT NULL`),
+    subjectMatchesKind: check(
+      'ck_ssi_subject_matches_kind',
+      sql`(${t.itemKind} = 'task' AND ${t.taskId} IS NOT NULL AND ${t.workItemId} IS NULL AND ${t.testCaseId} IS NULL)
+       OR (${t.itemKind} = 'defect' AND ${t.taskId} IS NULL AND ${t.workItemId} IS NOT NULL AND ${t.testCaseId} IS NULL)
+       OR (${t.itemKind} = 'test_case' AND ${t.taskId} IS NULL AND ${t.workItemId} IS NULL AND ${t.testCaseId} IS NOT NULL)`,
+    ),
   }),
 );
