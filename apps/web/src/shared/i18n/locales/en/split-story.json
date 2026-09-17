@@ -17,6 +17,26 @@
     "unfinishedNoIteration": "[Unfinished]",
     "continued": "[Continued] — moves to a later iteration"
   },
+  "fields": {
+    "title": "Title",
+    "release": "Release",
+    "iteration": "Iteration",
+    "scheduleState": "Schedule State",
+    "planEstimate": "Plan Estimate (pts)",
+    "feature": "Feature",
+    "unscheduledOption": "Unscheduled",
+    "iterationPlaceholder": "Choose a later iteration"
+  },
+  "readonly": {
+    "unscheduled": "Unscheduled",
+    "noIteration": "No iteration",
+    "featureCleared": "Cleared by the split"
+  },
+  "footer": {
+    "counts": "{{tasks}} Tasks · {{defects}} Defects · {{testCases}} Test Cases",
+    "hours": "{{actual}}h Actual · {{todo}}h To Do",
+    "points": "Points: {{original}} → {{combined}} ({{delta}})"
+  },
   "error": {
     "title": "Could not load the split",
     "description": "Something went wrong preparing this split. Try again shortly."
