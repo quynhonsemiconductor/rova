@@ -415,25 +415,66 @@ verified.** The per-PR gate (§6.0) is identical every time and is not repeated 
 
 ### 6.0 The gate every PR must pass
 
+> **AMENDED 2026-09-17 (product owner), after SU-02 measured the cost.** The gate is now split by WHO
+> runs it. It is the same set of checks; what changed is that the machine that can run them in parallel
+> on Linux runs the expensive ones, and the dev box runs only what gives fast, local feedback.
+>
+> **Why.** SU-02's local gate cost ~30 minutes of wall clock per pass and produced no unique
+> information: `Backend CI required` / `Web CI required` are already the merge authority, they run the
+> same suites, and they run them on **Linux** — where the two `grep`-dependent specs that SU-01 had to
+> declare as "pre-existing Windows failures" simply pass. Running Playwright (12 min) and the 73-file
+> backend e2e suite (4 min) on a Windows dev box duplicated CI and, worse, produced a *weaker* signal
+> that then had to be explained in prose. A gate whose cost pushes a reviewer to skip it is not a gate.
+
+**LOCAL, before every push — the fast loop (target: under two minutes).**
+
 - [ ] PR title is Conventional Commits, lowercase subject, **scope required for `feat`**:
       e.g. `feat(work-items): open the split modal for an eligible story`. Squash-merge only.
 - [ ] `pnpm lint` (repo-scoped, NOT path-scoped — a path-scoped eslint misses the boundaries rules)
       and `pnpm --filter rova-web lint`.
-- [ ] `pnpm typecheck` **and** `tsc -b --force` repo-wide (the real check; `typecheck` is a
-      documented near-no-op per ADR-001).
-- [ ] `pnpm build` (api + worker) and `pnpm --filter rova-web build`.
-- [ ] `pnpm test` + `pnpm --filter rova-web test` green. `pnpm test:cov` then
-      `pnpm check:coverage-floors` — floors may **rise, never fall**, and a floor >3 pts stale fails.
+- [ ] **`pnpm build:web` for any SPA change.** This is the SPA's REAL typecheck: `pnpm typecheck` and
+      `tsc -b --force` do **not** cover `apps/web`, and SU-02 proved it — both passed while
+      `split-draft.ts` held a genuine `Array.reduce` inference error that `build:web` caught.
+      For a backend change: `pnpm typecheck` **and** `tsc -b --force` (`typecheck` is a documented
+      near-no-op per ADR-001) plus `pnpm build`.
+- [ ] The **AFFECTED** spec files only — `pnpm --filter rova-web exec vitest run <files>` /
+      `pnpm exec vitest run <files>`. Not the whole suite; CI runs that.
 - [ ] New spec subjects added to `vitest.config.ts` `coverage.include` (`coverage-include.spec.ts`).
-- [ ] `pnpm test:e2e` → `pnpm db:seed:test` → `pnpm --filter rova-web test:e2e`, **in that order**.
-      Never run the BE e2e suite while Playwright or a manual session is live — the reset truncates
-      under them.
-- [ ] Ratchets unchanged or lower: `route-policy`, `route-audience`, `workspace-scope` (66),
-      `query-ordering` (0), `e2e-fixtures` (81 `createProject` calls, may only fall),
-      `scheduled-job-exclusivity`, and FE `fe-consistency` (61/173/2/12/47/929/3),
-      `query-default` (96/2), `detail-copy-link`, `no-raw-hex` (0).
-- [ ] `Backend CI required` + `Web CI required` + `PR title (conventional commits)` all green.
-      A **skipped** job in the aggregate gate is a failure, not a pass.
+      Note it excludes `apps/web/` outright, so a pure-SPA PR needs no entry.
+
+**CI, on the PR — the merge authority. A red job here blocks; a local green does not substitute.**
+
+- [ ] `Backend CI required` — full `pnpm test`, `pnpm test:cov` + `pnpm check:coverage-floors` (floors
+      may **rise, never fall**; a floor >3 pts stale fails), `pnpm test:e2e`, and the backend ratchets
+      (`route-policy`, `route-audience`, `workspace-scope` 66, `query-ordering` 0, `e2e-fixtures` 81).
+- [ ] `Web CI required` — full `pnpm --filter rova-web test`, the FE ratchets
+      (`fe-consistency` 61/173/2/12/47/929/3, `query-default` 96/2, `detail-copy-link`, `no-raw-hex` 0)
+      and **Playwright**.
+- [ ] `PR title (conventional commits)`.
+- [ ] A **skipped** job in an aggregate gate is a failure, not a pass. **Read the failures** — "CI owns
+      it" means CI is the authority, not that its output goes unread.
+
+**Run the FULL local gate anyway — all of the above, on your own machine — when the PR touches:**
+
+- [ ] a **migration**, `db/schema/**`, or anything that changes the DB shape (SU-06's `0131`). The
+      migration-ordering hazard in §9 is not something to discover from a CI log on a shared branch.
+- [ ] the **write path** of a transaction, or a report query. SU-06, SU-08, SU-09, SU-10.
+- [ ] `pnpm test:e2e` → `pnpm db:seed:test` → `pnpm --filter rova-web test:e2e`, **in that order**, and
+      never the BE e2e suite while Playwright or a manual session is live — the reset truncates under
+      them. (Unchanged, and it is why the local e2e run is reserved for the PRs that need it.)
+
+> **Two traps the local commands hide, both measured in SU-02.** `pnpm test:cov` writes **no report at
+> all** when any test fails (`coverage.reportOnFailure` defaults to `false`), so
+> `check:coverage-floors` then dies with `No coverage summary at coverage/coverage-summary.json`, which
+> reads like a broken reporter — use `pnpm exec vitest run --coverage --coverage.reportOnFailure=true`.
+> And Playwright needs **both** a browser (`pnpm --filter rova-web exec playwright install chromium`)
+> **and** a running API (`node dist/apps/api/apps/api/src/main.js`); without the API every test fails
+> on `[vite] http proxy error: /v1/bff/dev-login`, which looks nothing like the actual cause.
+
+> **Before starting ANY SU: `git fetch origin` and check whether the previous one merged.**
+> SU-02 was branched off SU-01's unmerged branch on good information that was stale by the time the
+> gate finished — SU-01 had merged as PR #615 and its branch was deleted — which forced a rebase and a
+> second full gate pass. One `gh pr list` at the start is worth thirty minutes at the end.
 
 ---
 
@@ -793,6 +834,12 @@ Pure front-end on top of PR 1's preview. Nothing is saved.
 
 `feat(work-items): distribute tasks between the split panels`
 
+> **DELIVERED TOGETHER WITH PR 4 AND PR 5 AS ONE PR** (§8 Q16 amendment (a), 2026-09-17):
+> `feat(work-items): distribute tasks, defects and test cases between the split panels`, as three
+> commits — one per User Story, in this order — so each stays reviewable alone. All three build the same
+> `ui/split-collection.tsx` and the same reducer move action; the AC coverage notes below are unchanged
+> and each SU's tick is still annotated separately.
+
 - [ ] **3.1** `ui/split-collection.tsx` — one reusable collection: header, count pill, empty
       drop-state, rows, and a direction-arrow `IconButton` per row (`aria-label`:
       `Move {key} to {Unfinished|Continued}`). Built on **`@dnd-kit/core`** with
@@ -828,6 +875,9 @@ PR description so the reviewer does not read the gap as an omission.**
 
 `feat(work-items): distribute related defects between the split panels`
 
+> **Ships in the PR 3 combined PR** as its second commit (§8 Q16 amendment (a)). The title above is the
+> COMMIT subject, not a PR title.
+
 - [ ] **4.1** Defects collection: `ID · Name · State · Priority · move`. All default to
       `[Continued]` (BR-15).
 - [ ] **4.2** `Explicit: {Iteration}` rendered inline in the row when the Defect has its own
@@ -847,6 +897,10 @@ report). Do not implement an inheritance the reports cannot see.
 ### PR 5 — `SU-05` Distribute Test Cases
 
 `feat(work-items): distribute test cases between the split panels`
+
+> **Ships in the PR 3 combined PR** as its third commit (§8 Q16 amendment (a)). The title above is the
+> COMMIT subject, not a PR title. **5.3's live-database check still applies** — it is evidence for a
+> "no code needed" claim and does not become optional because the PR grew.
 
 - [ ] **5.1** Test Cases collection: `ID · Name · Type · Last Verdict · move`. All default to
       `[Continued]` (BR-15). Reuse `VerdictBadge` + `TEST_VERDICT_STYLE` from `features/test-cases`
@@ -1318,6 +1372,25 @@ should name who owned the work. Say the word and I will clear them instead.
 > exercised: SU-01→SU-02→…→SU-10 land in strict order, each independently green on its §6.0 gate.
 > This is stronger than `CONTRIBUTING.md`'s trunk-based default and removes the migration-ordering
 > and cross-track e2e-reset hazards from the risk register entirely.
+>
+> **AMENDED 2026-09-17 (product owner), on two points, after SU-01 and SU-02 measured the cost.**
+>
+> **(a) SU-03 + SU-04 + SU-05 ship as ONE PR** (`feat(work-items): distribute tasks, defects and test
+> cases between the split panels`), as three commits so each User Story stays reviewable on its own.
+> They are not three deliverables: all three are the SAME component (`ui/split-collection.tsx`) plus
+> move actions on the SAME reducer, and splitting them means three gates, three reviews and two merges
+> whose only purpose is to add a column to a table the previous PR just built. The remaining PRs stay
+> one-per-SU — **SU-06 especially**, which owns the migration and the transaction and must stay alone.
+>
+> **(b) Stacking is permitted where the base is a NECESSITY, and must be resolved before merge.**
+> SU-02 could not be built on `main` because every file it extends shipped in SU-01, so it was branched
+> off SU-01's branch, declared as such in the PR, and **rebased onto `main` once SU-01 merged**, with
+> the gate re-run on the rebased tree. That is the pattern: stack only when the alternative is not
+> writing the code, say so in the PR, never merge the stacked base first, and re-measure after the
+> rebase. Do NOT read this as a licence for speculative stacks.
+>
+> **What has NOT changed:** delivery is still ordered, each PR still goes green on §6.0 as amended
+> above, and no PR is ticked in §6 until it is MERGED with a green gate.
 >
 > **RULING (Q17 — reuse discipline).** DRY / no-hardcoding / reuse are binding: reuse
 > `assertIterationAssignable` (never a re-implemented team rule), `@dnd-kit/core` + `useRerankSensors`
