@@ -14,12 +14,21 @@ import { ReferenceLine, type ReferenceLineProps } from 'recharts'
 
 import type { SplitMarker } from '@/features/reporting/api'
 import { BRAND } from '@/shared/config/brand'
+import { CHART_MARKER } from '@/shared/ui/chart'
 
 /** Amber, per SRS §10.2/§10.3 — the warning token, never a raw hex (`no-raw-hex` is 0). */
 export const MARKER_COLOR = BRAND.warning
 
 /**
  * One dashed vertical rule per marker, positioned on its own clamped date.
+ *
+ * THE DASH, THE WIDTH AND THE LABEL SIZE COME FROM `CHART_MARKER`, not from literals here.
+ * `shared/ui/chart` owns chart styling for the reason its own docblock gives — four copies of
+ * `tick={{ fontSize: 9, … }}` is how the tables drifted apart — and this is the app's FIRST
+ * annotation, so the constant had to be added there rather than reused from there. Two of the three
+ * values carry an argument that belongs with the other chart constants and not with this feature: the
+ * label size matches `CHART_AXIS.tick` so a marker label is not a third text size on one chart, and
+ * the dash pattern deliberately differs from `CHART_GRID`'s so a marker is not read as a gridline.
  *
  * `yAxisId="hours"` because the Burndown has TWO y-axes and a Reference component must name one; the
  * hours axis is the left-hand one the To Do bars use, which is the measure the marker explains.
@@ -46,9 +55,14 @@ export function splitMarkerLines(
       yAxisId="hours"
       x={marker.date}
       stroke={MARKER_COLOR}
-      strokeDasharray="4 3"
-      strokeWidth={1.5}
-      label={{ value: label, position: 'top', fill: MARKER_COLOR, fontSize: 9 }}
+      strokeDasharray={CHART_MARKER.strokeDasharray}
+      strokeWidth={CHART_MARKER.strokeWidth}
+      label={{
+        value: label,
+        position: 'top',
+        fill: MARKER_COLOR,
+        fontSize: CHART_MARKER.labelFontSize,
+      }}
     />
   ))
 }

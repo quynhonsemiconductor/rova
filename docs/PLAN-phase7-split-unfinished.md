@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| Status | **SU-01 through SU-05 MERGED (#615, #619, #621); SU-06 implemented, full local gate green, PR #623 OPEN; SU-07 + SU-08 implemented as ONE PR stacked on #623, full local gate green (Playwright included), not yet opened.** SU-09 and SU-10 not started. All Q rulings resolved 2026-09-16; the gate and Q16 were amended 2026-09-17, and Q15 + Q16 again on 2026-09-18 (see those sections). **SU-06's e2e found a real concurrency defect that D9 alone did not close - read the SU-06 gate record before touching the write path.** **SU-08's `split_id is null` predicate is the feature's one genuine report behaviour change and it landed at THREE call sites, not one - read 8.1 before adding a fourth.** |
+| Status | **SU-01 through SU-06 MERGED (#615, #619, #621, #623); SU-07 + SU-08 implemented as ONE PR (#624), rebased onto `main` after #623 landed, full local gate re-run there and green (Playwright included).** SU-09 and SU-10 not started. All Q rulings resolved 2026-09-16; the gate and Q16 were amended 2026-09-17, Q15 + Q16 again on 2026-09-18. **SU-06's e2e found a real concurrency defect that D9 alone did not close - read the SU-06 gate record before touching the write path.** **SU-08's `split_id is null` predicate is the feature's one genuine report behaviour change and it landed at THREE call sites, not one - read 8.1 before adding a fourth.** |
 | Author | Solution Architect (with BA `FEATURE.md` / `SRS.md` / `USER_STORIES.md` + approved mockup) |
 | Created | 2026-09-14 |
 | Feature code | `SU` |
@@ -1883,12 +1883,14 @@ AC8 (8.4 + §8 Q1).
 
 #### SU-07 / SU-08 gate record — measured 2026-09-18, one combined PR, stacked on SU-06
 
-**Base: `feat/su-06-split-commit` (PR #623, OPEN).** Necessity stacking under §8 Q16 amendment (b):
+**Base: `feat/su-06-split-commit` (PR #623, OPEN at the time of this measurement).** Necessity stacking
+under §8 Q16 amendment (b):
 both stories read `work.story_splits`, which migration `0131` creates in SU-06, so neither could be
 built on `main`. `git fetch origin` + `gh pr list` confirmed #623 unmerged before branching — the check
-§6.0 asks for, and the one SU-02 skipped. **It rebases onto `main` once #623 merges and the gate is
-re-run then.** §6.0's "full local gate" clause applies (report queries), so everything below was run
-locally, Playwright included.
+§6.0 asks for, and the one SU-02 skipped. **#623 merged on 2026-09-18 and this branch was rebased onto
+`main`, with the whole gate re-run there — see the SU-07/SU-08 review follow-up below, whose numbers
+supersede this table's where they differ.** §6.0's "full local gate" clause applies (report queries), so
+everything below was run locally, Playwright included.
 
 | §6.0 item | Result |
 |---|---|
@@ -1941,6 +1943,70 @@ US-1 and moved it into `Sprint 26.2`, which has no later target, so the preview 
 `eligible: false`. `pnpm db:seed:test` and a re-run: **74 / 670 green again.** Not flake and not a
 regression: the suite is order-dependent by construction now that a Playwright journey mutates the
 seeded Story irreversibly. **Run `pnpm test:e2e` FIRST, and re-seed before believing a second run.**
+
+#### SU-07/SU-08 review follow-up — tech-lead review on PR #624, fixed 2026-09-19
+
+Two items: the STACKING, and one code thread. Both taken.
+
+**1. The base branch — resolved by the rebase amendment (b) already required, which #623 merging made
+possible.** The review (12:42Z) landed before #623 merged (14:14Z) and read the PR against `main`, where
+GitHub was showing **59 files / +6296** because three of the seven commits were SU-06's. His remedy was
+to retarget the base to `feat/su-06-split-commit`; by the time it could be acted on, #623 was in `main`,
+so amendment (b)'s own instruction — *rebase onto `main` once the base merges and re-measure* — reaches
+the same outcome and a better one: the base stays `main` and the diff becomes the increment.
+**`git diff --stat origin/main...HEAD` now reports 35 files / +2817**, which is exactly the increment he
+reviewed — the two numbers agreeing is the check that the rebase dropped nothing.
+`git rebase --onto origin/main 7f6634f2` was the form needed. A plain `git rebase origin/main` tried to
+replay SU-06's four commits on top of main's SQUASHED copy of them and conflicted in four files, which
+is the hazard §6's SU-02 note records; **`--onto` applied with zero conflicts.**
+His second consequence — squash-merging collapses two stories into one commit — is real, and it is
+amendment (c)'s accepted cost rather than an oversight: the per-story reviewability lives in the two
+implementation commits and in this file's separate SU-07 and SU-08 ticks, which is where the amendment
+put it.
+
+**2. `CHART_MARKER` in `shared/ui/chart`, because chart styling lives there and this is the app's FIRST
+annotation.** He found three inlined style values in `split-marker-lines.tsx` and separated them by
+strength rather than filing them as one preference:
+- **`fontSize: 9` was a genuine defect, and the only one visible on screen.** Chart text is `10`
+  (`CHART_AXIS.tick`, `axisLabel`) or `11` (`CHART_TOOLTIP`), so a marker label at 9 rendered smaller
+  than everything beside it on the same chart — which reads as an accident, not a decision. Worse,
+  `fontSize: 9` is the *literal value* `chart-frame.tsx`'s own docblock holds up as the example of the
+  drift that module was created to end. It is now `CHART_MARKER.labelFontSize`, which is **10**.
+- **`strokeDasharray="4 3"` was deliberate but undocumented.** It differs from `CHART_GRID`'s `'3 3'` so
+  a marker is not read as a gridline — and a one-character difference between two literals is
+  indistinguishable from a typo to the next reader. Now a named constant whose docblock says why.
+- **`strokeWidth={1.5}`** was fine anywhere, and moved with the other two: a constant holding two of
+  three annotation values and not the third is its own small trap.
+He checked for something to reuse and there was none, so the ask was "add it where chart styling lives"
+rather than "use the existing one" — which is why this lands in `shared/ui/chart/chart-frame.tsx` beside
+`CHART_AXIS` / `CHART_GRID` / `CHART_TOOLTIP` and is exported from the barrel, for whatever marks the
+second kind of event.
+
+**Evidence: `split-markers.test.tsx` 14 → 17, and the three are NOT equal in strength, which is stated
+rather than blurred.** The font-size test is DISCRIMINATING: re-inlining the three literals (measured,
+component only, spec untouched) fails **2 of 17** on `expected 9 to be 10`. The other two — "takes its
+dash, width and label size from `CHART_MARKER`" and "dashes DIFFERENTLY from the gridlines" — are
+GUARDS: they pin the coupling and the difference, and neither would have caught the original inline,
+because those two literals happened to match the constant. A guard described as a discriminator is how a
+suite comes to be trusted for the wrong reason.
+
+**Gate on the rebased tree — the FULL local gate, per §6.0's report-query clause.**
+`pnpm install --frozen-lockfile` 0 · `pnpm lint` 0 · `pnpm --filter rova-web lint` 0 ·
+`pnpm typecheck` 0 · `npx tsc -b --force` 0 · `pnpm build` 0 · `pnpm build:web` 0 ·
+`pnpm test` **93 files / 2236 tests, exit 0** · `pnpm test:cov` + `check:coverage-floors` **exit 0**,
+87.03 / 80.70 / 85.65 / 87.90 — unchanged, no floor touched · `pnpm test:e2e`
+**74 files / 670 passed, 1 skipped** · `db:seed:test` → Playwright **49 / 49 (11.9m)** · every backend
+and FE ratchet green and unmoved.
+
+**`pnpm --filter rova-web test` is 151 files / 1302 tests with ONE failure, and it is PRE-EXISTING.**
+`add-test-result-modal.test.tsx > Date defaults to TODAY via todayIsoDate` builds its expected date from
+the test process's LOCAL clock (`today.getFullYear()/getMonth()/getDate()`) while the component formats
+through the app's prefs, which default to **UTC** under test. This run was at 00:47 local (GMT+7), where
+the local date is already the 19th and the UTC date is still the 18th — so it fails only in the
+seven-hour window between local midnight and UTC midnight, and CI, running on UTC, never sees it.
+**Stash-verified: the same single test fails on a pristine `origin/main` checkout** (10 tests, 1 failed,
+with this branch's changes stashed). A real if minor defect in that spec — a follow-up candidate for its
+own `test:` PR, the same class as SU-01's two Windows `grep` failures, and **not this PR's**.
 
 ---
 

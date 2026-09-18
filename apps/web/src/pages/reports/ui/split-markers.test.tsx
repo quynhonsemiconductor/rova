@@ -19,7 +19,7 @@ import type { ReferenceLineProps } from 'recharts'
 import '@/shared/i18n/i18n'
 import { setFormatPrefs } from '@/shared/lib/format-prefs'
 import type { SplitMarker } from '@/features/reporting/api'
-import { ChartLegendBar } from '@/shared/ui/chart'
+import { ChartLegendBar, CHART_AXIS, CHART_GRID, CHART_MARKER } from '@/shared/ui/chart'
 import { splitMarkerLines } from './split-marker-lines'
 import { SplitMarkerContext, SplitMarkerLegend } from './split-markers'
 
@@ -50,6 +50,11 @@ const carryIn = (over: Partial<SplitMarker> = {}): SplitMarker => ({
 /** The `label.value` recharts renders, past a prop type that also admits a node and a function. */
 function labelValue(line: ReactElement<ReferenceLineProps>): string {
   return (line.props.label as { value: string }).value
+}
+
+/** Same narrowing, for the label's own font size. */
+function labelFontSize(line: ReactElement<ReferenceLineProps>): number {
+  return (line.props.label as { fontSize: number }).fontSize
 }
 
 /** Renders the strip with the SAME wiring the report uses — the two keys, chosen by `kind`. */ function Strip({
@@ -108,6 +113,31 @@ describe('splitMarkerLines', () => {
   it('draws the amber token, never a hex', () => {
     const [line] = splitMarkerLines([splitOut()], 'SPLIT OUT')
     expect(line.props.stroke).toBe('var(--warning)')
+  })
+
+  it('takes its dash, width and label size from CHART_MARKER, not from literals', () => {
+    // DISCRIMINATING, not decorative: an inlined value would pass an equality check against itself.
+    // These compare the rendered props to the SHARED constant, so re-inlining any of the three fails
+    // here even if the number happens to match today.
+    const [line] = splitMarkerLines([splitOut()], 'SPLIT OUT')
+
+    expect(line.props.strokeDasharray).toBe(CHART_MARKER.strokeDasharray)
+    expect(line.props.strokeWidth).toBe(CHART_MARKER.strokeWidth)
+    expect(labelFontSize(line)).toBe(CHART_MARKER.labelFontSize)
+  })
+
+  it('sizes the marker label like an AXIS TICK, so a chart carries no third text size', () => {
+    // The visible half of the review thread: chart text is 10 (ticks, axis labels) or 11 (tooltip),
+    // and a marker label at 9 renders smaller than everything beside it — which reads as an accident.
+    const [line] = splitMarkerLines([splitOut()], 'SPLIT OUT')
+
+    expect(labelFontSize(line)).toBe(CHART_AXIS.tick.fontSize)
+  })
+
+  it('dashes DIFFERENTLY from the gridlines, so a marker is not read as one', () => {
+    // The one-character difference from `CHART_GRID` is deliberate, and this is what says so in a form
+    // that fails if someone "aligns" the two.
+    expect(CHART_MARKER.strokeDasharray).not.toBe(CHART_GRID.strokeDasharray)
   })
 
   it('emits nothing when no Split touched the timebox', () => {
