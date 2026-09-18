@@ -29,6 +29,8 @@ import {
 } from '@/shared/ui/chart'
 
 import { ReportSurface } from './report-surface'
+import { splitMarkerLines } from './split-marker-lines'
+import { SplitMarkerContext, SplitMarkerLegend } from './split-markers'
 import { useSelectedIteration } from '../model/use-selected-iteration'
 import { EmptyState } from '@/shared/ui/empty-state'
 
@@ -39,7 +41,7 @@ export function IterationBurndownReport({
   projectId: string
   teamId: string | undefined
 }) {
-  const { t } = useTranslation(['reports', 'common'])
+  const { t } = useTranslation(['reports', 'common', 'split-story'])
   /**
    * The PICKER's feed, and it is a resource for the same reason the report's own query is.
    *
@@ -135,6 +137,15 @@ export function IterationBurndownReport({
 
   const behind = data?.status === 'behind-plan'
 
+  /**
+   * The Split annotations (SU-08 8.3). Empty arrays for every timebox no Split touched, which is every
+   * timebox before Phase 7 — so nothing below needs a "has splits" branch, only a length check where a
+   * legend entry would otherwise claim a series that is not drawn.
+   */
+  const splitOut = data?.splitOut ?? []
+  const carryIn = data?.carryIn ?? []
+  const splitMarkers = [...splitOut, ...carryIn]
+
   return (
     <ReportSurface
       title={t('burndown.title')}
@@ -223,7 +234,33 @@ export function IterationBurndownReport({
               shape="line"
             />
             <ChartLegendItem color={BRAND.reportAccepted} label={t('burndown.series.accepted')} />
+            {/* Only the directions this timebox actually has: a legend entry for an annotation that
+                is not drawn is a claim about the chart that the chart does not make. */}
+            <SplitMarkerLegend
+              splitOutLabel={t('split-story:markers.legendSplitOut')}
+              carryInLabel={t('split-story:markers.legendCarryIn')}
+              hasSplitOut={splitOut.length > 0}
+              hasCarryIn={carryIn.length > 0}
+            />
           </>
+        }
+        /**
+         * The compact SPLIT OUT / CARRY IN context (SRS §10.2/§10.3), in `underAxis` — which
+         * `ChartFrame` renders OUTSIDE the `aria-hidden` plot, so this text is read by assistive tech
+         * as well as seen. That is what stops the amber rules on the chart from being colour-only.
+         */
+        underAxis={
+          <SplitMarkerContext
+            markers={splitMarkers}
+            lineFor={(marker, values) =>
+              t(
+                marker.kind === 'split-out'
+                  ? 'split-story:markers.splitOutContext'
+                  : 'split-story:markers.carryInContext',
+                values,
+              )
+            }
+          />
         }
         footer={
           notes.length > 0 ? (
@@ -275,6 +312,17 @@ export function IterationBurndownReport({
             fill={BRAND.reportAccepted}
             barSize={18}
           />
+          {/*
+            LAST among the chart's children, so the rules paint over the bars rather than under them —
+            and spread as two arrays rather than one, because the label differs by direction and a
+            single pass would have to re-decide it per element anyway.
+
+            The x-positions are the SERVER's clamped marker dates: a Split confirmed after the source
+            sprint closed still lands on the last day of that sprint (SRS §10.3), which is a decision
+            made once at write time with the workspace calendar in hand.
+          */}
+          {splitMarkerLines(splitOut, t('split-story:markers.splitOut'))}
+          {splitMarkerLines(carryIn, t('split-story:markers.carryIn'))}
         </ComposedChart>
       </ChartFrame>
     </ReportSurface>
