@@ -47,6 +47,7 @@ import {
 } from './dto/work-item-request.dto';
 import {
   WorkItemResponseDto,
+  WorkItemDetailResponseDto,
   MyWorkItemResponseDto,
   WorkspaceSummaryResponseDto,
   TaskTotalsResponseDto,
@@ -61,6 +62,7 @@ import {
   SplitWorkItemResponseDto,
 } from './dto/split-work-item.dto';
 import type { WorkItem } from '../../domain/work-item.types';
+import type { WorkItemDetail } from '../../domain/story-split.types';
 import { BACKLOG_SORT_FIELDS } from '../../domain/work-item.types';
 import type { ActivityLog } from '@modules/activity';
 import type { TimeLog } from '../../domain/time-log.types';
@@ -128,6 +130,20 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
     defectState: w.defectState,
     fixedInBuild: w.fixedInBuild,
   };
+}
+
+/**
+ * The RECORD reads' body — the same row every other work-item response describes, plus the Split
+ * trace (SU-07 7.1, §8 Q15).
+ *
+ * It DELEGATES to {@link toWorkItemDto} rather than re-listing the columns, so a Story cannot be
+ * described one way by the detail page and another by the grid; the split link is the only addition.
+ * `splitLink: null` is spelled out rather than omitted, for the reason the mapper above spells out
+ * `assigneeName`: a response shape that depends on which branch answered is a shape a client has to
+ * guess at.
+ */
+function toWorkItemDetailDto(detail: WorkItemDetail): WorkItemDetailResponseDto {
+  return { ...toWorkItemDto(detail.item), splitLink: detail.splitLink };
 }
 
 function toActivityDto(a: ActivityLog): ActivityResponseDto {
@@ -401,28 +417,28 @@ export class WorkItemsController {
    * cell answered 403 for the two roles that do the work. Invisible in testing because the dev
    * principal is a Workspace Admin, exactly as the `report:view` bug was.
    */
-  @ApiResponse({ status: 200, type: WorkItemResponseDto })
+  @ApiResponse({ status: 200, type: WorkItemDetailResponseDto })
   @ApiCommonErrors(400, 401, 404)
   async getWorkItemByKey(
     @CurrentUser() user: JwtPayload,
     @Query() query: WorkItemByKeyQueryDto,
-  ): Promise<WorkItemResponseDto> {
-    const item = await this.workItemsService.getWorkItemByKey(user, query.itemKey);
-    return toWorkItemDto(item);
+  ): Promise<WorkItemDetailResponseDto> {
+    return toWorkItemDetailDto(
+      await this.workItemsService.getWorkItemDetailByKey(user, query.itemKey),
+    );
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a work item by ID' })
   @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, type: WorkItemResponseDto })
+  @ApiResponse({ status: 200, type: WorkItemDetailResponseDto })
   @ApiCommonErrors(401, 404)
   async getWorkItem(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<WorkItemResponseDto> {
-    const item = await this.workItemsService.getWorkItemForView(user, id);
-    return toWorkItemDto(item);
+  ): Promise<WorkItemDetailResponseDto> {
+    return toWorkItemDetailDto(await this.workItemsService.getWorkItemDetail(user, id));
   }
 
   // ── Bulk assign release / iteration (P2-BL-03 / P2-BL-04) ────────────────────
@@ -660,7 +676,9 @@ export class WorkItemsController {
    * 201, because a Split CREATES a Story (the placeholder) even though it also updates one.
    */
   @Post(':id/split')
-  @ApiOperation({ summary: 'Split a user story into an [Unfinished] placeholder and a [Continued] story' })
+  @ApiOperation({
+    summary: 'Split a user story into an [Unfinished] placeholder and a [Continued] story',
+  })
   @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: SplitWorkItemResponseDto })

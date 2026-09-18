@@ -66,6 +66,53 @@ export interface StorySplitItem {
   createdAt: string;
 }
 
+/**
+ * What a Story's own detail page needs to trace its Split (SU-07, SRS §11).
+ *
+ * The banner reads THIS and nothing else: `Split · {source} → {target}` plus a link to each side. It
+ * is deliberately not the whole {@link StorySplit} — the effort snapshot and the marker dates belong
+ * to the report layer, and a detail response that carried them would advertise numbers no surface on
+ * that page explains.
+ *
+ * `role` says which side the REQUESTED Story is on. It is derivable by comparing ids, but the server
+ * derives it once for the same reason it decides `defaultSide`: the rule lives in one place, and the
+ * browser is told the answer rather than re-deriving it.
+ *
+ * Iteration names are NULLABLE even though both FKs are `not null` — a name comes from a LEFT JOIN,
+ * and a deleted iteration must degrade the banner rather than remove the trace.
+ */
+export interface StorySplitLink {
+  splitId: string;
+  /** ISO 8601 — the Split instant, so the banner can be ordered against the revision history. */
+  splitAt: string;
+  role: StorySplitSide;
+  sourceIterationId: string;
+  sourceIterationName: string | null;
+  targetIterationId: string;
+  targetIterationName: string | null;
+  unfinished: StorySplitSideRef;
+  continued: StorySplitSideRef;
+}
+
+/** One end of a Split, named the way every other work-item payload names a Story. */
+export interface StorySplitSideRef {
+  id: string;
+  itemKey: string;
+  title: string;
+}
+
+/**
+ * What the two RECORD reads return — the row, plus the Split trace folded into it (§8 Q15).
+ *
+ * A pair rather than a widened {@link WorkItem}: the split link is not a column of the work item and
+ * nothing writes it, so putting it on the row type would offer it to every `update` payload and every
+ * grid mapper that spreads a row. The controller composes the two into one JSON object.
+ */
+export interface WorkItemDetail {
+  item: WorkItem;
+  splitLink: StorySplitLink | null;
+}
+
 /** What the service hands the repository for the parent row. `id` is minted by the caller (uuidv7). */
 export type CreateStorySplitInput = Omit<StorySplit, 'splitAt' | 'createdAt'> & {
   /** Explicit rather than defaulted, because `[Unfinished].accepted_date` must equal it exactly. */

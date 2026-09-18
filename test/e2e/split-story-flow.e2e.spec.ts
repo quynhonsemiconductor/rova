@@ -21,6 +21,11 @@
  * `e2e-fixtures.ratchet.spec.ts` caps. Each test that mutates makes its OWN Story, because a Split is
  * irreversible and a shared row would make the second test depend on the first — the cross-test
  * pollution SU-01 spent a gate round chasing.
+ *
+ * EXTENDED BY SU-07 (7.5/7.6) with the READ side: `splitLink` from both record routes and from both
+ * sides of one Split, its ABSENCE from the grid feed, and a moved Test Case's Result still naming the
+ * pre-Split Story when read through `GET /test-results/:id`. Those are route claims, so they belong
+ * beside the write they describe rather than in a file of their own.
  */
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -494,5 +499,168 @@ describe('POST /work-items/:id/split (SU-06)', () => {
       .from(storySplits)
       .where(eq(storySplits.continuedStoryId, story.id));
     expect(events).toHaveLength(1);
+  });
+
+  // ── SU-07: the trace, over the READ routes ──────────────────────────────────
+
+  /**
+   * The banner's data, from BOTH record reads and from BOTH sides.
+   *
+   * The point of asserting over HTTP rather than through the repository is the ROUTE coverage: §8 Q15
+   * names `GET /:id`, but the detail page resolves by KEY, so a `splitLink` on one and not the other
+   * is a contract that looks complete and renders nothing. And the LIST read is asserted NOT to carry
+   * it — a field added to the record shape must not silently join a grid feed.
+   */
+  function getById(id: string) {
+    return app.inject({
+      method: 'GET',
+      url: `/work-items/${id}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+  }
+
+  interface DetailBody {
+    id: string;
+    itemKey: string;
+    splitLink: {
+      splitId: string;
+      role: 'unfinished' | 'continued';
+      sourceIterationId: string;
+      sourceIterationName: string | null;
+      targetIterationId: string;
+      targetIterationName: string | null;
+      unfinished: { id: string; itemKey: string; title: string };
+      continued: { id: string; itemKey: string; title: string };
+    } | null;
+  }
+
+  it('returns the counterpart from BOTH sides of a completed Split (SU-07 7.1/7.5)', async () => {
+    const { story } = await makeStory('SU-07 trace');
+    const response = await splitRequest(story.id, payloadFor());
+    expect(response.statusCode, response.body).toBe(201);
+    const body = JSON.parse(response.body) as SplitBody;
+
+    const fromContinued = await getById(story.id);
+    const fromUnfinished = await getById(body.unfinished.id);
+    expect(fromContinued.statusCode).toBe(200);
+    expect(fromUnfinished.statusCode).toBe(200);
+    const continued = JSON.parse(fromContinued.body) as DetailBody;
+    const unfinished = JSON.parse(fromUnfinished.body) as DetailBody;
+
+    // Same Split, same pair, opposite roles — which is the whole of SU-BR-30.
+    expect(continued.splitLink?.splitId).toBe(body.split.id);
+    expect(unfinished.splitLink?.splitId).toBe(body.split.id);
+    expect(continued.splitLink?.role).toBe('continued');
+    expect(unfinished.splitLink?.role).toBe('unfinished');
+    expect(continued.splitLink?.unfinished.id).toBe(body.unfinished.id);
+    expect(continued.splitLink?.continued.id).toBe(story.id);
+    expect(unfinished.splitLink?.unfinished.itemKey).toBe(body.unfinished.itemKey);
+    expect(unfinished.splitLink?.continued.itemKey).toBe(story.itemKey);
+
+    // The iteration NAMES the bar renders, resolved server-side rather than by a second request.
+    expect(continued.splitLink?.sourceIterationId).toBe(NXP_ITER_CURRENT_ID);
+    expect(continued.splitLink?.targetIterationId).toBe(NXP_ITER_FUTURE_ID);
+    expect(continued.splitLink?.sourceIterationName).not.toBeNull();
+    expect(continued.splitLink?.targetIterationName).not.toBeNull();
+  });
+
+  it('returns it from `by-key` too — the route the detail page actually calls (§8 Q15 amended)', async () => {
+    const { story } = await makeStory('SU-07 by key');
+    const response = await splitRequest(story.id, payloadFor());
+    expect(response.statusCode, response.body).toBe(201);
+    const body = JSON.parse(response.body) as SplitBody;
+
+    const byKey = await app.inject({
+      method: 'GET',
+      url: `/work-items/by-key?itemKey=${encodeURIComponent(story.itemKey)}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(byKey.statusCode, byKey.body).toBe(200);
+    const detail = JSON.parse(byKey.body) as DetailBody;
+
+    // `/item/$itemKey` carries no id, so this is the read the banner is rendered from. Q15's wording
+    // named `:id` alone; its reasoning is what makes this route the one that had to carry the field.
+    expect(detail.id).toBe(story.id);
+    expect(detail.splitLink?.unfinished.id).toBe(body.unfinished.id);
+  });
+
+  it('is null on a Story that was never split, and ABSENT from the list feed', async () => {
+    const { story } = await makeStory('SU-07 never split');
+
+    const record = await getById(story.id);
+    expect(record.statusCode).toBe(200);
+    // Present and null — not omitted. A response shape that depends on which branch answered is a
+    // shape a client has to guess at.
+    expect(JSON.parse(record.body)).toHaveProperty('splitLink', null);
+
+    const list = await app.inject({
+      method: 'GET',
+      url: `/work-items?projectId=${NXP}&itemKey=${encodeURIComponent(story.itemKey)}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(list.statusCode, list.body).toBe(200);
+    const rows = (JSON.parse(list.body) as { data: Array<Record<string, unknown>> }).data;
+    expect(rows.length).toBeGreaterThan(0);
+    // The GRID feed keeps the narrower schema: a row must not advertise a link its endpoint never
+    // resolves. This is the `StoryOptionSchema` boundary, from the other side.
+    for (const row of rows) expect(row).not.toHaveProperty('splitLink');
+  });
+
+  it('keeps a moved Test Case’s Result naming the pre-Split Story when READ back (SU-07 7.6/AC5)', async () => {
+    // SU-06 proved this against the stored column. AC5 is about what a REVIEWER sees, so this asserts
+    // the same fact through `GET /test-results/:id` — the surface the claim is actually made on.
+    const { story } = await makeStory('SU-07 result evidence');
+    const [testCase] = await db
+      .insert(testCases)
+      .values({
+        workspaceId: actor.workspaceId,
+        projectId: NXP,
+        teamId: TEAM_ALPHA_ID,
+        workItemId: story.id,
+        // No trailing digits: `nextKeyNumber` parses them as an `int` and a large number overflows,
+        // which poisoned two unrelated specs in SU-06.
+        testCaseKey: 'TC-SU07X',
+        name: 'Evidence survives a split',
+        type: 'Functional',
+        method: 'manual',
+        priority: 'normal',
+        rank: 'n',
+        createdBy: actor.sub,
+      })
+      .returning();
+    const [result] = await db
+      .insert(testResults)
+      .values({
+        workspaceId: actor.workspaceId,
+        projectId: NXP,
+        testCaseId: testCase.id,
+        workItemId: story.id,
+        testResultKey: 'TR-SU07X',
+        build: 'local',
+        runDate: '2026-06-20',
+        verdict: 'pass',
+        testerId: actor.sub,
+        createdBy: actor.sub,
+      })
+      .returning();
+
+    const response = await splitRequest(
+      story.id,
+      payloadFor({ unfinishedTestCaseIds: [testCase.id] }),
+    );
+    expect(response.statusCode, response.body).toBe(201);
+    const body = JSON.parse(response.body) as SplitBody;
+
+    const read = await app.inject({
+      method: 'GET',
+      url: `/test-results/${result.id}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(read.statusCode, read.body).toBe(200);
+    const dto = JSON.parse(read.body) as { workItemId: string | null };
+    // The Work Product captured at result-entry time — the PRE-split Story, not the placeholder the
+    // Test Case now hangs off.
+    expect(dto.workItemId).toBe(story.id);
+    expect(dto.workItemId).not.toBe(body.unfinished.id);
   });
 });

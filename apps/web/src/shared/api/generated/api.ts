@@ -3900,6 +3900,90 @@ export interface components {
       defectState?: 'submitted' | 'open' | 'fixed' | 'closed' | 'closed_declined'
       fixedInBuild?: string | null
     }
+    WorkItemDetailResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      /** @description Sequential key e.g. PROJ-42 */
+      itemKey: string
+      type: string
+      title: string
+      description: string | null
+      /** Format: uuid */
+      statusId: string
+      scheduleState: string
+      flowState: string
+      priority: string
+      assigneeId: string | null
+      /** @description Owner display name, joined server-side on the grid reads. A picker feed cannot name a Workspace Admin (no project_members row, §2.1), so the row carries its own name. */
+      assigneeName: string | null
+      devOwnerName: string | null
+      reporterId: string | null
+      parentId: string | null
+      teamId: string | null
+      iterationId: string | null
+      releaseId: string | null
+      /** @description The Feature this item rolls up to. Always null for a task. */
+      featureId: string | null
+      storyPoints: number | null
+      estimateHours: number | null
+      todoHours: number | null
+      actualHours: number | null
+      acceptanceCriteria: string | null
+      notes: string | null
+      releaseNotes: string | null
+      isBlocked: boolean
+      blockedReason: string | null
+      rank: string
+      customFields: {
+        [key: string]: unknown
+      }
+      /** Format: uuid */
+      createdBy: string
+      updatedBy: string | null
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+      severity: string | null
+      foundInEnvironment: string | null
+      foundInReleaseId: string | null
+      rootCause: string | null
+      resolution: string | null
+      devOwnerId: string | null
+      defectState: string | null
+      fixedInBuild: string | null
+      /** @description The Split this Story takes part in, from either side. Null when it was never split — which includes every Task and Defect, since only a Story can be split. */
+      splitLink: {
+        /** Format: uuid */
+        splitId: string
+        /** Format: date-time */
+        splitAt: string
+        /** @enum {string} */
+        role: 'unfinished' | 'continued'
+        /** Format: uuid */
+        sourceIterationId: string
+        sourceIterationName: string | null
+        /** Format: uuid */
+        targetIterationId: string
+        targetIterationName: string | null
+        unfinished: {
+          /** Format: uuid */
+          id: string
+          itemKey: string
+          title: string
+        }
+        continued: {
+          /** Format: uuid */
+          id: string
+          itemKey: string
+          title: string
+        }
+      } | null
+    }
     BulkAssignReleaseDto: {
       /** Format: uuid */
       projectId: string
@@ -5243,6 +5327,38 @@ export interface components {
       status: 'on-track' | 'behind-plan' | 'unknown'
       latestSnapshotDate: string | null
       hasScheduledWork: boolean
+      splitOut: {
+        /** Format: uuid */
+        splitId: string
+        /** @enum {string} */
+        kind: 'split-out' | 'carry-in'
+        /** @description Workspace-local YYYY-MM-DD, clamped into this iteration’s window. */
+        date: string
+        /** Format: uuid */
+        storyId: string
+        /** @description [Unfinished] for split-out, [Continued] for carry-in — SRS §10.2/§10.3. */
+        storyKey: string
+        /** @description Plan Estimate recorded at the Split. null = unpointed. */
+        points: number | null
+        todoHours: number
+        actualHours: number
+      }[]
+      carryIn: {
+        /** Format: uuid */
+        splitId: string
+        /** @enum {string} */
+        kind: 'split-out' | 'carry-in'
+        /** @description Workspace-local YYYY-MM-DD, clamped into this iteration’s window. */
+        date: string
+        /** Format: uuid */
+        storyId: string
+        /** @description [Unfinished] for split-out, [Continued] for carry-in — SRS §10.2/§10.3. */
+        storyKey: string
+        /** @description Plan Estimate recorded at the Split. null = unpointed. */
+        points: number | null
+        todoHours: number
+        actualHours: number
+      }[]
     }
     VelocityResponseDto: {
       context: {
@@ -9558,7 +9674,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['WorkItemResponseDto']
+          'application/json': components['schemas']['WorkItemDetailResponseDto']
         }
       }
       /** @description Bad Request — validation error or malformed input */
@@ -9600,7 +9716,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['WorkItemResponseDto']
+          'application/json': components['schemas']['WorkItemDetailResponseDto']
         }
       }
       /** @description Unauthorized — missing or invalid authentication */

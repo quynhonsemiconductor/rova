@@ -1,13 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDrizzle } from '@platform';
 import type { DbExecutor, DrizzleDB } from '@platform';
+import { and, desc, eq, isNull, or } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 
-import { storySplitItems, storySplits } from '../../../../../../db/schema/work';
+import {
+  iterations,
+  storySplitItems,
+  storySplits,
+  workItems,
+} from '../../../../../../db/schema/work';
 import type { IStorySplitRepository } from '../../domain/ports/story-split.repository';
 import type {
   CreateStorySplitInput,
   CreateStorySplitItemInput,
   StorySplit,
+  StorySplitLink,
 } from '../../domain/story-split.types';
 
 /**
@@ -77,6 +85,90 @@ export class StorySplitDrizzleRepository implements IStorySplitRepository {
     }
 
     return toStorySplit(row);
+  }
+
+  /**
+   * The Split this Story takes part in, from either side — SU-07's banner, in ONE round trip.
+   *
+   * Four joins rather than a second query per name: both Stories' keys and both Iterations' names are
+   * needed together, and the alternative is five reads for a one-line bar on a page that is already
+   * waiting for the record itself.
+   *
+   * THE TWO STORIES ARE `innerJoin`ed AND MUST BOTH BE LIVE; the two Iterations are `leftJoin`ed.
+   * That asymmetry is the contract: a banner exists to be clicked, so a link to a soft-deleted Story
+   * would offer a dead end — no row is better than half a trace. An iteration NAME, by contrast, is
+   * decoration on a link that still works, so a missing one degrades to `null` and the banner renders
+   * without it.
+   *
+   * `or(unfinished, continued)` and NOT a `union`: the two cases differ only in which column matched,
+   * which `role` reports below. The workspace predicate is on `story_splits` — it is the row being
+   * authorized, and every joined row is reachable only through its own FK.
+   *
+   * ORDER BY `split_at desc, id desc`: a Story can be the `[Continued]` side of several Splits (a
+   * re-split chain), and the banner shows the newest hop. `id` is the tiebreaker that makes the order
+   * TOTAL, which the query-ordering ratchet requires — two Splits committed inside the same `now()`
+   * would otherwise return whichever row Postgres happened to scan first.
+   */
+  async findByStoryId(storyId: string, workspaceId: string): Promise<StorySplitLink | null> {
+    const unfinished = alias(workItems, 'split_unfinished');
+    const continued = alias(workItems, 'split_continued');
+    const source = alias(iterations, 'split_source_iteration');
+    const target = alias(iterations, 'split_target_iteration');
+
+    const rows = await this.db
+      .select({
+        splitId: storySplits.id,
+        splitAt: storySplits.splitAt,
+        unfinishedStoryId: storySplits.unfinishedStoryId,
+        sourceIterationId: storySplits.sourceIterationId,
+        sourceIterationName: source.name,
+        targetIterationId: storySplits.targetIterationId,
+        targetIterationName: target.name,
+        unfinishedId: unfinished.id,
+        unfinishedKey: unfinished.itemKey,
+        unfinishedTitle: unfinished.title,
+        continuedId: continued.id,
+        continuedKey: continued.itemKey,
+        continuedTitle: continued.title,
+      })
+      .from(storySplits)
+      .innerJoin(
+        unfinished,
+        and(eq(unfinished.id, storySplits.unfinishedStoryId), isNull(unfinished.deletedAt)),
+      )
+      .innerJoin(
+        continued,
+        and(eq(continued.id, storySplits.continuedStoryId), isNull(continued.deletedAt)),
+      )
+      .leftJoin(source, eq(source.id, storySplits.sourceIterationId))
+      .leftJoin(target, eq(target.id, storySplits.targetIterationId))
+      .where(
+        and(
+          eq(storySplits.workspaceId, workspaceId),
+          or(eq(storySplits.unfinishedStoryId, storyId), eq(storySplits.continuedStoryId, storyId)),
+        ),
+      )
+      .orderBy(desc(storySplits.splitAt), desc(storySplits.id))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) return null;
+
+    return {
+      splitId: row.splitId,
+      splitAt: row.splitAt.toISOString(),
+      role: row.unfinishedStoryId === storyId ? 'unfinished' : 'continued',
+      sourceIterationId: row.sourceIterationId,
+      sourceIterationName: row.sourceIterationName,
+      targetIterationId: row.targetIterationId,
+      targetIterationName: row.targetIterationName,
+      unfinished: {
+        id: row.unfinishedId,
+        itemKey: row.unfinishedKey,
+        title: row.unfinishedTitle,
+      },
+      continued: { id: row.continuedId, itemKey: row.continuedKey, title: row.continuedTitle },
+    };
   }
 }
 

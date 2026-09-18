@@ -1,6 +1,8 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
+import { SPLIT_SIDES } from '../../../application/split-story';
+
 export const WorkItemResponseSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
@@ -61,6 +63,73 @@ export const WorkItemResponseSchema = z.object({
 export class WorkItemResponseDto extends createZodDto(WorkItemResponseSchema) {}
 
 export type WorkItemResponseDtoShape = z.infer<typeof WorkItemResponseSchema>;
+
+// ── The RECORD reads: the row plus its Split trace (Phase 7 SU-07, §8 Q15) ───
+
+/**
+ * One end of a Split, as the banner links to it.
+ *
+ * `title` rides along so the link can carry a real accessible name — `US-42` alone tells a screen
+ * reader nothing about where it goes, and the alternative is a second request per side.
+ */
+const SplitLinkSideSchema = z.object({
+  id: z.string().uuid(),
+  itemKey: z.string(),
+  title: z.string(),
+});
+
+/**
+ * `Split · {source} → {target}`, with a link to each resulting Story (SRS §11, SU-BR-30).
+ *
+ * FOLDED INTO THE RECORD READS rather than given its own route (§8 Q15): the detail page already
+ * fetches the Story, and a second request for a one-line bar is a render-blocking round trip for data
+ * in the same aggregate. Additive, so the `openapi` breaking-change diff stays clean.
+ *
+ * `role` says which side the REQUESTED Story is — the banner marks it as the current page instead of
+ * offering a link back to itself. Derivable by comparing ids, and derived ONCE, on the server, for the
+ * same reason `defaultSide` is. Its members come from `SPLIT_SIDES` (which is
+ * `storySplitSideEnum.enumValues`), never re-typed here — the rule SU-01's review set, and the reason
+ * `split-work-item.dto.ts` reads the same array.
+ *
+ * Iteration names are nullable: they come from a join, and a deleted Iteration must degrade the bar
+ * rather than delete the trace. Both Stories are non-null by construction — the repository returns no
+ * link at all unless both ends are live, because a link that cannot be followed is worse than none.
+ */
+const SplitLinkSchema = z.object({
+  splitId: z.string().uuid(),
+  splitAt: z.string().datetime(),
+  role: z.enum(SPLIT_SIDES),
+  sourceIterationId: z.string().uuid(),
+  sourceIterationName: z.string().nullable(),
+  targetIterationId: z.string().uuid(),
+  targetIterationName: z.string().nullable(),
+  unfinished: SplitLinkSideSchema,
+  continued: SplitLinkSideSchema,
+});
+
+/**
+ * `GET /work-items/:id` and `GET /work-items/by-key` — the record, and ONLY the record.
+ *
+ * An `.extend()` of {@link WorkItemResponseSchema} rather than a field ON it, because that schema also
+ * answers `GET /work-items`, `/backlog` and `/:id/tasks`: a grid row would then advertise a
+ * `splitLink` that is always `null`, which is a contract that lies about what the list knows. The
+ * record reads are where a Story's own relationships belong — the same boundary `StoryOptionSchema`
+ * draws from the other side.
+ *
+ * BOTH record routes, because the detail page resolves by KEY (`/item/$itemKey` carries no id). Q15's
+ * wording names `:id` alone; its reasoning ("the detail page already fetches the Story") is what makes
+ * `by-key` the route that actually had to carry it.
+ */
+export const WorkItemDetailResponseSchema = WorkItemResponseSchema.extend({
+  splitLink: SplitLinkSchema.nullable().describe(
+    'The Split this Story takes part in, from either side. Null when it was never split — which ' +
+      'includes every Task and Defect, since only a Story can be split.',
+  ),
+});
+
+export class WorkItemDetailResponseDto extends createZodDto(WorkItemDetailResponseSchema) {}
+
+export type WorkItemDetailResponseDtoShape = z.infer<typeof WorkItemDetailResponseSchema>;
 
 // ── Task totals (Tasks-tab totals row) ──────────────────────────────────────
 

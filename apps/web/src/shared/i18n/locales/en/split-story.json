@@ -54,5 +54,26 @@
     "description": "Something went wrong preparing this split. Try again shortly.",
     "submit": "Could not save the split. Try again."
   },
-  "loading": "Preparing the split…"
+  "loading": "Preparing the split…",
+  "banner": {
+    "label": "Split",
+    "region": "Split relationship",
+    "arrow": "→",
+    "noIteration": "No iteration",
+    "unfinished": "[Unfinished] {{key}}",
+    "continued": "[Continued] {{key}}",
+    "openUnfinished": "Open the unfinished story {{key}}: {{title}}",
+    "openContinued": "Open the continued story {{key}}: {{title}}",
+    "current": "This story"
+  },
+  "markers": {
+    "splitOut": "SPLIT OUT",
+    "carryIn": "CARRY IN",
+    "legendSplitOut": "Split out",
+    "legendCarryIn": "Carry in",
+    "splitOutContext": "{{date}} SPLIT OUT {{key}} · {{points}} pts · {{todo}}h To Do moved out · {{actual}}h Actual retained",
+    "carryInContext": "{{date}} CARRY IN {{key}} · {{points}} pts · {{todo}}h To Do carried in · {{actual}}h opening Actual",
+    "unpointed": "—",
+    "tableColumn": "Split events"
+  }
 }

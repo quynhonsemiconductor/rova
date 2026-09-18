@@ -57,6 +57,45 @@ export function formatActivityValue(value: unknown): string {
  */
 const FIELD_LABEL_BY_ACTION: Record<string, string> = {
   'task.state_changed': 'Task State',
+  /**
+   * Phase 7 SU-07 7.4 — the four relationship changes a Split writes.
+   *
+   * All four carry a `changes` diff, so they render through the "X changed from A to B" sentence
+   * below; without an entry they would say "Parent Id" and "Work Item Id", which are COLUMN names
+   * rather than things this product has. The reader's vocabulary is `Parent Story` (the field the
+   * Details sidebar labels) and `Work Product` (the Test Case field, and the word SU-05's own AC
+   * uses).
+   *
+   * `work_item.parent_changed` and `task.parent_changed` are separate keys for one label on purpose:
+   * this map is keyed on the ACTION because that is the only discriminant true of the ROW, and the two
+   * actions are written by two different entity types (a re-parented Defect vs a re-parented Task).
+   * Collapsing them would need a per-field rule, which is the shape the docblock above rejects.
+   *
+   * The VALUES stay as the ids the writer recorded. Resolving them to item keys would need a lookup
+   * per row from a pure function that has no client — the trace itself is the Split banner's job, and
+   * these rows exist to say WHEN and BY WHOM.
+   */
+  'work_item.parent_changed': 'Parent Story',
+  'task.parent_changed': 'Parent Story',
+  'test_case.work_product_changed': 'Work Product',
+}
+
+/**
+ * Actions with NO `changes` diff, whose humanised token would read as a column dump.
+ *
+ * `work_item.split_out` / `work_item.split_in` are entries ON the two resulting Stories, written with
+ * `changes: null` because nothing about the row itself changed — the Story's PLACE in a Split is the
+ * fact being recorded. `humanizeToken` would render them "Work Item Split Out" and "Work Item Split
+ * In", which name the writer's namespace rather than what happened.
+ *
+ * The wording is directional and says which side the row is: the placeholder was split OUT of its
+ * Iteration, the original was carried forward. The `[Unfinished]`/`[Continued]` keys are deliberately
+ * NOT interpolated — the entry names an event, and the counterpart is one line above in the Split
+ * banner, which is the surface SU-07 gives that job to.
+ */
+const ACTION_LABEL: Record<string, string> = {
+  'work_item.split_out': 'Split out as the unfinished placeholder',
+  'work_item.split_in': 'Split forward into the target iteration',
 }
 
 /**
@@ -74,5 +113,8 @@ export function describeActivity(log: ActivityLike): string {
       log.changes.old,
     )} to ${formatActivityValue(log.changes.new)}`
   }
-  return humanizeToken(log.action)
+  // A diff-less action's own sentence where it has one, otherwise the humanised token. The lookup is
+  // here rather than inside `activityFieldLabel` because these rows are NOT field changes: there is no
+  // "changed from … to …" to hang a field name on.
+  return ACTION_LABEL[log.action] ?? humanizeToken(log.action)
 }

@@ -121,3 +121,22 @@ export function useSplitWorkItem(workItemId: string) {
     },
   })
 }
+
+// ── The trace (SU-07) ─────────────────────────────────────────────────────────
+
+/**
+ * The RECORD reads' payload — a work item plus its Split trace (§8 Q15).
+ *
+ * A separate type from `WorkItem` because it is a separate schema: `GET /work-items/:id` and
+ * `GET /work-items/by-key` return `WorkItemDetailResponseDto`, while every LIST read returns the
+ * narrower `WorkItemResponseDto`. Widening `WorkItem` itself would tell the Backlog grid it has a
+ * `splitLink` that its own endpoint never sends.
+ *
+ * `WorkItemDetail` is assignable to `WorkItem` (it only ADDS a field), so every existing consumer of
+ * the by-key hook keeps working unchanged — which is why the hook could be widened in place rather
+ * than duplicated.
+ */
+export type WorkItemDetail = components['schemas']['WorkItemDetailResponseDto']
+
+/** `Split · {source} → {target}` — the banner's whole input. `null` on a Story never split. */
+export type SplitLink = NonNullable<WorkItemDetail['splitLink']>
