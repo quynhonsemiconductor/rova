@@ -479,6 +479,10 @@ verified.** The per-PR gate (§6.0) is identical every time and is not repeated 
 - [ ] `pnpm test:e2e` → `pnpm db:seed:test` → `pnpm --filter rova-web test:e2e`, **in that order**, and
       never the BE e2e suite while Playwright or a manual session is live — the reset truncates under
       them. (Unchanged, and it is why the local e2e run is reserved for the PRs that need it.)
+      **CONFIRMED THE HARD WAY in SU-07/08, and it is no longer only a caution:** SU-06's
+      `split-story.e2e.ts` splits the seeded `US-1` and moves it into `Sprint 26.2`, which has no later
+      target — so a BE e2e run AFTER Playwright fails 2 of `split-story-authz.e2e.spec.ts`'s 6 with
+      `eligible: false`, correctly. Re-seed and re-run before believing a second pass.
 
 > **Two traps the local commands hide, both measured in SU-02.** `pnpm test:cov` writes **no report at
 > all** when any test fails (`coverage.reportOnFailure` defaults to `false`), so
@@ -1929,6 +1933,14 @@ locally, Playwright included.
 synchronous `render()` of a real memory router returns an empty `<body>`, which reads exactly like "the
 component rendered nothing" and sent this session looking at the component first. Every helper that
 renders through a router has to `await` a query before asserting (`split-banner.test.tsx` does).
+
+**And §6.0's e2e ORDERING is now a reproducible failure rather than a caution.** The BE suite was green
+(74/670) before Playwright; run again AFTER it, `split-story-authz.e2e.spec.ts` failed 2 of 6 —
+"reports the Story as splittable" — because SU-06's `split-story.e2e.ts` journey had split the seeded
+US-1 and moved it into `Sprint 26.2`, which has no later target, so the preview correctly answered
+`eligible: false`. `pnpm db:seed:test` and a re-run: **74 / 670 green again.** Not flake and not a
+regression: the suite is order-dependent by construction now that a Playwright journey mutates the
+seeded Story irreversibly. **Run `pnpm test:e2e` FIRST, and re-seed before believing a second run.**
 
 ---
 
