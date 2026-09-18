@@ -106,6 +106,9 @@ const mockStatus = (id: string, isDefault = false) => ({
 
 const makeWorkItemRepo = () => ({
   findById: vi.fn(),
+  // The `/item/$itemKey` resolver. Item keys are workspace-unique, so this is the RECORD read the
+  // detail page actually makes — and therefore the one SU-07's `splitLink` had to reach.
+  findByKey: vi.fn(),
   findByIds: vi.fn().mockResolvedValue([]),
   findIterationScope: vi.fn().mockResolvedValue(null),
   findReleaseProject: vi.fn().mockResolvedValue(null),
@@ -294,7 +297,7 @@ const makeTestCaseRepo = () => ({
   reparentToWorkItem: vi.fn().mockResolvedValue(undefined),
 });
 
-/** Phase 7 SU-06 — the Split Event. One writer, and it must be handed the transaction. */
+/** Phase 7 SU-06/SU-07 — the Split Event: one writer, and one reader for the banner. */
 const makeStorySplitRepo = () => ({
   create: vi.fn(
     async (split: { id: string }, _items: Array<Record<string, unknown>>, _tx?: unknown) => ({
@@ -303,6 +306,8 @@ const makeStorySplitRepo = () => ({
       createdAt: new Date('2024-06-01').toISOString(),
     }),
   ),
+  /** Default: this Story takes part in no Split, which is true of almost every Story. */
+  findByStoryId: vi.fn().mockResolvedValue(null),
 });
 
 const makeTestResultRepo = () => ({
@@ -936,6 +941,79 @@ describe('WorkItemsService', () => {
     it('throws NotFoundException for soft-deleted item', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem({ deletedAt: now }));
       await expect(service.getWorkItem('ws-1', 'wi-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── the RECORD reads: the Split trace folded in (SU-07 7.1, §8 Q15) ─────────
+
+  /**
+   * Both record reads carry `splitLink`, and NEITHER list read does.
+   *
+   * The pair is asserted together because that is the claim: Q15's wording names `GET /:id`, but the
+   * detail page resolves by KEY (`/item/$itemKey` carries no id), so a `by-key` response without the
+   * field would leave the banner with nothing to render while the contract looked complete.
+   */
+  describe('getWorkItemDetail / getWorkItemDetailByKey (SU-07)', () => {
+    const LINK = {
+      splitId: 'split-1',
+      splitAt: '2026-06-20T10:00:00.000Z',
+      role: 'continued' as const,
+      sourceIterationId: 'iter-source',
+      sourceIterationName: 'Sprint 26.1',
+      targetIterationId: 'iter-target',
+      targetIterationName: 'Sprint 26.2',
+      unfinished: { id: 'wi-2', itemKey: 'US-9', title: '[Unfinished] Thing' },
+      continued: { id: 'wi-1', itemKey: 'US-1', title: '[Continued] Thing' },
+    };
+
+    it('returns the row and its Split trace from the id read', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      storySplitRepo.findByStoryId.mockResolvedValue(LINK);
+
+      const detail = await service.getWorkItemDetail(mockActor, 'wi-1');
+
+      expect(detail.item.id).toBe('wi-1');
+      expect(detail.splitLink).toEqual(LINK);
+      // Scoped by the ROW's workspace, not by a literal: the lookup must not be reachable for a Split
+      // that belongs to another workspace even if an id were guessed.
+      expect(storySplitRepo.findByStoryId).toHaveBeenCalledWith('wi-1', 'ws-1');
+    });
+
+    it('returns the row and its Split trace from the KEY read', async () => {
+      // The route the detail page actually calls. Same trace, same shape.
+      workItemRepo.findByKey.mockResolvedValue(mockWorkItem({ itemKey: 'US-1' }));
+      storySplitRepo.findByStoryId.mockResolvedValue(LINK);
+
+      const detail = await service.getWorkItemDetailByKey(mockActor, 'US-1');
+
+      expect(detail.item.itemKey).toBe('US-1');
+      expect(detail.splitLink).toEqual(LINK);
+      expect(storySplitRepo.findByStoryId).toHaveBeenCalledWith('wi-1', 'ws-1');
+    });
+
+    it('is null for a Story that was never split', async () => {
+      // The common case, and it must be `null` rather than an absent field: a response shape that
+      // depends on which branch answered is one a client has to guess at.
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+
+      const detail = await service.getWorkItemDetail(mockActor, 'wi-1');
+
+      expect(detail.splitLink).toBeNull();
+    });
+
+    it('authorizes BEFORE it reads the trace', async () => {
+      // `requireReadable` runs first, so an Editor outside the Story's Team is refused rather than told
+      // which Stories a Split connected — the same ordering `getSplitPreview` documents.
+      accessService.resolveTeamScope.mockResolvedValue({ unrestricted: false, teamIds: ['other'] });
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ teamId: 'team-a' }));
+      accessService.assertTeamInScope.mockRejectedValue(
+        new PermissionDeniedException('TEAM_NOT_IN_SCOPE', 'not yours'),
+      );
+
+      await expect(service.getWorkItemDetail(mockActor, 'wi-1')).rejects.toThrow(
+        PermissionDeniedException,
+      );
+      expect(storySplitRepo.findByStoryId).not.toHaveBeenCalled();
     });
   });
 

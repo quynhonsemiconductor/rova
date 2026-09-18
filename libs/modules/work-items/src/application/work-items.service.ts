@@ -96,6 +96,7 @@ import type {
   CreateStorySplitItemInput,
   SplitWorkItemInput,
   SplitWorkItemResult,
+  WorkItemDetail,
 } from '../domain/story-split.types';
 import type { TimeLog } from '../domain/time-log.types';
 import type { Watcher } from '../domain/watcher.types';
@@ -1059,6 +1060,40 @@ export class WorkItemsService {
     // The BA's own repro: an Editor with no Team opened `/item/US-17`, a Pegasus Story, in full.
     await this.assertTeamScope(actor, item);
     return item;
+  }
+
+  // ── The record READS, and the Split trace folded into them (SU-07 7.1) ──────
+
+  /**
+   * `GET /work-items/:id` — the row plus its Split trace (§8 Q15).
+   *
+   * FOLDED IN rather than given its own route, which is the ruling: the detail page already fetches
+   * the Story, and a second request for a one-line banner is a render-blocking round trip for data
+   * that is already in the same aggregate.
+   *
+   * **BOTH record reads carry it, and that is an amendment to Q15's wording rather than to its
+   * decision.** Q15 says "fold it into `GET /work-items/:id`" on the stated grounds that the detail
+   * page already fetches the Story — but the page resolves by KEY (`useWorkItemByKey` →
+   * `GET /work-items/by-key`, because `/item/$itemKey` carries no id), so folding into `:id` alone
+   * would have put the field on the route the banner never calls. Both are the RECORD; the grid feeds
+   * are not, and they keep the narrower {@link WorkItemResponseSchema} — a field added to a record
+   * shape must not silently join a feed a wider audience reads (the `StoryOptionSchema` precedent).
+   *
+   * `null` for everything that was never split, which is almost every Story — and for a Task or a
+   * Defect, which cannot be split at all. The lookup is one indexed read either way
+   * (`uq_story_splits_unfinished` / `ix_story_splits_continued`), so it is not gated on `type`:
+   * a type check here would be a second, weaker copy of the eligibility rule, and the answer for a
+   * Task is the same `null` the query already returns.
+   */
+  async getWorkItemDetail(actor: JwtPayload, id: string): Promise<WorkItemDetail> {
+    const item = await this.getWorkItemForView(actor, id);
+    return { item, splitLink: await this.storySplitRepo.findByStoryId(item.id, item.workspaceId) };
+  }
+
+  /** `GET /work-items/by-key` — the same record, resolved by key. See {@link getWorkItemDetail}. */
+  async getWorkItemDetailByKey(actor: JwtPayload, itemKey: string): Promise<WorkItemDetail> {
+    const item = await this.getWorkItemByKey(actor, itemKey);
+    return { item, splitLink: await this.storySplitRepo.findByStoryId(item.id, item.workspaceId) };
   }
 
   // ── Tasks (list + totals) ───────────────────────────────────────────────────

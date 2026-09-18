@@ -127,4 +127,73 @@ describe('ActivityHistoryTab', () => {
       screen.getByText('Schedule State changed from Defined to In-Progress'),
     ).toBeInTheDocument()
   })
+
+  // ── The Split's four relationship changes (Phase 7 SU-07 7.4, AC4) ──────────
+
+  /**
+   * A re-parent / work-product move, as `splitWorkItem` writes it.
+   *
+   * These four actions are NEW in SU-06 — `parentId` is not in `activity-diff.ts`'s field list, so
+   * nothing wrote them before — and this map is where they get a reader's vocabulary. Without an entry
+   * `humanizeToken` renders the COLUMN name, which is the same defect `task.state_changed` above was
+   * fixed for.
+   */
+  function relationRow(id: string, action: string, field: string) {
+    return { ...ROW, id, action, changes: { field, old: 'US-1', new: 'US-9' } }
+  }
+
+  it('labels a re-parented Task "Parent Story", never "Parent Id"', () => {
+    renderTab({ data: [relationRow('s-1', 'task.parent_changed', 'parentId')], isLoading: false })
+
+    expect(screen.getByText('Parent Story changed from US-1 to US-9')).toBeInTheDocument()
+    // The negative is the defect: the field name alone humanises to a column, not to a field this
+    // product has. Asserting only the positive would pass if both were rendered.
+    expect(screen.queryByText(/Parent Id/)).not.toBeInTheDocument()
+  })
+
+  it('labels a re-parented Defect the same way — one label, two actions', () => {
+    // Two entity types write the re-parent (a Task and a Defect), and this map is keyed on the ACTION
+    // because that is the only discriminant true of the row. Both have to be present.
+    renderTab({
+      data: [relationRow('s-2', 'work_item.parent_changed', 'parentId')],
+      isLoading: false,
+    })
+
+    expect(screen.getByText('Parent Story changed from US-1 to US-9')).toBeInTheDocument()
+  })
+
+  it('labels a moved Test Case "Work Product", never "Work Item Id"', () => {
+    renderTab({
+      data: [relationRow('s-3', 'test_case.work_product_changed', 'workItemId')],
+      isLoading: false,
+    })
+
+    expect(screen.getByText('Work Product changed from US-1 to US-9')).toBeInTheDocument()
+    expect(screen.queryByText(/Work Item Id/)).not.toBeInTheDocument()
+  })
+
+  it('gives the two diff-less Split entries a sentence, not a humanised namespace', () => {
+    // `work_item.split_out` / `split_in` carry `changes: null` — nothing about the row changed, its
+    // PLACE in a Split is the fact. `humanizeToken` would render "Work Item Split Out", which names the
+    // writer's namespace rather than what happened.
+    renderTab({
+      data: [
+        { ...ROW, id: 's-4', action: 'work_item.split_out' },
+        { ...ROW, id: 's-5', action: 'work_item.split_in' },
+      ],
+      isLoading: false,
+    })
+
+    expect(screen.getByText('Split out as the unfinished placeholder')).toBeInTheDocument()
+    expect(screen.getByText('Split forward into the target iteration')).toBeInTheDocument()
+    expect(screen.queryByText(/Work Item Split/)).not.toBeInTheDocument()
+  })
+
+  it('still humanises an action nobody has given a sentence to', () => {
+    // The fallback must survive: a new action must render as SOMETHING rather than blank, and this is
+    // what stops the two maps above from becoming a required registry.
+    renderTab({ data: [{ ...ROW, id: 's-6', action: 'work_item.archived' }], isLoading: false })
+
+    expect(screen.getByText('Work Item Archived')).toBeInTheDocument()
+  })
 })

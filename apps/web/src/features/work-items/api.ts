@@ -18,6 +18,9 @@ export { useStoryOptions, type StoryOption } from './story-options'
 // SPA api layer (SU-06's `useSplitWorkItem` included) belongs in `split-api.ts`, so this line never
 // has to grow again.
 export * from './split-api'
+// The RECORD read's shape (SU-07) — declared, with its reasoning, in `split-api.ts`. Type-only, and
+// from the module this file already re-exports, so there is no cycle.
+import type { WorkItemDetail } from './split-api'
 
 // ── Response types from generated contract ────────────────────────────────────
 
@@ -197,7 +200,7 @@ export function useWorkItem(id: string | undefined) {
 export function workItemByKeyQueryOptions(itemKey: string) {
   return {
     queryKey: workItemKeys.byKey(itemKey),
-    queryFn: async (): Promise<WorkItem | null> => {
+    queryFn: async (): Promise<WorkItemDetail | null> => {
       if (!itemKey) return null
       const { data, error, response } = await apiClient.GET('/v1/work-items/by-key', {
         params: { query: { itemKey } },
@@ -206,7 +209,7 @@ export function workItemByKeyQueryOptions(itemKey: string) {
         if (response.status === 404) return null
         throw new ApiError(error, response.status)
       }
-      return (data as WorkItem | undefined) ?? null
+      return (data as WorkItemDetail | undefined) ?? null
     },
     staleTime: 15_000,
   }
