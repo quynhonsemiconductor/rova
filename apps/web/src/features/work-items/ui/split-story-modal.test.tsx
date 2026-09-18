@@ -1,17 +1,14 @@
 /**
- * SplitStoryModal — the shell, from SU-01.
+ * SplitStoryModal — the shell, the footer summary and the write.
  *
- * Half of these tests assert an ABSENCE, and that is deliberate. SRS §11 forbids an explanation on a
- * disabled Split control, and the plan's §7 names absence as "the part of this feature most likely to
- * regress, because adding a helpful message feels like an improvement". A test that only checks what
- * IS rendered would pass after somebody helpfully added the reason.
+ * Half of these tests assert an ABSENCE, and that is deliberate. SRS §11 forbids an explanation beside
+ * an unavailable Split control, and the plan's §7 names absence as "the part of this feature most
+ * likely to regress, because adding a helpful message feels like an improvement". A test that only
+ * checks what IS rendered would pass after somebody helpfully added the reason.
  *
- * The confirm button being DISABLED is also an assertion about this PR specifically (§8 Q14): there is
- * no write path until SU-06, and a control wired to nothing would be worse than one that says so.
- *
- * EXTENDED BY SU-02 (2.5), not replaced: the 14 shell tests are the regression net, and the footer
- * summary + the release-feed mock are what SU-02 adds. Field-level behaviour lives in
- * `split-story-panel.test.tsx`.
+ * The confirm button is asserted to follow the DRAFT — enabled when `canConfirm` is true, disabled
+ * while a write is in flight — rather than to hold any fixed state. Field-level behaviour lives in
+ * `split-story-panel.test.tsx`, the collections in `split-collection.test.tsx`.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -25,14 +22,14 @@ const { useSplitPreview, useReleaseOptions, useSplitWorkItem, navigate } = vi.ho
 
 vi.mock('@/features/work-items/api', () => ({ useSplitPreview, useSplitWorkItem }))
 /**
- * The `[Continued]` panel reads the release REFERENCE feed (SU-02), so this file has to mock it now:
- * an unmocked `useQuery` in a test with no `QueryClientProvider` throws, and it would take all 14
- * shell tests with it.
+ * The `[Continued]` panel reads the release REFERENCE feed, so this file has to mock it: an unmocked
+ * `useQuery` in a test with no `QueryClientProvider` throws, and it would take every test in the file
+ * with it.
  */
 vi.mock('@/features/releases/api', () => ({ useReleaseOptions }))
 /**
- * ADDED BY SU-06: the modal now navigates to `[Continued]` on success (SU-07 AC1's landing), and
- * `useNavigate` outside a router throws. Mocking it also makes the destination ASSERTABLE, which is
+ * The modal navigates to `[Continued]` on success (SU-07 AC1's landing), and `useNavigate` outside a
+ * router throws. Mocking it also makes the destination ASSERTABLE, which is
  * the part worth testing — the router itself is not this file's subject.
  */
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
@@ -166,10 +163,9 @@ describe('SplitStoryModal', () => {
     expect(screen.getByText('[Continued] — moves to a later iteration')).toBeInTheDocument()
   })
 
-  it('renders `Split story` ENABLED on a valid draft (SU-06 — the write path is here)', () => {
-    // SU-01 asserted the OPPOSITE, deliberately: disabled with a tooltip, because there was nothing to
-    // save. SU-06 is the PR that inverts it (§6 6.7), so this test inverts with it — the tooltip is
-    // gone too, because a button that works does not have to explain itself.
+  it('renders `Split story` ENABLED on a valid draft', () => {
+    // And with NO `title`: a button that works does not have to explain itself, so the tooltip's
+    // absence is part of the claim rather than an incidental detail.
     renderModal()
     const confirm = screen.getByRole('button', { name: 'Split story' })
     expect(confirm).toBeEnabled()

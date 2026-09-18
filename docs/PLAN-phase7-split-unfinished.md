@@ -1526,6 +1526,53 @@ one asserting the row lock is taken *before* the rank lock).
    is now `TC-SU06X`; no trailing digits at all, which the regex simply skips.
 2. **Error bodies are `{ error: { code } }`, not `{ code }`.** Four refusal assertions were written flat
    and reported `expected undefined`, which reads like a missing code rather than a wrong path.
+
+#### SU-06 review follow-up — tech-lead review on PR #623, fixed 2026-09-18
+
+One thread, and it was about the comments rather than the code: **the docblocks had become a changelog
+that contradicted the file.** `split-story-modal.tsx`'s module header still opened, in bold, with "renders
+`Split story` **DISABLED with a `title` tooltip**. There is NO write path anywhere in this PR — it lands
+whole in SU-06", about a hundred lines above the write path; its `── SU-02 (2.1–2.6) ──` section still said
+"Still nothing is saved" and that `canConfirm` "is deliberately NOT wired"; and `split-draft.ts` carried
+the capitalised heading "`canConfirm` IS EXPORTED AND IS NOT WIRED TO THE BUTTON YET" followed by "nothing
+consumes `canConfirm` today". All false as of SU-06.
+
+Taken exactly as framed, including the framing. The per-PR sections are **collapsed into one description
+of what each module now IS**, and git holds the sequence. The forward-looking notes are gone rather than
+updated — they were honoured, which is the point of them, and the `SU-06 plugs the button into
+derived.canConfirm` line had done its job. What is genuinely absent is stated **as an absence, not as a
+schedule**: the modal's header now ends "NOT YET READ ANYWHERE ON SCREEN: a confirmed Split links the two
+Stories in `work.story_splits`, and neither Story's detail page shows its counterpart" — a fact about
+today, which stops being true when something reads it, rather than a promise that dates.
+
+**Four more files carried the same stale claim and were fixed with it**, because leaving them would have
+been the same defect one file over — and one of them is production code:
+`split-story-panel.tsx`'s header asserted "`Split story` is DISABLED throughout SU-02 (§8 Q14)" (it now
+says the panel holds no confirm control at all, and why that is the honest rule);
+`split-story-modal.test.tsx`'s header called the disabled button "an assertion about this PR specifically";
+`split-collection.test.tsx` said "there is no write path until SU-06"; and
+`work-item-actions-menu.test.tsx` attributed a disabled confirm to §8 Q14 when the real reason in that
+fixture is that the PREVIEW has not landed, so there is no draft to confirm. The reviewer's own carve-outs
+were respected: the SU-06 explanations on `confirmSplit` and above the now-enabled `Button` are untouched,
+and the `vi.mock` notes that explain why a mock exists kept their reasons.
+
+**The diff is comment-only, and that is measured rather than asserted.** `git diff -U0` filtered to
+non-comment lines yields exactly two hits, both test NAMES (`'canConfirm — computed now, wired to the
+button in SU-06'` → `'canConfirm — what the modal binds its confirm control to'`, and the same for one
+`it()`). No executable line changed.
+
+**Gate after the fix (FE-only, eight files, all under `apps/web`):** `pnpm --filter rova-web lint` **0** ·
+`pnpm build:web` **0** · `pnpm --filter rova-web test` **149 files / 1271 tests, exit 0** — byte-for-byte
+the SU-06 baseline, which is what a comment-only diff must produce · FE ratchets green and unmoved
+(`fe-consistency`, `query-default`, `no-raw-hex`, `detail-copy-link`). The backend suites were **not**
+re-run, deliberately: no file outside `apps/web` changed.
+
+**And the standing lesson, recorded because it will bite SU-09 and SU-10 too.** A docblock that narrates
+the order the code arrived in goes stale on the next PR, and the cheap fix — appending another dated
+section — turns it into a changelog that has to be read backwards. Write what the module IS; let git hold
+when. The dated `#### … review follow-up` sections in THIS file are the right home for sequence, because a
+plan is a record of decisions; a module header is not.
+
 ### PR 7 — `SU-07` Trace and navigate a completed Split
 
 `feat(work-items): link and trace both sides of a split`

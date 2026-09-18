@@ -1,15 +1,16 @@
 /**
- * SplitStoryModal — the shell, from SU-01.
+ * SplitStoryModal — the two-panel Split dialog, opened from the kebab on a Story's detail header or
+ * from the Iteration Status bulk bar.
  *
- * WHAT THIS PR DELIVERS, and deliberately no more (§8 Q14, D13): the modal opens with its title and
- * its two panel headings, closes by Cancel / `×` / Escape, and renders `Split story` **DISABLED with
- * a `title` tooltip**. There is NO write path anywhere in this PR — it lands whole in SU-06, at which
- * point the tooltip and the `disabled` come off together. The repo has shipped this exact shape
- * before: Phase A rendered `Add New` disabled-with-a-tooltip so the AC "the action is displayed" was
- * met without a dead control.
- *
- * SU-02 fills the panels (fields, read-only lines, validation), SU-03/04/05 add the three
- * collections, SU-06 enables the confirm. The two headings here are the seam those PRs build on.
+ * WHAT IT IS. One `GET /work-items/:id/split-preview` fills it, and the SERVER owns every rule in it:
+ * eligibility, the default titles, which Iterations are valid targets, and which side each Task /
+ * Defect / Test Case starts on. This component renders that answer and never re-derives it (§8 Q17 —
+ * a browser-side copy of a rule the write path enforces is the "picker narrower than the write" fault
+ * class with the two halves in different languages). One `useReducer` over `model/split-draft.ts`
+ * holds the whole edit state — both sides' fields, the chosen target, the three distribution sets —
+ * so the view is a pure function of one value. `Split story` is enabled by the draft's own
+ * `canConfirm` and POSTs `/work-items/:id/split`; on success the modal closes and navigates to
+ * `[Continued]`.
  *
  * BUILT ON THE SHARED SHELL, not the mockup's `fixed inset-0` div: `AppModal` supplies the focus
  * trap, Escape-to-close, body scroll lock, `role="dialog"` + `aria-labelledby`, and the `maxHeight`
@@ -19,15 +20,12 @@
  * because adding a helpful message feels like an improvement (SRS §11):
  *   • `ineligibleReason` is NEVER rendered. The server sends it for telemetry and tests; every AC
  *     says the action is simply unavailable, with no explanation.
- *   • no toast, no validation text, no warning styling.
+ *   • no toast, no validation text, no warning styling. The ONE message this modal renders is a
+ *     failed WRITE, beside the control that failed — see {@link confirmSplit} for why a refused
+ *     transaction is not validation copy.
  *
- * ── SU-02 (2.1–2.6) ───────────────────────────────────────────────────────────
- * The panels now have their FIELDS, from one `useReducer` over `model/split-draft.ts`, plus the
- * footer's point comparison. Still nothing is saved: `Split story` remains unconditionally DISABLED
- * with its tooltip (§8 Q14), and `canConfirm` — already computed on the derived draft, already
- * accounting for eligibility, the chosen target and both validity rules — is deliberately NOT wired
- * to it. SU-06 plugs the button into `derived.canConfirm` and drops the `disabled` + `title` pair
- * together. The three collections (Tasks / Defects / Test Cases) are SU-03/04/05.
+ * NOT YET READ ANYWHERE ON SCREEN: a confirmed Split links the two Stories in `work.story_splits`,
+ * and neither Story's detail page shows its counterpart.
  */
 import { useEffect, useReducer, useState } from 'react'
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'

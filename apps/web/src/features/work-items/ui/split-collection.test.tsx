@@ -10,9 +10,9 @@
  * container-scoped query passes vacuously.
  *
  * What is deliberately NOT tested here: effort preservation (AC3) and the Task roll-ups (AC4). Both
- * are backend behaviour, satisfied by construction (D3/D4), and there is no write path until SU-06 —
- * PR 6's e2e asserts them against stored columns. Asserting them from the browser now would be
- * asserting a draft, not a fact.
+ * are backend behaviour, satisfied by construction (D3/D4), and `test/e2e/split-story-flow.e2e.spec.ts`
+ * asserts them against stored columns. Asserting them from the browser would be asserting a draft, not
+ * a fact.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
@@ -398,10 +398,9 @@ describe('SplitCollection', () => {
   // ── Distribution never blocks the write ─────────────────────────────────────
 
   it('keeps `Split story` available through every move (AC5 — any distribution is legal)', () => {
-    // SU-02/03 asserted "disabled throughout" because there was no write path. Now that there is, the
-    // claim that matters is the opposite one: moving items — including emptying a side entirely — never
-    // makes the split unsavable, and says nothing (`announcedText` covers the toast absence, since
-    // `DndContext` renders an empty live region of its own).
+    // Any distribution is legal: moving items — including emptying a side entirely — never makes the
+    // split unsavable, and says nothing. `announcedText` covers the toast absence, since `DndContext`
+    // renders an empty live region of its own and `role="status"` is therefore no longer a probe.
     renderModal()
     expect(confirmButton()).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Move TA-1 to [Continued]' }))

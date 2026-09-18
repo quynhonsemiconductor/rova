@@ -28,14 +28,13 @@
  * `{ value, invalid }`. `combinedPoints` treats `null` as `0` for the arithmetic only; the field
  * itself round-trips `null`.
  *
- * `canConfirm` IS EXPORTED AND IS NOT WIRED TO THE BUTTON YET
+ * `canConfirm` IS A PROPERTY OF THE DRAFT, NOT OF THE BUTTON
  * ----------------------------------------------------------
- * SU-02 renders `Split story` unconditionally DISABLED (§8 Q14 / D13 — the write path lands whole in
- * SU-06), so nothing consumes `canConfirm` today. It is computed here anyway because it is a property
- * of the draft, not of the button: **SU-06 plugs the confirm control into
- * `deriveSplitDraft(draft).canConfirm` and removes the unconditional `disabled` + tooltip together.**
- * It already accounts for the server's `eligible`, a chosen target, and both validity rules, so SU-06
- * adds no new condition.
+ * It folds in the server's `eligible`, a chosen target and both sides' validity, and `SplitStoryModal`
+ * binds its confirm control straight to `deriveSplitDraft(draft).canConfirm`. Computed HERE rather
+ * than in the view because "may this draft be saved" is a question about the draft — which is what
+ * makes it answerable without a DOM — and because a second copy in the component would be free to
+ * disagree with this one.
  */
 import type { ScheduleState } from '@/entities/work-item/model/types'
 import type { SplitPreview, SplitSide } from '@/features/work-items/api'

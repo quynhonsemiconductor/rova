@@ -153,7 +153,8 @@ describe('SplitStoryPanel', () => {
 
   it('has NO disabled control anywhere in the panels — a disabled field is not how read-only is said', () => {
     renderModal()
-    // `Split story` is disabled (§8 Q14) and lives in the footer, so the panels must hold none.
+    // `Split story` lives in the modal's FOOTER, so whatever state it is in, the panels must hold no
+    // disabled control at all.
     expect(unfinishedPanel().querySelector('[disabled]')).toBeNull()
     expect(continuedPanel().querySelector('[disabled]')).toBeNull()
   })

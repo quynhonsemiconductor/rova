@@ -105,7 +105,8 @@ describe('WorkItemActionsMenu', () => {
 
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByText('Splitting US-1: Upgrade NX workspace to v21')).toBeInTheDocument()
-    // And the confirm is disabled here too — the entry point does not change that (§8 Q14).
+    // The confirm is disabled because the PREVIEW has not landed in this fixture, so there is no draft
+    // to confirm — not because the entry point decides anything about it.
     expect(screen.getByRole('button', { name: 'Split story' })).toBeDisabled()
   })
 })

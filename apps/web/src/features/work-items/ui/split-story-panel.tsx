@@ -1,10 +1,10 @@
 /**
- * SplitStoryPanel — one side's FIELD BLOCK (SU-02, tasks 2.2/2.3/2.4/2.6).
+ * SplitStoryPanel — one side's FIELD BLOCK.
  *
  * Its own file, not a section of `split-story-modal.tsx`: the file-length ratchet is 929 with a
- * 500-line soft cap, and the modal still has three collections (SU-03/04/05) to gain. One component
- * serves both sides because the two are the same form with different authority over each field —
- * writing them twice is how the two drift apart.
+ * 500-line soft cap, and that module also carries the modal shell, the three collections and the
+ * footer. One component serves both sides because the two are the same form with different authority
+ * over each field — writing them twice is how the two drift apart.
  *
  * READ-ONLY IS RENDERED AS A VALUE, NOT AS A DISABLED CONTROL.
  * The mockup draws `[Unfinished]`'s Release / Iteration / Schedule State as disabled `<select>`s.
@@ -21,8 +21,9 @@
  * attribute is `undefined` rather than `false` when valid, so "no invalid field" is the absence of an
  * attribute and a test cannot pass by finding `aria-invalid="false"`.
  *
- * `Split story` is DISABLED throughout SU-02 (§8 Q14) — this panel never enables it. `canConfirm`
- * exists on the derived draft for SU-06 to plug in.
+ * THIS PANEL HOLDS NO CONFIRM CONTROL. `Split story` lives in the modal's footer, bound to the
+ * draft's own `canConfirm`; a panel that could enable or disable it would be a second opinion about
+ * whether the draft is saveable.
  */
 import { useTranslation } from 'react-i18next'
 import type { Dispatch } from 'react'
