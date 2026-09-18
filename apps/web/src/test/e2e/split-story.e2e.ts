@@ -29,17 +29,20 @@ test.describe('Split a user story', () => {
     await loginAndSelectProject(page)
 
     // ── Reach a splittable Story ─────────────────────────────────────────────
-    // The Backlog is where a Story is reached by name; `US-1` (`Upgrade NX workspace…`) is seeded
-    // in-progress in `Sprint 26.1` with three Tasks, one Completed — the shape §6 PR 1.12 verified
-    // against a live database.
-    await page.goto('/backlog', { waitUntil: 'domcontentloaded' })
-    await settle(page)
-    await page.getByRole('link', { name: 'US-1' }).first().click()
+    // Straight to the detail route, the way `test-result-back-navigation.e2e.ts` does. Going through
+    // the Backlog grid first was the original shape and it timed out in CI: the ID cell is not a
+    // `link`, so the click never resolved — and reaching the page is not what this journey is about.
+    // `US-1` (`Upgrade NX workspace…`) is seeded in-progress in `Sprint 26.1` with three Tasks, one
+    // Completed — the shape §6 PR 1.12 verified against a live database.
+    await page.goto('/item/US-1', { waitUntil: 'domcontentloaded' })
     await settle(page)
 
     // ── The kebab, which SU-01 created for exactly this verb ─────────────────
+    // `ActionMenu` is built on a Radix **Popover**, not a DropdownMenu, so its rows are ordinary
+    // `<button>`s — `getByRole('menuitem')` matches nothing here. Worth stating, because the aria
+    // role is the first thing a reader assumes about a menu.
     await page.getByRole('button', { name: 'More work item actions' }).click()
-    await page.getByRole('menuitem', { name: 'Split unfinished story' }).click()
+    await page.getByRole('button', { name: 'Split unfinished story' }).click()
 
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible({ timeout: 15_000 })
