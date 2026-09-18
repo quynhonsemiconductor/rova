@@ -52,14 +52,23 @@ test.describe('Split a user story', () => {
     await expect(dialog.getByText('[Continued] — moves to a later iteration')).toBeVisible()
 
     // The target picker offers the server's `targets` — earliest first (BR-06/AC5).
-    await expect(dialog.getByLabel('Iteration')).toHaveValue(/.+/)
+    //
+    // Addressed by ID, not by label: `Iteration` labels TWO fields in this dialog — the read-only value
+    // on the `[Unfinished]` side (BR-09 keeps it in the source) and the picker on `[Continued]` — so
+    // `getByLabel('Iteration')` is a strict-mode violation. The unit specs scope by panel region for the
+    // same reason; here the id is the shorter honest answer.
+    await expect(dialog.locator('#split-continued-iteration')).toHaveValue(/.+/)
 
     // ── Distribute ───────────────────────────────────────────────────────────
-    // BR-14: the Completed Task (`TA-1`) starts on the `[Unfinished]` side. Moving a Task the other way
-    // is the interaction SU-03 built, and the arrow is the accessible path to it.
-    const moveRight = dialog.getByRole('button', { name: /^Move TA-\d+ to \[Continued\]$/ }).first()
-    await expect(moveRight).toBeVisible()
-    await moveRight.click()
+    /**
+     * Move a Task LEFT, onto `[Unfinished]` — the direction the plan's journey names, and the one that
+     * matters: the request body carries the `[Unfinished]` side only, so moving a Task the other way
+     * (off the placeholder, which is where BR-14 puts the Completed one) would submit an EMPTY id list
+     * and prove nothing about distribution. `TA-2`/`TA-3` are in-progress, so they default right.
+     */
+    const moveLeft = dialog.getByRole('button', { name: /^Move TA-\d+ to \[Unfinished\]$/ }).first()
+    await expect(moveLeft).toBeVisible()
+    await moveLeft.click()
 
     // ── Confirm ──────────────────────────────────────────────────────────────
     const confirm = dialog.getByRole('button', { name: 'Split story' })
@@ -69,9 +78,18 @@ test.describe('Split a user story', () => {
     // ── Land on `[Continued]` (SU-07 AC1's landing, wired in SU-06's mutation) ─
     await expect(page.getByRole('dialog')).toBeHidden({ timeout: 20_000 })
     await settle(page)
-    // The original id is the one that continued (BR-08), so the detail page is the same record with a
-    // new title — and it is now in the target Iteration (BR-11).
-    await expect(page.getByText(/\[Continued\]/).first()).toBeVisible({ timeout: 20_000 })
-    await expect(page.getByText('Sprint 26.2').first()).toBeVisible()
+    /**
+     * The original id is the one that continued (BR-08), so this is the SAME record with a new title —
+     * and `navigate` to the same route is a no-op, which means what proves the split landed is the
+     * mutation's invalidation refetching this page.
+     *
+     * Read as a FORM VALUE, not as text: the detail header renders an editable
+     * `<input aria-label="Title">` for a caller who may edit, and `getByText` never matches an input's
+     * value. That mistake is what made this assertion fail on a split that had in fact succeeded — the
+     * database showed `[Continued] …` while the test was looking for a text node that does not exist.
+     */
+    await expect(page.getByRole('textbox', { name: 'Title' })).toHaveValue(/^\[Continued\] /, {
+      timeout: 20_000,
+    })
   })
 })
