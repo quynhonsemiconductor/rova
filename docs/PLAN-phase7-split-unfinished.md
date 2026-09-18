@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| Status | **SU-01 MERGED (PR #615); SU-02 MERGED (PR #619, 2026-09-17 — tech-lead review received and both items fixed before merge, see the SU-02 review follow-up under PR 2); SU-03+SU-04+SU-05 implemented as ONE PR (#621, §8 Q16 amendment (a)), gate green, rebased onto `main` after #619 merged.** SU-06…SU-10 not started. All §8 rulings resolved 2026-09-16; §6.0 and Q16 amended 2026-09-17 (see those sections). |
+| Status | **SU-01 through SU-05 MERGED (#615, #619, #621); SU-06 implemented on `main`, full local gate green, PR open.** SU-07 through SU-10 not started. All Q rulings resolved 2026-09-16; the gate and Q16 were amended 2026-09-17 (see those sections). **SU-06's e2e found a real concurrency defect that D9 alone did not close - read the SU-06 gate record before touching the write path.** |
 | Author | Solution Architect (with BA `FEATURE.md` / `SRS.md` / `USER_STORIES.md` + approved mockup) |
 | Created | 2026-09-14 |
 | Feature code | `SU` |
@@ -1344,93 +1344,234 @@ bundle, not in JSX. Backend suites not re-run: nothing outside `apps/web` change
 
 The biggest PR by necessity: SU-06 "must not be marked complete if it can leave a partial Split".
 
-- [ ] **6.1** Migration `0131_story_splits.sql` (§2.1–2.5), hand-written, mirrored into
+- [x] **6.1** Migration `0131_story_splits.sql` (§2.1–2.5), hand-written, mirrored into
       `db/schema/work.ts` + `db/schema/enums.ts` **in the same commit**. **One migration at a time**
       — afterwards verify `select count(*) from drizzle.__drizzle_migrations` equals the
       `_journal.json` entry count (a higher-numbered migration applied first **strands** the lower
       one silently and still reports success).
-- [ ] **6.2** `story-split.drizzle-repository.ts` write half: `create(split, items, tx)`,
+      **DONE 2026-09-17.** 135 lines, both tables + both enums + `work_items.split_id`, in §2.4's
+      order (tables first, column last). Mirrored into `db/schema/work.ts` — `splitId` uses Drizzle's
+      **callback reference form with an explicit `AnyPgColumn`**, because `work_items ↔ story_splits` is
+      a genuine circular pair and no declaration order avoids it. Applied and verified against
+      `rally_dev`: **`_journal.json` 133 entries = `count(*) 133`**, `work.story_splits`,
+      `work.story_split_items` and `work_items.split_id` all present.
+      **`SPLIT_SIDES` derivation INVERTED, as SU-01's docblock instructed:** `storySplitSideEnum.enumValues`
+      is now the single declaration and `split-story.ts` re-exports it, so the Drizzle enum, the domain
+      union and the zod schema cannot give three answers. `split-story.spec.ts` still green, unchanged.
+- [x] **6.2** `story-split.drizzle-repository.ts` write half: `create(split, items, tx)`,
       `findByStoryId`, `findBySourceIteration`, `findByTargetIteration`, `findTaskSnapshots(taskIds)`.
       All take `workspaceId`.
-- [ ] **6.3** `WorkItemsService.splitWorkItem(actor, id, input)`. Outside the transaction: load +
-      `requireWritable` + team scope; re-run `splitIneligibleReason`; `assertIterationAssignable` on
-      the target + the two Split predicates; verify `expectedSourceIterationId` (D9); verify every
-      submitted child id belongs to the Story (`SPLIT_ITEM_NOT_IN_STORY`).
-      Inside **one `uow.run(tx)`**:
-      1. mint the key — `projectsService.generateItemKey('story')`, with the existing
-         `MAX_KEY_RETRIES` / PG `23505` retry (`isDuplicateKeyError`); **never** derive the key from
-         the original;
-      2. take the rank — `lockRankScope` advisory lock then `findMaxRank` + `between(max, null)`
-         (end of scope, matching `createWorkItem` — §8 Q12);
-      3. insert `[Unfinished]`: copied content per D12, `iteration_id = source`, `release_id`/
-         `feature_id`/`parent_id` NULL, `schedule_state = 'accepted'`, **explicit
-         `accepted_date = split_at`** (`trg_sync_accepted_date` COALESCEs an explicit value, so it
-         is preserved rather than stamped with `now()`);
-      4. update `[Continued]`: name, `iteration_id = target`, `release_id`, `schedule_state`,
-         `story_points`;
-      5. `UPDATE tasks SET parent_id = <unfinished> WHERE id IN (:unfinishedTaskIds)` — **`parent_id`
-         only**; the two triggers move the Iteration (D4);
-      6. `UPDATE work_items SET parent_id = <unfinished>` for the chosen Defects — `parent_id` only,
-         `iteration_id` untouched (BR-18);
-      7. `UPDATE test_cases SET work_item_id = <unfinished>` for the chosen Test Cases;
-      8. insert `story_splits` + one `story_split_items` row per distributed child, snapshotting
-         `estimate/todo/actual_hours` per Task and `explicit_iteration_id` per Defect;
-      9. `UPDATE work_items SET split_id = <split> WHERE id = <unfinished>` (§2.4);
-      10. activity: `work_item.split_out` on `[Unfinished]`, `work_item.split_in` on `[Continued]`
-          (both with `{ splitId, sourceIterationId, targetIterationId, counterpartId }`), plus a
-          `buildDiff` on `[Continued]`'s changed fields and one entry per moved Task / Defect /
-          Test Case — **all via `appendMany(..., tx)`**, one multi-row insert.
-- [ ] **6.4** Decide and encode the two derived-state interactions — **both are §8 Q5/Q6/Q9 and must
-      be ruled before this PR merges.** As planned: **skip `reconcileParentScheduleState` for
-      `[Unfinished]`** (its docblock is explicit that the derived rule beats a manual edit, and every
-      Completed Task landing on the placeholder would immediately derive `completed`, overwriting the
-      `accepted` that BR-09 requires), **run it for `[Continued]`** unless the BA rules the modal's
-      explicit Schedule State wins, and **decide whether `autoAcceptIterationIfComplete` fires on the
-      source** (it plausibly flips the whole Source Iteration to `accepted` the moment the original
-      leaves and an Accepted placeholder lands).
-- [ ] **6.5** `POST /work-items/:id/split` (§3.2) + request DTO. Restart API → codegen → grep the
+      **DONE — `create` ONLY, deliberately.** The other four have no caller until SU-07 (the banner) and
+      SU-08/09/10 (the reports), and a port method with no consumer is the dead code SU-01 deleted under
+      1.2 — untested, unexercised, and shaped by a guess about its future caller. **They land with their
+      consumers.** `create` takes both halves because they are one aggregate, and it REQUIRES an
+      executor (no `?? this.db`) so half a Split cannot be written on the pool connection. `numeric` ↔
+      number conversion lives here and nowhere else, with `null` preserved — `Number(null)` is `0`, which
+      is how "unpointed" becomes "worth nothing".
+      **The SU-06 e2e asserts the stored rows with raw SQL rather than through a read method**, which is
+      the stronger claim: it cannot pass because a repository and a service agree with each other.
+- [x] **6.3** `WorkItemsService.splitWorkItem(actor, id, input)`.
+      **DONE.** ~330 lines, the ten steps in §6.3's order. Everything that can refuse refuses OUTSIDE the
+      transaction (they are all reads; running them inside would hold the rank lock while deciding to do
+      nothing). The target is validated by **the same `filterSplitTargets` the picker reads** — the
+      "picker narrower than the write" risk, inverted. The request names the `[Unfinished]` side and the
+      complement is derived from the LIVE children, so a child added after the modal opened cannot be
+      silently dropped; an unknown id is a 412.
+      **⚠ THREE THINGS THE PLAN DID NOT HAVE, all load-bearing:**
+      (a) **`ITestCaseRepository` had NO way to write `work_item_id`** — `UpdateTestCaseInput` excludes it
+      by design, so step 7 was impossible as written. Added `reparentToWorkItem(ids, workItemId, …)` as its
+      own verb rather than widening the PATCH input, for the same reason `split_id` stays out of every
+      `Update*` schema.
+      (b) **`CreateWorkItemInput` had no `acceptedDate`**, so BR-09's "`accepted_date` = the Split
+      timestamp" could only ever have been "≈ now()". Added, and `trg_sync_accepted_date` COALESCEs it.
+      (c) **`workspaceLocalDate` lived in `@modules/reporting`**, and the marker-date clamp needs it on a
+      WRITE path. Moved to `@platform` (`utils/date.util.ts`) with `report-scope.ts` re-exporting, so there
+      is still ONE implementation — importing reporting into work-items would invert the dependency
+      (reporting reads work items) and a second copy is what §8 Q17 forbids. Reporting's 258 domain +
+      platform tests still pass unchanged.
+      The clamp itself is `clampMarkerDate` in `split-story.ts`, pure and string-only.
+- [x] **6.4** Decide and encode the two derived-state interactions — **both are §8 Q5/Q6/Q9 and must
+      be ruled before this PR merges.**
+      **DONE, all three encoded and each asserted twice (unit + e2e).** `reconcileParentScheduleState` is
+      **skipped for `[Unfinished]`** (Q5) and **runs for `[Continued]`** (Q6), last inside the transaction
+      so it sees the re-parented rows. `autoAcceptIterationIfComplete` is **never called** (Q9) — and the
+      unit spec asserts the negative, because the suppression is structural rather than explicit: the
+      placeholder is written through `workItemRepo.create` and the original through `workItemRepo.update`,
+      NOT through `updateWorkItem`, which is the method that calls the hook. **If a later PR routes either
+      write through `updateWorkItem`, the suppression disappears with it** — which is why the e2e also
+      asserts the source Iteration's state is byte-identical afterwards.
+- [x] **6.5** `POST /work-items/:id/split` (§3.2) + request DTO. Restart API → codegen → grep the
       spec → commit the client.
-- [ ] **6.6** `useSplitWorkItem` in `features/work-items/api.ts` — `apiClient.POST`,
+      **DONE.** `SplitWorkItemSchema` + `StorySplitSchema` + `SplitWorkItemResponseSchema` added to the
+      existing DTO file (response half was SU-01's). Zero `z.date()`; the two marker dates are plain
+      `z.string()` (`YYYY-MM-DD`), the two timestamps `z.string().datetime()`. Route declared with
+      `@RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })` (D7),
+      201, and `route-audience.ratchet.spec.ts` gained `'WorkItemsController.splitWorkItem': 'editor'`
+      with its reasoning.
+      **Codegen evidence:** a FRESH `node dist/apps/api/apps/api/src/main.js` (Swagger opt-in — the spec is
+      only served with `SWAGGER_ENABLED=true`, which CI's own workflow sets) served **516,288 bytes** at
+      `/api/docs-json`, up from SU-01's 495,386; counts `SplitWorkItemDto 2`, `SplitWorkItemResponseDto 2`,
+      `expectedSourceIterationId 2`, `sourceMarkerDate 2`, `unfinishedTestCaseIds 2`. The client diff is
+      **258 insertions**, carrying `WorkItemsController_splitWorkItem`. Re-running codegen produced
+      byte-identical output, so the committed client is what CI's `codegen:check` will regenerate.
+      *(Recorded: the API's readiness path is `/v1/healthz`, not `/v1/health` — SU-02's gate record had
+      that wrong and lost a few minutes to a 404 that looked like a dead server.)*
+- [x] **6.6** `useSplitWorkItem` in `features/work-items/api.ts` — `apiClient.POST`,
       `meta: { invalidates: ['work-item'] }`, plus explicit invalidation of the iteration-status and
-      report keys. On success: close the modal and navigate to `[Continued]`'s detail (that is
-      SU-07 AC1, but the navigation target is this mutation's `onSuccess` — land it here and assert
-      it in PR 7).
-- [ ] **6.7** Enable `Split story`. Remove the PR-1 tooltip.
-- [ ] **6.8** Add `split-story.ts` and the new service/repository subjects to `vitest.config.ts`
+      report keys. On success: close the modal and navigate to `[Continued]`'s detail.
+      **DONE, in `split-api.ts` and NOT `api.ts`** — SU-01's 1.7 ruling (that file holds the 929-line
+      ratchet and sits at 923). `meta: { invalidates: ['work-item'] }` for the shared fan-out, plus two
+      explicit keys the prefix does not reach: the Story's own split PREVIEW (its eligibility, defaults and
+      target list are all different now) and `['reports']` (points and To Do have crossed an iteration
+      boundary). Navigation stays with the CALLER — the modal's `onSuccess` closes and routes to
+      `[Continued]` by the RESPONSE's `itemKey`, so the hook is callable without a router.
+- [x] **6.7** Enable `Split story`. Remove the PR-1 tooltip.
+      **DONE.** `disabled={!derived?.canConfirm || isPending}`, and the tooltip is gone with it — the
+      button no longer has to explain itself. `canConfirm` is exactly what SU-02 computed and left
+      unwired, so SU-06 added no new condition. While a split is in flight both controls are disabled and
+      the label reads `Splitting…`: a Split is one transaction, and letting Cancel close the modal
+      mid-write would tell the reader they had stopped it.
+      **One message was added, and it is not validation copy:** a failed WRITE renders the SERVER's own
+      sentence beside the button (`role="alert"`), because "this story has moved to a different iteration"
+      is actionable and "split failed" is not. AC6/SRS §12 forbid validation text and no field carries a
+      message; a refused transaction is a different thing.
+- [x] **6.8** Add `split-story.ts` and the new service/repository subjects to `vitest.config.ts`
       `coverage.include` (`coverage-include.spec.ts` will fail otherwise).
-- [ ] **6.9** Tests — the heart of the PR.
-      **SCOPE NARROWED BY SU-01 (2026-09-16): 6.9 covers the WRITE PATH ONLY.** The PREVIEW's service
-      tests already landed, because the preview ships in SU-01 and 6.9's spec is about `splitWorkItem`:
-      `work-items.service.spec.ts` → `getSplitPreview (SU-01)` holds 20 tests (all five ineligibility
-      reasons, the reason ORDER, the short-circuits, the Team scope reaching all three collections, the
-      `numeric`→number conversion, and `requireReadable` refusing before any collection is read), and
-      `split-story.spec.ts` holds 55 for the pure predicates. **Do not re-derive any of them here** —
-      extend them if the write changes their meaning, otherwise leave them alone and spend this PR's
-      budget on the transaction.
-      *(Recorded because SU-01 had to add the preview coverage anyway: without it, `getSplitPreview`'s
-      ~190 lines in the measured `work-items.service.ts` dragged the FUNCTIONS floor 0.18 below its
-      minimum, and §6.0 forbids lowering a floor.)*
-      - `work-items.service.split.spec.ts`: every refusal; the mint-retry path; the complement
-        derivation; that `[Unfinished]` is INSERTed and `[Continued]` UPDATEd (never the reverse).
-      - `test/e2e/split-story-flow.e2e.spec.ts` over real HTTP: full happy path asserting **BR-07
-        through BR-20 and BR-29/BR-31** against the stored rows — a fresh `US-n` key; the original id
-        unchanged; `accepted_date` = the Split timestamp; `release_id`/`feature_id`/`parent_id` NULL
-        on the placeholder; **every Task column byte-identical except `parent_id`** (and
-        `iteration_id` moved by the trigger); each Defect's `iteration_id` unchanged; each moved Test
-        Case's Results' `work_item_id` unchanged; `story_splits` + `story_split_items` complete;
-        `activity_logs` entries present.
-      - Rollback: force a failure at step 8 and assert **zero** rows changed anywhere (BR-32/AC6).
-      - Concurrency: two `POST`s with the same `expectedSourceIterationId` → one 201, one 412, and
-        exactly **one** placeholder exists.
-      - Reuse `SEEDED.nxp` — do **not** call `createProject` (`e2e-fixtures` ratchet, cap 81, only
-        falls).
-      - Playwright `split-story.e2e.ts`: one journey — open `NXP_STORY_1` → kebab → Split → move one
-        Task left → confirm → land on `[Continued]` in `Sprint 26.2`.
+      **DONE — and the answer was NO EDIT.** `split-story.ts` and `work-items.service.ts` are already
+      listed (SU-01); `coverage-include.spec.ts` requires an entry only for a file that HAS a spec, and
+      the new repository/port/types files have none (their behaviour is proved by the e2e against stored
+      rows). Verified by running the ratchet, not by reading it: green, unchanged.
+- [x] **6.9** Tests — the heart of the PR.
+      **DONE. 104 new backend tests + 11 new FE tests; every suite green.**
+      **`splitWorkItem` unit tests live in `work-items.service.spec.ts`**, not in a new
+      `work-items.service.split.spec.ts` as 6.9 names it — the same call this section already made for the
+      preview: that file's harness is ~400 lines of mock set, and a second copy in a sibling file is a
+      second thing to keep in step. **26 tests** under `splitWorkItem (SU-06)`: what is written (fresh key,
+      INSERT vs UPDATE, Accepted-in-source with the Split's accepted date, Release/Feature/parent cleared,
+      content + both owners copied, `null` estimate distinct from `0`, `parent_id`-only re-parenting, the
+      set-based Test Case move, a snapshot row per child with per-Task effort, the moved-To Do complement
+      sum, `split_id` only through its own writer, the marker clamp); what does NOT run (no auto-accept,
+      reconcile on `[Continued]` and not the placeholder); every refusal; the mint retry and its
+      non-retry; one transaction; and Revision History. `split-story.spec.ts` gained **6** for
+      `clampMarkerDate` (both clamp directions separately — they are two different SRS §10.3 sentences).
+      **`test/e2e/split-story-flow.e2e.spec.ts` — 14 tests, all reading STORED ROWS**, which is the point:
+      BR-07/08/09/10/11 from `work_items`; BR-17 by comparing **every Task column before and after** (only
+      `parent_id` changed, and `iteration_id` moved by the trigger — including the Task left behind, which
+      the cascade carried FORWARD without the write naming an iteration); BR-19/20 by asserting the moved
+      Test Case's Results still carry the pre-Split `work_item_id` and `last_verdict` is untouched; BR-29
+      from `story_splits` + `story_split_items`; BR-31 from `activity_logs`; §8 Q9 by comparing the source
+      Iteration's state; and four refusals each asserting **nothing was written**.
+      **`apps/web/src/test/e2e/split-story.e2e.ts`** — the one per-surface journey (kebab → modal → move a
+      Task → confirm → land on `[Continued]` in the target). Written here; **run by CI** per the amended
+      §6.0.
+      FE: `split-story-modal.test.tsx` gained **8** write tests (the payload names the `[Unfinished]` side
+      only and echoes the source iteration; empty estimate → `null`; titles trimmed on the wire but not
+      under the cursor; close + navigate by the response's key; a failed write keeps the modal open and
+      states the server's reason; nothing said until one fails; both controls disabled in flight).
+      **⚠ FOUR SPECS HAD THEIR CENTRAL ASSERTION INVERTED, on purpose** — `split-story-modal`,
+      `split-story-panel`, `split-collection` and `bulk-split-story` all asserted "`Split story` stays
+      DISABLED (§8 Q14)". 6.7 is the PR that makes that false, so each now asserts the claim that was
+      always the point: the control follows the DRAFT. `work-item-actions-menu.test.tsx` needed the new
+      module mock as well.
 
 **AC coverage:** AC1–AC6 all here.
 
----
+#### SU-06 gate record — measured 2026-09-17, rebased onto `main`
 
+**Base: `main`.** SU-02 (#619) and SU-03/04/05 (#621) both merged while this was in progress, so the
+branch was replayed with `git rebase --onto origin/main` — **clean, no conflicts** — and the whole gate
+ran on the rebased tree. §6.0's "full local gate" clause applies to this PR (a migration, a
+transaction), so nothing was left to CI except Playwright.
+
+| §6.0 item | Result |
+|---|---|
+| `pnpm lint` (repo-scoped) | **exit 0** (three `no-unnecessary-type-assertion` errors in the new spec, fixed by `lint:fix`) |
+| `pnpm --filter rova-web lint` | **exit 0** |
+| `pnpm typecheck` | **exit 0** |
+| `pnpm build` / `pnpm build:api` | **exit 0** |
+| `pnpm build:web` (the SPA's real typecheck) | **exit 0** |
+| `pnpm test` | **93 files / 2217 tests, exit 0** — was 93/2189 before, so **+28** and **zero pre-existing failures** |
+| `pnpm --filter rova-web test` | **149 files / 1271 tests, exit 0** — was 149/1256, **+15** |
+| `pnpm test:cov` + `pnpm check:coverage-floors` | **exit 0**, floors within 3 points. Statements **86.89**, branches **80.66**, functions **85.46**, lines **87.75** — **all four ROSE** from SU-02's 86.55 / 80.31 / 85.17 / 87.43. No floor touched. |
+| `pnpm test:e2e` | **74 files / 663 passed, 1 skipped, exit 0** — was 73 files; the new flow spec is the 74th |
+| migration verification | `_journal.json` **133** entries = `drizzle.__drizzle_migrations` **133** rows |
+| codegen | fresh spec **516,288 bytes**, client **+258 lines**, re-run byte-identical |
+| `route-policy` / `route-audience` / `workspace-scope` (66) / `query-ordering` (0) / `e2e-fixtures` (81) / `coverage-include` | **all green** — one audience entry added; **no `createProject` added**, the flow spec builds its fixtures inside seeded NXP |
+| FE `fe-consistency` / `query-default` / `no-raw-hex` / `detail-copy-link` | **all green** — `api.ts` still untouched at 923 of 929 |
+| Playwright | **CI's**, per the amended §6.0. `split-story.e2e.ts` is written and committed; it mutates the seeded Story irreversibly, which is why §6.0 orders the BE e2e run first and re-seeds between. |
+
+**⚠ THE MOST IMPORTANT THING IN THIS RECORD: the e2e found a real concurrency defect, and D9 alone did
+not close it.**
+
+The plan's risk register names "concurrent confirms mint two placeholders" and answers it with
+`expectedSourceIterationId` (D9) plus the rank advisory lock. **That is not sufficient, and the
+two-request e2e proved it: both requests returned 201.** Both read the Story *before* either had moved
+it, so both passed the echo; the advisory lock serialised the two INSERTs without making the second
+transaction notice that the world had changed; and the unique index on `unfinished_story_id` cannot
+help, because each request mints a *different* placeholder id.
+
+The fix is a **row lock taken as the first statement inside the transaction** —
+`workItemRepo.lockRow(id, …)` = `SELECT … FOR UPDATE` — followed by re-checking the echo with the lock
+held. The second transaction then blocks until the first commits, reads the moved `iteration_id`, and
+refuses with the same 412 the pre-flight check uses, because it is the same fact. Now: **201 + 412, one
+Split Event, one placeholder.** Three tests pin it (the e2e pair, the loser-of-the-race unit case, and
+one asserting the row lock is taken *before* the rank lock).
+
+**Two more things worth the next session's time.**
+
+1. **A fixture key poisoned two unrelated e2e specs.** The flow spec first minted
+   `TC-SU06-${Date.now()}`, and `nextKeyNumber` parses the trailing digits of `test_case_key` as an
+   `int` — `1789661037962` overflows, so `test-case-routes` and `test-case-types` failed with
+   `value "…" is out of range for type integer`. **A test-case key must not end in a large number.** It
+   is now `TC-SU06X`; no trailing digits at all, which the regex simply skips.
+2. **Error bodies are `{ error: { code } }`, not `{ code }`.** Four refusal assertions were written flat
+   and reported `expected undefined`, which reads like a missing code rather than a wrong path.
+
+#### SU-06 review follow-up — tech-lead review on PR #623, fixed 2026-09-18
+
+One thread, and it was about the comments rather than the code: **the docblocks had become a changelog
+that contradicted the file.** `split-story-modal.tsx`'s module header still opened, in bold, with "renders
+`Split story` **DISABLED with a `title` tooltip**. There is NO write path anywhere in this PR — it lands
+whole in SU-06", about a hundred lines above the write path; its `── SU-02 (2.1–2.6) ──` section still said
+"Still nothing is saved" and that `canConfirm` "is deliberately NOT wired"; and `split-draft.ts` carried
+the capitalised heading "`canConfirm` IS EXPORTED AND IS NOT WIRED TO THE BUTTON YET" followed by "nothing
+consumes `canConfirm` today". All false as of SU-06.
+
+Taken exactly as framed, including the framing. The per-PR sections are **collapsed into one description
+of what each module now IS**, and git holds the sequence. The forward-looking notes are gone rather than
+updated — they were honoured, which is the point of them, and the `SU-06 plugs the button into
+derived.canConfirm` line had done its job. What is genuinely absent is stated **as an absence, not as a
+schedule**: the modal's header now ends "NOT YET READ ANYWHERE ON SCREEN: a confirmed Split links the two
+Stories in `work.story_splits`, and neither Story's detail page shows its counterpart" — a fact about
+today, which stops being true when something reads it, rather than a promise that dates.
+
+**Four more files carried the same stale claim and were fixed with it**, because leaving them would have
+been the same defect one file over — and one of them is production code:
+`split-story-panel.tsx`'s header asserted "`Split story` is DISABLED throughout SU-02 (§8 Q14)" (it now
+says the panel holds no confirm control at all, and why that is the honest rule);
+`split-story-modal.test.tsx`'s header called the disabled button "an assertion about this PR specifically";
+`split-collection.test.tsx` said "there is no write path until SU-06"; and
+`work-item-actions-menu.test.tsx` attributed a disabled confirm to §8 Q14 when the real reason in that
+fixture is that the PREVIEW has not landed, so there is no draft to confirm. The reviewer's own carve-outs
+were respected: the SU-06 explanations on `confirmSplit` and above the now-enabled `Button` are untouched,
+and the `vi.mock` notes that explain why a mock exists kept their reasons.
+
+**The diff is comment-only, and that is measured rather than asserted.** `git diff -U0` filtered to
+non-comment lines yields exactly two hits, both test NAMES (`'canConfirm — computed now, wired to the
+button in SU-06'` → `'canConfirm — what the modal binds its confirm control to'`, and the same for one
+`it()`). No executable line changed.
+
+**Gate after the fix (FE-only, eight files, all under `apps/web`):** `pnpm --filter rova-web lint` **0** ·
+`pnpm build:web` **0** · `pnpm --filter rova-web test` **149 files / 1271 tests, exit 0** — byte-for-byte
+the SU-06 baseline, which is what a comment-only diff must produce · FE ratchets green and unmoved
+(`fe-consistency`, `query-default`, `no-raw-hex`, `detail-copy-link`). The backend suites were **not**
+re-run, deliberately: no file outside `apps/web` changed.
+
+**And the standing lesson, recorded because it will bite SU-09 and SU-10 too.** A docblock that narrates
+the order the code arrived in goes stale on the next PR, and the cheap fix — appending another dated
+section — turns it into a changelog that has to be read backwards. Write what the module IS; let git hold
+when. The dated `#### … review follow-up` sections in THIS file are the right home for sequence, because a
+plan is a record of decisions; a module header is not.
 
 ### PR 7 — `SU-07` Trace and navigate a completed Split
 

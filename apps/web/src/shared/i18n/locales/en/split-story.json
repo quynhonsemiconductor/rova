@@ -10,6 +10,7 @@
     "title": "Splitting {{key}}: {{title}}",
     "cancel": "Cancel",
     "confirm": "Split story",
+    "confirming": "Splitting…",
     "confirmDisabled": "Saving a split is not available yet"
   },
   "panels": {
@@ -50,7 +51,8 @@
   },
   "error": {
     "title": "Could not load the split",
-    "description": "Something went wrong preparing this split. Try again shortly."
+    "description": "Something went wrong preparing this split. Try again shortly.",
+    "submit": "Could not save the split. Try again."
   },
   "loading": "Preparing the split…"
 }

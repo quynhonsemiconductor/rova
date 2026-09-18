@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_RELATED_SIDE,
+  clampMarkerDate,
   defaultSplitTitles,
   defaultTaskSide,
   earliestTarget,
@@ -379,5 +380,52 @@ describe('the fixture matches the seeded database', () => {
     // compile if the enum and the type ever diverge.
     const priority: WorkItemPriority = 'urgent';
     expect(priority).toBe('urgent');
+  });
+});
+
+/**
+ * `clampMarkerDate` (SU-06) — where a Split lands on ONE iteration's burndown x-axis.
+ *
+ * One `it` per case, and the two clamping directions are separate tests on purpose: they are two
+ * different SRS §10.3 sentences ("no x-position on the source chart" vs "at its opening value"), and a
+ * single test that exercised both would still pass with one of them inverted.
+ */
+describe('clampMarkerDate (SU-06, SRS §10.3)', () => {
+  const SPRINT = { startDate: '2026-06-16', endDate: '2026-06-27' };
+
+  it('leaves a date inside the window alone', () => {
+    expect(clampMarkerDate('2026-06-20', SPRINT)).toBe('2026-06-20');
+  });
+
+  it('keeps both boundary days, which are inside the window', () => {
+    expect(clampMarkerDate('2026-06-16', SPRINT)).toBe('2026-06-16');
+    expect(clampMarkerDate('2026-06-27', SPRINT)).toBe('2026-06-27');
+  });
+
+  it('pins a LATE split to the last day — a Split after the sprint closed still has a marker', () => {
+    expect(clampMarkerDate('2026-07-05', SPRINT)).toBe('2026-06-27');
+  });
+
+  it('pins an EARLY split to the opening day — the target shows it "at its opening value"', () => {
+    expect(clampMarkerDate('2026-06-01', SPRINT)).toBe('2026-06-16');
+  });
+
+  it('clamps only on the side an OPEN-ENDED window has', () => {
+    // `iterations.start_date`/`end_date` are both nullable: a sprint with no end cannot be "after its
+    // end", so the date passes through rather than being pinned to something invented.
+    expect(clampMarkerDate('2026-07-05', { startDate: '2026-06-16', endDate: null })).toBe(
+      '2026-07-05',
+    );
+    expect(clampMarkerDate('2026-06-01', { startDate: null, endDate: '2026-06-27' })).toBe(
+      '2026-06-01',
+    );
+    expect(clampMarkerDate('2026-06-01', { startDate: null, endDate: null })).toBe('2026-06-01');
+  });
+
+  it('compares as STRINGS, so no timezone enters a comparison that has none', () => {
+    // The same discipline as `isLaterThanSource`: `YYYY-MM-DD` sorts lexicographically, and building a
+    // `Date` here would make the answer depend on the server's zone.
+    expect(clampMarkerDate('2026-12-31', SPRINT)).toBe('2026-06-27');
+    expect(clampMarkerDate('2025-01-01', SPRINT)).toBe('2026-06-16');
   });
 });

@@ -251,6 +251,50 @@ export interface IWorkItemRepository {
     workspaceId: string,
     executor?: DbExecutor,
   ): Promise<WorkItem>;
+  /**
+   * Mark a Story as the historical PLACEHOLDER of a Split (`work_items.split_id`, migration 0131).
+   *
+   * Its own method rather than a field on {@link UpdateWorkItemInput}, for the reason plan §2.3
+   * gives about the DTO and for one more: `update` is reachable from `PATCH /work-items/:id`, so a
+   * `splitId` there would be one careless spread away from a client being able to declare its own
+   * Story a placeholder — which would silently remove it from Velocity and the Accepted-Points sum.
+   * One writer, one verb, called only from inside the Split transaction (§2.4's third statement).
+   */
+  markSplitPlaceholder(
+    id: string,
+    splitId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<void>;
+  /**
+   * The workspace's IANA time zone (`workspace_settings.timezone`), or `null` when unset.
+   *
+   * Read here rather than through `@modules/reporting` — which owns `getWorkspaceSettings` — because
+   * `work-items` must not depend on the module that READS it. One column, no rule: the rule is the
+   * clamp, and that lives in `split-story.ts` alone. The Split write path is the only caller: it
+   * stores the burndown marker dates, and a marker is a workspace-local calendar day.
+   */
+  findWorkspaceTimeZone(workspaceId: string): Promise<string | null>;
+  /**
+   * Take a ROW LOCK on one work item and read back the field the Split's optimistic check compares
+   * (`SELECT … FOR UPDATE`).
+   *
+   * **This exists because the echo alone does not serialise two confirms, and an e2e proved it.**
+   * `expectedSourceIterationId` (plan D9) is checked OUTSIDE the transaction, so two requests that
+   * arrive together both read the pre-Split iteration, both pass, and both mint a placeholder — the
+   * "concurrent confirms mint two placeholders" risk, still open after the echo. The rank advisory
+   * lock does not close it either: it serialises the INSERTs without making the second one notice that
+   * the world changed.
+   *
+   * With this, the second transaction BLOCKS on the row until the first commits, then reads the moved
+   * `iteration_id` and refuses. One row lock, held for the length of a transaction that was already
+   * taking an advisory lock.
+   */
+  lockRow(
+    id: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<{ id: string; iterationId: string | null } | null>;
   softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void>;
   reorderItems(
     items: Array<{ id: string; rank: string }>,

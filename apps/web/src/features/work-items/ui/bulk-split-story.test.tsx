@@ -10,7 +10,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
-const { useSplitPreview, useReleaseOptions } = vi.hoisted(() => ({
+const { useSplitPreview, useReleaseOptions, useSplitWorkItem, navigate } = vi.hoisted(() => ({
   useSplitPreview: vi.fn(),
   useReleaseOptions: vi.fn(() => ({
     data: [],
@@ -19,15 +19,23 @@ const { useSplitPreview, useReleaseOptions } = vi.hoisted(() => ({
     isError: false,
     error: undefined,
   })),
+  // SU-06 — the modal this bar opens now holds the write.
+  useSplitWorkItem: vi.fn(() => ({
+    mutateAsync: vi.fn(() => new Promise(() => {})),
+    isPending: false,
+  })),
+  navigate: vi.fn(),
 }))
 
-vi.mock('@/features/work-items/api', () => ({ useSplitPreview }))
+vi.mock('@/features/work-items/api', () => ({ useSplitPreview, useSplitWorkItem }))
 /**
  * ADDED BY SU-02. One test here opens the real `SplitStoryModal`, whose `[Continued]` panel now reads
  * the release REFERENCE feed — an unmocked `useQuery` with no `QueryClientProvider` throws, and this
  * file is about the Iteration Status bar, not about releases.
  */
 vi.mock('@/features/releases/api', () => ({ useReleaseOptions }))
+/** ADDED BY SU-06: the modal navigates on success, and `useNavigate` outside a router throws. */
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 import '@/shared/i18n/i18n'
 import { BulkSplitStory } from './bulk-split-story'
@@ -189,7 +197,11 @@ describe('BulkSplitStory', () => {
     fireEvent.click(splitButton())
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByText('Splitting US-1: Upgrade NX workspace to v21')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Split story' })).toBeDisabled()
+    // The confirm is RENDERED (SU-06 made it live), and its state is deliberately not asserted here:
+    // this file's fixture carries `targets: []` / `targetIterationId: null`, so it would be disabled
+    // for a fixture reason rather than a product one. Whether the control follows the draft is
+    // `split-story-modal.test.tsx`'s subject, with a fixture that has a target.
+    expect(screen.getByRole('button', { name: 'Split story' })).toBeInTheDocument()
   })
 
   it('renders no modal before the button is clicked', () => {

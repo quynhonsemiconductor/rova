@@ -10,9 +10,26 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
-const { useSplitPreview } = vi.hoisted(() => ({ useSplitPreview: vi.fn() }))
+const { useSplitPreview, useSplitWorkItem, useReleaseOptions, navigate } = vi.hoisted(() => ({
+  useSplitPreview: vi.fn(),
+  // SU-06 — the modal this kebab opens now holds the write path, so the module mock has to carry it.
+  useSplitWorkItem: vi.fn(() => ({
+    mutateAsync: vi.fn(() => new Promise(() => {})),
+    isPending: false,
+  })),
+  useReleaseOptions: vi.fn(() => ({
+    data: [],
+    isLoading: false,
+    isPending: false,
+    isError: false,
+    error: undefined,
+  })),
+  navigate: vi.fn(),
+}))
 
-vi.mock('@/features/work-items/api', () => ({ useSplitPreview }))
+vi.mock('@/features/work-items/api', () => ({ useSplitPreview, useSplitWorkItem }))
+vi.mock('@/features/releases/api', () => ({ useReleaseOptions }))
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 import '@/shared/i18n/i18n'
 import { WorkItemActionsMenu } from './work-item-actions-menu'
@@ -88,7 +105,8 @@ describe('WorkItemActionsMenu', () => {
 
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByText('Splitting US-1: Upgrade NX workspace to v21')).toBeInTheDocument()
-    // And the confirm is disabled here too — the entry point does not change that (§8 Q14).
+    // The confirm is disabled because the PREVIEW has not landed in this fixture, so there is no draft
+    // to confirm — not because the entry point decides anything about it.
     expect(screen.getByRole('button', { name: 'Split story' })).toBeDisabled()
   })
 })

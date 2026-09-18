@@ -26,6 +26,7 @@ import {
   workItemScheduleStateEnum,
 } from '../../../../../../../db/schema/enums';
 import { SPLIT_INELIGIBLE_REASONS, SPLIT_SIDES } from '../../../application/split-story';
+import { WorkItemResponseSchema } from './work-item-response.dto';
 
 /**
  * Which resulting Story an item starts on. `unfinished` is the historical placeholder that stays in
@@ -163,3 +164,101 @@ export const SplitPreviewResponseSchema = z.object({
 export class SplitPreviewResponseDto extends createZodDto(SplitPreviewResponseSchema) {}
 
 export type SplitPreviewResponseDtoShape = z.infer<typeof SplitPreviewResponseSchema>;
+
+// ── The write half (SU-06) ────────────────────────────────────────────────────
+
+/** One side's editable fields. `planEstimate: null` is legal and is NOT `0` (an unpointed Story). */
+const SplitSideTitleSchema = z.string().trim().min(1).max(255);
+const SplitSidePlanEstimateSchema = z
+  .number()
+  .min(0)
+  .nullable()
+  .describe('Plan Estimate (story points). null = unpointed, which is NOT 0.');
+
+/**
+ * `POST /work-items/:id/split`.
+ *
+ * **The body names the `[Unfinished]` side ONLY.** The server derives `[Continued]` as the complement
+ * of the Story's live children, because a request that named both sides would let a client silently
+ * drop a child added after the modal opened — it would appear in neither list and simply stay where it
+ * was. An id that belongs to no live child is a 412 `SPLIT_ITEM_NOT_IN_STORY`, never a silent skip.
+ *
+ * `expectedSourceIterationId` is D9's optimistic guard, not decoration: `work_items` has no version
+ * column, so the client echoes the source Iteration it RENDERED and the server refuses
+ * `SPLIT_SOURCE_ITERATION_CHANGED` if the Story has moved since. Two concurrent confirms of the same
+ * modal would otherwise both mint a placeholder.
+ *
+ * The three id arrays have **no `.max()`**, deliberately: the preview caps each collection at 100 and
+ * a body cannot legitimately exceed what the preview offered, so a length rule here would be a second
+ * limit to keep in step with that one. Membership is the real constraint, and the service enforces it
+ * against live rows.
+ */
+export const SplitWorkItemSchema = z.object({
+  expectedSourceIterationId: z
+    .string()
+    .uuid()
+    .describe('D9 — the source Iteration the client rendered. A mismatch is a 412.'),
+  targetIterationId: z
+    .string()
+    .uuid()
+    .describe('BR-05 — must be one of the preview `targets`; the write re-checks with the same rule.'),
+  unfinished: z.object({
+    title: SplitSideTitleSchema,
+    planEstimate: SplitSidePlanEstimateSchema,
+  }),
+  continued: z.object({
+    title: SplitSideTitleSchema,
+    planEstimate: SplitSidePlanEstimateSchema,
+    releaseId: z.string().uuid().nullable(),
+    scheduleState: z.enum(workItemScheduleStateEnum.enumValues),
+  }),
+  unfinishedTaskIds: z.array(z.string().uuid()),
+  unfinishedDefectIds: z.array(z.string().uuid()),
+  unfinishedTestCaseIds: z.array(z.string().uuid()),
+});
+
+export class SplitWorkItemDto extends createZodDto(SplitWorkItemSchema) {}
+
+/**
+ * The Split Event as the client sees it (SU-BR-29/30) — enough for SU-07's banner to name both sides
+ * and both Iterations without a second round trip.
+ *
+ * `splitAt`/`createdAt` are `z.string().datetime()`; the two marker dates are `date` columns and stay
+ * plain `z.string()` (`YYYY-MM-DD`), for the reason in this file's header.
+ */
+export const StorySplitSchema = z.object({
+  id: z.string().uuid(),
+  projectId: z.string().uuid(),
+  teamId: z.string().nullable(),
+  continuedStoryId: z.string().uuid().describe('SU-BR-08 — the ORIGINAL Story id, unchanged.'),
+  unfinishedStoryId: z.string().uuid().describe('SU-BR-07 — the new placeholder.'),
+  sourceIterationId: z.string().uuid(),
+  targetIterationId: z.string().uuid(),
+  splitAt: z.string().datetime(),
+  sourceMarkerDate: z.string().describe('ISO date YYYY-MM-DD, clamped into the source window.'),
+  targetMarkerDate: z.string().describe('ISO date YYYY-MM-DD, clamped into the target window.'),
+  originalPlanEstimate: z.number().nullable(),
+  unfinishedPlanEstimate: z.number().nullable(),
+  continuedPlanEstimate: z.number().nullable(),
+  movedTodoHours: z.number().describe('Σ To Do of the Tasks that went to [Continued].'),
+  actualHoursAtSplit: z.number().describe('Σ Actual across ALL distributed Tasks.'),
+  actorId: z.string().nullable(),
+  createdAt: z.string().datetime(),
+});
+
+/**
+ * 201's body: the Event and BOTH Stories.
+ *
+ * Both Stories, not just the new one, because the client has to update two things — the row it came
+ * from (now `[Continued]`, in a different Iteration) and the placeholder it did not have — and a
+ * response naming one of them would force a refetch to learn the other.
+ */
+export const SplitWorkItemResponseSchema = z.object({
+  split: StorySplitSchema,
+  unfinished: WorkItemResponseSchema,
+  continued: WorkItemResponseSchema,
+});
+
+export class SplitWorkItemResponseDto extends createZodDto(SplitWorkItemResponseSchema) {}
+
+export type SplitWorkItemResponseDtoShape = z.infer<typeof SplitWorkItemResponseSchema>;

@@ -382,7 +382,7 @@ describe('deriveSplitDraft — validation (AC6) and the point comparison (BR-13)
     expect(derived.delta).toBe(-1.7)
   })
 
-  describe('canConfirm — computed now, wired to the button in SU-06', () => {
+  describe('canConfirm — what the modal binds its confirm control to', () => {
     it('is true for an untouched, eligible draft', () => {
       expect(deriveSplitDraft(initSplitDraft(preview())).canConfirm).toBe(true)
     })

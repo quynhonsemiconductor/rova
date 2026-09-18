@@ -20,6 +20,7 @@ import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { MilestonesService } from '@modules/milestones';
 import { TEST_CASE_REPOSITORY } from '@modules/test-cases/domain/ports/test-case.repository';
+import { STORY_SPLIT_REPOSITORY } from '../domain/ports/story-split.repository';
 import { TEST_RESULT_REPOSITORY } from '@modules/test-cases/domain/ports/test-result.repository';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -135,6 +136,14 @@ const makeWorkItemRepo = () => ({
   // that care about the roll-up override it.
   taskStateCounts: vi.fn().mockResolvedValue({ total: 1, defined: 1, completed: 0 }),
   autoAcceptIterationIfComplete: vi.fn().mockResolvedValue(false),
+  // Phase 7 SU-06. `markSplitPlaceholder` is the ONLY writer of `work_items.split_id` (it is
+  // deliberately absent from `UpdateWorkItemInput`), and the time zone read is what turns the Split
+  // instant into the workspace-local marker dates.
+  markSplitPlaceholder: vi.fn().mockResolvedValue(undefined),
+  // The row lock the Split takes before anything else inside its transaction (SU-06). Returns the
+  // Story unmoved by default; a test that wants the concurrent-loser case overrides it.
+  lockRow: vi.fn(),
+  findWorkspaceTimeZone: vi.fn().mockResolvedValue('UTC'),
   // The two Home aggregates. Both take the `listReadableProjectIds` sentinel as their last argument
   // — see the `Home aggregates` describe block at the bottom of this file for why that matters.
   listMyWork: vi.fn().mockResolvedValue([]),
@@ -280,6 +289,20 @@ const makeTestCaseRepo = () => ({
   // `TestCasesService`: `TestCasesModule` imports `WorkItemsModule`, so the other direction is a real
   // NestJS module cycle (plan D1). Paged, like the route it backs.
   listByWorkItem: vi.fn().mockResolvedValue({ data: [], pageInfo: { hasNextPage: false } }),
+  // Phase 7 SU-06 — the Split write moves a Test Case's Work Product. `work_item_id` reaches this
+  // port through nothing else: the Phase C PATCH input excludes it on purpose.
+  reparentToWorkItem: vi.fn().mockResolvedValue(undefined),
+});
+
+/** Phase 7 SU-06 — the Split Event. One writer, and it must be handed the transaction. */
+const makeStorySplitRepo = () => ({
+  create: vi.fn(
+    async (split: { id: string }, _items: Array<Record<string, unknown>>, _tx?: unknown) => ({
+      ...split,
+      splitAt: new Date('2024-06-01').toISOString(),
+      createdAt: new Date('2024-06-01').toISOString(),
+    }),
+  ),
 });
 
 const makeTestResultRepo = () => ({
@@ -356,6 +379,7 @@ describe('WorkItemsService', () => {
   let milestonesService: ReturnType<typeof makeMilestonesService>;
   let testCaseRepo: ReturnType<typeof makeTestCaseRepo>;
   let testResultRepo: ReturnType<typeof makeTestResultRepo>;
+  let storySplitRepo: ReturnType<typeof makeStorySplitRepo>;
 
   beforeEach(async () => {
     workItemRepo = makeWorkItemRepo();
@@ -372,6 +396,7 @@ describe('WorkItemsService', () => {
     milestonesService = makeMilestonesService();
     testCaseRepo = makeTestCaseRepo();
     testResultRepo = makeTestResultRepo();
+    storySplitRepo = makeStorySplitRepo();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -391,6 +416,7 @@ describe('WorkItemsService', () => {
         { provide: UnitOfWork, useValue: uow },
         { provide: TEST_CASE_REPOSITORY, useValue: testCaseRepo },
         { provide: TEST_RESULT_REPOSITORY, useValue: testResultRepo },
+        { provide: STORY_SPLIT_REPOSITORY, useValue: storySplitRepo },
       ],
     }).compile();
 
@@ -3006,6 +3032,442 @@ describe('WorkItemsService', () => {
       await expect(service.getSplitPreview(mockActor, 'wi-1')).rejects.toThrow('TEAM_NOT_IN_SCOPE');
       expect(workItemRepo.listProjectIterations).not.toHaveBeenCalled();
       expect(testCaseRepo.listByWorkItem).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * `splitWorkItem` (SU-06) — the WRITE.
+   *
+   * IN THIS FILE rather than in `work-items.service.split.spec.ts` as §6 6.9 names it, for the reason
+   * that section already applied to the preview: the harness above is ~400 lines of mock set, and a
+   * second copy of it in a sibling file is a second thing to keep in step. The preview's tests live
+   * here for the same reason; keeping the write beside them means one `beforeEach` describes one
+   * service. Recorded in the plan's SU-06 record.
+   *
+   * These are the ORCHESTRATION claims — refusals, ordering, what is written and what is deliberately
+   * not. That the rows survive a real transaction is `test/e2e/split-story-flow.e2e.spec.ts`'s job,
+   * against stored columns.
+   */
+  describe('splitWorkItem (SU-06)', () => {
+    const SOURCE = {
+      id: 'iter-source',
+      name: 'Sprint 26.1',
+      iterationKey: 'IT-1',
+      state: 'committed' as const,
+      startDate: '2026-06-16',
+      endDate: '2026-06-27',
+      projectId: 'proj-1',
+      teamId: 'team-a',
+    };
+    const TARGET = {
+      id: 'iter-later',
+      name: 'Sprint 26.2',
+      iterationKey: 'IT-3',
+      state: 'planning' as const,
+      startDate: '2026-06-29',
+      endDate: '2026-07-10',
+      projectId: 'proj-1',
+      teamId: null,
+    };
+
+    function story(overrides: Record<string, unknown> = {}) {
+      return mockWorkItem({
+        id: 'wi-1',
+        itemKey: 'US-1',
+        title: 'Upgrade NX workspace to v21',
+        type: 'story',
+        scheduleState: 'in_progress',
+        projectId: 'proj-1',
+        teamId: 'team-a',
+        iterationId: SOURCE.id,
+        storyPoints: '5',
+        description: 'Bump the workspace',
+        acceptanceCriteria: 'It builds',
+        notes: 'Careful with the plugins',
+        assigneeId: 'user-owner',
+        devOwnerId: 'user-dev',
+        priority: 'high',
+        releaseId: 'rel-1',
+        featureId: 'feat-1',
+        ...overrides,
+      });
+    }
+
+    const task = (id: string, over: Record<string, unknown> = {}) =>
+      mockWorkItem({
+        id,
+        itemKey: id.toUpperCase(),
+        type: 'task',
+        parentId: 'wi-1',
+        scheduleState: 'completed',
+        estimateHours: '4.00',
+        todoHours: '2.00',
+        actualHours: '3.50',
+        ...over,
+      });
+
+    function input(over: Record<string, unknown> = {}) {
+      return {
+        expectedSourceIterationId: SOURCE.id,
+        targetIterationId: TARGET.id,
+        unfinished: { title: '[Unfinished] Upgrade NX workspace to v21', planEstimate: 2 },
+        continued: {
+          title: '[Continued] Upgrade NX workspace to v21',
+          planEstimate: 3,
+          releaseId: 'rel-1',
+          scheduleState: 'in_progress' as const,
+        },
+        unfinishedTaskIds: [] as string[],
+        unfinishedDefectIds: [] as string[],
+        unfinishedTestCaseIds: [] as string[],
+        ...over,
+      };
+    }
+
+    beforeEach(() => {
+      workItemRepo.findById.mockResolvedValue(story());
+      workItemRepo.listProjectIterations.mockResolvedValue([SOURCE, TARGET]);
+      workItemRepo.listTasksByParent.mockResolvedValue([]);
+      workItemRepo.listByProject.mockResolvedValue({ data: [], pageInfo: {} });
+      testCaseRepo.listByWorkItem.mockResolvedValue({ data: [], pageInfo: {} });
+      workItemRepo.findIterationScope.mockResolvedValue({
+        projectId: 'proj-1',
+        teamId: null,
+      });
+      workItemRepo.create.mockImplementation(async (i: Record<string, unknown>) =>
+        mockWorkItem({ ...i, id: 'wi-new', type: 'story' }),
+      );
+      workItemRepo.update.mockImplementation(async (id: string) => mockWorkItem({ id }));
+      projectsService.generateItemKey.mockResolvedValue('US-7');
+      // The row lock reads the Story back INSIDE the transaction; unmoved by default.
+      workItemRepo.lockRow.mockResolvedValue({ id: 'wi-1', iterationId: SOURCE.id });
+    });
+
+    // ── What is written ───────────────────────────────────────────────────────
+
+    it('INSERTS the placeholder and UPDATES the original — never the reverse (BR-07/BR-08)', async () => {
+      const result = await service.splitWorkItem(mockActor, 'wi-1', input());
+
+      // The new row is the `[Unfinished]` one, with a FRESH key…
+      expect(workItemRepo.create).toHaveBeenCalledTimes(1);
+      const created = workItemRepo.create.mock.calls[0][0] as Record<string, unknown>;
+      expect(created.itemKey).toBe('US-7');
+      expect(created.title).toBe('[Unfinished] Upgrade NX workspace to v21');
+      // …and the ORIGINAL id is the one that got updated, which is the whole of BR-08.
+      expect(workItemRepo.update).toHaveBeenCalledWith(
+        'wi-1',
+        expect.objectContaining({ title: '[Continued] Upgrade NX workspace to v21' }),
+        'ws-1',
+        expect.anything(),
+      );
+      expect(result.split.continuedStoryId).toBe('wi-1');
+      expect(result.split.unfinishedStoryId).toBe('wi-new');
+    });
+
+    it('leaves the placeholder Accepted in the SOURCE sprint, with the Split as its accepted date (BR-09)', async () => {
+      await service.splitWorkItem(mockActor, 'wi-1', input());
+      const created = workItemRepo.create.mock.calls[0][0] as Record<string, unknown>;
+      expect(created.scheduleState).toBe('accepted');
+      expect(created.flowState).toBe('accepted');
+      expect(created.iterationId).toBe(SOURCE.id);
+      // EXPLICIT, so `trg_sync_accepted_date` COALESCEs it instead of stamping `now()`.
+      expect(created.acceptedDate).toBeInstanceOf(Date);
+    });
+
+    it('clears Release, Feature and parent on the placeholder (BR-10)', async () => {
+      await service.splitWorkItem(mockActor, 'wi-1', input());
+      const created = workItemRepo.create.mock.calls[0][0] as Record<string, unknown>;
+      // Not passed at all, so the columns stay NULL — the Story it was copied from has all three.
+      expect(created.releaseId).toBeUndefined();
+      expect(created.featureId).toBeUndefined();
+      expect(created.parentId).toBeUndefined();
+    });
+
+    it('copies CONTENT and not COLLABORATION, Owner and Dev Owner included (D12 / §8 Q13)', async () => {
+      await service.splitWorkItem(mockActor, 'wi-1', input());
+      const created = workItemRepo.create.mock.calls[0][0] as Record<string, unknown>;
+      expect(created).toMatchObject({
+        description: 'Bump the workspace',
+        acceptanceCriteria: 'It builds',
+        notes: 'Careful with the plugins',
+        priority: 'high',
+        teamId: 'team-a',
+        projectId: 'proj-1',
+        assigneeId: 'user-owner',
+        devOwnerId: 'user-dev',
+      });
+    });
+
+    it('writes both estimates independently, and keeps NULL distinct from 0 (BR-12/BR-13)', async () => {
+      await service.splitWorkItem(
+        mockActor,
+        'wi-1',
+        input({
+          unfinished: { title: 'Left', planEstimate: null },
+          continued: { title: 'Right', planEstimate: 0, releaseId: null, scheduleState: 'defined' },
+        }),
+      );
+      const created = workItemRepo.create.mock.calls[0][0] as Record<string, unknown>;
+      // `undefined` = "do not write the column"; `'0'` = "write zero". Collapsing the two is how an
+      // unpointed Story becomes a Story worth nothing.
+      expect(created.storyPoints).toBeUndefined();
+      expect(workItemRepo.update).toHaveBeenCalledWith(
+        'wi-1',
+        expect.objectContaining({ storyPoints: '0' }),
+        'ws-1',
+        expect.anything(),
+      );
+    });
+
+    it('re-parents a chosen Task by `parent_id` ONLY, and never touches its iteration (BR-17/D4)', async () => {
+      workItemRepo.listTasksByParent.mockResolvedValue([task('ta-1'), task('ta-2')]);
+
+      await service.splitWorkItem(mockActor, 'wi-1', input({ unfinishedTaskIds: ['ta-1'] }));
+
+      const taskUpdate = workItemRepo.update.mock.calls.find((call) => call[0] === 'ta-1');
+      expect(taskUpdate?.[1]).toEqual({ parentId: 'wi-new' });
+      // The Task that stayed is not written at all — the complement is derived, not re-saved.
+      expect(workItemRepo.update.mock.calls.some((call) => call[0] === 'ta-2')).toBe(false);
+    });
+
+    it('moves only the chosen Test Cases, in one set-based call (BR-19)', async () => {
+      testCaseRepo.listByWorkItem.mockResolvedValue({
+        data: [{ id: 'tc-1' }, { id: 'tc-2' }],
+        pageInfo: {},
+      });
+
+      await service.splitWorkItem(mockActor, 'wi-1', input({ unfinishedTestCaseIds: ['tc-2'] }));
+
+      expect(testCaseRepo.reparentToWorkItem).toHaveBeenCalledWith(
+        ['tc-2'],
+        'wi-new',
+        'ws-1',
+        expect.anything(),
+      );
+    });
+
+    it('snapshots EVERY child with its side and, for a Task, its effort (BR-29)', async () => {
+      workItemRepo.listTasksByParent.mockResolvedValue([task('ta-1'), task('ta-2')]);
+      workItemRepo.listByProject.mockResolvedValue({
+        data: [mockWorkItem({ id: 'de-1', type: 'defect', iterationId: 'iter-own' })],
+        pageInfo: {},
+      });
+      testCaseRepo.listByWorkItem.mockResolvedValue({ data: [{ id: 'tc-1' }], pageInfo: {} });
+
+      await service.splitWorkItem(mockActor, 'wi-1', input({ unfinishedTaskIds: ['ta-1'] }));
+
+      const items = storySplitRepo.create.mock.calls[0][1];
+      // Four children, four rows — including the ones that did NOT move: the report layer asks where
+      // each was at the Split, and "it stayed" is an answer.
+      expect(items).toHaveLength(4);
+      expect(items.filter((i) => i.itemKind === 'task').map((i) => i.splitSide)).toEqual([
+        'unfinished',
+        'continued',
+      ]);
+      expect(items.find((i) => i.taskId === 'ta-1')).toMatchObject({
+        estimateHoursAtSplit: 4,
+        todoHoursAtSplit: 2,
+        actualHoursAtSplit: 3.5,
+      });
+      // A Defect records the Iteration Split did not touch (BR-18).
+      expect(items.find((i) => i.itemKind === 'defect')).toMatchObject({
+        explicitIterationId: 'iter-own',
+        estimateHoursAtSplit: null,
+      });
+      expect(items.find((i) => i.itemKind === 'test_case')).toMatchObject({
+        testCaseId: 'tc-1',
+        splitSide: 'continued',
+      });
+    });
+
+    it('sums the MOVED To Do from the `[Continued]` side, and Actual across every Task', async () => {
+      // `movedTodoHours` is what the source burndown loses and the target gains, so it counts the
+      // COMPLEMENT — the Tasks that follow `[Continued]` — not the ones left behind.
+      workItemRepo.listTasksByParent.mockResolvedValue([
+        task('ta-1', { todoHours: '2.00', actualHours: '3.50' }),
+        task('ta-2', { todoHours: '5.00', actualHours: '1.00' }),
+      ]);
+
+      await service.splitWorkItem(mockActor, 'wi-1', input({ unfinishedTaskIds: ['ta-1'] }));
+
+      const split = storySplitRepo.create.mock.calls[0][0] as Record<string, unknown>;
+      expect(split.movedTodoHours).toBe(5);
+      expect(split.actualHoursAtSplit).toBe(4.5);
+      expect(split.originalPlanEstimate).toBe(5);
+      expect(split.unfinishedPlanEstimate).toBe(2);
+      expect(split.continuedPlanEstimate).toBe(3);
+    });
+
+    it('marks the placeholder with the Split id — and only through the dedicated writer (§2.4)', async () => {
+      await service.splitWorkItem(mockActor, 'wi-1', input());
+      expect(workItemRepo.markSplitPlaceholder).toHaveBeenCalledWith(
+        'wi-new',
+        expect.any(String),
+        'ws-1',
+        expect.anything(),
+      );
+      // `split_id` must never travel through the generic update — that path is reachable from PATCH.
+      for (const call of workItemRepo.update.mock.calls) {
+        expect(call[1]).not.toHaveProperty('splitId');
+      }
+    });
+
+    it('clamps the marker dates into each iteration window (SRS §10.3)', async () => {
+      // The Split instant is the real "now", which is past BOTH 2026 windows — so each marker pins to
+      // its own iteration's LAST day. Without the clamp neither has an x-position on its own chart at
+      // all. The opposite case (a Split before the target opens, pinning to its opening day) is
+      // asserted directly on `clampMarkerDate` in `split-story.spec.ts`, where no clock is involved.
+      await service.splitWorkItem(mockActor, 'wi-1', input());
+      const split = storySplitRepo.create.mock.calls[0][0] as Record<string, unknown>;
+      expect(split.sourceMarkerDate).toBe(SOURCE.endDate);
+      expect(split.targetMarkerDate).toBe(TARGET.endDate);
+    });
+
+    // ── What does NOT run ─────────────────────────────────────────────────────
+
+    it('never auto-accepts the SOURCE iteration (§8 Q9)', async () => {
+      // An `accepted` placeholder lands in the source the moment the original leaves, which can make
+      // every remaining item accepted. A Split must not silently close a sprint.
+      await service.splitWorkItem(mockActor, 'wi-1', input());
+      expect(workItemRepo.autoAcceptIterationIfComplete).not.toHaveBeenCalled();
+    });
+
+    it('reconciles `[Continued]` and NOT the placeholder (§8 Q5/Q6)', async () => {
+      // `reconcileParentScheduleState` reads the task census for the id it is given. Only the original
+      // may be reconciled: every Completed Task lands on the placeholder, so reconciling that one
+      // would immediately derive `completed` over the `accepted` BR-09 requires.
+      workItemRepo.taskStateCounts.mockResolvedValue({ total: 2, defined: 0, completed: 2 });
+      await service.splitWorkItem(mockActor, 'wi-1', input());
+      expect(workItemRepo.taskStateCounts).toHaveBeenCalledWith('wi-1', 'ws-1', expect.anything());
+      expect(workItemRepo.taskStateCounts).not.toHaveBeenCalledWith(
+        'wi-new',
+        'ws-1',
+        expect.anything(),
+      );
+    });
+
+    // ── Refusals ──────────────────────────────────────────────────────────────
+
+    it('refuses a Story that is no longer eligible, and writes nothing', async () => {
+      workItemRepo.findById.mockResolvedValue(story({ scheduleState: 'accepted' }));
+      await expect(service.splitWorkItem(mockActor, 'wi-1', input())).rejects.toMatchObject({
+        code: 'SPLIT_NOT_ELIGIBLE',
+      });
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+      expect(uow.run).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the Story has moved since the modal opened (D9)', async () => {
+      await expect(
+        service.splitWorkItem(
+          mockActor,
+          'wi-1',
+          input({ expectedSourceIterationId: 'iter-other' }),
+        ),
+      ).rejects.toMatchObject({ code: 'SPLIT_SOURCE_ITERATION_CHANGED' });
+      expect(uow.run).not.toHaveBeenCalled();
+    });
+
+    it('refuses INSIDE the transaction too, once the row lock shows it moved (the concurrency case)', async () => {
+      // The loser of two concurrent confirms: its pre-flight check passed, then it blocked on the row
+      // lock, and by the time it acquired it the winner had already moved the Story forward. Without
+      // this the e2e minted TWO placeholders — the risk register's "concurrent confirms" item, which
+      // the D9 echo alone does not close.
+      workItemRepo.lockRow.mockResolvedValue({ id: 'wi-1', iterationId: TARGET.id });
+      await expect(service.splitWorkItem(mockActor, 'wi-1', input())).rejects.toMatchObject({
+        code: 'SPLIT_SOURCE_ITERATION_CHANGED',
+      });
+      // The lock is taken BEFORE anything is written, so the loser leaves nothing behind.
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+      expect(storySplitRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('takes the row lock before it takes the rank lock', async () => {
+      const order: string[] = [];
+      workItemRepo.lockRow.mockImplementation(async () => {
+        order.push('row');
+        return { id: 'wi-1', iterationId: SOURCE.id };
+      });
+      workItemRepo.lockRankScope.mockImplementation(async () => {
+        order.push('rank');
+      });
+      await service.splitWorkItem(mockActor, 'wi-1', input());
+      expect(order).toEqual(['row', 'rank']);
+    });
+
+    it('refuses a target the PICKER would not have offered (BR-05)', async () => {
+      // `iter-source` exists and is assignable, but it is not LATER than itself. The write reads the
+      // same `filterSplitTargets` the preview does, so the two cannot disagree.
+      await expect(
+        service.splitWorkItem(mockActor, 'wi-1', input({ targetIterationId: SOURCE.id })),
+      ).rejects.toMatchObject({ code: 'SPLIT_TARGET_INVALID' });
+      expect(uow.run).not.toHaveBeenCalled();
+    });
+
+    it('refuses an id that belongs to no live child, per collection (BR-32)', async () => {
+      workItemRepo.listTasksByParent.mockResolvedValue([task('ta-1')]);
+      await expect(
+        service.splitWorkItem(mockActor, 'wi-1', input({ unfinishedTaskIds: ['ta-9'] })),
+      ).rejects.toMatchObject({ code: 'SPLIT_ITEM_NOT_IN_STORY' });
+      await expect(
+        service.splitWorkItem(mockActor, 'wi-1', input({ unfinishedTestCaseIds: ['tc-9'] })),
+      ).rejects.toMatchObject({ code: 'SPLIT_ITEM_NOT_IN_STORY' });
+      expect(uow.run).not.toHaveBeenCalled();
+    });
+
+    it('refuses before any read when the caller cannot reach the Story', async () => {
+      accessService.assertTeamInScope.mockRejectedValue(new Error('TEAM_NOT_IN_SCOPE'));
+      await expect(service.splitWorkItem(mockActor, 'wi-1', input())).rejects.toThrow(
+        'TEAM_NOT_IN_SCOPE',
+      );
+      expect(workItemRepo.listProjectIterations).not.toHaveBeenCalled();
+    });
+
+    it('retries once with a FRESH key when the mint collides, and never reuses the first', async () => {
+      projectsService.generateItemKey.mockResolvedValueOnce('US-7').mockResolvedValueOnce('US-8');
+      const duplicate = Object.assign(new Error('duplicate key'), { code: '23505' });
+      workItemRepo.create
+        .mockRejectedValueOnce(duplicate)
+        .mockImplementationOnce(async (i: Record<string, unknown>) =>
+          mockWorkItem({ ...i, id: 'wi-new', type: 'story' }),
+        );
+
+      const result = await service.splitWorkItem(mockActor, 'wi-1', input());
+
+      expect(projectsService.generateItemKey).toHaveBeenCalledTimes(2);
+      expect((workItemRepo.create.mock.calls[1][0] as Record<string, unknown>).itemKey).toBe(
+        'US-8',
+      );
+      expect(result.unfinished.id).toBe('wi-new');
+    });
+
+    it('gives up on a NON-duplicate error rather than retrying it', async () => {
+      workItemRepo.create.mockRejectedValue(new Error('connection reset'));
+      await expect(service.splitWorkItem(mockActor, 'wi-1', input())).rejects.toThrow(
+        'connection reset',
+      );
+      expect(projectsService.generateItemKey).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes the whole Split inside ONE transaction (BR-32)', async () => {
+      await service.splitWorkItem(mockActor, 'wi-1', input());
+      expect(uow.run).toHaveBeenCalledTimes(1);
+      // Every writer received the transaction rather than the pool.
+      const tx = uow.run.mock.calls[0][0];
+      expect(tx).toBeInstanceOf(Function);
+      expect(storySplitRepo.create.mock.calls[0][2]).toBeDefined();
+    });
+
+    it('records both sides in Revision History, each naming its counterpart (BR-31)', async () => {
+      workItemRepo.listTasksByParent.mockResolvedValue([task('ta-1')]);
+      await service.splitWorkItem(mockActor, 'wi-1', input({ unfinishedTaskIds: ['ta-1'] }));
+
+      const actions = activityRepo.log.mock.calls
+        .flatMap((call) => call[0] as Array<{ action: string; metadata?: Record<string, unknown> }>)
+        .map((entry) => entry.action);
+      expect(actions).toContain('work_item.split_out');
+      expect(actions).toContain('work_item.split_in');
+      expect(actions).toContain('task.parent_changed');
     });
   });
 });

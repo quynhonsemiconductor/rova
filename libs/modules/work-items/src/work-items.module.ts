@@ -23,6 +23,8 @@ import { TestCaseDrizzleRepository } from '@modules/test-cases/infrastructure/pe
 import { TestResultDrizzleRepository } from '@modules/test-cases/infrastructure/persistence/test-result.drizzle-repository';
 import { TEST_CASE_REPOSITORY } from '@modules/test-cases/domain/ports/test-case.repository';
 import { TEST_RESULT_REPOSITORY } from '@modules/test-cases/domain/ports/test-result.repository';
+import { StorySplitDrizzleRepository } from './infrastructure/persistence/story-split.drizzle-repository';
+import { STORY_SPLIT_REPOSITORY } from './domain/ports/story-split.repository';
 
 @Module({
   imports: [ProjectsModule, AccessModule, AttachmentsModule, ActivityModule, MilestonesModule],
@@ -36,6 +38,9 @@ import { TEST_RESULT_REPOSITORY } from '@modules/test-cases/domain/ports/test-re
     { provide: WORK_ITEM_RELATION_REPOSITORY, useClass: WorkItemRelationDrizzleRepository },
     { provide: TEST_CASE_REPOSITORY, useClass: TestCaseDrizzleRepository },
     { provide: TEST_RESULT_REPOSITORY, useClass: TestResultDrizzleRepository },
+    // SU-06's Split Event. Belongs to this module, not a new one: Split is a write path on
+    // `work-items` (plan D1), and `story_splits` has exactly one writer.
+    { provide: STORY_SPLIT_REPOSITORY, useClass: StorySplitDrizzleRepository },
   ],
   exports: [WorkItemsService],
 })

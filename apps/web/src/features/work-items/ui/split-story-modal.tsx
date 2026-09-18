@@ -1,15 +1,16 @@
 /**
- * SplitStoryModal — the shell, from SU-01.
+ * SplitStoryModal — the two-panel Split dialog, opened from the kebab on a Story's detail header or
+ * from the Iteration Status bulk bar.
  *
- * WHAT THIS PR DELIVERS, and deliberately no more (§8 Q14, D13): the modal opens with its title and
- * its two panel headings, closes by Cancel / `×` / Escape, and renders `Split story` **DISABLED with
- * a `title` tooltip**. There is NO write path anywhere in this PR — it lands whole in SU-06, at which
- * point the tooltip and the `disabled` come off together. The repo has shipped this exact shape
- * before: Phase A rendered `Add New` disabled-with-a-tooltip so the AC "the action is displayed" was
- * met without a dead control.
- *
- * SU-02 fills the panels (fields, read-only lines, validation), SU-03/04/05 add the three
- * collections, SU-06 enables the confirm. The two headings here are the seam those PRs build on.
+ * WHAT IT IS. One `GET /work-items/:id/split-preview` fills it, and the SERVER owns every rule in it:
+ * eligibility, the default titles, which Iterations are valid targets, and which side each Task /
+ * Defect / Test Case starts on. This component renders that answer and never re-derives it (§8 Q17 —
+ * a browser-side copy of a rule the write path enforces is the "picker narrower than the write" fault
+ * class with the two halves in different languages). One `useReducer` over `model/split-draft.ts`
+ * holds the whole edit state — both sides' fields, the chosen target, the three distribution sets —
+ * so the view is a pure function of one value. `Split story` is enabled by the draft's own
+ * `canConfirm` and POSTs `/work-items/:id/split`; on success the modal closes and navigates to
+ * `[Continued]`.
  *
  * BUILT ON THE SHARED SHELL, not the mockup's `fixed inset-0` div: `AppModal` supplies the focus
  * trap, Escape-to-close, body scroll lock, `role="dialog"` + `aria-labelledby`, and the `maxHeight`
@@ -19,19 +20,17 @@
  * because adding a helpful message feels like an improvement (SRS §11):
  *   • `ineligibleReason` is NEVER rendered. The server sends it for telemetry and tests; every AC
  *     says the action is simply unavailable, with no explanation.
- *   • no toast, no validation text, no warning styling.
+ *   • no toast, no validation text, no warning styling. The ONE message this modal renders is a
+ *     failed WRITE, beside the control that failed — see {@link confirmSplit} for why a refused
+ *     transaction is not validation copy.
  *
- * ── SU-02 (2.1–2.6) ───────────────────────────────────────────────────────────
- * The panels now have their FIELDS, from one `useReducer` over `model/split-draft.ts`, plus the
- * footer's point comparison. Still nothing is saved: `Split story` remains unconditionally DISABLED
- * with its tooltip (§8 Q14), and `canConfirm` — already computed on the derived draft, already
- * accounting for eligibility, the chosen target and both validity rules — is deliberately NOT wired
- * to it. SU-06 plugs the button into `derived.canConfirm` and drops the `disabled` + `title` pair
- * together. The three collections (Tasks / Defects / Test Cases) are SU-03/04/05.
+ * NOT YET READ ANYWHERE ON SCREEN: a confirmed Split links the two Stories in `work.story_splits`,
+ * and neither Story's detail page shows its counterpart.
  */
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from '@tanstack/react-router'
 
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
@@ -39,16 +38,48 @@ import { LoadErrorState } from '@/shared/ui/load-error-state'
 import { valueResource } from '@/shared/lib/query/resource'
 import { formatNumber, formatPoints } from '@/shared/lib/utils'
 import { useRerankSensors } from '@/shared/ui/table/use-row-rerank'
-import { useSplitPreview } from '@/features/work-items/api'
+import { useSplitPreview, useSplitWorkItem } from '@/features/work-items/api'
 import type { SplitPreview, SplitSide } from '@/features/work-items/api'
 import {
   deriveSplitDraft,
   splitDraftReducer,
   splitPreviewTotals,
   type SplitDerived,
+  type SplitDraft,
   type SplitItemKind,
 } from '@/features/work-items/model/split-draft'
 import { SplitStoryPanel } from '@/features/work-items/ui/split-story-panel'
+
+/**
+ * Build the write payload from the draft (SU-06).
+ *
+ * `[Unfinished]` side only — the server derives `[Continued]` as the complement of the Story's live
+ * children, so a child added after the modal opened cannot be silently dropped. `expectedSourceIterationId`
+ * is D9's optimistic echo: the source Iteration this modal RENDERED, not one re-read at submit time,
+ * which is the whole point (re-reading it would defeat the check).
+ *
+ * `targetIterationId` is non-null by the time this runs — `canConfirm` requires it — and the `??` is
+ * the type system's price for that, not a second rule.
+ */
+function toSplitPayload(draft: SplitDraft, derived: SplitDerived, preview: SplitPreview) {
+  return {
+    expectedSourceIterationId: preview.story.iterationId ?? '',
+    targetIterationId: draft.targetIterationId ?? '',
+    unfinished: {
+      title: draft.unfinished.title.trim(),
+      planEstimate: derived.unfinished.planEstimate,
+    },
+    continued: {
+      title: draft.continued.title.trim(),
+      planEstimate: derived.continued.planEstimate,
+      releaseId: draft.continued.releaseId,
+      scheduleState: draft.continued.scheduleState,
+    },
+    unfinishedTaskIds: [...draft.unfinishedTaskIds],
+    unfinishedDefectIds: [...draft.unfinishedDefectIds],
+    unfinishedTestCaseIds: [...draft.unfinishedTestCaseIds],
+  }
+}
 
 export function SplitStoryModal({
   open,
@@ -65,6 +96,7 @@ export function SplitStoryModal({
   title: string
 }) {
   const { t } = useTranslation('split-story')
+  const navigate = useNavigate()
 
   // Bound to its own const BEFORE `valueResource`, as `resource.ts` requires: the React Compiler
   // cannot see through a hook call used as a function argument and reports `Compilation Skipped` on
@@ -108,6 +140,36 @@ export function SplitStoryModal({
     if (!from?.kind || !from.id || !to?.side) return
     if (from.kind !== to.kind || from.side === to.side) return
     dispatch({ type: 'move', kind: from.kind, id: from.id, side: to.side })
+  }
+
+  /**
+   * The write (SU-06). Nothing about the modal's shape changed — the button that was disabled with a
+   * tooltip since SU-01 is now the same button, enabled by `derived.canConfirm`.
+   *
+   * `submitError` is modal-level, not field-level: every refusal the server can return here is about
+   * the SPLIT (the Story moved, the target is no longer valid, a child is gone), not about one input,
+   * and putting it under a field would point at the wrong thing. It is the ONE message this modal is
+   * allowed to render — AC6/SRS §12 forbid validation text, and a failed WRITE is not validation.
+   */
+  const splitStory = useSplitWorkItem(workItemId)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  async function confirmSplit() {
+    if (!draft || !derived || !previewValue || !derived.canConfirm) return
+    setSubmitError(null)
+    try {
+      const result = await splitStory.mutateAsync(toSplitPayload(draft, derived, previewValue))
+      onClose()
+      /**
+       * SU-07 AC1's landing, and it is this mutation's `onSuccess` because the navigation TARGET is
+       * something only the response knows: `[Continued]` keeps the original id but the reader may have
+       * arrived from the Iteration Status bulk bar, where "the page I am on" is not that Story.
+       * Navigating by `itemKey` rather than id uses the route the rest of the app links with.
+       */
+      void navigate({ to: '/item/$itemKey', params: { itemKey: result.continued.itemKey } })
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : t('error.submit'))
+    }
   }
 
   return (
@@ -175,17 +237,27 @@ export function SplitStoryModal({
           <span />
         )}
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onClose}>
+          {/*
+            The ONE message this modal renders: a failed WRITE. Not validation copy (AC6 / SRS §12
+            forbid that and no field carries a message), and not a toast — it belongs beside the
+            control that failed, and it must survive so the reader can retry or cancel.
+          */}
+          {submitError && (
+            <span role="alert" className="text-ui-sm text-destructive">
+              {submitError}
+            </span>
+          )}
+          <Button variant="outline" onClick={onClose} disabled={splitStory.isPending}>
             {t('modal.cancel')}
           </Button>
           {/*
-            RENDERED, and DISABLED. Not hidden: the AC is that the action is displayed, and a control
-            that appears only once the feature is finished tells the reader nothing about what this
-            screen is for. The `title` is the affordance a disabled button needs to explain itself —
-            the same reason `BulkBarButton` grew one.
+            ENABLED, at last (SU-06). `canConfirm` is the reducer's — server-decided eligibility, a
+            chosen target, and both sides valid — which is exactly what SU-02 computed and left
+            unwired. The tooltip is gone with the `disabled`: the button no longer has to explain
+            itself, and while a split is in flight the label says what is happening.
           */}
-          <Button disabled title={t('modal.confirmDisabled')}>
-            {t('modal.confirm')}
+          <Button disabled={!derived?.canConfirm || splitStory.isPending} onClick={confirmSplit}>
+            {splitStory.isPending ? t('modal.confirming') : t('modal.confirm')}
           </Button>
         </div>
       </ModalFooter>

@@ -15,13 +15,21 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 
-const { useSplitPreview, useReleaseOptions } = vi.hoisted(() => ({
+const { useSplitPreview, useReleaseOptions, useSplitWorkItem, navigate } = vi.hoisted(() => ({
   useSplitPreview: vi.fn(),
   useReleaseOptions: vi.fn(),
+  // SU-06 — the modal now holds the write. Never resolves here: no test in this file confirms, and a
+  // pending promise cannot accidentally navigate away mid-assertion.
+  useSplitWorkItem: vi.fn(() => ({
+    mutateAsync: vi.fn(() => new Promise(() => {})),
+    isPending: false,
+  })),
+  navigate: vi.fn(),
 }))
 
-vi.mock('@/features/work-items/api', () => ({ useSplitPreview }))
+vi.mock('@/features/work-items/api', () => ({ useSplitPreview, useSplitWorkItem }))
 vi.mock('@/features/releases/api', () => ({ useReleaseOptions }))
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 import '@/shared/i18n/i18n'
 import { SplitStoryModal } from './split-story-modal'
@@ -145,7 +153,8 @@ describe('SplitStoryPanel', () => {
 
   it('has NO disabled control anywhere in the panels — a disabled field is not how read-only is said', () => {
     renderModal()
-    // `Split story` is disabled (§8 Q14) and lives in the footer, so the panels must hold none.
+    // `Split story` lives in the modal's FOOTER, so whatever state it is in, the panels must hold no
+    // disabled control at all.
     expect(unfinishedPanel().querySelector('[disabled]')).toBeNull()
     expect(continuedPanel().querySelector('[disabled]')).toBeNull()
   })
@@ -353,16 +362,29 @@ describe('SplitStoryPanel', () => {
     }
   })
 
-  it('keeps `Split story` DISABLED throughout — valid, invalid and back (§8 Q14)', () => {
-    // `canConfirm` is computed on the derived draft and deliberately NOT wired here: the write path
-    // lands whole in SU-06, which enables the button and removes the tooltip together.
+  it('tracks the draft’s validity on `Split story` — enabled, disabled, and back (SU-06)', () => {
+    // SU-02 asserted "disabled throughout" here, because `canConfirm` was computed and deliberately
+    // unwired. SU-06 wired it, so the assertion becomes the one that was always the point: the control
+    // follows the DRAFT, and a blank title is what closes it.
     renderModal()
-    expect(confirmButton()).toBeDisabled()
+    expect(confirmButton()).toBeEnabled()
     const title = within(continuedPanel()).getByLabelText('Title')
     fireEvent.change(title, { target: { value: '' } })
     expect(confirmButton()).toBeDisabled()
     fireEvent.change(title, { target: { value: 'Continued work' } })
+    expect(confirmButton()).toBeEnabled()
+    // No tooltip once it works — the button no longer has to explain itself.
+    expect(confirmButton()).not.toHaveAttribute('title')
+  })
+
+  it('is disabled by an invalid ESTIMATE too, on either side', () => {
+    renderModal()
+    const estimate = within(unfinishedPanel()).getByLabelText('Plan Estimate (pts)')
+    fireEvent.change(estimate, { target: { value: '-2' } })
     expect(confirmButton()).toBeDisabled()
-    expect(confirmButton()).toHaveAttribute('title', 'Saving a split is not available yet')
+    // …and still no words about it (AC6): the field is marked, nothing is said.
+    expect(document.body.querySelector('[role="alert"]')).toBeNull()
+    fireEvent.change(estimate, { target: { value: '2' } })
+    expect(confirmButton()).toBeEnabled()
   })
 })

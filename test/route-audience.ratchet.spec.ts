@@ -399,6 +399,12 @@ const AUDIENCE: Record<string, Audience> = {
   // Story is an Editor action (§3.2:79) and the preview is what decides whether to offer it — this is
   // the "a gate chosen for what the action IS, not for where the id lives" reading.
   'WorkItemsController.getSplitPreview': 'editor',
+  // Split's WRITE (SU-06). `work_item:edit`, not `create` (plan D7): all three tier roles hold the
+  // whole view/create/edit/delete set, so requiring `create` too would change nothing and would put a
+  // second policy on one route — and `edit` is the honest verb, since the Story that matters most here
+  // is the one being MODIFIED. Audience `editor` for the same reason as the preview: splitting is an
+  // Editor action (§3.2:79), and the two routes must not disagree about who the feature is for.
+  'WorkItemsController.splitWorkItem': 'editor',
   'WorkItemsController.getTaskTotals': 'editor',
   'WorkItemsController.getWorkItem': 'editor',
   'WorkItemsController.listAttachments': 'editor',

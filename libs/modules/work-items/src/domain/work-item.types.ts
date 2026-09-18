@@ -187,6 +187,15 @@ export interface CreateWorkItemInput {
   iterationId?: string;
   releaseId?: string;
   storyPoints?: string;
+  /**
+   * SU-06 only, and the ONE path that may set it at birth.
+   *
+   * `trg_sync_accepted_date` stamps `now()` when an item BECOMES accepted and COALESCEs an explicit
+   * value, so passing the Split timestamp here is what makes SU-BR-09's "`[Unfinished]`'s
+   * `accepted_date` IS the Split timestamp" true rather than "within a few milliseconds of it". Every
+   * other create leaves it undefined and lets the trigger decide.
+   */
+  acceptedDate?: Date;
   estimateHours?: string;
   todoHours?: string;
   actualHours?: string;

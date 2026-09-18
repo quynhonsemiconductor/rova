@@ -22,6 +22,7 @@ import { AccessService } from '@modules/access';
 import { MilestonesService } from '@modules/milestones';
 import { TEST_CASE_REPOSITORY } from '@modules/test-cases/domain/ports/test-case.repository';
 import { TEST_RESULT_REPOSITORY } from '@modules/test-cases/domain/ports/test-result.repository';
+import { STORY_SPLIT_REPOSITORY } from '../domain/ports/story-split.repository';
 
 // Workspace isolation is enforced at the application layer via `getWorkItem`'s
 // `item.workspaceId !== workspaceId` guard. These tests exercise that boundary
@@ -348,6 +349,12 @@ describe('WorkItemsService — workspace isolation', () => {
         {
           provide: TEST_RESULT_REPOSITORY,
           useValue: { softDeleteByTestCaseIds: vi.fn().mockResolvedValue(undefined) },
+        },
+        {
+          // SU-06 — the Split Event's writer. Present so the service can be CONSTRUCTED; this file
+          // asserts workspace isolation on the read paths and never splits anything.
+          provide: STORY_SPLIT_REPOSITORY,
+          useValue: { create: vi.fn().mockResolvedValue({ id: 'split-1' }) },
         },
       ],
     }).compile();
