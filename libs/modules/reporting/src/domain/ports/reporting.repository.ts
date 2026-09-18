@@ -1,4 +1,4 @@
-import type { StoredSnapshot } from '../burndown';
+import type { StoredSnapshot, StoredSplitEvent } from '../burndown';
 import type { ReleaseChild, ReleaseFeature, StoredBurnupRow } from '../release-tracking';
 import type { TeamScope } from '../report-scope';
 import type { CapacityRecord, ScopedTaskHours } from '../team-capacity';
@@ -131,6 +131,33 @@ export interface IReportingRepository {
     iterationIds: string[],
     scope: TeamScope,
   ): Promise<number>;
+  /**
+   * Split Events that left these iterations — the `SPLIT OUT` annotations (SU-08 8.2, SRS §10.2).
+   *
+   * **These two live here rather than on `IStorySplitRepository`, and that is a deliberate departure
+   * from plan §6 6.2's list.** `@modules/reporting` does not import `@modules/work-items` (the
+   * dependency runs the other way — reporting READS work items), and one chart annotation is not a
+   * reason to invert that: it would pull the whole `WorkItemsModule` graph into `ReportingModule`.
+   * `work.story_splits` is in the same `db/schema/work.ts` this repository already reads
+   * `work_items`, `tasks` and `iterations` from, so nothing is duplicated — the SQL simply lives with
+   * the report that asks the question, which is what plan §1's own file map says
+   * (`reporting.drizzle-repository.ts # + split lookups`).
+   *
+   * `scope` narrows by the SPLIT's team falling back to the matching iteration's — the same two-tier
+   * rule `getVelocityItems` and `measureIterationDay` use, so a marker cannot appear on a chart whose
+   * series excludes the work it describes.
+   */
+  findSplitsBySourceIteration(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<StoredSplitEvent[]>;
+  /** Split Events that arrived in these iterations — the `CARRY IN` annotations (SRS §10.3). */
+  findSplitsByTargetIteration(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<StoredSplitEvent[]>;
 
   // ── Velocity ──────────────────────────────────────────────────────────────
   /**

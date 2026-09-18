@@ -1,6 +1,8 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
+import { SPLIT_MARKER_KINDS } from '../../../domain/burndown';
+
 /**
  * Response schemas, declared with zod so `/api/docs-json` names them and the SPA's generated
  * client gets real types instead of `unknown`. The shapes mirror `domain/reporting.types.ts`
@@ -37,6 +39,30 @@ const BurndownPointSchema = z.object({
   ideal: z.number().nullable(),
 });
 
+/**
+ * One `SPLIT OUT` / `CARRY IN` annotation (Phase 7 SU-08, SRS §10.2/§10.3).
+ *
+ * ONE shape for both directions with `kind` as the discriminant. The two hour fields are named
+ * neutrally and MEAN different things per kind, which the domain type documents in full:
+ *   • `split-out` — `todoHours` LEFT this iteration; `actualHours` is what the source RETAINS.
+ *   • `carry-in`  — `todoHours` ARRIVED; `actualHours` is `0`, the opening value §10.3 mandates.
+ *
+ * `date` is a `date` column (`YYYY-MM-DD`), so plain `z.string()` and NOT `.datetime()`, which
+ * rejects a date without a time — the same trap SU-01's `startDate`/`endDate` documents.
+ */
+const SplitMarkerSchema = z.object({
+  splitId: z.string().uuid(),
+  kind: z.enum(SPLIT_MARKER_KINDS),
+  date: z.string().describe('Workspace-local YYYY-MM-DD, clamped into this iteration’s window.'),
+  storyId: z.string().uuid(),
+  storyKey: z
+    .string()
+    .describe('[Unfinished] for split-out, [Continued] for carry-in — SRS §10.2/§10.3.'),
+  points: z.number().nullable().describe('Plan Estimate recorded at the Split. null = unpointed.'),
+  todoHours: z.number(),
+  actualHours: z.number(),
+});
+
 export const IterationBurndownResponseSchema = z.object({
   context: ContextSchema,
   timebox: TimeboxSchema,
@@ -56,6 +82,14 @@ export const IterationBurndownResponseSchema = z.object({
   status: z.enum(['on-track', 'behind-plan', 'unknown']),
   latestSnapshotDate: z.string().nullable(),
   hasScheduledWork: z.boolean(),
+  /**
+   * The Split annotations. ADDITIVE, so the `openapi` breaking-change diff stays clean (plan §3.3).
+   *
+   * Arrays and never `null`: "no Split touched this timebox" is an empty list, which is the same shape
+   * the SPA maps over either way.
+   */
+  splitOut: z.array(SplitMarkerSchema),
+  carryIn: z.array(SplitMarkerSchema),
 });
 export class IterationBurndownResponseDto extends createZodDto(IterationBurndownResponseSchema) {}
 

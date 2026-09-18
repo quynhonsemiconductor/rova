@@ -74,7 +74,16 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
     const rows = await this.db
       .select({
         totalPlanEstimate: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::numeric`,
-        acceptedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workItems.scheduleState} in (${acceptedScheduleStatesSql()})), 0)::numeric`,
+        /**
+         * SU-08 8.1 — the `[Unfinished]` Split placeholder is excluded from DELIVERED points.
+         *
+         * `split_id IS NULL` sits inside the `filter`, not in the WHERE clause, and that split is the
+         * whole point: the placeholder is still one of the iteration's items, so it stays in
+         * `totalPlanEstimate` and in the grid below — SRS §10.2's "it remains visible through the
+         * compact Split/Carryover context". What it must not do is count as delivery, here or in
+         * `measureIterationDay`'s snapshot sum, which is the other half of AC3.
+         */
+        acceptedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workItems.scheduleState} in (${acceptedScheduleStatesSql()}) and ${workItems.splitId} is null), 0)::numeric`,
         defectCount: sql<number>`(count(*) filter (where ${workItems.type} = 'defect'))::int`,
       })
       .from(workItems)

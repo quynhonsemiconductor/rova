@@ -1,4 +1,4 @@
-import type { BurndownHistoryState, BurndownPoint } from './burndown';
+import type { BurndownHistoryState, BurndownPoint, SplitMarker } from './burndown';
 import type {
   BurnupHistoryState,
   BurnupPoint,
@@ -61,6 +61,16 @@ export interface IterationBurndownReport {
    * to tell those apart.
    */
   hasScheduledWork: boolean;
+  /**
+   * `SPLIT OUT` — work that LEFT this timebox (SRS §10.2). Empty when no Split touched it.
+   *
+   * The points behind these markers are deliberately absent from `points[].acceptedPoints`: the
+   * `[Unfinished]` placeholder is `accepted` but is excluded from the delivered sum (AC3), and this
+   * array is where it stays visible.
+   */
+  splitOut: SplitMarker[];
+  /** `CARRY IN` — work that ARRIVED in this timebox from an earlier one (SRS §10.3). */
+  carryIn: SplitMarker[];
 }
 
 // ── Velocity ────────────────────────────────────────────────────────────────

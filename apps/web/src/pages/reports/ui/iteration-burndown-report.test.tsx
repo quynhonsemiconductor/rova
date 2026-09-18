@@ -150,4 +150,68 @@ describe('IterationBurndownReport', () => {
     await waitFor(() => expect(screen.getByText('burndown.empty.noIteration')).toBeInTheDocument())
     expect(screen.queryByText('timeboxFeedError.title')).not.toBeInTheDocument()
   })
+
+  // ── Split annotations (SU-08 8.3) ──────────────────────────────────────────
+
+  /**
+   * A burndown with a PLOTTED series, which the fixture above deliberately lacks.
+   *
+   * `ChartFrame` renders `underAxis` only when the chart is not empty, so the marker strip cannot be
+   * asserted against an empty series — and that is correct behaviour rather than a test workaround: an
+   * annotation on a chart with no days would point at nothing.
+   */
+  const WITH_SERIES = {
+    ...BURNDOWN,
+    points: [
+      { date: '2026-08-01', remainingToDo: 80, ideal: 80, acceptedPoints: 0 },
+      { date: '2026-08-02', remainingToDo: 60, ideal: 60, acceptedPoints: 3 },
+    ],
+    splitOut: [
+      {
+        splitId: 'split-1',
+        kind: 'split-out',
+        date: '2026-08-02',
+        storyId: 'wi-2',
+        storyKey: 'US-9',
+        points: 2,
+        todoHours: 7,
+        actualHours: 5,
+      },
+    ],
+    carryIn: [],
+  }
+
+  function mockBurndown(body: unknown) {
+    mockGET.mockImplementation((url: string) =>
+      url.includes('burndown')
+        ? Promise.resolve({ data: body, error: undefined, response: { status: 200 } })
+        : Promise.resolve({ data: ITERATIONS, error: undefined, response: { status: 200 } }),
+    )
+  }
+
+  it('renders the SPLIT OUT context and its legend entry from the response', async () => {
+    // i18n is not initialised in this file, so `t()` yields raw keys — which is all this test needs:
+    // the SENTENCE is pinned in `split-markers.test.tsx` with real copy. What is asserted here is the
+    // WIRING, i.e. that the response's arrays reach the chart frame at all.
+    mockBurndown(WITH_SERIES)
+    renderReport()
+
+    await waitFor(() => expect(screen.getByText(/markers.splitOutContext/)).toBeInTheDocument())
+    expect(screen.getByText(/markers\.legendSplitOut/)).toBeInTheDocument()
+    // Only the direction present: the response carries no carry-in.
+    expect(screen.queryByText(/markers\.legendCarryIn/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/markers\.carryInContext/)).not.toBeInTheDocument()
+  })
+
+  it('adds nothing for a timebox no Split touched', async () => {
+    // Every timebox before Phase 7, and the response omits the arrays entirely here — so this also
+    // pins that an older cached body cannot take the chart down.
+    mockBurndown({ ...BURNDOWN, points: WITH_SERIES.points })
+    renderReport()
+
+    await waitFor(() => expect(screen.getByText('burndown.title')).toBeInTheDocument())
+    expect(screen.queryByText(/markers\.legendSplitOut/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/markers\.legendCarryIn/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/markers\./)).not.toBeInTheDocument()
+  })
 })

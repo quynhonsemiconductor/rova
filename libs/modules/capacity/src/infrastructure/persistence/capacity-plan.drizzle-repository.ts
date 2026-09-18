@@ -640,6 +640,16 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
           isNull(workItems.deletedAt),
           // Parentheses belong to the caller: the helper returns a bare comma list.
           sql`${workItems.scheduleState} in (${accepted})`,
+          /**
+           * SU-08 8.1 — the `[Unfinished]` Split placeholder is not a delivery sample.
+           *
+           * It is `accepted` in a finished iteration, which is exactly this query's population, so
+           * without the predicate every Split would raise the team's historical velocity by points
+           * nobody delivered — and this is a FORECAST input, so the error propagates into planned
+           * capacity rather than sitting in one chart. Same rule as `measureIterationDay` and the
+           * Iteration Status strip; `split_id IS NULL` is the D6 predicate.
+           */
+          isNull(workItems.splitId),
         ),
       )
       .where(

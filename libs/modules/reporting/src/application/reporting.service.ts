@@ -5,7 +5,12 @@ import { AccessService } from '@modules/access';
 import { PreliminaryEstimateMapService } from '@modules/portfolio';
 import { IReportingRepository, REPORTING_REPOSITORY } from '../domain/ports/reporting.repository';
 import type { IterationRow } from '../domain/ports/reporting.repository';
-import { buildBurndownSeries, combineTeamSnapshots } from '../domain/burndown';
+import {
+  buildBurndownSeries,
+  carryInMarkers,
+  combineTeamSnapshots,
+  splitOutMarkers,
+} from '../domain/burndown';
 import {
   bucketFeatures,
   buildBurnup,
@@ -123,9 +128,23 @@ export class ReportingService {
     );
     const iterationIds = participating.map((i) => i.id);
 
-    const [snapshots, scheduled] = await Promise.all([
+    const [snapshots, scheduled, splitOutEvents, carryInEvents] = await Promise.all([
       this.repo.getIterationSnapshots(workspaceId, iterationIds, scope, settings.timeZone),
       this.repo.countScheduledWork(workspaceId, iterationIds, scope),
+      /**
+       * SU-08 8.2 — the two annotation sets, read for the WHOLE timebox rather than the selected
+       * iteration alone.
+       *
+       * `iterationIds` is what the series is measured over: for All Teams that is every participating
+       * Team's iteration for the shared timebox, and a Split that left one of them left this chart. A
+       * marker sourced from `selected.id` alone would be missing from exactly the fused view the
+       * numbers came from.
+       *
+       * Both directions, because ONE iteration can be both: work split out of it and work carried
+       * into it from an earlier sprint are independent facts about the same window.
+       */
+      this.repo.findSplitsBySourceIteration(workspaceId, iterationIds, scope),
+      this.repo.findSplitsByTargetIteration(workspaceId, iterationIds, scope),
     ]);
 
     const timebox = this.toTimebox(selected, participating);
@@ -156,6 +175,13 @@ export class ReportingService {
       partialCaptureDates: series.partialCaptureDates,
       // Distinguishes "no scheduled work" from "work exists, the job has not run" (IB §7).
       hasScheduledWork: scheduled > 0,
+      /**
+       * The Split annotations (SRS §10.2/§10.3). Empty arrays for a timebox no Split touched, which is
+       * every timebox before Phase 7 — an empty array is the honest answer and needs no branch in the
+       * SPA, where `null` would need two.
+       */
+      splitOut: splitOutMarkers(splitOutEvents),
+      carryIn: carryInMarkers(carryInEvents),
     };
   }
 

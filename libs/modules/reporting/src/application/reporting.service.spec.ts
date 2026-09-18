@@ -11,7 +11,7 @@ import type {
 } from '../domain/ports/reporting.repository';
 import type { ReleaseChild, ReleaseFeature } from '../domain/release-tracking';
 import { frozenSeriesScope, isEmptyTeamScope, type TeamScope } from '../domain/report-scope';
-import type { StoredSnapshot } from '../domain/burndown';
+import type { StoredSnapshot, StoredSplitEvent } from '../domain/burndown';
 
 /**
  * The team half of report authorization (BA ruling, 2026-08-17).
@@ -134,6 +134,32 @@ const STORED_SNAPSHOTS: Array<{ teamId: string | null } & StoredSnapshot> = [
   },
 ];
 
+/**
+ * One stored Split Event, the shape `story_splits` hands the report layer (SU-08).
+ *
+ * Two sides with DIFFERENT Plan Estimates and a non-zero retained Actual, deliberately: a fixture
+ * where both sides carried the same number could not tell `splitOutMarkers` from `carryInMarkers`, and
+ * one with `actualHoursAtSplit: 0` could not tell the target's mandated `0h` opening from a value
+ * copied off the event.
+ */
+const SPLIT_EVENTS: StoredSplitEvent[] = [
+  {
+    splitId: 'split-1',
+    sourceIterationId: 'it-1',
+    targetIterationId: 'it-2',
+    sourceMarkerDate: '2026-06-10',
+    targetMarkerDate: '2026-06-16',
+    unfinishedStoryId: 'wi-unfinished',
+    unfinishedStoryKey: 'US-901',
+    unfinishedPlanEstimate: 2,
+    continuedStoryId: 'wi-continued',
+    continuedStoryKey: 'US-900',
+    continuedPlanEstimate: 3,
+    movedTodoHours: 7,
+    actualHoursAtSplit: 5,
+  },
+];
+
 function harness(opts: {
   /** `null` = unrestricted (Workspace Admin / project admin); otherwise the reader's own Teams. */
   teams: string[] | null;
@@ -207,6 +233,17 @@ function harness(opts: {
     countScheduledWork: vi.fn(async (_ws, _ids, scope: TeamScope) =>
       log('countScheduledWork', scope, isEmptyTeamScope(scope) ? 0 : 3),
     ),
+    /**
+     * The Split annotations (SU-08). Logged like every other read, so the "every repository read runs
+     * in the reader's own scope" assertions above cover them too — a marker leaking another Team's
+     * Split onto this chart is the same class of fault as a snapshot row leaking.
+     */
+    findSplitsBySourceIteration: vi.fn(async (_ws, _ids, scope: TeamScope) =>
+      log('findSplitsBySourceIteration', scope, isEmptyTeamScope(scope) ? [] : SPLIT_EVENTS),
+    ),
+    findSplitsByTargetIteration: vi.fn(async (_ws, _ids, scope: TeamScope) =>
+      log('findSplitsByTargetIteration', scope, isEmptyTeamScope(scope) ? [] : SPLIT_EVENTS),
+    ),
     findEligibleTimeboxes: vi.fn(async (_ws, _p, scope: TeamScope) =>
       log('findEligibleTimeboxes', scope, []),
     ),
@@ -263,6 +300,71 @@ function harness(opts: {
 }
 
 const scopesOf = (scopes: ScopeLog): TeamScope[] => scopes.map((s) => s.scope);
+
+describe('Split markers on the burndown (SU-08 8.2)', () => {
+  it('assembles both directions from the Split Events, one marker each', async () => {
+    const { service } = harness({ teams: null });
+    const report = await service.getIterationBurndown(admin, {
+      projectId: PROJECT,
+      iterationId: 'it-1',
+    });
+
+    // SPLIT OUT names the placeholder and the Actual the SOURCE retains; CARRY IN names the original
+    // and opens its Actual at zero. Same event, two different readings — which is why the service asks
+    // for the two directions separately rather than deriving one from the other.
+    expect(report.splitOut).toEqual([
+      {
+        splitId: 'split-1',
+        kind: 'split-out',
+        date: '2026-06-10',
+        storyId: 'wi-unfinished',
+        storyKey: 'US-901',
+        points: 2,
+        todoHours: 7,
+        actualHours: 5,
+      },
+    ]);
+    expect(report.carryIn).toEqual([
+      {
+        splitId: 'split-1',
+        kind: 'carry-in',
+        date: '2026-06-16',
+        storyId: 'wi-continued',
+        storyKey: 'US-900',
+        points: 3,
+        todoHours: 7,
+        actualHours: 0,
+      },
+    ]);
+  });
+
+  it('reads BOTH lookups over the whole timebox, in the reader’s own scope', async () => {
+    const { service, repo, scopes } = harness({ teams: [MINE_A] });
+    await service.getIterationBurndown(editor, { projectId: PROJECT, iterationId: 'it-1' });
+
+    // `iterationIds` is every PARTICIPATING iteration, not the selected one: for All Teams the series
+    // is fused across the shared timebox, and a marker sourced from `selected.id` alone would be
+    // missing from exactly the view its numbers came from.
+    expect(repo.findSplitsBySourceIteration).toHaveBeenCalledWith(WS, ['it-1'], expect.anything());
+    expect(repo.findSplitsByTargetIteration).toHaveBeenCalledWith(WS, ['it-1'], expect.anything());
+    const marked = scopes.filter((s) => s.method.startsWith('findSplits'));
+    expect(marked).toHaveLength(2);
+    for (const entry of marked) expect(entry.scope).toEqual({ kind: 'teams', teamIds: [MINE_A] });
+  });
+
+  it('is two empty arrays for a reader with no Team, not a leak and not a null', async () => {
+    // The empty-scope short-circuit is the same one that empties the series. Empty ARRAYS rather than
+    // null, so the SPA maps over one shape whether or not a Split ever happened.
+    const { service } = harness({ teams: [] });
+    const report = await service.getIterationBurndown(editor, {
+      projectId: PROJECT,
+      iterationId: 'it-1',
+    });
+
+    expect(report.splitOut).toEqual([]);
+    expect(report.carryIn).toEqual([]);
+  });
+});
 
 describe('an UNRESTRICTED reader is completely unaffected', () => {
   it('still gets All Teams by default, in every query and in the context label', async () => {

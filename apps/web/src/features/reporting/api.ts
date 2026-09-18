@@ -24,6 +24,11 @@ type Json<T extends keyof operations> = operations[T] extends {
 export type IterationBurndown = Json<'ReportingController_getIterationBurndown'>
 export type BurndownPoint = IterationBurndown['points'][number]
 export type BurndownHistoryState = IterationBurndown['historyState']
+/**
+ * One `SPLIT OUT` / `CARRY IN` annotation (SU-08). Read off the burndown response, so the SPA cannot
+ * hold a different idea of the shape than the server sends.
+ */
+export type SplitMarker = IterationBurndown['splitOut'][number]
 
 export type VelocityReport = Json<'ReportingController_getVelocity'>
 export type VelocityBar = VelocityReport['bars'][number]
