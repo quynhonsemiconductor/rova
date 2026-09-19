@@ -1059,6 +1059,329 @@ describe('Phase 6 reports (e2e)', () => {
     // Untouched by today's tick — history is frozen.
     expect(Number(yesterday.todo)).toBe(99);
   });
+
+  // ── Split on the Iteration Burndown (Phase 7 SU-08 8.4) ─────────────────────
+
+  /**
+   * Most of SU-08 is already true and has to be PROVED, not built. What only the real job and the real
+   * database can show is which rows move and which do not, so every assertion below reads a stored
+   * snapshot row or a stored baseline — never a service return value.
+   *
+   * THIS BLOCK IS LAST IN THE FILE ON PURPOSE. `takeSnapshots()` walks every committed iteration in
+   * every workspace, and two of these cases turn on whether a target's baseline had been captured
+   * BEFORE the Split. Fixtures for those are therefore created inside their own test, after the last
+   * tick any earlier test makes — a nested `beforeAll` would still run before this suite's own tests
+   * but after the earlier ones, and that is a distinction too easy to lose in a later edit.
+   *
+   * ALL FIXTURES LIVE IN THIS FILE'S EXISTING PROJECT: no `createProject`, so the `e2e-fixtures`
+   * ratchet (81) does not move.
+   */
+  async function newIteration(
+    label: string,
+    start: string,
+    end: string,
+    state: 'committed' | 'planning',
+  ) {
+    const iteration = await iterationsSvc.createIteration(
+      admin,
+      projectId,
+      `${label} ${uniqueKey()}`,
+      {
+        state,
+        startDate: start,
+        endDate: end,
+      },
+    );
+    return iteration.id;
+  }
+
+  /** A splittable Story with one Task, in `iteration`. */
+  async function newSplittableStory(
+    label: string,
+    iteration: string,
+    {
+      points,
+      estimate,
+      todo,
+      actual,
+    }: { points: string; estimate: string; todo: string; actual?: string },
+  ) {
+    const story = await items.createWorkItem(admin, projectId, 'story', label, {
+      iterationId: iteration,
+      storyPoints: points,
+    });
+    await items.createTask(admin, story.id, `${label} task`, {
+      estimateHours: estimate,
+      todoHours: todo,
+      actualHours: actual,
+    });
+    return story;
+  }
+
+  function splitInput(
+    source: string,
+    target: string,
+    unfinishedPoints: number,
+    continuedPoints: number,
+  ) {
+    return {
+      expectedSourceIterationId: source,
+      targetIterationId: target,
+      unfinished: { title: '[Unfinished] SU-08', planEstimate: unfinishedPoints },
+      continued: {
+        title: '[Continued] SU-08',
+        planEstimate: continuedPoints,
+        releaseId: null,
+        scheduleState: 'in_progress' as const,
+      },
+      // The Task is NOT named, so it stays on `[Continued]` and moves to the target — which is the
+      // whole point: its To Do is what leaves the source and arrives in the target.
+      unfinishedTaskIds: [],
+      unfinishedDefectIds: [],
+      unfinishedTestCaseIds: [],
+    };
+  }
+
+  async function todayRow(iteration: string) {
+    const rows = await db
+      .select({
+        todo: iterationDailySnapshots.remainingTodo,
+        accepted: iterationDailySnapshots.acceptedPoints,
+      })
+      .from(iterationDailySnapshots)
+      .where(
+        and(
+          eq(iterationDailySnapshots.iterationId, iteration),
+          eq(iterationDailySnapshots.snapshotDate, localToday),
+          sql`${iterationDailySnapshots.teamId} is null`,
+        ),
+      );
+    return rows[0];
+  }
+
+  async function baselineTotal(iteration: string) {
+    const rows = await db
+      .select({ total: iterationTeamBaselines.totalTaskEstimateAtStart })
+      .from(iterationTeamBaselines)
+      .where(eq(iterationTeamBaselines.iterationId, iteration));
+    return rows.reduce((sum, row) => sum + Number(row.total), 0);
+  }
+
+  it('drops the moved To Do from the SOURCE and never counts the placeholder as Accepted (AC1–AC4)', async () => {
+    const source = await newIteration(
+      'SU08 Source',
+      shift(localToday, -3),
+      shift(localToday, 3),
+      'committed',
+    );
+    // `planning`, which is a LEGAL target (it is not accepted) and is §8 Q4's ruled-acceptable gap: the
+    // job only snapshots committed iterations, so the target has a CARRY IN marker and no series yet.
+    const target = await newIteration(
+      'SU08 Target',
+      shift(localToday, 7),
+      shift(localToday, 14),
+      'planning',
+    );
+    const story = await newSplittableStory('SU08 source side', source, {
+      points: '5',
+      estimate: '8',
+      todo: '6',
+      actual: '2',
+    });
+
+    // First tick: the baseline is captured and today's row measures the full To Do.
+    await snapshots.takeSnapshots();
+    const baselineBefore = await baselineTotal(source);
+    expect(baselineBefore).toBe(8);
+    expect(Number((await todayRow(source)).todo)).toBe(6);
+
+    /**
+     * A CLOSED day, planted and frozen, so AC1 has something to be identical to.
+     *
+     * The job only ever writes today, so a past date is already immutable in practice — this makes
+     * the `finalized` flag explicit and gives the assertion a row whose value could not have come from
+     * a re-measurement.
+     */
+    await db.insert(iterationDailySnapshots).values({
+      workspaceId: admin.workspaceId,
+      iterationId: source,
+      snapshotDate: shift(localToday, -2),
+      remainingTodo: '42',
+      acceptedPoints: '7',
+      finalized: true,
+    });
+
+    const result = await items.splitWorkItem(admin, story.id, splitInput(source, target, 2, 3));
+    await snapshots.takeSnapshots();
+
+    // AC2 — the Task followed `[Continued]` to the target, so the To Do it carried is no longer in the
+    // source's measurement. Today IS the Split date, and today's row is re-upserted: "from the Split
+    // date forward" is that mechanism, not a rewrite of anything earlier.
+    const after = await todayRow(source);
+    expect(Number(after.todo)).toBe(0);
+
+    /**
+     * AC3 — THE ONE GENUINE BEHAVIOUR CHANGE IN SU-08.
+     *
+     * The placeholder sits in this iteration, `accepted`, with `accepted_date` = the Split and a Plan
+     * Estimate of 2. Before `split_id is null` was added to `measureIterationDay`'s accepted sum, this
+     * row read 2 — the source sprint appearing to have delivered the points that were carried forward.
+     */
+    expect(Number(after.accepted)).toBe(0);
+
+    // AC1 — the frozen day is byte-identical. Neither number, nor the flag.
+    const [frozen] = await db
+      .select({
+        todo: iterationDailySnapshots.remainingTodo,
+        accepted: iterationDailySnapshots.acceptedPoints,
+        finalized: iterationDailySnapshots.finalized,
+      })
+      .from(iterationDailySnapshots)
+      .where(
+        and(
+          eq(iterationDailySnapshots.iterationId, source),
+          eq(iterationDailySnapshots.snapshotDate, shift(localToday, -2)),
+        ),
+      );
+    expect(Number(frozen.todo)).toBe(42);
+    expect(Number(frozen.accepted)).toBe(7);
+    expect(frozen.finalized).toBe(true);
+
+    // AC4 — the source Ideal is frozen from its own iteration-start capture. Tasks left it; the plan
+    // it was measured against did not change.
+    expect(await baselineTotal(source)).toBe(baselineBefore);
+
+    // The markers themselves (8.2): SPLIT OUT on the source, CARRY IN on the target, from the SAME
+    // Split Event, each naming its own side.
+    const sourceReport = await reporting.getIterationBurndown(admin, {
+      projectId,
+      iterationId: source,
+    });
+    expect(sourceReport.splitOut).toEqual([
+      {
+        splitId: result.split.id,
+        kind: 'split-out',
+        date: result.split.sourceMarkerDate,
+        storyId: result.unfinished.id,
+        storyKey: result.unfinished.itemKey,
+        points: 2,
+        todoHours: 6,
+        // SRS §10.5 — the source keeps every hour captured before the Split, the moved Task's included.
+        actualHours: 2,
+      },
+    ]);
+    expect(sourceReport.carryIn).toEqual([]);
+
+    const targetReport = await reporting.getIterationBurndown(admin, {
+      projectId,
+      iterationId: target,
+    });
+    expect(targetReport.splitOut).toEqual([]);
+    expect(targetReport.carryIn).toEqual([
+      {
+        splitId: result.split.id,
+        kind: 'carry-in',
+        date: result.split.targetMarkerDate,
+        storyId: story.id,
+        storyKey: story.itemKey,
+        points: 3,
+        todoHours: 6,
+        // AC8's opening value. The moved Task brought 2 hours of Actual with it and the TARGET counts
+        // none of them; SU-10 owns the per-Iteration attribution behind that number.
+        actualHours: 0,
+      },
+    ]);
+    /**
+     * §8 Q4 / plan 8.5, asserted rather than only described: a `planning` target has NO series until it
+     * is committed, so the CARRY IN marker renders against an empty chart. That is the existing product
+     * rule ("a planning iteration has no execution to burn down") and it is why the marker reads from
+     * the Split Event rather than from a snapshot.
+     */
+    expect(targetReport.historyState).toBe('missing');
+  });
+
+  it('includes the moved Task Estimate in a target baseline captured AFTER the Split (AC5/AC6)', async () => {
+    /**
+     * Both iterations are created HERE rather than in a shared hook, because this case turns on the
+     * target never having been ticked: `captureTeamBaselines` is capture-once per scope, so a single
+     * earlier `takeSnapshots()` would have frozen the baseline before the Split and made this test
+     * assert AC7 instead while still passing.
+     */
+    const source = await newIteration(
+      'SU08 Src B',
+      shift(localToday, -14),
+      shift(localToday, -8),
+      'committed',
+    );
+    const target = await newIteration(
+      'SU08 Tgt B',
+      shift(localToday, -3),
+      shift(localToday, 3),
+      'committed',
+    );
+    const story = await newSplittableStory('SU08 target side', source, {
+      points: '5',
+      estimate: '9',
+      todo: '9',
+    });
+
+    // No tick yet: the target has no baseline and no rows.
+    expect(await baselineTotal(target)).toBe(0);
+
+    await items.splitWorkItem(admin, story.id, splitInput(source, target, 1, 4));
+    await snapshots.takeSnapshots();
+
+    // AC6 — the baseline is captured from the target's scope as it stands on its first snapshot day,
+    // and by then the moved Task is in it.
+    expect(await baselineTotal(target)).toBe(9);
+    // AC5 — and the carried-in To Do is measured in the target from the Split date on.
+    expect(Number((await todayRow(target)).todo)).toBe(9);
+    // The source's window closed before today, so the job writes nothing for it at all — the other
+    // half of "closed days are frozen", and the reason AC2 is a claim about TODAY's row.
+    expect(await todayRow(source)).toBeUndefined();
+  });
+
+  it('leaves a target baseline captured BEFORE the Split unchanged (AC7)', async () => {
+    const source = await newIteration(
+      'SU08 Src C',
+      shift(localToday, -14),
+      shift(localToday, -8),
+      'committed',
+    );
+    const target = await newIteration(
+      'SU08 Tgt C',
+      shift(localToday, -3),
+      shift(localToday, 3),
+      'committed',
+    );
+    // The target's OWN work, so its baseline is a real number rather than zero — a zero baseline is
+    // indistinguishable from "no capture" and would make the assertion below vacuous.
+    const resident = await items.createWorkItem(admin, projectId, 'story', 'SU08 resident', {
+      iterationId: target,
+      storyPoints: '2',
+    });
+    await items.createTask(admin, resident.id, 'SU08 resident task', {
+      estimateHours: '4',
+      todoHours: '4',
+    });
+
+    await snapshots.takeSnapshots();
+    expect(await baselineTotal(target)).toBe(4);
+
+    const story = await newSplittableStory('SU08 late arrival', source, {
+      points: '5',
+      estimate: '9',
+      todo: '9',
+    });
+    await items.splitWorkItem(admin, story.id, splitInput(source, target, 1, 4));
+    await snapshots.takeSnapshots();
+
+    // AC7 — `captureTeamBaselines` is `onConflictDoNothing` per scope, so the Ideal line the team has
+    // been measured against all sprint does not move because work arrived mid-flight.
+    expect(await baselineTotal(target)).toBe(4);
+    // The MEASURED series does move, which is the point of the pair: 4 resident + 9 carried in.
+    expect(Number((await todayRow(target)).todo)).toBe(13);
+  });
 });
 
 /** Shift a `YYYY-MM-DD` date by whole days, staying in the calendar. */

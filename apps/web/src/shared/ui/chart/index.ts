@@ -1,6 +1,7 @@
 export {
   CHART_AXIS,
   CHART_GRID,
+  CHART_MARKER,
   CHART_TOOLTIP,
   ChartFrame,
   ChartLegendBar,

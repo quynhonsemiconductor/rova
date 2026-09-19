@@ -2,13 +2,13 @@
 
 | Attribute | Value |
 |---|---|
-| Status | **SU-01 through SU-05 MERGED (#615, #619, #621); SU-06 implemented on `main`, full local gate green, PR open.** SU-07 through SU-10 not started. All Q rulings resolved 2026-09-16; the gate and Q16 were amended 2026-09-17 (see those sections). **SU-06's e2e found a real concurrency defect that D9 alone did not close - read the SU-06 gate record before touching the write path.** |
+| Status | **SU-01 through SU-06 MERGED (#615, #619, #621, #623); SU-07 + SU-08 implemented as ONE PR (#624), rebased onto `main` after #623 landed, full local gate re-run there and green (Playwright included).** SU-09 and SU-10 not started. All Q rulings resolved 2026-09-16; the gate and Q16 were amended 2026-09-17, Q15 + Q16 again on 2026-09-18. **SU-06's e2e found a real concurrency defect that D9 alone did not close - read the SU-06 gate record before touching the write path.** **SU-08's `split_id is null` predicate is the feature's one genuine report behaviour change and it landed at THREE call sites, not one - read 8.1 before adding a fourth.** |
 | Author | Solution Architect (with BA `FEATURE.md` / `SRS.md` / `USER_STORIES.md` + approved mockup) |
 | Created | 2026-09-14 |
 | Feature code | `SU` |
 | Sources of truth | `Mini_Rally_pj/04_Developement_tracking/Phase 7 (After MVP)/Split Unfinished/{FEATURE,SRS,USER_STORIES}.md`; mockup `03_Mockup Design/src/app/{splitStory.ts,components/SplitStoryDialog.tsx}` |
 | Rally parity checked against | `knowledge.broadcom.com/external/article/232813` (split creates a new Story in the current Iteration, moves the original forward), `.../278314` (editing a Test Result's work product) |
-| Delivery rule | **1 User Story = 1 PR.** Ten PRs (SU-01…SU-10). Every PR must go green on `Backend CI required` + `Web CI required` + `PR title (conventional commits)`. |
+| Delivery rule | **1 User Story = 1 PR.** Ten PRs (SU-01…SU-10) as planned; SU-03/04/05 shipped as one and SU-07/08 as one, per the §8 Q16 amendments (a) and (c) — seven PRs in practice. Every PR must go green on `Backend CI required` + `Web CI required` + `PR title (conventional commits)`. |
 
 > **How to use this file.** Every task is a checkbox. Tick it only when the work is merged AND its
 > gate is green, and annotate the tick with what you verified (the `PLAN-phase7-test-cases.md`
@@ -114,6 +114,16 @@ apps/web/src/
   pages/reports/ui/split-markers.tsx        # NEW  SPLIT OUT / CARRY IN chart annotations
   shared/i18n/locales/en/split-story.json   # NEW  namespace, registered in shared/i18n/i18n.ts
 ```
+
+> **Two additions the map did not anticipate, both landed in SU-07/SU-08.**
+> `interface/http/dto/work-item-response.dto.ts` gained `WorkItemDetailResponseSchema` — the RECORD
+> reads' shape, `WorkItemResponseSchema.extend({ splitLink })` — because `GET /work-items/:id` and
+> `GET /work-items/by-key` must carry the trace and the three LIST feeds that share the base schema must
+> not (§8 Q15 as amended).
+> On the SPA side there are now TWO marker files: `pages/reports/ui/split-marker-lines.tsx` holds the
+> recharts `ReferenceLine` array and `split-markers.tsx` holds the two components, because
+> `react-refresh/only-export-components` refuses a module that exports both a component and a plain
+> function.
 
 **Hard FE constraints** (all ratchet-enforced, `apps/web/src/test/`):
 `AppModal`+`ModalBody`+`ModalFooter` only — no `fixed inset-0` div like the mockup's;
@@ -327,6 +337,13 @@ Response 201 { split: StorySplitDto, unfinished: WorkItemResponseDto, continued:
 - velocity: `+ bars[].splitCarryover: number`, `+ bars[].splitStoryIds: string[]`
 - team capacity: no shape change — the numbers change (§5 BR-SU-28).
 
+> **`SplitMarkerDto`'s SHIPPED shape (SU-08 8.2), which is not the one §6 8.2 sketched.** One schema for
+> both directions — `{ splitId, kind: 'split-out'|'carry-in', date, storyId, storyKey, points,
+> todoHours, actualHours }` — rather than four differently-named hour fields of which two are always
+> absent. `kind` fixes the meaning: on `split-out` the hours LEFT this iteration and `actualHours` is
+> what the source RETAINS (§10.5); on `carry-in` they ARRIVED and `actualHours` is the `0` §10.3
+> mandates. An absent field would be a second thing for the SPA to branch on.
+
 Additive-only, so the `openapi` CI job's breaking-change diff stays clean.
 
 ### 3.4 Codegen discipline
@@ -462,6 +479,10 @@ verified.** The per-PR gate (§6.0) is identical every time and is not repeated 
 - [ ] `pnpm test:e2e` → `pnpm db:seed:test` → `pnpm --filter rova-web test:e2e`, **in that order**, and
       never the BE e2e suite while Playwright or a manual session is live — the reset truncates under
       them. (Unchanged, and it is why the local e2e run is reserved for the PRs that need it.)
+      **CONFIRMED THE HARD WAY in SU-07/08, and it is no longer only a caution:** SU-06's
+      `split-story.e2e.ts` splits the seeded `US-1` and moves it into `Sprint 26.2`, which has no later
+      target — so a BE e2e run AFTER Playwright fails 2 of `split-story-authz.e2e.spec.ts`'s 6 with
+      `eligible: false`, correctly. Re-seed and re-run before believing a second pass.
 
 > **Two traps the local commands hide, both measured in SU-02.** `pnpm test:cov` writes **no report at
 > all** when any test fails (`coverage.reportOnFailure` defaults to `false`), so
@@ -485,13 +506,21 @@ verified.** The per-PR gate (§6.0) is identical every time and is not repeated 
 Delivers both entry points, the server-decided eligibility, and a modal that opens with its two
 panel headings and nothing else. `Split story` renders **disabled with a tooltip** (D13).
 
-- [ ] **1.1-superseded** *(original wording, kept for traceability)* `split-story.ts` — pure helpers:
+- [x] **1.1-superseded** *(original wording, kept for traceability — NOT work, and the box is ticked to
+      say so)* `split-story.ts` — pure helpers:
       `splitIneligibleReason(item)` (BR-01/02/03), `filterSplitTargets(source, candidates, story)`
       (BR-05: `state !== 'accepted'`, same project, team-compatible per D8, window later than the
       source), `earliestTarget()` (BR-06), `stripSplitPrefix(name)` (`/^\[(Continued|Unfinished)\]\s*/i`
       — a re-split must not stack prefixes, §8 Q10), `defaultNames(name)`.
       Unit-tested standalone, mirroring `domain/team-read-scope.spec.ts`.
       ↳ **Delivered as 1.1 below, with two renames recorded there.**
+      **CLOSED 2026-09-18 (SU-07/SU-08).** It stayed `[ ]` through four merged PRs and read as
+      outstanding scope in every session that scanned this file for open boxes — including this one,
+      which is why it is being closed rather than left tidy-looking. Nothing was implemented for it:
+      1.1 below is its delivery, and the wording above is retained only so the two renames
+      (`defaultNames` → `defaultSplitTitles`, and `isLaterThanSource` split out) remain traceable to
+      what was originally asked for. A checkbox serves the work, and an unticked box that means "see the
+      next line" does not.
 - [x] **1.1** `libs/modules/work-items/src/application/split-story.ts` — pure helpers, no DB.
       **DONE 2026-09-16.** Exports `splitIneligibleReason` (BR-01/02/03), `isLaterThanSource` (§8 Q3),
       `filterSplitTargets` (BR-05), `earliestTarget` (BR-06), `stripSplitPrefix` (§8 Q10),
@@ -1370,6 +1399,12 @@ The biggest PR by necessity: SU-06 "must not be marked complete if it can leave 
       is how "unpointed" becomes "worth nothing".
       **The SU-06 e2e asserts the stored rows with raw SQL rather than through a read method**, which is
       the stronger claim: it cannot pass because a repository and a service agree with each other.
+      **Where the other four went (recorded 2026-09-18, so the deferral has an end).** `findByStoryId`
+      landed in SU-07 with the banner, on this port. The two iteration lookups landed in SU-08 on
+      **`IReportingRepository`** instead — `@modules/reporting` does not import `@modules/work-items`, and
+      one chart annotation is not a reason to invert that dependency; plan §1's file map already put
+      "split lookups" on `reporting.drizzle-repository.ts`. `findTaskSnapshots` is still unwritten and
+      belongs to **SU-10**, whose `getScopedTaskHours` join is its consumer.
 - [x] **6.3** `WorkItemsService.splitWorkItem(actor, id, input)`.
       **DONE.** ~330 lines, the ten steps in §6.3's order. Everything that can refuse refuses OUTSIDE the
       transaction (they are all reads; running them inside would hold the rank lock while deciding to do
@@ -1577,30 +1612,121 @@ plan is a record of decisions; a module header is not.
 
 `feat(work-items): link and trace both sides of a split`
 
-- [ ] **7.1** `GET /work-items/:id/split-links` **or** fold it into the existing
+> **DELIVERED TOGETHER WITH PR 8 AS ONE PR** (§8 Q16 amendment (c), 2026-09-18):
+> `feat(work-items): trace a split and show it on the iteration burndown`. Base:
+> `feat/su-06-split-commit` (PR #623, green and awaiting merge) — necessity stacking under amendment
+> (b), because both stories read `work.story_splits`, which does not exist before SU-06's `0131`.
+> Rebases onto `main` once #623 merges, at which point the gate is re-run.
+
+- [x] **7.1** `GET /work-items/:id/split-links` **or** fold it into the existing
       `GET /work-items/:id` response as `splitLink: { splitId, sourceIterationName,
       targetIterationName, unfinished: {id,itemKey}, continued: {id,itemKey} } | null`.
       **Prefer folding it in** — the detail page already fetches the Story, and a second request for
       a one-line banner is a render-blocking round trip. It is additive, so the OpenAPI diff stays
       clean.
-- [ ] **7.2** `features/work-items/ui/split-banner.tsx` — `Split · {source} → {target}` with links
+      **DONE 2026-09-18, folded in — and it had to go on BOTH record reads, which is an amendment to
+      Q15's WORDING rather than to its decision.** Q15 says "fold into `GET /work-items/:id`" on the
+      stated grounds that the detail page already fetches the Story. **It does not fetch by id.**
+      `/item/$itemKey` carries no id, so `work-item-detail-page.tsx` resolves the row through
+      `useWorkItemByKey` → `GET /work-items/by-key`; folding into `:id` alone would have put the field
+      on a route the banner never calls and left the contract looking complete. Both record routes now
+      return it.
+      **NOT on the shared `WorkItemResponseSchema`.** That schema also answers `GET /work-items`,
+      `/backlog` and `/:id/tasks`, so a field on it would make every grid row advertise a `splitLink`
+      that is always `null` — a contract that lies about what the list knows. There is a new
+      `WorkItemDetailResponseSchema = WorkItemResponseSchema.extend({ splitLink })`, used by the two
+      record routes only; `toWorkItemDetailDto` DELEGATES to `toWorkItemDto` rather than re-listing the
+      columns, so a Story cannot be described one way by the detail page and another by the grid. This
+      is the `StoryOptionSchema` boundary from the other side, and the e2e asserts both halves.
+      **Two fields beyond the plan's sketch, each earning its place:** `role` (which side the requested
+      Story is) so the banner marks the current page instead of linking to itself — derivable by
+      comparing ids, and derived ONCE on the server for the same reason `defaultSide` is; and `title` on
+      each side, so a link can carry a real accessible name (`US-42` alone tells a screen reader
+      nothing). `role`'s members come from `SPLIT_SIDES`, never re-typed — the rule SU-01's review set.
+      `IStorySplitRepository.findByStoryId` lands here, with its consumer, exactly as 6.2 said the four
+      deferred methods would. It `innerJoin`s both Stories and requires both to be LIVE, and
+      `leftJoin`s the two Iterations: a banner exists to be clicked, so a link to a soft-deleted Story
+      would be a dead end (no row is better than half a trace), while a missing iteration NAME is
+      decoration on a link that still works and degrades to `null`. `ORDER BY split_at desc, id desc`
+      — a Story can be the `[Continued]` side of several Splits, so the banner shows the newest hop of
+      a re-split chain. **That narrowing is real and is recorded rather than hidden:** an older hop is
+      not reachable from the banner, only from Revision History.
+- [x] **7.2** `features/work-items/ui/split-banner.tsx` — `Split · {source} → {target}` with links
       to both Stories. Info token, `CheckCircle2`-class glyph, **no explanatory sentence** (SRS §11).
       Rendered on **both** Story Details.
-- [ ] **7.3** Links use `Link` from the router (never `window.location`); if the banner ever grows a
+      **DONE.** 107 lines. `GitBranch` rather than `CheckCircle2` — a split is a branch, and the tick
+      glyph is what this app uses for the `On track` verdict two surfaces over. Info tone from the
+      accent tokens, zero raw hex, every string through `t()`.
+      **Mounted inside `<main>` ABOVE the tab content, not inside the Details tab.** A relationship
+      belongs to the record, so it must not vanish when the reader opens Tasks or Revision History —
+      the two tabs a reviewer tracing a Split is most likely to be on. It reads `itemByKey.splitLink`,
+      the SERVER's answer, and not the `usePendingPatch` value: the trace is not editable.
+      **The current side is TEXT with `aria-current="page"`, the counterpart is a LINK.** Offering a
+      link back to the page you are standing on is an affordance that does nothing, and `aria-current`
+      is how a screen reader is told which of the two it is on. Both keys are still shown, so the pair
+      is legible from either side.
+- [x] **7.3** Links use `Link` from the router (never `window.location`); if the banner ever grows a
       copy affordance it must come from `@/shared/lib/entity-link` (`detail-copy-link` ratchet).
-- [ ] **7.4** Revision History: confirm `work_item.split_out` / `work_item.split_in` /
+      **DONE.** `Link to="/item/$itemKey" params={{ itemKey }}`, the same form
+      `test-case-detail-page.tsx` uses for its Work Product link. No copy affordance was added, so the
+      `detail-copy-link` ratchet is untouched — and the spec asserts the `href` rather than a click
+      handler, because the `href` is the only thing a reader can act on.
+- [x] **7.4** Revision History: confirm `work_item.split_out` / `work_item.split_in` /
       `task.parent_changed` / the Test Case's Work-Product change all render in the existing
       `HistoryTab` with human labels. `activity_entity_type` already admits every one of these, so
       this is a **label/formatter** task in `entities/activity/ui`, not a schema task.
-- [ ] **7.5** Tests: `split-banner.test.tsx` (both directions, both links navigate);
+      **DONE, and it was a label task in `entities/work-item/model/activity.ts`** — `HistoryTab` renders
+      through the shared `describeActivity`, so that is where the vocabulary lives.
+      **Confirmed rather than assumed: all five actions are NEW.** `parentId` is not in
+      `activity-diff.ts`'s `ITEM_FIELDS`, so nothing wrote `work_item.parent_changed` /
+      `task.parent_changed` before SU-06, and `test_case.work_product_changed` is SU-06's too. Without
+      an entry `humanizeToken` renders the COLUMN — "Parent Id", "Work Item Id" — which is the same
+      defect `task.state_changed` was fixed for (GAP-P1-HIST-002).
+      `FIELD_LABEL_BY_ACTION` gained `work_item.parent_changed` → **`Parent Story`**,
+      `task.parent_changed` → **`Parent Story`** and `test_case.work_product_changed` → **`Work
+      Product`**. Two keys for one label deliberately: the map is keyed on the ACTION because that is
+      the only discriminant true of the ROW, and the two are written by two different entity types.
+      **A second map, `ACTION_LABEL`, is new** — for the two diff-less entries. `split_out` / `split_in`
+      carry `changes: null` (nothing about the row changed; its PLACE in a Split is the fact), so there
+      is no "changed from … to …" to hang a field name on, and `humanizeToken` would render "Work Item
+      Split Out" — the writer's namespace rather than what happened. They read `Split out as the
+      unfinished placeholder` / `Split forward into the target iteration`. The counterpart key is NOT
+      interpolated: the entry names an event, and tracing the pair is the banner's job.
+      The ids in the diff VALUES are left as ids: resolving them would need a lookup per row from a
+      pure function with no client, and these rows exist to say WHEN and BY WHOM.
+- [x] **7.5** Tests: `split-banner.test.tsx` (both directions, both links navigate);
       `split-story-flow.e2e.spec.ts` extended (`GET` on each Story returns the counterpart);
       Playwright: from `[Continued]`, click the `[Unfinished]` link and land on it (AC3).
-- [ ] **7.6** AC5 (historical Result evidence unchanged) — a **read-side regression assertion**, not
+      **DONE. `split-banner.test.tsx` — 7 tests; `split-story-flow.e2e.spec.ts` 13 → 17.**
+      The banner spec renders through a REAL `createMemoryHistory` router with the one route the banner
+      links to, and asserts the `href`. A mocked `Link` would have asserted the test's own wiring.
+      **It has to be awaited:** `RouterProvider` mounts its tree after the router resolves the initial
+      match, so a synchronous `render` returns an empty `<body>` — which reads as "the component
+      rendered nothing" and cost a round of debugging. Both directions are separate tests, because
+      `role` is the only input that changes and the failure (a link back to the page you are on) is
+      invisible from one side. One test asserts the ABSENCES against `document.body.textContent` — no
+      explanatory sentence, no `role="alert"`, no `role="status"`, no `aria-invalid` (SRS §11).
+      The e2e adds four route claims: the counterpart from BOTH sides of one Split with opposite
+      `role`s and the iteration names resolved; the same from **`by-key`**, which is the route the page
+      calls; `splitLink: null` PRESENT (not omitted) on a Story never split **and ABSENT from
+      `GET /work-items`**, which is the record-vs-feed boundary; and 7.6 below.
+      **No Playwright journey was added.** SU-06 owns `split-story.e2e.ts`, whose walk already ends on
+      `[Continued]` after a confirmed split; AC3's click-through would have to extend that spec, and it
+      mutates the seeded Story irreversibly, so a second journey would need its own fixture Story and a
+      second 12-minute suite pass to prove it. Stated as a gap rather than left silent: **AC3 rests on
+      `split-banner.test.tsx` + the e2e route pair**, which together prove the link's `href` and that
+      the id behind it resolves.
+- [x] **7.6** AC5 (historical Result evidence unchanged) — a **read-side regression assertion**, not
       new code: open a moved Test Case's Result and assert its Work Product still names the
       pre-Split Story.
+      **DONE.** SU-06 proved this against the stored column; AC5 is about what a REVIEWER SEES, so the
+      new case reads it back through **`GET /test-results/:id`** and asserts `workItemId` is the
+      pre-Split Story and NOT the placeholder the Test Case now hangs off. No code was needed (D10):
+      `test_results.work_item_id` is its own snapshotted column and
+      `trg_test_case_last_result` does not fire on it — both verified on a live database in SU-05 5.3.
 
-**AC coverage:** AC1 (mutation `onSuccess`, landed in 6.6, asserted here), AC2 (7.2), AC3 (7.5),
-AC4 (7.4), AC5 (7.6).
+**AC coverage:** AC1 (mutation `onSuccess`, landed in 6.6, asserted here), AC2 (7.2), AC3 (7.5 —
+FE unit + the e2e route pair, not Playwright; see 7.5), AC4 (7.4), AC5 (7.6).
 
 ---
 
@@ -1610,21 +1736,96 @@ AC4 (7.4), AC5 (7.6).
 
 Most of this story is **already true** and must be *proved*, not built.
 
-- [ ] **8.1** Accepted-Points exclusion — **the one genuine behaviour change.**
+> **Ships in the PR 7 combined PR** as its second commit (§8 Q16 amendment (c)). The title above is
+> the COMMIT subject, not a PR title.
+
+- [x] **8.1** Accepted-Points exclusion — **the one genuine behaviour change.**
       `measureIterationDay`'s accepted sum (`reporting.drizzle-repository.ts:965-985`) currently adds
       any `accepted`/`release` item with `accepted_date <= endOfDay`, which **includes** the
       `[Unfinished]` placeholder. Add `and ${workItems.splitId} is null` (AC3). The same predicate
       goes on any other query that sums delivered points for an Iteration — grep for
       `acceptedScheduleStatesSql` and fix **every** call site, not just this one.
-- [ ] **8.2** `SplitMarkerDto` + `splitOut` / `carryIn` arrays on the burndown response, assembled in
+      **DONE 2026-09-18. The grep found NINE call sites; THREE sum delivered points for an Iteration and
+      all three now carry the predicate. The other six are enumerated below rather than skipped
+      silently** — "fix every call site" is only checkable if the ones left alone are named.
+      Fixed: (1) `reporting.drizzle-repository.ts` `measureIterationDay`'s accepted sum — the snapshot
+      the chart reads, AC3 itself; (2) `iteration-status.drizzle-repository.ts` `getMetrics.acceptedPoints`
+      — the Iteration Status strip, and the predicate sits **inside the `FILTER`**, not in the WHERE, so
+      the placeholder stays in `totalPlanEstimate` and in the grid (SRS §10.2's "it remains visible
+      through the compact Split/Carryover context") while not counting as delivery;
+      (3) `capacity-plan.drizzle-repository.ts` `teamVelocitySamples` — **not named in the plan and the
+      sharpest of the three**: it samples accepted points from FINISHED iterations, which is exactly a
+      placeholder's habitat, and it is a FORECAST input, so the error would have propagated into planned
+      capacity rather than sitting in one chart.
+      Left alone, with reasons: `getVelocityItems` (`:330`) is **SU-09's**, and deliberately NOT an
+      exclusion — 9.1/9.2 give the placeholder its own `split-carryover` segment, so excluding it here
+      would delete the segment before it is built. `portfolio-item.drizzle-repository.ts` (×4) and
+      `releases.service.ts` are excluded **by construction**: BR-10 clears `feature_id` and `release_id`
+      on the placeholder, so it belongs to no Feature and no Release. `iterations.service.ts:526` /
+      `work-item.drizzle-repository.ts:971` (`bool_and(... in accepted)`) and
+      `iterations.service.ts:620` / `iteration-status:307` (`not in accepted`) are not point sums at all
+      — the first pair is the auto-accept predicate (§8 Q9 keeps Split away from it) and the second is
+      the open-defect count, which a placeholder Story cannot enter.
+- [x] **8.2** `SplitMarkerDto` + `splitOut` / `carryIn` arrays on the burndown response, assembled in
       `reporting.service.ts` from `findBySourceIteration` / `findByTargetIteration`:
       `SPLIT OUT` = `{ storyKey: unfinished, points, movedTodoHours, actualRetainedHours, date:
       source_marker_date }`; `CARRY IN` = `{ storyKey: continued, points, incomingTodoHours,
       openingActualHours: 0, date: target_marker_date }` (SRS §10.2/§10.3).
-- [ ] **8.3** `pages/reports/ui/split-markers.tsx` — a recharts `ReferenceLine`/`ReferenceDot`
+      **DONE.** `domain/burndown.ts` gained `SPLIT_MARKER_KINDS` / `SplitMarkerKind`,
+      `StoredSplitEvent`, `SplitMarker`, and the two pure assemblers `splitOutMarkers` /
+      `carryInMarkers`. **ONE `SplitMarker` shape for both directions with `kind` as the discriminant**,
+      and the two hour fields named neutrally (`todoHours` / `actualHours`) with their MEANING fixed by
+      `kind` — rather than the plan's four fields of which two are always absent, which is a shape the
+      SPA would have to branch on twice (once for the kind, once for the null). Documented in full on
+      the type. `carryIn`'s `actualHours` is the LITERAL `0` SRS §10.3 mandates, never read off the
+      event: the source keeps every pre-Split hour (§10.5), so anything else is the double-count the
+      Split Event exists to prevent. `points` stays `null` for an unpointed Story.
+      **The two lookups landed on `IReportingRepository`, not on `IStorySplitRepository` — a departure
+      from 6.2's list, with a reason.** `@modules/reporting` does not import `@modules/work-items` (the
+      dependency runs the other way — reporting READS work items), and one chart annotation is not a
+      reason to invert it and pull the whole `WorkItemsModule` graph into `ReportingModule`.
+      `work.story_splits` is in the same `db/schema/work.ts` this repository already reads `work_items`,
+      `tasks` and `iterations` from, so nothing is duplicated — and it is what plan §1's own file map
+      says (`reporting.drizzle-repository.ts # + split lookups`). Named
+      `findSplitsBySourceIteration` / `findSplitsByTargetIteration` among ~30 sibling methods.
+      One private `findSplits(side)` behind both, because the only difference is WHICH column is matched
+      and which iteration resolves the team — two copies of four joins and a workspace predicate is how
+      one of them comes to be missing one. Team scope is `coalesce(story_splits.team_id,
+      iteration.team_id)` through the shared `teamMatches`, the same two-tier rule the series is
+      measured with, so a marker cannot appear on a chart whose series excludes the work it describes;
+      `story_splits.team_id` is the Story's team AS AT the Split, which is the honest owner, because the
+      `[Continued]` Story's team is mutable afterwards and a past event must not move between team
+      charts when someone re-assigns the Story today.
+      **Assembled over `iterationIds`, not the selected iteration**: for All Teams the series is fused
+      across the shared timebox, and a marker sourced from `selected.id` alone would be missing from
+      exactly the view its numbers came from. Both directions are read, because one iteration can be
+      both a source and a target. `date` is the STORED clamped marker date — never recomputed, which is
+      the whole reason §2.1 stores it.
+- [x] **8.3** `pages/reports/ui/split-markers.tsx` — a recharts `ReferenceLine`/`ReferenceDot`
       annotation on the existing `ComposedChart`, amber token, plus a `ChartLegendItem`. Add the
       marker rows to `ChartFrame`'s hidden `dataTable` so the annotation is not colour-only.
-- [ ] **8.4** Prove the automatic parts with e2e, by ticking the real snapshot job
+      **DONE, in TWO files, and with one deliberate departure on the last clause.**
+      `split-marker-lines.tsx` holds `splitMarkerLines()` — an ARRAY of dashed amber `ReferenceLine`s
+      (`BRAND.warning`, `yAxisId="hours"`, labelled `SPLIT OUT` / `CARRY IN`), spread as the LAST
+      children of `ComposedChart` so the rules paint over the bars. An array rather than a component
+      wrapper: a Reference component belongs inside the chart, and a wrapper of our own would be one
+      more thing between it and the axis it reads. **It is a separate file because
+      `react-refresh/only-export-components` refuses a module that exports both a component and a plain
+      function** — measured, not guessed: `pnpm --filter rova-web lint` failed on the single-file
+      version. `split-markers.tsx` holds `SplitMarkerContext` + `SplitMarkerLegend`.
+      **DEPARTURE FROM "add the marker rows to the hidden `dataTable`", in service of its reason.** The
+      requirement is that the annotation not be colour-only, and it is met more strongly: the compact
+      context goes in `ChartFrame`'s **`underAxis`** slot, which is rendered OUTSIDE the `aria-hidden`
+      plot, so a screen reader and a sighted reader get the same sentence. Putting it in the hidden
+      table instead would have meant dropping a marker's moved-To Do into a `Remaining To Do` column
+      whose rows are one-per-plotted-day of the SERIES, where a reader would take it for a measured
+      value — the fabrication IB §5 forbids. Recorded in the file's own docblock too.
+      The strip is also what carries the FOUR values SRS §10.2/§10.3 enumerate (ID · points · To Do ·
+      Actual), which a chart annotation cannot. Every number goes through `formatPoints` — the SU-02
+      footer / SU-03 row rule, and the same quantities the axes beside it show; `points: null` prints
+      `--`, never `0`. Legend entries render only for the direction actually drawn: an entry for an
+      annotation the chart does not make is a claim the chart does not make.
+- [x] **8.4** Prove the automatic parts with e2e, by ticking the real snapshot job
       (`ReportSnapshotService.takeSnapshots`) before and after a Split:
       - AC1: snapshots dated before the Split, and any row with `finalized = true`, are **byte
         identical** afterwards.
@@ -1635,16 +1836,177 @@ Most of this story is **already true** and must be *proved*, not built.
       - AC5/AC6/AC7: the target's To Do **rises**; if the target's baseline row did not exist yet it
         now includes the moved Task Estimate; if it did exist it is unchanged.
       - AC8: the target's Actual — **this is the §8 Q1 arithmetic**; assert `0h` opening.
-- [ ] **8.5** ⚠ **Known gap to state in the PR description:** `findActiveIterations()` returns
+      **DONE — `phase6-reports.e2e.spec.ts` 18 → 21, three cases, every assertion reading a stored
+      snapshot row or a stored baseline.** No `createProject`: the fixtures are iterations and stories
+      inside this file's existing project, so the `e2e-fixtures` ratchet stays at 81.
+      **The three cases exist because ONE fixture cannot show all eight ACs, and the reason is a real
+      constraint rather than test convenience.** The snapshot job skips an iteration whose window does
+      not contain today (`report-snapshot.service.ts`), and a valid target must start AFTER the source
+      ends (§8 Q3) — so a source containing today can never have a target that also contains today. The
+      source-side ACs therefore need a source whose window is open, and the target-side ACs need a
+      CLOSED source with an open target.
+      Case 1 (AC1–AC4, source open, target `planning`): tick → baseline 8 and today's To Do 6; plant a
+      `finalized` row two days back; split (the Task stays on `[Continued]` and moves); tick again.
+      Today's To Do is **0** (AC2 — the Task's iteration followed its parent via the trigger), accepted
+      points are **0** despite a `2`-point `accepted` placeholder sitting in the sprint (**AC3, the one
+      genuine behaviour change — this read `2` before the predicate**), the planted row is byte-identical
+      including its flag (AC1), and the source baseline is unchanged (AC4). It also asserts the two
+      MARKERS in full: `SPLIT OUT` on the source with the placeholder's key, `points: 2`,
+      `todoHours: 6`, `actualHours: 2` (the source keeps its pre-Split Actual, §10.5), and `CARRY IN` on
+      the target with the original's key, `points: 3`, `todoHours: 6`, **`actualHours: 0`** — AC8's
+      opening value, with SU-10 owning the per-Iteration attribution behind it.
+      Case 2 (AC5/AC6): a CLOSED source and an open target, both created inside the test **because the
+      case turns on the target never having been ticked** — `captureTeamBaselines` is capture-once per
+      scope, so a single earlier tick would have frozen the baseline before the Split and made the test
+      assert AC7 while still passing. Split, then tick: the target baseline is **9**, the moved Task
+      Estimate included (AC6), and the target's today row measures the carried-in **9h** (AC5). It also
+      asserts the source has NO row at all — the other half of "closed days are frozen", and why AC2 is
+      a claim about today's row.
+      Case 3 (AC7): the target has its OWN resident work first, so its baseline is a real **4** rather
+      than a vacuous zero; tick, then split a 9h Task in; tick. The baseline is still **4** (AC7) while
+      the measured series rises to **13** — the pair is the point.
+- [x] **8.5** ⚠ **Known gap to state in the PR description:** `findActiveIterations()` returns
       `state = 'committed'` **only** (`reporting.drizzle-repository.ts:698-708`). A Split into a
       `planning` target therefore writes **no** target snapshots until that Iteration is committed —
       the `CARRY IN` marker renders (it reads the Split Event) but there is no series behind it yet.
       That is consistent with the existing product rule ("a planning iteration has no execution to
       burn down") and with SRS §10.3's "at its opening value", but it is a behaviour the BA should
       see. §8 Q4.
+      **DONE — stated in the PR description AND asserted, so it cannot drift into a surprise.** Case 1
+      above splits into a `planning` target (a legal target: it is not `accepted`) and asserts the target
+      report carries the `CARRY IN` marker while `historyState === 'missing'`. That is the gap, in one
+      assertion: the marker reads the Split Event, the series reads snapshots, and only the second is
+      waiting on the commit.
 
 **AC coverage:** AC1 (8.4), AC2 (8.2+8.4), AC3 (8.1), AC4 (8.4), AC5 (8.2+8.3), AC6/AC7 (8.4),
 AC8 (8.4 + §8 Q1).
+
+#### SU-07 / SU-08 gate record — measured 2026-09-18, one combined PR, stacked on SU-06
+
+**Base: `feat/su-06-split-commit` (PR #623, OPEN at the time of this measurement).** Necessity stacking
+under §8 Q16 amendment (b):
+both stories read `work.story_splits`, which migration `0131` creates in SU-06, so neither could be
+built on `main`. `git fetch origin` + `gh pr list` confirmed #623 unmerged before branching — the check
+§6.0 asks for, and the one SU-02 skipped. **#623 merged on 2026-09-18 and this branch was rebased onto
+`main`, with the whole gate re-run there — see the SU-07/SU-08 review follow-up below, whose numbers
+supersede this table's where they differ.** §6.0's "full local gate" clause applies (report queries), so
+everything below was run locally, Playwright included.
+
+| §6.0 item | Result |
+|---|---|
+| `pnpm lint` (repo-scoped) | **exit 0** |
+| `pnpm --filter rova-web lint` | **exit 0** — one real failure first: `react-refresh/only-export-components` on `split-markers.tsx`, fixed by splitting `splitMarkerLines` into its own module (8.3) |
+| `pnpm typecheck` | **exit 0** |
+| `npx tsc -b --force` (repo root) | **exit 0** |
+| `pnpm build` (api + worker) | **exit 0** |
+| `pnpm build:web` (the SPA's real typecheck) | **exit 0** — caught two real errors the other two missed: `MarkerValues` as an `interface` is not assignable to i18next's index-signature options, and React 19 types `element.props` as `unknown` unless the return type names `ReferenceLineProps` |
+| `pnpm test` | **93 files / 2236 tests, exit 0** — was 93/2217, **+19**, and **zero pre-existing failures** |
+| `pnpm --filter rova-web test` | **151 files / 1299 tests, exit 0** — was 149/1271, **+2 files, +28** |
+| `pnpm test:cov` + `pnpm check:coverage-floors` | **exit 0**, `within 3 points`. Statements **87.03**, branches **80.70**, functions **85.65**, lines **87.90** — **all four ROSE** from SU-06's 86.89 / 80.66 / 85.46 / 87.75. No floor touched. |
+| `pnpm test:e2e` | **74 files / 670 passed, 1 skipped, exit 0** — was 663+1, **+7** |
+| `pnpm db:seed:test` → `pnpm --filter rova-web test:e2e` | **49 / 49 passed (12.6m)** — run in §6.0's order, after the BE e2e run and a fresh seed |
+| codegen | fresh API with `SWAGGER_ENABLED=true`, `/api/docs-json` **530,255 bytes** (SU-06: 516,288); client SHA-256 `2FD26848…` → `A6CAEA37…`, **+118/−2 lines**, re-run byte-identical |
+| `route-policy` / `route-audience` / `workspace-scope` (66) / `query-ordering` (0) / `e2e-fixtures` (81) / `coverage-include` | **all green, all unmoved** — **no new route**, so no audience entry; the three new repository methods all take their own `workspaceId` and filter on it; both new `ORDER BY`s end on the unique `id`; no `createProject`; `coverage-include` needed no edit (the two new backend subjects with specs — `burndown.ts`, `work-items.service.ts` — are already listed, and the repositories have no unit spec) |
+| FE `fe-consistency` / `query-default` / `no-raw-hex` / `detail-copy-link` | **all green** — largest new file `split-markers.tsx` **103** lines; **zero raw hex** (the amber is `BRAND.warning`); no new `?? []` beyond the `data?.x ?? []` form this file already uses |
+
+**Codegen counts from the SERVED spec** (not from the source): `splitLink` 2,
+`WorkItemDetailResponseDto` 3, `sourceIterationName` 2, `splitOut` 2, `carryIn` 2, `split-out` 4,
+`carry-in` 4, `storyKey` 4, `movedTodoHours` 2.
+
+**Four things reality overrode, all recorded above in full.**
+
+1. **§8 Q15's wording names the wrong route** (7.1). The detail page resolves by KEY, not by id, so
+   `splitLink` had to go on `GET /work-items/by-key` as well — and onto a detail-only schema, because the
+   shared one also answers three list feeds.
+2. **The two burndown split lookups belong to reporting, not to `IStorySplitRepository`** (8.2), because
+   `@modules/reporting` does not import `@modules/work-items` and one annotation is not a reason to
+   invert that. Plan §1's own file map already said so; §6 6.2's list did not.
+3. **8.3's "hidden dataTable" clause was met a different way** — `underAxis`, which is real visible text
+   outside the `aria-hidden` plot. Marker rows in a series table would have read as measured values.
+4. **`api.ts` grew by 3 lines, 923 → 926 of the 929 ceiling**, against SU-01's 1.7 note that it "never
+   grows again". Stated plainly rather than buried: what grew is a TYPE-ONLY import and the return type
+   of an existing record read, which is the one thing that could not live in `split-api.ts` — the hook is
+   the general by-key read, not a Split hook. Everything else SU-07 adds to the api layer (`WorkItemDetail`,
+   `SplitLink`) is declared in `split-api.ts` as the ruling requires. The ratchet is unchanged at 929, but
+   the headroom is now **3 lines**, and the next PR that needs one should move `useWorkItemByKey` into its
+   own module rather than shave a comment.
+
+**One more worth the next session's time.** `RouterProvider` mounts its tree ASYNCHRONOUSLY — a
+synchronous `render()` of a real memory router returns an empty `<body>`, which reads exactly like "the
+component rendered nothing" and sent this session looking at the component first. Every helper that
+renders through a router has to `await` a query before asserting (`split-banner.test.tsx` does).
+
+**And §6.0's e2e ORDERING is now a reproducible failure rather than a caution.** The BE suite was green
+(74/670) before Playwright; run again AFTER it, `split-story-authz.e2e.spec.ts` failed 2 of 6 —
+"reports the Story as splittable" — because SU-06's `split-story.e2e.ts` journey had split the seeded
+US-1 and moved it into `Sprint 26.2`, which has no later target, so the preview correctly answered
+`eligible: false`. `pnpm db:seed:test` and a re-run: **74 / 670 green again.** Not flake and not a
+regression: the suite is order-dependent by construction now that a Playwright journey mutates the
+seeded Story irreversibly. **Run `pnpm test:e2e` FIRST, and re-seed before believing a second run.**
+
+#### SU-07/SU-08 review follow-up — tech-lead review on PR #624, fixed 2026-09-19
+
+Two items: the STACKING, and one code thread. Both taken.
+
+**1. The base branch — resolved by the rebase amendment (b) already required, which #623 merging made
+possible.** The review (12:42Z) landed before #623 merged (14:14Z) and read the PR against `main`, where
+GitHub was showing **59 files / +6296** because three of the seven commits were SU-06's. His remedy was
+to retarget the base to `feat/su-06-split-commit`; by the time it could be acted on, #623 was in `main`,
+so amendment (b)'s own instruction — *rebase onto `main` once the base merges and re-measure* — reaches
+the same outcome and a better one: the base stays `main` and the diff becomes the increment.
+**`git diff --stat origin/main...HEAD` now reports 35 files / +2817**, which is exactly the increment he
+reviewed — the two numbers agreeing is the check that the rebase dropped nothing.
+`git rebase --onto origin/main 7f6634f2` was the form needed. A plain `git rebase origin/main` tried to
+replay SU-06's four commits on top of main's SQUASHED copy of them and conflicted in four files, which
+is the hazard §6's SU-02 note records; **`--onto` applied with zero conflicts.**
+His second consequence — squash-merging collapses two stories into one commit — is real, and it is
+amendment (c)'s accepted cost rather than an oversight: the per-story reviewability lives in the two
+implementation commits and in this file's separate SU-07 and SU-08 ticks, which is where the amendment
+put it.
+
+**2. `CHART_MARKER` in `shared/ui/chart`, because chart styling lives there and this is the app's FIRST
+annotation.** He found three inlined style values in `split-marker-lines.tsx` and separated them by
+strength rather than filing them as one preference:
+- **`fontSize: 9` was a genuine defect, and the only one visible on screen.** Chart text is `10`
+  (`CHART_AXIS.tick`, `axisLabel`) or `11` (`CHART_TOOLTIP`), so a marker label at 9 rendered smaller
+  than everything beside it on the same chart — which reads as an accident, not a decision. Worse,
+  `fontSize: 9` is the *literal value* `chart-frame.tsx`'s own docblock holds up as the example of the
+  drift that module was created to end. It is now `CHART_MARKER.labelFontSize`, which is **10**.
+- **`strokeDasharray="4 3"` was deliberate but undocumented.** It differs from `CHART_GRID`'s `'3 3'` so
+  a marker is not read as a gridline — and a one-character difference between two literals is
+  indistinguishable from a typo to the next reader. Now a named constant whose docblock says why.
+- **`strokeWidth={1.5}`** was fine anywhere, and moved with the other two: a constant holding two of
+  three annotation values and not the third is its own small trap.
+He checked for something to reuse and there was none, so the ask was "add it where chart styling lives"
+rather than "use the existing one" — which is why this lands in `shared/ui/chart/chart-frame.tsx` beside
+`CHART_AXIS` / `CHART_GRID` / `CHART_TOOLTIP` and is exported from the barrel, for whatever marks the
+second kind of event.
+
+**Evidence: `split-markers.test.tsx` 14 → 17, and the three are NOT equal in strength, which is stated
+rather than blurred.** The font-size test is DISCRIMINATING: re-inlining the three literals (measured,
+component only, spec untouched) fails **2 of 17** on `expected 9 to be 10`. The other two — "takes its
+dash, width and label size from `CHART_MARKER`" and "dashes DIFFERENTLY from the gridlines" — are
+GUARDS: they pin the coupling and the difference, and neither would have caught the original inline,
+because those two literals happened to match the constant. A guard described as a discriminator is how a
+suite comes to be trusted for the wrong reason.
+
+**Gate on the rebased tree — the FULL local gate, per §6.0's report-query clause.**
+`pnpm install --frozen-lockfile` 0 · `pnpm lint` 0 · `pnpm --filter rova-web lint` 0 ·
+`pnpm typecheck` 0 · `npx tsc -b --force` 0 · `pnpm build` 0 · `pnpm build:web` 0 ·
+`pnpm test` **93 files / 2236 tests, exit 0** · `pnpm test:cov` + `check:coverage-floors` **exit 0**,
+87.03 / 80.70 / 85.65 / 87.90 — unchanged, no floor touched · `pnpm test:e2e`
+**74 files / 670 passed, 1 skipped** · `db:seed:test` → Playwright **49 / 49 (11.9m)** · every backend
+and FE ratchet green and unmoved.
+
+**`pnpm --filter rova-web test` is 151 files / 1302 tests with ONE failure, and it is PRE-EXISTING.**
+`add-test-result-modal.test.tsx > Date defaults to TODAY via todayIsoDate` builds its expected date from
+the test process's LOCAL clock (`today.getFullYear()/getMonth()/getDate()`) while the component formats
+through the app's prefs, which default to **UTC** under test. This run was at 00:47 local (GMT+7), where
+the local date is already the 19th and the UTC date is still the 18th — so it fails only in the
+seven-hour window between local midnight and UTC midnight, and CI, running on UTC, never sees it.
+**Stash-verified: the same single test fails on a pristine `origin/main` checkout** (10 tests, 1 failed,
+with this branch's changes stashed). A real if minor defect in that spec — a follow-up candidate for its
+own `test:` PR, the same class as SU-01's two Windows `grep` failures, and **not this PR's**.
 
 ---
 
@@ -1922,6 +2284,17 @@ should name who owned the work. Say the word and I will clear them instead.
 **Planned: fold it in.**
 
 > **RULING (Q15).** **Accepted — fold into `GET /work-items/:id`** as an additive `splitLink` field.
+>
+> **AMENDED 2026-09-18 (SU-07), on the ROUTE and not on the decision.** Folding in is right and stands;
+> `:id` alone was the wrong target. The ruling's own reason is "the detail page already fetches the
+> Story" — and it fetches it **by KEY**: `/item/$itemKey` carries no id, so `work-item-detail-page.tsx`
+> resolves the row through `useWorkItemByKey` → `GET /work-items/by-key`. `splitLink` on `:id` alone
+> would have satisfied the letter of the ruling and left the banner with nothing to render.
+> **Both RECORD reads carry it; the LIST feeds do not.** It is a new
+> `WorkItemDetailResponseSchema = WorkItemResponseSchema.extend({ splitLink })`, because the shared
+> schema also answers `GET /work-items`, `/backlog` and `/:id/tasks`, and a field there would make every
+> grid row advertise a link that is always `null`. The e2e asserts both halves — present-and-null on the
+> record, absent from the feed.
 
 ### Delivery — process ruling
 
@@ -1947,6 +2320,18 @@ should name who owned the work. Say the word and I will clear them instead.
 > writing the code, say so in the PR, never merge the stacked base first, and re-measure after the
 > rebase. Do NOT read this as a licence for speculative stacks.
 >
+> **(c) SU-07 + SU-08 ship as ONE PR** (`feat(work-items): trace a split and show it on the iteration
+> burndown`), added 2026-09-18 on the same reasoning as (a). They are two deliverables on paper and one
+> in the tree: both read `work.story_splits` — the table SU-06's `0131` creates — and neither has any
+> other consumer, so SU-07's `findByStoryId` and SU-08's two iteration lookups are the SAME "the four
+> deferred port methods land with their consumers" decision from 6.2, split across two PRs whose only
+> difference would be which read is added first. They also share one codegen pass (one API restart, one
+> generated client, one `codegen:check`) and one full local gate, which §6.0's own amendment says is the
+> expensive part. **SU-06 stays alone** — it owns the migration and the transaction. **SU-09 and SU-10
+> stay one-per-SU**: SU-09 changes `velocity.ts`'s classification and SU-10 is the hardest story in the
+> feature with no existing mechanism, and neither shares a file with the other.
+> Delivered stacked on SU-06 under (b), because `story_splits` does not exist on `main`.
+>
 > **What has NOT changed:** delivery is still ordered, each PR still goes green on §6.0 as amended
 > above, and no PR is ticked in §6 until it is MERGED with a green gate.
 >
@@ -1967,7 +2352,7 @@ should name who owned the work. Say the word and I will clear them instead.
 | Migration `0131` written in parallel with another migration | Drizzle applies only entries past the newest recorded `when` — a higher-numbered migration applied first **strands** the lower one silently and still reports success | One migration at a time; verify `count(*)` against `_journal.json`; CI's `migrations` job proves upgrade-on-top-of-main |
 | Circular FK (`work_items ↔ story_splits`) | An INSERT ordering mistake surfaces as a constraint violation only under real data | §2.4's fixed three-statement order, inside one transaction, with an e2e that exercises it |
 | `reconcileParentScheduleState` silently undoes BR-09 | The hook is designed to beat manual edits, and every Completed Task lands on the placeholder | §8 Q5/Q11; a test that asserts the placeholder is still `accepted` **after** a subsequent Task edit |
-| Accepted-Points exclusion applied in one place only | `split_id is null` must go on **every** query that sums delivered points, not just `measureIterationDay` | Grep `acceptedScheduleStatesSql` and fix all call sites; an e2e per report |
+| Accepted-Points exclusion applied in one place only | `split_id is null` must go on **every** query that sums delivered points, not just `measureIterationDay` | Grep `acceptedScheduleStatesSql` and fix all call sites; an e2e per report. **CLOSED in SU-08 8.1: nine call sites, three fixed (burndown snapshot, Iteration Status strip, and `teamVelocitySamples` — a forecast input the plan did not name), six enumerated with reasons.** The risk was real: two of the three were not in the plan's text |
 | Snapshot history rewritten | Time-series tables can never be backfilled (`CLAUDE.md:994`) | Change **no** past row; assert `finalized` rows are byte-identical after a Split |
 | Generated client written against a stale spec | `/api/docs-json` is built once at bootstrap; a watch-mode recompile is **not** a fresh spec, and the symptom is an EMPTY `git diff` that reads as "no change needed" | Restart the API; grep the served spec for `splitCarryover` before committing (§3.4) |
 | `z.date()` in a response DTO | `nestjs-zod` throws "Date cannot be represented in JSON Schema" and takes down **every** suite that boots through `bootstrapApp` | `z.string().datetime()` only |

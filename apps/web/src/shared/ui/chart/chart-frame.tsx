@@ -37,6 +37,29 @@ export const CHART_TOOLTIP = {
   color: BRAND.textPrimary,
 } as const
 
+/**
+ * ANNOTATION rules — a `ReferenceLine` marking an EVENT on the axis, not a series.
+ *
+ * Here rather than at the call site for the reason this module exists: `fontSize: 9` inlined beside a
+ * chart is the exact example the docblock above holds up, and the first copy of a style value is what
+ * makes the second one look normal. The Split markers (`pages/reports/ui/split-marker-lines.tsx`) are
+ * the first annotation in the app; anything that marks a second kind of event reads these.
+ *
+ * `labelFontSize` matches `CHART_AXIS.tick` (10) DELIBERATELY: a marker label sits among the axis
+ * ticks and the tooltip (11), so a third size would make it read as an accident rather than as a
+ * decision. It is named separately from a `tick` because a label is not a tick — nothing else about an
+ * annotation belongs on an axis.
+ *
+ * `strokeDasharray` DIFFERS FROM {@link CHART_GRID}'s `'3 3'` ON PURPOSE, and that is the whole reason
+ * it is a named constant: a marker must be distinguishable from a gridline at a glance, and a
+ * one-character difference between two literals is indistinguishable from a typo to the next reader.
+ */
+export const CHART_MARKER = {
+  strokeDasharray: '4 3',
+  strokeWidth: 1.5,
+  labelFontSize: 10,
+} as const
+
 /** An axis label, positioned the way the mockup's rotated captions are. */
 export function axisLabel(value: string, side: 'left' | 'right' | 'bottom') {
   const style = { fontSize: 10, fill: BRAND.textSecondary } as const

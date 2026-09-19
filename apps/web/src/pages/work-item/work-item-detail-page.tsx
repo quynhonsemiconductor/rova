@@ -78,6 +78,7 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
 import { LinkedItemsBlock } from '@/features/work-items/ui/linked-items-block'
+import { SplitBanner } from '@/features/work-items/ui/split-banner'
 import { CommentThread } from '@/features/collaboration/ui/comment-thread'
 import { Spinner } from '@/shared/ui/spinner'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
@@ -499,6 +500,19 @@ export function WorkItemDetailPage() {
       <div className="flex min-h-0 flex-1 bg-avatar">
         {/* Main content */}
         <main className="flex-1 overflow-y-auto bg-surface-subtle p-6">
+          {/*
+            The Split trace (SU-07 7.2), ABOVE the tab content rather than inside the Details tab: a
+            relationship belongs to the record, so it must not disappear when the reader opens Tasks or
+            Revision History — the two tabs a reviewer tracing a Split is most likely to be on.
+
+            Read from `itemByKey`, the SERVER's answer, and not from `item` (the pending-patch value):
+            the trace is not editable, and `usePendingPatch` is typed to the LIST shape.
+          */}
+          {itemByKey.splitLink !== null && itemByKey.splitLink !== undefined && (
+            <div className="mb-5">
+              <SplitBanner splitLink={itemByKey.splitLink} />
+            </div>
+          )}
           {activeTabId === 'details' && (
             <DetailsTab item={item} onFieldChange={setField} readOnly={readOnly} />
           )}

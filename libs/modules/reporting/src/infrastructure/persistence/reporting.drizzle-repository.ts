@@ -13,6 +13,7 @@ import {
   projects,
   releaseDailySnapshots,
   releases,
+  storySplits,
   tasks,
   teams,
   workItems,
@@ -20,7 +21,7 @@ import {
 import { users } from '../../../../../../db/schema/identity';
 import { workspaceSettings } from '../../../../../../db/schema/workspace';
 import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
-import type { StoredSnapshot } from '../../domain/burndown';
+import type { StoredSnapshot, StoredSplitEvent } from '../../domain/burndown';
 import type { ReleaseChild, ReleaseFeature, StoredBurnupRow } from '../../domain/release-tracking';
 import {
   DEFAULT_WORKING_DAYS,
@@ -231,6 +232,116 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         ),
       );
     return rows[0]?.n ?? 0;
+  }
+
+  /**
+   * The `SPLIT OUT` / `CARRY IN` events for a set of iterations (SU-08 8.2).
+   *
+   * ONE query with the side as a parameter, rather than two near-identical ones: the only difference
+   * between "left this iteration" and "arrived in this iteration" is WHICH column is matched and which
+   * iteration resolves the team, and the four joins, the workspace predicate and the ordering are
+   * common. Two copies of that is how one of them comes to be missing a predicate.
+   *
+   * Both Stories are `innerJoin`ed and must be LIVE. A marker names a Story by key and the reader is
+   * expected to be able to find it; a deleted end makes the annotation unfollowable, and its numbers
+   * are already in the frozen series either way.
+   *
+   * ORDER BY the marker date then the split id — the id is what makes it TOTAL (query-ordering
+   * ratchet), and two Splits on the same day are otherwise returned in scan order, which would
+   * reorder the compact context strip between two renders of the same chart.
+   */
+  private async findSplits(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+    side: 'source' | 'target',
+  ): Promise<StoredSplitEvent[]> {
+    if (iterationIds.length === 0) return [];
+    const unfinished = alias(workItems, 'split_out_story');
+    const continued = alias(workItems, 'carry_in_story');
+    const iteration = alias(iterations, 'split_marker_iteration');
+    const matchedIterationId =
+      side === 'source' ? storySplits.sourceIterationId : storySplits.targetIterationId;
+
+    const rows = await this.db
+      .select({
+        splitId: storySplits.id,
+        sourceIterationId: storySplits.sourceIterationId,
+        targetIterationId: storySplits.targetIterationId,
+        sourceMarkerDate: storySplits.sourceMarkerDate,
+        targetMarkerDate: storySplits.targetMarkerDate,
+        unfinishedStoryId: unfinished.id,
+        unfinishedStoryKey: unfinished.itemKey,
+        unfinishedPlanEstimate: storySplits.unfinishedPlanEstimate,
+        continuedStoryId: continued.id,
+        continuedStoryKey: continued.itemKey,
+        continuedPlanEstimate: storySplits.continuedPlanEstimate,
+        movedTodoHours: storySplits.movedTodoHours,
+        actualHoursAtSplit: storySplits.actualHoursAtSplit,
+      })
+      .from(storySplits)
+      .innerJoin(
+        unfinished,
+        and(eq(unfinished.id, storySplits.unfinishedStoryId), isNull(unfinished.deletedAt)),
+      )
+      .innerJoin(
+        continued,
+        and(eq(continued.id, storySplits.continuedStoryId), isNull(continued.deletedAt)),
+      )
+      // Joined only to resolve the team the two-tier way; membership is the matched column above.
+      .leftJoin(iteration, eq(iteration.id, matchedIterationId))
+      .where(
+        and(
+          eq(storySplits.workspaceId, workspaceId),
+          inArray(matchedIterationId, iterationIds),
+          /**
+           * The SAME two-tier rule the series is measured with — the Split's own team, falling back
+           * to the matched iteration's.
+           *
+           * `story_splits.team_id` is the Story's team AS AT the Split, which is the honest owner: the
+           * `[Continued]` Story's team is mutable afterwards, and a marker describing a past event
+           * must not move between team charts when someone re-assigns the Story today.
+           */
+          teamMatches(scope, sql`coalesce(${storySplits.teamId}, ${iteration.teamId})`),
+        ),
+      )
+      .orderBy(
+        asc(side === 'source' ? storySplits.sourceMarkerDate : storySplits.targetMarkerDate),
+        asc(storySplits.id),
+      );
+
+    return rows.map((row) => ({
+      splitId: row.splitId,
+      sourceIterationId: row.sourceIterationId,
+      targetIterationId: row.targetIterationId,
+      sourceMarkerDate: row.sourceMarkerDate,
+      targetMarkerDate: row.targetMarkerDate,
+      unfinishedStoryId: row.unfinishedStoryId,
+      unfinishedStoryKey: row.unfinishedStoryKey,
+      // `numeric` arrives as a string, and `null` is "unpointed" rather than "worth nothing".
+      unfinishedPlanEstimate: nullableNum(row.unfinishedPlanEstimate),
+      continuedStoryId: row.continuedStoryId,
+      continuedStoryKey: row.continuedStoryKey,
+      continuedPlanEstimate: nullableNum(row.continuedPlanEstimate),
+      movedTodoHours: num(row.movedTodoHours),
+      actualHoursAtSplit: num(row.actualHoursAtSplit),
+    }));
+  }
+
+  async findSplitsBySourceIteration(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<StoredSplitEvent[]> {
+    return this.findSplits(workspaceId, iterationIds, scope, 'source');
+  }
+
+  async findSplitsByTargetIteration(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<StoredSplitEvent[]> {
+    return this.findSplits(workspaceId, iterationIds, scope, 'target');
   }
 
   // ── Velocity ──────────────────────────────────────────────────────────────
@@ -976,6 +1087,19 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           inArray(workItems.type, [...LEAF_TYPES]),
           isNull(workItems.deletedAt),
           sql`${workItems.scheduleState} in (${acceptedScheduleStatesSql()})`,
+          /**
+           * SU-08 AC3 — the `[Unfinished]` placeholder never adds to Accepted Points.
+           *
+           * It is `accepted` with a real `accepted_date` (BR-09), so without this predicate it walks
+           * straight into the sum and the source sprint appears to have delivered the points that
+           * were carried forward. `split_id IS NOT NULL` means "this Story IS a Split placeholder"
+           * (D6) and is an index-friendly predicate on `ix_wi_split_id` — which is why the marker is
+           * a column here rather than a join to `story_splits`.
+           *
+           * The points are not hidden, only re-labelled: they surface as the `SPLIT OUT` marker
+           * beside this series (8.2) and, in SU-09, as Velocity's own excluded segment.
+           */
+          isNull(workItems.splitId),
           // Cumulative BY DATE (IB-BR-02): an item accepted after this day's local boundary
           // does not count towards it, even though it is accepted right now.
           sql`${workItems.acceptedDate} is not null and ${workItems.acceptedDate} <= ${endOfDay}`,

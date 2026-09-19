@@ -189,6 +189,122 @@ export function buildBurndownSeries(input: {
   };
 }
 
+// ── Split markers (Phase 7 SU-08, SRS §10.2 / §10.3) ─────────────────────────
+
+/**
+ * Which side of a Split a marker describes.
+ *
+ * `split-out` sits on the SOURCE Iteration's chart and names the `[Unfinished]` placeholder;
+ * `carry-in` sits on the TARGET's and names the `[Continued]` Story. Two kinds rather than two
+ * unrelated shapes, so one component renders both and one hidden table row format describes both.
+ *
+ * Declared as an `as const` ARRAY with the type derived from it, so the zod schema in
+ * `reporting-response.dto.ts` hands `z.enum` this same array instead of re-typing the members — the
+ * `SPLIT_SIDES` convention SU-01's review set, for the same reason: a third member would otherwise be
+ * two edits with nothing failing if only one were made.
+ */
+export const SPLIT_MARKER_KINDS = ['split-out', 'carry-in'] as const;
+export type SplitMarkerKind = (typeof SPLIT_MARKER_KINDS)[number];
+
+/**
+ * One stored `work.story_splits` row, narrowed to what a burndown annotation needs.
+ *
+ * The two marker DATES are read, never recomputed: they were clamped into their own iteration's
+ * window at write time, using the workspace time zone, precisely so the read path does not have to
+ * re-resolve a calendar per row (plan §2.1). A Split confirmed after the source sprint closed has no
+ * x-position on the source chart otherwise.
+ */
+export interface StoredSplitEvent {
+  splitId: string;
+  sourceIterationId: string;
+  targetIterationId: string;
+  /** `YYYY-MM-DD`, already clamped into the source window. */
+  sourceMarkerDate: string;
+  /** `YYYY-MM-DD`, already clamped into the target window. */
+  targetMarkerDate: string;
+  unfinishedStoryId: string;
+  unfinishedStoryKey: string;
+  unfinishedPlanEstimate: number | null;
+  continuedStoryId: string;
+  continuedStoryKey: string;
+  continuedPlanEstimate: number | null;
+  /** Σ To Do of the Tasks that went to `[Continued]` — what the source lost and the target gained. */
+  movedTodoHours: number;
+  /** Σ Actual across ALL distributed Tasks, as at the Split. */
+  actualHoursAtSplit: number;
+}
+
+/**
+ * One annotation on a burndown chart — SRS §10.2's `SPLIT OUT` and §10.3's `CARRY IN`.
+ *
+ * ONE shape for both, with `kind` as the discriminant, and the field NAMES are deliberately neutral
+ * (`todoHours`, `actualHours`) while their MEANING comes from `kind`:
+ *   • `split-out` — `todoHours` is the To Do that LEFT this iteration, `actualHours` is the Actual it
+ *     RETAINS (SRS §10.5: the source keeps every hour captured before the Split, including the
+ *     pre-Split hours of Tasks that moved).
+ *   • `carry-in` — `todoHours` is the To Do that ARRIVED, and `actualHours` is `0`, because §10.3
+ *     makes the target's carried-in Actual start at zero and grow only from post-Split work.
+ *
+ * Named `retainedActual`/`openingActual` in the plan's 8.2 sketch; one field pair with a documented
+ * discriminant is preferred over four fields of which two are always absent, because an absent field
+ * is a shape the SPA has to branch on twice — once for the kind and once for the null.
+ */
+export interface SplitMarker {
+  splitId: string;
+  kind: SplitMarkerKind;
+  /** The plotted x-position, `YYYY-MM-DD`. */
+  date: string;
+  /** The Story this marker is about — the placeholder for `split-out`, the original for `carry-in`. */
+  storyId: string;
+  storyKey: string;
+  /** That Story's Plan Estimate as recorded at the Split. `null` = unpointed, never `0`. */
+  points: number | null;
+  todoHours: number;
+  actualHours: number;
+}
+
+/**
+ * The `SPLIT OUT` annotations for a set of source Iterations (SRS §10.2).
+ *
+ * Pure and total: every event in becomes exactly one marker out, in the order given, because the
+ * repository has already narrowed to the iterations and the team scope the chart is drawn in. Sorting
+ * is the caller's — the burndown's own axis is the order that matters, and re-sorting here would make
+ * a second, silent decision about it.
+ */
+export function splitOutMarkers(events: readonly StoredSplitEvent[]): SplitMarker[] {
+  return events.map((event) => ({
+    splitId: event.splitId,
+    kind: 'split-out',
+    date: event.sourceMarkerDate,
+    storyId: event.unfinishedStoryId,
+    storyKey: event.unfinishedStoryKey,
+    points: event.unfinishedPlanEstimate,
+    todoHours: event.movedTodoHours,
+    // The source keeps what it had accrued — SRS §10.5, and the number SU-10's arithmetic reads.
+    actualHours: event.actualHoursAtSplit,
+  }));
+}
+
+/**
+ * The `CARRY IN` annotations for a set of target Iterations (SRS §10.3).
+ *
+ * `actualHours` is the LITERAL `0` the SRS names, not a value read from the event: the moved Tasks
+ * bring their To Do forward and their Actual does not follow, so anything else here would be the
+ * double-count the whole Split Event exists to prevent.
+ */
+export function carryInMarkers(events: readonly StoredSplitEvent[]): SplitMarker[] {
+  return events.map((event) => ({
+    splitId: event.splitId,
+    kind: 'carry-in',
+    date: event.targetMarkerDate,
+    storyId: event.continuedStoryId,
+    storyKey: event.continuedStoryKey,
+    points: event.continuedPlanEstimate,
+    todoHours: event.movedTodoHours,
+    actualHours: 0,
+  }));
+}
+
 /**
  * Fuse the per-Team snapshot rows of one shared timebox into one series per date.
  *

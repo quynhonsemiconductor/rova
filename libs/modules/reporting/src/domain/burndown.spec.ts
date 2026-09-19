@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBurndownSeries,
+  carryInMarkers,
   combineTeamSnapshots,
   idealLine,
+  splitOutMarkers,
   type StoredSnapshot,
+  type StoredSplitEvent,
 } from './burndown';
 import { DEFAULT_WORKING_DAYS } from './report-scope';
 
@@ -244,5 +247,114 @@ describe('partial captures (IB-BR-01: the source is an END-OF-DAY snapshot)', ()
     expect(fused[0].remainingToDo).toBe(35);
     expect(fused[0].endOfDay).toBe(false);
     expect(fused[0].capturedAt?.toISOString()).toBe('2026-01-05T09:10:00.000Z');
+  });
+});
+
+// ── Split markers (SU-08, SRS §10.2 / §10.3) ─────────────────────────────────
+
+/**
+ * One Split Event, with every field the two assemblers read holding a DIFFERENT value.
+ *
+ * That is the point of the fixture: the two sides carry different Plan Estimates and different keys,
+ * and the retained Actual is non-zero — so a test cannot pass by reading the wrong side, and the
+ * target's mandated `0h` opening cannot pass by copying the event's own number.
+ */
+const splitEvent = (over: Partial<StoredSplitEvent> = {}): StoredSplitEvent => ({
+  splitId: 'split-1',
+  sourceIterationId: 'it-source',
+  targetIterationId: 'it-target',
+  sourceMarkerDate: '2026-01-07',
+  targetMarkerDate: '2026-01-19',
+  unfinishedStoryId: 'wi-unfinished',
+  unfinishedStoryKey: 'US-901',
+  unfinishedPlanEstimate: 2,
+  continuedStoryId: 'wi-continued',
+  continuedStoryKey: 'US-900',
+  continuedPlanEstimate: 3,
+  movedTodoHours: 7,
+  actualHoursAtSplit: 5,
+  ...over,
+});
+
+describe('splitOutMarkers (SRS §10.2)', () => {
+  it('names the [Unfinished] side, its historical points, the moved To Do and the RETAINED Actual', () => {
+    expect(splitOutMarkers([splitEvent()])).toEqual([
+      {
+        splitId: 'split-1',
+        kind: 'split-out',
+        date: '2026-01-07',
+        storyId: 'wi-unfinished',
+        storyKey: 'US-901',
+        points: 2,
+        todoHours: 7,
+        actualHours: 5,
+      },
+    ]);
+  });
+
+  it('plots on the SOURCE marker date, not the target’s', () => {
+    // The two dates are clamped into different windows at write time; reading the wrong one puts the
+    // annotation outside the chart it belongs to, where recharts simply does not draw it.
+    const [marker] = splitOutMarkers([splitEvent()]);
+    expect(marker.date).toBe('2026-01-07');
+    expect(marker.date).not.toBe('2026-01-19');
+  });
+
+  it('keeps an unpointed placeholder as null rather than 0', () => {
+    // `null` is "this Story was never estimated"; `0` is an estimate of nothing. The compact context
+    // has to be able to say which.
+    expect(splitOutMarkers([splitEvent({ unfinishedPlanEstimate: null })])[0].points).toBeNull();
+  });
+
+  it('emits one marker per event, in the order given', () => {
+    const markers = splitOutMarkers([
+      splitEvent({ splitId: 'a', sourceMarkerDate: '2026-01-08' }),
+      splitEvent({ splitId: 'b', sourceMarkerDate: '2026-01-06' }),
+    ]);
+    // NOT re-sorted here: the repository already ordered them, and a second opinion about the order
+    // would be a silent one.
+    expect(markers.map((m) => m.splitId)).toEqual(['a', 'b']);
+  });
+
+  it('is empty for a timebox no Split touched', () => {
+    expect(splitOutMarkers([])).toEqual([]);
+  });
+});
+
+describe('carryInMarkers (SRS §10.3)', () => {
+  it('names the [Continued] side, its points, the incoming To Do and a 0h opening Actual', () => {
+    expect(carryInMarkers([splitEvent()])).toEqual([
+      {
+        splitId: 'split-1',
+        kind: 'carry-in',
+        date: '2026-01-19',
+        storyId: 'wi-continued',
+        storyKey: 'US-900',
+        points: 3,
+        todoHours: 7,
+        actualHours: 0,
+      },
+    ]);
+  });
+
+  it('opens the target Actual at 0 even when the Split carried five hours of it', () => {
+    // AC8, and the reason it gets its own test: the event's `actualHoursAtSplit` is 5 and the SOURCE
+    // keeps all of it (§10.5). A carry-in that read the same field would double-count every hour.
+    expect(carryInMarkers([splitEvent({ actualHoursAtSplit: 5 })])[0].actualHours).toBe(0);
+    expect(carryInMarkers([splitEvent({ actualHoursAtSplit: 0 })])[0].actualHours).toBe(0);
+  });
+
+  it('carries the SAME To Do the source lost', () => {
+    // One measured quantity, two charts: the hours that left the source are the hours that arrived.
+    const event = splitEvent({ movedTodoHours: 12.5 });
+    expect(carryInMarkers([event])[0].todoHours).toBe(splitOutMarkers([event])[0].todoHours);
+  });
+
+  it('keeps an unpointed continued Story as null rather than 0', () => {
+    expect(carryInMarkers([splitEvent({ continuedPlanEstimate: null })])[0].points).toBeNull();
+  });
+
+  it('is empty for a timebox no Split touched', () => {
+    expect(carryInMarkers([])).toEqual([]);
   });
 });
