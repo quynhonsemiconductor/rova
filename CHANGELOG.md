@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.19](https://github.com/quynhonsemiconductor/rova/compare/v0.7.18...v0.7.19) (2026-09-19)
+
+
+### ✨ Features
+
+* **work-items:** commit a story split in one transaction ([#623](https://github.com/quynhonsemiconductor/rova/issues/623)) ([fc2a93a](https://github.com/quynhonsemiconductor/rova/commit/fc2a93ac97986e590fbc3fec59d9f203f943bf68))
+* **work-items:** configure both stories in the split modal ([#619](https://github.com/quynhonsemiconductor/rova/issues/619)) ([ea710d2](https://github.com/quynhonsemiconductor/rova/commit/ea710d2e8309de1e14e4df726c2f3ee395224eca))
+* **work-items:** distribute tasks, defects and test cases between the split panels ([#621](https://github.com/quynhonsemiconductor/rova/issues/621)) ([b315310](https://github.com/quynhonsemiconductor/rova/commit/b315310f3ecba65c8a34a01e0db04eaabbe4defa))
+* **work-items:** trace a split and show it on the iteration burndown ([#624](https://github.com/quynhonsemiconductor/rova/issues/624)) ([465e427](https://github.com/quynhonsemiconductor/rova/commit/465e427687a99064042ac965bc0c43dcc6faeb0e))
+
 ## [0.7.18](https://github.com/quynhonsemiconductor/rova/compare/v0.7.17...v0.7.18) (2026-09-16)
 
 
