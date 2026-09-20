@@ -338,6 +338,6 @@ jobs:
             -H "Authorization: Bearer ${GRAFANA_ALERTS_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "$(jq -n \
-                  --arg text "rally deployed ${GITHUB_SHA:0:7} to ${DEPLOY_ENV}" \
+                  --arg text "rova deployed ${GITHUB_SHA:0:7} to ${DEPLOY_ENV}" \
                   --arg env "$DEPLOY_ENV" \
-                  '{tags: ["deploy", "rally", $env], text: $text}')"
+                  '{tags: ["deploy", "rova", $env], text: $text}')"

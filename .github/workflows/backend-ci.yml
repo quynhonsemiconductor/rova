@@ -294,7 +294,7 @@ jobs:
     timeout-minutes: 15
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rally_upgrade?sslmode=disable
+      DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_upgrade?sslmode=disable
 
     services:
       postgres:
@@ -302,7 +302,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: rally_upgrade
+          POSTGRES_DB: rova_upgrade
         ports: ['5432:5432']
         options: >-
           --health-cmd pg_isready
