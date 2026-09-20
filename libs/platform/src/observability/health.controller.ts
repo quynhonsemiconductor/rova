@@ -45,6 +45,43 @@ export class HealthController {
     };
   }
 
+  /**
+   * Liveness probe for Kubernetes — is the process alive?
+   *
+   * SERVED AT `/livez`, NOT `/v1/livez`, and the exclusion that makes that true
+   * lives in `apps/api/src/bootstrap/app.bootstrap.ts`. Two reasons it has to be
+   * unprefixed, neither of them cosmetic:
+   *
+   *   1. `gitops/charts/qnsc-service` hardcodes the liveness path and does NOT
+   *      expose it as a per-service value — deliberately, per §9j.
+   *   2. `gitops/platform/policy/admission.yaml` is a ValidatingAdmissionPolicy
+   *      that DENIES any Deployment whose liveness path is not exactly `/livez`.
+   *      A prefixed path is not a worse option here; it is a rejected manifest.
+   *
+   * WHY IT DUPLICATES `healthz` RATHER THAN REPLACING IT. `/v1/healthz` is load
+   * bearing on the ECS path — the ALB target group, the Dockerfile HEALTHCHECK
+   * and the post-deploy smoke test all point at it — and §17b runs both platforms
+   * at once. Removing it would break ECS while Kubernetes is still soaking.
+   * They collapse into one when the ECS path goes, at Phase 5.
+   *
+   * ⚠ IT MUST NEVER TOUCH A DEPENDENCY. §9j: "if liveness checks the database and
+   * the database slows down, Kubernetes kills every replica of every service at
+   * once, and a slowdown becomes an outage." That is what `readyz` is for — it
+   * checks Postgres and the cache, and a failing readiness probe removes one pod
+   * from its Service instead of restarting all of them.
+   */
+  @Get('livez')
+  @Public()
+  @SkipRateLimit()
+  @ApiOperation({ summary: 'Kubernetes liveness probe — process only, no dependencies' })
+  @ApiResponse({
+    status: 200,
+    schema: { properties: { status: { type: 'string', example: 'ok' } } },
+  })
+  livez() {
+    return { status: 'ok' };
+  }
+
   /** Liveness probe — is the process alive? */
   @Get('healthz')
   @Public()

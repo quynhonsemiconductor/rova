@@ -1,0 +1,114 @@
+# =============================================================================
+# Backend · K8s Deploy — thin caller of the shared reusable (ci) k8s-deploy.
+#
+# This is the Kubernetes DEV delivery trigger for rova (§11). It builds each
+# service image, attests it, and — on main — bumps the dev tag in `gitops`, from
+# where ArgoCD reconciles. A product repository never touches a cluster.
+#
+# ── RUNS ALONGSIDE backend-deploy.yml, IT DOES NOT REPLACE IT (§17b) ──────────
+# rova is the first product to migrate (§17, reordered 2026-09-17). §17b requires
+# BOTH platforms to run simultaneously and the cutover to be reversible at every
+# step, so during the migration this file lives NEXT TO backend-deploy.yml and
+# both fire on a merge to main:
+#
+#   backend-deploy.yml  → ECS path (build · attest · promote · MIGRATE · roll)
+#   k8s-deploy.yml       → Kubernetes path (build · attest · bump gitops dev tag)
+#
+# Nothing is deleted from ECS until Phase 5. Until then the ECS path's
+# `ecs-run-task` / `run-db-migration` REMAINS the thing that runs every product's
+# database migrations. This workflow does NOT run migrations: on the Kubernetes
+# path the `migrator` service is a Job wired as an ArgoCD PreSync hook in
+# `gitops`, so the schema is applied by ArgoCD before the api/worker roll — not
+# here. That is why this caller builds the migrator image (so the Job has an
+# image to run) but never invokes it (§11).
+#
+# Promotion to prod is a SEPARATE act and a SEPARATE workflow — see
+# k8s-promote.yml. §11 records the original bug: the promote job was gated on
+# `workflow_dispatch` inside a `workflow_call`, where it can never fire; the fix
+# was making promotion its own workflow. Do not fold it back in here.
+# =============================================================================
+name: Backend · K8s Deploy
+
+on:
+  push:
+    branches: [main]
+    # Same develop-path filter as backend-deploy.yml: skip when a merge touches
+    # ONLY paths this service does not ship (docs and the web app). paths-ignore
+    # fires only if EVERY changed file matches, so a shared change still deploys
+    # and under-deploy is impossible. Kept in lockstep with backend-deploy.yml on
+    # purpose — during the migration (§17b) the two paths must deploy the SAME set
+    # of merges, or dev on one platform silently drifts from the other.
+    #
+    # No `tags:` trigger here, unlike backend-deploy.yml: on the Kubernetes path a
+    # release tag is handled by k8s-promote.yml, not by rebuilding here (§11 — the
+    # promoted image is the exact bytes that soaked in dev, never a fresh build).
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.claude/**'
+      - 'apps/web/**'
+
+  # Manual redeploy of whatever main currently holds — develop only. Mirrors
+  # backend-deploy.yml: a merged fix can otherwise become undeployable when its
+  # CI run is cancelled by a following merge and every later merge is web-only
+  # (paths-ignore). There is no prod path here to skip, so this is safe.
+  workflow_dispatch:
+
+concurrency:
+  # One k8s deploy per product at a time. The reusable already sets this same
+  # group so the gitops bump cannot race itself; declaring it here too stops two
+  # caller runs (e.g. a push racing a workflow_dispatch) reaching the reusable at
+  # once. Only the develop path exists here, so a single group is correct.
+  group: k8s-deploy-backend-rova
+  cancel-in-progress: false   # never cancel a running deploy
+
+jobs:
+  deploy:
+    # Must match the UNION of the reusable's inner job permissions, not just its
+    # top-level default — GitHub validates a reusable call's whole permission
+    # chain at trigger time, so an under-grant here is a startup_failure before
+    # any job runs, not a runtime denial. id-token is the AWS OIDC for the build
+    # job's ECR login; attestations is build provenance; packages:read lets
+    # build-push-ecr pull the private @quynhonsemiconductor/* actions.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      packages: read
+    uses: quynhonsemiconductor/ci/.github/workflows/k8s-deploy.yml@v1
+    with:
+      product: rova
+      # ── Service list — MUST match gitops/values/rova/base.yaml EXACTLY ───────
+      # ci/scripts/platform_conformance.py checks the chart's services against
+      # the infra IRSA roles; a mismatch here produces a pod that can assume
+      # nothing. base.yaml (2026-09-15) declares api, worker, migrator in this
+      # order. `services` is the space-separated form the gitops bump reads;
+      # `services-json` is the same list as the build matrix.
+      services: 'api worker migrator'
+      services-json: '["api","worker","migrator"]'
+      # ── Graviton (§15) ──────────────────────────────────────────────────────
+      # rova is arm64: every image has an arm64 build and infra pins arm64
+      # Fargate/nodes (confirmed against backend-deploy.yml's image_platforms and
+      # gitops/values/rova). qnsc-kb is the one that must pass linux/amd64 until
+      # §4c splits clamav out — clamav/clamav publishes no arm64 tag. Do not copy
+      # this value to that product.
+      platforms: linux/arm64
+    secrets:
+      # ── The AWS role the build/attest job assumes via OIDC ───────────────────
+      # The reusable takes the role ARN directly (it does not derive it). The
+      # build job only needs ECR push + attestation, which is exactly the scope
+      # of rova's EXISTING ECS ECR-push role — the ECS reusable assumes
+      # `arn:aws:iam::<acct>:role/rova-github-ecr-push` for the same build step
+      # (ci/.github/workflows/backend-deploy.yml). So the k8s build path REUSES
+      # that role rather than needing a new one; only its OIDC trust policy must
+      # also allow this workflow's subject. AWS_ACCOUNT_ID is the same repo var
+      # backend-deploy.yml passes.
+      aws-role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rova-github-ecr-push
+      # ── gitops write token — DEV PATH ONLY (§10b) ────────────────────────────
+      # This bumps the dev tag in `gitops`. §10b: scope this token to the dev
+      # path only. A token that can also write prod.yaml makes the promotion
+      # review in k8s-promote.yml decorative, and the CI identity has no reason
+      # to hold one. This is a DIFFERENT credential from anything the ECS path
+      # uses — the ECS path never writes to `gitops` — so it must be created
+      # fresh (see the header note and the summary handed back).
+      gitops-token: ${{ secrets.GITOPS_DEV_TOKEN }}

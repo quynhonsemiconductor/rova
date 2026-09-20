@@ -1,0 +1,90 @@
+# =============================================================================
+# Backend · K8s Promote — thin caller of the shared reusable (ci) k8s-promote.
+#
+# The Kubernetes PROD delivery trigger for rova (§11). Promotion is a SEPARATE
+# ACT from the build, so it is a SEPARATE WORKFLOW, not a job in k8s-deploy.yml.
+# §11 records the original bug: the promote job was once gated on
+# `workflow_dispatch` inside a `workflow_call`, where it can never fire; the fix
+# was making promotion its own workflow. This file keeps it that way.
+#
+# Nothing is compiled here. The image already exists and has soaked in dev; the
+# reusable adds a `v<version>` tag to the EXACT bytes running in dev and opens a
+# review PR in `gitops` pointing prod at that tag (§11 — the reviewable
+# `v1.3.0 → v1.4.0` diff is the whole point of a second tag existing).
+#
+# ── RUNS ALONGSIDE the ECS prod path (§17b) ───────────────────────────────────
+# During the migration this fires on the SAME semver tag that backend-deploy.yml
+# uses for its ECS prod deploy, so both platforms promote the same release.
+# Nothing is deleted from ECS until Phase 5. Migrations remain the ECS path's
+# job until then; on Kubernetes the migrator runs as an ArgoCD PreSync hook when
+# the promotion PR merges, so this workflow never runs a migration either.
+# =============================================================================
+name: Backend · K8s Promote
+
+on:
+  push:
+    # Semver only — no -rc suffix. Same tag shape backend-deploy.yml promotes on,
+    # so one release tag drives both platforms during the migration (§17b).
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+concurrency:
+  # Serialize prod promotions for this product; the reusable sets the same group
+  # so a promotion can never race itself on the gitops prod file.
+  group: k8s-promote-backend-rova
+  cancel-in-progress: false   # never cancel a running promotion
+
+jobs:
+  # Resolve the sha-<commit> tag that the dev deploy pushed for the commit this
+  # release tag points at. §11: promotion moves the EXACT bytes that soaked in
+  # dev, so `source-tag` must be that image's identity tag, computed the same way
+  # k8s-deploy's build job computes it (`sha-${GITHUB_SHA::12}`), not a fresh
+  # build. GITHUB_SHA on a tag push is the commit the tag points at.
+  resolve:
+    name: Resolve dev image tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      source-tag: ${{ steps.tag.outputs.source-tag }}
+    steps:
+      - name: Compute the source (dev) tag
+        id: tag
+        run: |
+          # Identical construction to ci k8s-deploy's "Compute the tag" step, so
+          # the tag resolved here is exactly what dev deployed for this commit.
+          echo "source-tag=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+  promote:
+    needs: [resolve]
+    # Must match the UNION of the reusable's inner job permissions. The reusable's
+    # promote job uses AWS OIDC (id-token) to re-tag the ECR image and pulls the
+    # private @quynhonsemiconductor/* bump action (packages:read). The `production`
+    # environment reviewer gate lives INSIDE the reusable (§10b, §11), so it is not
+    # re-declared here.
+    permissions:
+      contents: read
+      id-token: write
+      packages: read
+    uses: quynhonsemiconductor/ci/.github/workflows/k8s-promote.yml@v1
+    with:
+      product: rova
+      # Same service list as k8s-deploy.yml / gitops base.yaml — the promote
+      # re-tags one image per service.
+      services: 'api worker migrator'
+      source-tag: ${{ needs.resolve.outputs.source-tag }}
+      # The release tag becomes the prod `v<version>` tag verbatim (§11). On a
+      # tag push github.ref_name is the tag, e.g. v1.4.0.
+      version: ${{ github.ref_name }}
+    secrets:
+      # ── Same ECR role as the dev build path ──────────────────────────────────
+      # The reusable's promote step only does ECR batch-get-image / put-image, so
+      # rova's existing ECR-push role covers it — no new role for promotion.
+      aws-role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rova-github-ecr-push
+      # ── gitops token — opens the prod PR, does NOT merge it (§10b) ────────────
+      # Unlike the dev token, this one writes the prod path, but only far enough
+      # to OPEN a branch and a PR; the review is the control (§10b), so it must
+      # NOT have merge rights. It is a distinct credential from the dev bump
+      # token in k8s-deploy.yml precisely so the dev CI identity can never touch
+      # prod.yaml. A human must create it (see the summary handed back).
+      gitops-token: ${{ secrets.GITOPS_PROMOTE_TOKEN }}
