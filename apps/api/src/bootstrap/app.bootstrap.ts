@@ -1,3 +1,4 @@
+import { RequestMethod } from '@nestjs/common';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
@@ -117,7 +118,22 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // URI versioning: /v1/... (health probes are served at /v1/healthz and
   // /v1/readyz to match the ALB target-group health check, the Docker
   // HEALTHCHECK, and the post-deploy smoke test).
-  app.setGlobalPrefix('v1');
+  //
+  // `/livez` IS EXCLUDED, and it is the one route that must be. The Kubernetes
+  // chart hardcodes the liveness path (§9j — it is not a per-service value), and
+  // `gitops/platform/policy/admission.yaml` DENIES any Deployment whose liveness
+  // path is not exactly `/livez`. A prefixed `/v1/livez` is not a lesser option,
+  // it is a rejected manifest — and without the route the probe 404s, the kubelet
+  // restarts the container, and the pod sits in CrashLoopBackOff forever.
+  //
+  // Found 2026-09-19 in the pre-apply audit, before anything was applied. The ECS
+  // path never surfaced it because nothing on ECS asks for `/livez`.
+  //
+  // Readiness needs no exclusion: `readinessPath` IS a per-service chart value,
+  // and `gitops/values/rova/base.yaml` sets it to `/v1/readyz`.
+  app.setGlobalPrefix('v1', {
+    exclude: [{ path: 'livez', method: RequestMethod.GET }],
+  });
 
   // OpenAPI — opt-in per environment via SWAGGER_ENABLED (default off)
   if (swaggerEnabled) {

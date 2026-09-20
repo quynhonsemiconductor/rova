@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators';
 import { SkipRateLimit } from '../rate-limit/rate-limit.decorator';
 import { InjectDrizzle } from '../database/drizzle.provider';
@@ -43,6 +43,51 @@ export class HealthController {
       // SSO is available when an Entra app is configured.
       ssoEnabled: Boolean(this.config.get('ENTRA_TENANT_ID') && this.config.get('ENTRA_CLIENT_ID')),
     };
+  }
+
+  /**
+   * Liveness probe for Kubernetes — is the process alive?
+   *
+   * SERVED AT `/livez`, NOT `/v1/livez`, and the exclusion that makes that true
+   * lives in `apps/api/src/bootstrap/app.bootstrap.ts`. Two reasons it has to be
+   * unprefixed, neither of them cosmetic:
+   *
+   *   1. `gitops/charts/qnsc-service` hardcodes the liveness path and does NOT
+   *      expose it as a per-service value — deliberately, per §9j.
+   *   2. `gitops/platform/policy/admission.yaml` is a ValidatingAdmissionPolicy
+   *      that DENIES any Deployment whose liveness path is not exactly `/livez`.
+   *      A prefixed path is not a worse option here; it is a rejected manifest.
+   *
+   * WHY IT DUPLICATES `healthz` RATHER THAN REPLACING IT. `/v1/healthz` is load
+   * bearing on the ECS path — the ALB target group, the Dockerfile HEALTHCHECK
+   * and the post-deploy smoke test all point at it — and §17b runs both platforms
+   * at once. Removing it would break ECS while Kubernetes is still soaking.
+   * They collapse into one when the ECS path goes, at Phase 5.
+   *
+   * ⚠ IT MUST NEVER TOUCH A DEPENDENCY. §9j: "if liveness checks the database and
+   * the database slows down, Kubernetes kills every replica of every service at
+   * once, and a slowdown becomes an outage." That is what `readyz` is for — it
+   * checks Postgres and the cache, and a failing readiness probe removes one pod
+   * from its Service instead of restarting all of them.
+   */
+  // EXCLUDED FROM THE OPENAPI DOCUMENT. `/livez` is a contract with the kubelet,
+  // not with API consumers: nothing generates a client for it and nothing calls it
+  // from a browser. Leaving it in the schema also broke CI — both this repo and
+  // rova diff the committed generated web client against the captured spec, so a
+  // new path there is a failing build until someone regenerates a client for a
+  // route no client will ever use. `/metrics` in qnsc-kb is excluded for the same
+  // reason.
+  @ApiExcludeEndpoint()
+  @Get('livez')
+  @Public()
+  @SkipRateLimit()
+  @ApiOperation({ summary: 'Kubernetes liveness probe — process only, no dependencies' })
+  @ApiResponse({
+    status: 200,
+    schema: { properties: { status: { type: 'string', example: 'ok' } } },
+  })
+  livez() {
+    return { status: 'ok' };
   }
 
   /** Liveness probe — is the process alive? */
