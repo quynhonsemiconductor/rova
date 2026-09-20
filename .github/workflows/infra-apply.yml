@@ -187,17 +187,17 @@ jobs:
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_grafana_alerting_auth: ${{ secrets.GRAFANA_ALERTS_TOKEN }}
 
-      # Mint a short-lived installation token from the RELEASE_BOT GitHub App
+      # Mint a short-lived installation token from the qnsc-automation GitHub App
       # (same app release.yml uses) so we never need a long-lived user PAT.
       # Requires the app to have "Variables: read and write" on this repo.
       # Falls back to no token (publish step skipped) when the app isn't set.
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3
         id: app-token
-        if: ${{ vars.RELEASE_BOT_APP_ID != '' }}
+        if: ${{ vars.QNSC_AUTOMATION_APP_ID != '' }}
         continue-on-error: true
         with:
-          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          app-id: ${{ vars.QNSC_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.QNSC_AUTOMATION_PRIVATE_KEY }}
 
       # Sync the infra IDs the deploy workflows read (backend-deploy.yml)
       # straight from Terraform outputs, so a rebuild that changes subnet/SG
@@ -292,17 +292,17 @@ jobs:
           # (e.g. v1.4.2), so an infra apply never resets the task def to :latest.
           TF_VAR_image_tag:            ${{ github.ref_name }}
 
-      # Mint a short-lived installation token from the RELEASE_BOT GitHub App so
+      # Mint a short-lived installation token from the qnsc-automation GitHub App so
       # we never need a long-lived user PAT. Requires the app to have
       # "Variables: read and write" on this repo. Falls back to no token
       # (publish step skipped) when the app isn't configured.
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3
         id: app-token
-        if: ${{ vars.RELEASE_BOT_APP_ID != '' }}
+        if: ${{ vars.QNSC_AUTOMATION_APP_ID != '' }}
         continue-on-error: true
         with:
-          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          app-id: ${{ vars.QNSC_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.QNSC_AUTOMATION_PRIVATE_KEY }}
 
       # Sync the infra IDs the deploy workflows read (backend-deploy.yml) straight
       # from Terraform outputs into the production environment, so a rebuild that
