@@ -45,21 +45,35 @@ data "terraform_remote_state" "platform" {
 
 # ── ECR Repositories ──────────────────────────────────────────────────────────
 module "ecr" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecr?ref=ecr-v2.0.0"
-
-  # ecr-v2.0.0 splits the keep-count lifecycle rule by tag prefix. The single rule it
-  # replaces was provably dead: `tagPrefixList` is AND, not OR, so one rule listing
-  # ["sha-", "v"] only ever selected images carrying BOTH prefixes — the handful of
-  # promoted releases — and never fired. Verified live: 105 `sha-` images sat under a
-  # policy claiming to keep 30, so tagged history grew without bound.
+  # ecr-v2.1.0 (task 0.7, §13): the RELEASE keep rule is now TIME-based
+  # (`release_retention_days`) instead of count-based (`keep_release_count`). A count is
+  # a duration only if the promotion rate is known, and GitOps raises that rate, so a
+  # count silently shortens the rollback window exactly as deploys get healthier. The
+  # tag EXISTS (release-please cut it), so this bump plans and validates today — no
+  # ordering dependency on an unmerged tf-modules PR.
   #
-  # Defaults are keep 30 releases (v*) and keep 20 builds (sha-*). Previewed against the
-  # live repositories before bumping: 180/178/173 images expire, of which ~90 each are
-  # untagged and already expirable under the old policy, and ZERO carry a release tag or
-  # `latest`. Re-run `aws ecr start-lifecycle-policy-preview` before changing these
-  # counts — it is a dry run and it is the only way to see what a policy will delete.
-  repository_names     = ["rova-api", "rova-worker", "rova-migrator"]
-  image_tag_mutability = "MUTABLE" # allows re-tagging :latest
+  # v2.0.0 already split the keep rule by tag prefix (the combined ["sha-","v"] rule was
+  # dead: `tagPrefixList` is AND, so it only matched images carrying BOTH prefixes).
+  # Verified live under v2.0.0: 105 `sha-` images sat under a policy claiming to keep 30.
+  #
+  # Defaults now: RELEASE images (v*) expire after release_retention_days = 180; keep 20
+  # builds (sha-*); untagged expire after 1 day. BEFORE APPLYING to the live repositories,
+  # run the estate preview (infra/scripts/ecr_lifecycle_preview.py — task 0.7) and attach
+  # its output to the PR: a time rule can delete what a count rule was keeping, and the
+  # direction depends on the current promotion rate. Do NOT lower the number to match what
+  # a count rule happened to keep; raise it if the preview expires a release you would
+  # still roll back to.
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecr?ref=ecr-v2.1.0"
+
+  repository_names = ["rova-api", "rova-worker", "rova-migrator"]
+
+  # IMMUTABLE (task 0.8, §11): a pinned version that can be rewritten underneath a running
+  # workload is not pinned. Safe to flip here only because the CI `:latest` push was
+  # removed FIRST (ci/.github/workflows/backend-deploy.yml — 0.8 step a); IMMUTABLE rejects
+  # a second push of an existing tag, so flipping before that removal breaks the pipeline.
+  # rova's deploy uses `cache_backend: gha`, so no `:buildcache` overwrite depends on
+  # mutability either.
+  image_tag_mutability = "IMMUTABLE"
   kms_key_arn          = data.terraform_remote_state.platform.outputs.kms_key_arn
   tags                 = { Layer = "shared" }
 }
