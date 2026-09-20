@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators';
 import { SkipRateLimit } from '../rate-limit/rate-limit.decorator';
 import { InjectDrizzle } from '../database/drizzle.provider';
@@ -70,6 +70,14 @@ export class HealthController {
    * checks Postgres and the cache, and a failing readiness probe removes one pod
    * from its Service instead of restarting all of them.
    */
+  // EXCLUDED FROM THE OPENAPI DOCUMENT. `/livez` is a contract with the kubelet,
+  // not with API consumers: nothing generates a client for it and nothing calls it
+  // from a browser. Leaving it in the schema also broke CI — both this repo and
+  // rova diff the committed generated web client against the captured spec, so a
+  // new path there is a failing build until someone regenerates a client for a
+  // route no client will ever use. `/metrics` in qnsc-kb is excluded for the same
+  // reason.
+  @ApiExcludeEndpoint()
   @Get('livez')
   @Public()
   @SkipRateLimit()
