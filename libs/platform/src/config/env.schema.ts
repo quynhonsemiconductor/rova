@@ -25,6 +25,17 @@ export const EnvSchema = z
     // (deployed). See db/database-url.ts for why the deployed path composes from
     // parts rather than storing a URL: the password belongs to the RDS-managed
     // secret that AWS rotates, and any copy of it goes stale silently.
+    /**
+     * Which credential mechanism the database connection uses.
+     *
+     * `password` (default) keeps the ECS estate's behaviour exactly: a URL, or the
+     * discrete parts including DATABASE_PASSWORD.
+     *
+     * `iam` is the Kubernetes estate. The product roles are members of `rds_iam` and
+     * have NO password, so there is nothing to put in DATABASE_PASSWORD and a
+     * password-mode connection cannot succeed against them. See db/pg-iam.ts.
+     */
+    DATABASE_AUTH: z.enum(['password', 'iam']).default('password'),
     DATABASE_URL: z.string().url().optional(),
     DATABASE_HOST: z.string().optional(),
     DATABASE_PORT: z.coerce.number().int().positive().optional(),
@@ -337,17 +348,23 @@ export const EnvSchema = z
      * pairing below never ran for any deploy that used a database URL, which is every deploy we
      * have. A refinement block that grows more rules cannot early-return.
      */
-    const missing = env.DATABASE_URL
-      ? []
-      : (
-          [
+    // Under IAM auth the credential is minted per connection, so DATABASE_PASSWORD is
+    // not merely optional — supplying one is meaningless, because an `rds_iam` role
+    // has no password for it to match. Requiring it here was what made the deployed
+    // IAM path unreachable.
+    const credentialKeys =
+      env.DATABASE_AUTH === 'iam'
+        ? (['DATABASE_HOST', 'DATABASE_PORT', 'DATABASE_NAME', 'DATABASE_USER'] as const)
+        : ([
             'DATABASE_HOST',
             'DATABASE_PORT',
             'DATABASE_NAME',
             'DATABASE_USER',
             'DATABASE_PASSWORD',
-          ] as const
-        ).filter((k) => !env[k]);
+          ] as const);
+
+    const missing =
+      env.DATABASE_URL && env.DATABASE_AUTH !== 'iam' ? [] : credentialKeys.filter((k) => !env[k]);
 
     // Half a credential pair is a misconfiguration, not a partial feature: an id
     // without a secret silently falls back to the private-bucket credential, which is
@@ -369,8 +386,12 @@ export const EnvSchema = z
         code: z.ZodIssueCode.custom,
         path: ['DATABASE_URL'],
         message:
-          `Database not configured. Set DATABASE_URL, or all of DATABASE_HOST, DATABASE_PORT, ` +
-          `DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD. Missing: ${missing.join(', ')}.`,
+          env.DATABASE_AUTH === 'iam'
+            ? `Database not configured for IAM auth. Set all of DATABASE_HOST, DATABASE_PORT, ` +
+              `DATABASE_NAME, DATABASE_USER. DATABASE_PASSWORD is not used — the role is a member ` +
+              `of rds_iam and has no password. Missing: ${missing.join(', ')}.`
+            : `Database not configured. Set DATABASE_URL, or all of DATABASE_HOST, DATABASE_PORT, ` +
+              `DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD. Missing: ${missing.join(', ')}.`,
       });
     }
 

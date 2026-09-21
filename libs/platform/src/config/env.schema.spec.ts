@@ -199,3 +199,56 @@ describe('EnvSchema — refinements are not disabled by an early return', () => 
     expect(result.error.issues.some((i) => i.message.includes('DATABASE_HOST'))).toBe(true);
   });
 });
+
+describe('EnvSchema — DATABASE_AUTH', () => {
+  /**
+   * These four tests guard the change that made the Kubernetes estate reachable at
+   * all. The product roles are members of `rds_iam` and have NO password, so a schema
+   * that requires DATABASE_PASSWORD rejects the only configuration that can work.
+   */
+  const iamParts = {
+    DATABASE_HOST: 'qnsc-shared-dev.cdu0osqeojxv.ap-southeast-1.rds.amazonaws.com',
+    DATABASE_PORT: '5432',
+    DATABASE_NAME: 'rova',
+    DATABASE_USER: 'rova',
+  };
+
+  it('defaults to password, so the ECS estate is untouched by this change', () => {
+    const result = EnvSchema.safeParse(env());
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.DATABASE_AUTH).toBe('password');
+  });
+
+  /** IAM mode forbids DATABASE_URL, so build the bag without it. */
+  function iamEnv(overrides: Record<string, string | undefined> = {}) {
+    const bag: Record<string, string | undefined> = {
+      ...env(),
+      ...iamParts,
+      DATABASE_AUTH: 'iam',
+      ...overrides,
+    };
+    delete bag.DATABASE_URL;
+    return bag;
+  }
+
+  it('accepts the discrete parts with NO password when auth is iam', () => {
+    expect(EnvSchema.safeParse(iamEnv()).success).toBe(true);
+  });
+
+  it('still reports a genuinely missing part under iam', () => {
+    const result = EnvSchema.safeParse(iamEnv({ DATABASE_HOST: undefined }));
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const message = result.error.issues.map((i) => i.message).join(' ');
+      expect(message).toContain('DATABASE_HOST');
+      // The password must NOT be named as a requirement under IAM — that message is
+      // what would send someone looking for a credential that cannot exist.
+      expect(message).toContain('DATABASE_PASSWORD is not used');
+    }
+  });
+
+  it('rejects an auth mode that is neither password nor iam', () => {
+    expect(EnvSchema.safeParse(env({ DATABASE_AUTH: 'rdsproxy' })).success).toBe(false);
+  });
+});
