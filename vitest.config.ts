@@ -80,6 +80,8 @@ export default defineConfig({
       // three files while 27 had specs.
       include: [
         'db/database-url.ts',
+        'db/pg-iam.ts',
+        'db/pg-pool-config.ts',
         'libs/shared-kernel/src/health.ts',
         'libs/modules/portfolio/src/domain/portfolio-rollup.ts',
         'libs/modules/portfolio/src/application/portfolio-items.service.ts',
