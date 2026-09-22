@@ -2414,6 +2414,51 @@ record ran it twice, since each run rewrites the duration cache that decides the
 **Worth knowing: CI was green on this branch both before and after the offending commit**, because its
 file order did not happen to collide. A single CI run cannot see an order-dependent leak.
 
+#### SU-10 review follow-up, ROUND 2 — `qnsc-code-review` on PR #638, two `high` findings, fixed 2026-09-22
+
+The second review pass found **two real defects** in the code the first pass had only asked me to
+document better. Both are in `departedTaskRows`' reads, both were invisible to every test and ratchet
+in the repo, and **each is now pinned by an e2e that was verified to FAIL with its fix reverted** —
+which is the only form of evidence worth having for a predicate, because a predicate that is missing
+looks exactly like one that is unnecessary.
+
+1. **Cross-workspace scoping gap in `splitBound`** (`security`, high). The subquery constrained
+   `story_split_items.workspace_id` and **not** `story_splits.workspace_id`, while `split_id` is a
+   plain FK with no composite workspace constraint — so the item row's predicate said nothing about
+   which workspace the SPLIT belonged to. It selects FROM the split (`team_id`, `split_at`, both
+   iteration columns), and those flow into `resolvedTeam`, `teamName` and `teamMatches`.
+   `findSplits` already filtered that column, so this was the file's **one outlier**.
+   **`workspace-scope.ratchet.spec.ts` cannot see this class at all**, and says so in its own
+   docblock — *"Only the driver table matters: it owns the WHERE clause… Joined tables ride along on
+   it."* That is a **standing blind spot worth a future ratchet dimension**, not a gap in this fix:
+   every joined workspace-bearing table in every repository is currently unchecked.
+   Measured with the predicate removed: the source Iteration reported **1h and a `Team Alpha` bucket**
+   that belonged to a `story_splits` row in a different workspace.
+2. **Three-valued logic dropped the row the population exists to keep** (`bug`, high). The departed
+   set negates `(task.iteration_id in (…) or parent.iteration_id in (…))` and **both columns are
+   nullable**. Move a `[Continued]` Story to the **backlog** — an ordinary act, and
+   `iterations.on delete set null` reaches the same state — and `trg_cascade_iteration_to_tasks` takes
+   the Task's iteration with it: `NULL or NULL` is UNKNOWN, `NOT UNKNOWN` is UNKNOWN, and the `WHERE`
+   drops the row. The resident query excludes it too (NULL is not `in` anything), so the source
+   Iteration's retained Actual was admitted by **neither** population and simply disappeared — the
+   exact hours AC4 and SRS §10.5 exist to preserve. `not coalesce(…, false)` makes UNKNOWN mean "not
+   resident". Measured with the fix reverted: the source read **0h where it must read 2h**.
+   **Note what this says about 10.4's "disjoint by construction" argument:** the two sets were
+   disjoint, but their union was not the whole population — a third state existed that neither
+   admitted, and no amount of reasoning about overlap would have found it.
+
+The cross-workspace pair is **built by hand** (`story_splits.workspace_id` takes no FK, so the alien
+workspace id needs no workspace row; the crafted rows are removed in a `finally`). No product path
+creates such a pair — `splitWorkItem` writes both rows in one transaction with one workspace — and
+that is precisely the argument FOR the test: nothing else in the suite would notice the predicate
+being dropped again, and a single-workspace database makes the broken query look perfectly correct.
+
+Round-2 gate: `pnpm typecheck` / `pnpm lint` exit 0, `pnpm test` **93 files / 2251 tests** (my changes
+are not unit-covered; one of three local runs reported a single failure I did not capture the name of,
+and the two runs either side were green — nothing here touches unit-tested code),
+`phase6-reports.e2e.spec.ts` **27 → 29**, and `pnpm test:e2e` **74 files / 679 passed + 1 skipped,
+green twice in a row** (638s, 764s).
+
 
 ---
 
