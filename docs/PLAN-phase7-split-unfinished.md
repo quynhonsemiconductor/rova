@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |---|---|
-| Status | **SU-01 through SU-06 MERGED (#615, #619, #621, #623); SU-07 + SU-08 implemented as ONE PR (#624), rebased onto `main` after #623 landed, full local gate re-run there and green (Playwright included).** SU-09 and SU-10 not started. All Q rulings resolved 2026-09-16; the gate and Q16 were amended 2026-09-17, Q15 + Q16 again on 2026-09-18. **SU-06's e2e found a real concurrency defect that D9 alone did not close - read the SU-06 gate record before touching the write path.** **SU-08's `split_id is null` predicate is the feature's one genuine report behaviour change and it landed at THREE call sites, not one - read 8.1 before adding a fourth.** |
+| Status | **SU-01 through SU-08 MERGED (#615, #619, #621, #623, #624). SU-09 + SU-10 IMPLEMENTED 2026-09-21, full local gate green (Playwright included) — NOT yet merged, so their §6 PR rows stay unticked.** All Q rulings resolved 2026-09-16; the gate and Q16 were amended 2026-09-17, Q15 + Q16 again on 2026-09-18. **SU-06's e2e found a real concurrency defect that D9 alone did not close - read the SU-06 gate record before touching the write path.** **SU-08's `split_id is null` predicate is the feature's one genuine report behaviour change and it landed at THREE call sites, not one - read 8.1 before adding a fourth.** **SU-10 deliberately BREAKS the Team Status ↔ Team Capacity hour equality for a split Iteration, and plan 10.4's `LEFT JOIN` cannot satisfy AC4 - read 10.4 and 10.7 before touching `getScopedTaskHours`.** |
 | Author | Solution Architect (with BA `FEATURE.md` / `SRS.md` / `USER_STORIES.md` + approved mockup) |
 | Created | 2026-09-14 |
 | Feature code | `SU` |
@@ -55,6 +55,12 @@ Broadcom Rally / from the mockup goes in `CLAUDE.md`, exactly as Phase 7 Test Ca
    Phase 6 rule that `accepted` + `accepted_date` means delivered (`velocity.ts` `classify`).
 5. **Bulk Split, splitting a Defect/Task/Test Case, and automatic Carryover are refused**
    (SRS §16). Do not add them on sight.
+6. **`Track > Team Status` and the Team Capacity report no longer report the same Actual hours for an
+   Iteration a Split moved work out of** (SU-10, §8 Q1). Team Status reads CURRENT assignment; Team
+   Capacity attributes Actual per Iteration from the Split Event snapshot, so the source keeps the hours
+   it earned and the target counts only the delta. Same table and same scoped-task rule on both
+   surfaces — what the report now has is a historical dimension the screen does not. Estimate and To Do
+   still agree exactly. Pinned by `team-status-agreement.e2e.spec.ts`; see §6 PR 10.7.
 
 ---
 
@@ -2118,7 +2124,7 @@ own `test:` PR, the same class as SU-01's two Windows `grep` failures, and **not
 **The hardest story, and the only one with no existing mechanism.** Do not start it until §8 Q1 is
 ruled.
 
-- [ ] **10.1** The problem, stated plainly. `tasks.actual_hours` is a **single manual scalar with no
+- [x] **10.1** The problem, stated plainly. `tasks.actual_hours` is a **single manual scalar with no
       temporal dimension** — `0052_task_actual_hours_manual.sql` dropped the `time_logs`→
       `actual_hours` trigger, and Team Capacity sums that scalar live (`getScopedTaskHours` →
       `rollUpTeamCapacity`). So the moment a Task follows `[Continued]` to the target Iteration, its
@@ -2126,36 +2132,215 @@ ruled.
       arrives whole in the target (breaking AC5). `time_logs` still exists
       (`db/schema/work.ts:990`) but is per-**work item** and per-**date**, is not wired into any
       report, and does not feed `actual_hours` — it cannot be the source of truth here.
-- [ ] **10.2** The planned arithmetic, from the Split Event snapshot: for a Task that has a
+      **CONFIRMED against the live database, and the first clause is SHARPER than the plan states.**
+      "It vanishes from the source" is not a rounding problem, it is a SCOPE problem: a re-parented
+      Task is no longer selected for the source Iteration at all, because the scoping predicate is
+      `task.iteration_id ∈ I or parent.iteration_id ∈ I` and the trigger moved both. See 10.4 — this is
+      why a `LEFT JOIN` alone cannot satisfy AC4.
+- [x] **10.2** The planned arithmetic, from the Split Event snapshot: for a Task that has a
       `story_split_items` row with `split_side = 'continued'`,
       `sourceActual = actual_hours_at_split` and
       `targetActual = max(0, tasks.actual_hours − actual_hours_at_split)`.
       A Task on the `unfinished` side, and a Task with no Split row, keep today's behaviour.
       `max(0, …)` is deliberate: `actual_hours` is **manually editable**, so a post-Split correction
       downwards would otherwise produce a negative contribution — §8 Q1a.
-- [ ] **10.3** Repeated splits. A Task carried across three Iterations has **three**
+      **DONE 2026-09-21, as ONE pure function in the domain:** `attributeActualHours(window)` in
+      `team-capacity.ts`, over a new `TaskActualWindow { actualHours, actualAtArrival,
+      actualAtDeparture }`, returning `max(0, (departure ?? actual) − (arrival ?? 0))`.
+      Expressed as a WINDOW rather than as the two-case `source`/`target` split the box describes,
+      because the two cases are the same subtraction with one bound absent — and the three-Iteration
+      case (10.3) is then the same expression again rather than a third branch.
+      **`split_side = 'continued'` is the whole of "only a MOVE shifts hours", so the `unfinished` case
+      needs no branch anywhere**: a Task listed on that side never left, so the SQL below finds no bound
+      for it and it reaches this function with both bounds null. Asserted as its own test regardless,
+      because "the placeholder's Tasks keep today's behaviour" is a RULE and it holding by construction
+      is the part worth pinning.
+      The clamp is tested in both directions in the same case (source keeps `3`, target contributes `0`
+      when a `3` is corrected to `2`), and the docblock records **why** it is not defensiveness: an
+      unclamped `−1` would subtract an hour from a DIFFERENT member's row inside the same team total.
+      §8 Q1c's known limitation is recorded on the function, as the ruling requires.
+- [x] **10.3** Repeated splits. A Task carried across three Iterations has **three**
       `story_split_items` rows. The attribution for Iteration *I* must use the **latest** Split whose
       `target_iteration_id` is *I* for the lower bound, and the **earliest** Split whose
       `source_iteration_id` is *I* for the upper bound. Implement it as an explicit windowing
       function over the Task's split rows — **not** as "the most recent row", which silently gives
       the wrong answer from the third Iteration on. §8 Q1b.
-- [ ] **10.4** Where it lives. `getScopedTaskHours` gains a `LEFT JOIN story_split_items` (on the
+      **DONE, in SQL, as one private `splitBound(workspaceId, iterationIds, bound, column)`** —
+      a correlated scalar subquery over `story_split_items ⋈ story_splits`, restricted to
+      `split_side = 'continued'`, `ORDER BY split_at, id` in the direction the bound needs, `LIMIT 1`.
+      `arrival` orders DESC (latest in), `departure` ASC (earliest out) — exactly the box's rule.
+      ONE method for both directions and both selected columns, on the same reasoning as SU-08's
+      `findSplits`: the join, the workspace predicate, the `continued` restriction and the `limit` are
+      common, and two copies is how one of them comes to be missing a predicate. The `id` tiebreaker
+      keeps the `query-ordering` ratchet at **0** and makes two Splits in the same instant resolve
+      deterministically. Runs on the partial `ix_ssi_task` index §2.2 flagged as load-bearing.
+      **Proved against a real database, not only in the unit spec** (see 10.7): snapshots 3 then 7 with
+      the Task now at 10 hours give `[3, 4, 3]` across the three Iterations, summing to 10.
+- [x] **10.4** Where it lives. `getScopedTaskHours` gains a `LEFT JOIN story_split_items` (on the
       `ix_ssi_task` partial index) and returns `actualHours` **already attributed** for the requested
       Iteration, so `rollUpTeamCapacity` and its member/`Unassigned`/`No Team` grouping stay
       untouched (AC7). Do **not** push the arithmetic into the domain roll-up — it needs the
       Iteration id, which the roll-up does not have.
-- [ ] **10.5** AC6: Task Detail keeps showing the **full** accumulated Actual. That is a different
+      **DONE — and ⚠ THE PLANNED MECHANISM IS INSUFFICIENT. READ THIS BEFORE TOUCHING THE QUERY.**
+      **A `LEFT JOIN` cannot satisfy AC4, because the row it would join to is not in the result set at
+      all.** The scoping predicate is `task.iteration_id ∈ I or parent.iteration_id ∈ I`; after a Split
+      the Task's parent is the `[Continued]` Story in the TARGET and `trg_task_iteration_from_parent`
+      has moved the Task's own `iteration_id` with it. So for the SOURCE Iteration the Task is simply
+      absent, and no join onto an absent row can make it contribute the hours AC4 says the source
+      keeps. A `LEFT JOIN` gets AC5 (the target's delta) and silently drops AC4.
+      `getScopedTaskHours` is therefore **two populations, concatenated**:
+      `residentTaskRows` (assigned to these iterations now — the whole of the report before Phase 7,
+      with the attribution applied so a Task carried IN counts only post-arrival hours) **+**
+      `departedTaskRows` (carried OUT by a Split, contributing the retained Actual only).
+      Three things about the departed half:
+      • **`estimateHours` and `todoHours` are `0`**, which is the rule and not a shortcut: Estimate and
+        To Do FOLLOW the Task (BR-27 via D3/D4), which is the same fact SU-08's e2e reads from the other
+        side as the source burndown's remaining To Do dropping to `0` on the Split date. Only the Actual
+        is historical.
+      • **Membership is `actualAtDeparture IS NOT NULL`** — the bound subquery IS the predicate, so
+        there is no second `exists` clause to keep in step with the value beside it.
+      • **The team's third tier is `story_splits.team_id`**, not the iteration's: the Task's iteration is
+        now the target, so reading it here would file this Iteration's history under the team that
+        inherited the work. The same choice, for the same reason, as SU-08's markers.
+      The two sets are **disjoint by construction** (§8 Q3 makes a target start after the source ENDS,
+      so a source and a target can never be siblings of one fused timebox) and `departedTaskRows`
+      additionally excludes anything the resident predicate admits — via `residentInIterations(parent,
+      ids)`, extracted precisely because it is needed twice in opposite senses and two spellings of one
+      predicate, one of them negated, is how the sets come to overlap and double an hour.
+      `rollUpTeamCapacity` is **untouched** (AC7), and it still de-duplicates by task id behind all of
+      this, so a future rule that broke the disjointness would show up as one row winning rather than as
+      doubled hours.
+- [x] **10.5** AC6: Task Detail keeps showing the **full** accumulated Actual. That is a different
       read path (`getTaskTotals`/`tasks` routes) and must **not** get the attribution join. Add a
       test that pins the difference, or a later refactor will "fix" the inconsistency.
-- [ ] **10.6** AC1/AC2/AC3 are **auto**: `member_capacity` is untouched by Split, and Estimate/To Do
+      **DONE, untouched, and pinned.** `getTaskTotals` has no change; the e2e asserts it reads **7**
+      for the same Task whose hours Team Capacity splits **2 + 5** across two Iterations, in the same
+      test, so the difference is asserted beside the pair rather than in a separate file. The port
+      docblock for `getScopedTaskHours` names `getTaskTotals` and says it must NOT do this, and why the
+      two answering differently is the design.
+- [x] **10.6** AC1/AC2/AC3 are **auto**: `member_capacity` is untouched by Split, and Estimate/To Do
       follow the Task via D3/D4. Assert them as regressions.
-- [ ] **10.7** Tests: `team-capacity.spec.ts` — the four Task shapes (unfinished-side, continued-side
+      **DONE.** A `member_capacity` row (40h) is inserted for the source Iteration before the Split and
+      `totals.capacityHours` is asserted **40 before and 40 after** (AC1/AC2). Estimate/To Do are
+      asserted moving whole with the Task: source `8/6 → 0/0`, target `0/0 → 8/6` (AC3). Inserted
+      directly because capacity is written on `Track > Team Status`, which is out of that suite's reach,
+      and because the number only has to exist for the regression to mean anything.
+- [x] **10.7** Tests: `team-capacity.spec.ts` — the four Task shapes (unfinished-side, continued-side
       with no new work, continued-side with new work, continued-side corrected downwards) and the
       three-Iteration case from 10.3. `test/e2e/phase6-reports.e2e.spec.ts` extended: split a Story,
       add Actual to a moved Task, assert source and target sum to the Task's total and neither
       double-counts. Cross-check `capacity-access-gate.spec.ts` still passes.
+      **DONE. `team-capacity.spec.ts` 14 → 21; `phase6-reports.e2e.spec.ts` gained 2 capacity cases
+      (21 → 25 with SU-09's).** All four shapes are there plus a fifth the box does not name (no split
+      row at all, which is the overwhelming majority of rows and must not change) and a sixth pinning
+      that a `0` DEPARTURE bound is a real measurement rather than an absent one — `0` and `null` agree
+      on the lower bound by accident and differ completely on the upper.
+      Each of shapes 3–5 asserts **both sides of the same Task**, so "the source keeps its snapshot" and
+      "the target gets the delta" are one claim rather than two hopeful ones.
+      E2E: source keeps **2** while the Task sits in the target; target opens at **0** (which is also
+      SU-08 AC8's opening value, now proved from the other end); five more hours logged gives
+      **2 + 5 = 7**, asserted as the sum AND as the Task's own total from `getTaskTotals`. The
+      three-Iteration e2e performs two real Splits through the service with `updateWorkItem` raising the
+      Actual between them, and asserts `[3, 4, 3]` summing to 10 — the middle Iteration being exactly
+      what "the most recent split row" gets wrong.
+      `capacity-access-gate.spec.ts` passes (whole backend suite green, 93 files / 2251 tests).
+      **⚠ AND ONE THING THE PLAN DID NOT ANTICIPATE AT ALL — a cross-surface invariant this story
+      BREAKS BY DESIGN.** `test/e2e/team-status-agreement.e2e.spec.ts` asserts that `Track > Team
+      Status` and the Team Capacity report report the SAME hours for an iteration. Once SU-10 attributes
+      Actual per Iteration, they cannot: Team Status reads CURRENT assignment, so a Task's hours leave
+      that screen the moment it is re-parented, while Capacity keeps what the Iteration earned. Measured,
+      in the full suite, as Capacity `19` against Team Status `16.5` for seeded Sprint 26.1 — the 2.5h
+      two other specs' Splits had carried out of it.
+      Resolved in three parts, none of which weakens a real claim:
+      (a) that spec's hour comparisons now run against **an iteration it owns**, so they no longer
+          depend on whether some other spec split a story out of Sprint 26.1 — the same treatment SU-01
+          applied to the preview specs, and it needed the §7 note about unique windows too (a fused
+          timebox would make the two surfaces disagree for an unrelated reason, since Capacity fuses a
+          timebox group and Team Status does not);
+      (b) a **new test pins the divergence explicitly** — Estimate and To Do still agree, Actual differs
+          by exactly the moved Task's snapshot — so it can never regress into a silent difference;
+      (c) the SRS sentence behind the old invariant ("Capacity must use the same source/table/API domain
+          as Team Status") is still honoured: same table, same scoped-task rule. What SU-10 adds is a
+          HISTORICAL dimension only the report has. **This is a product-visible consequence of the §8 Q1
+          ruling and belongs in the SU-10 PR description.**
 
 **AC coverage:** AC1–AC3 (10.6), AC4/AC5 (10.2–10.4), AC6 (10.5), AC7 (10.4).
+
+#### SU-09 / SU-10 gate record — measured 2026-09-21, Windows dev machine, base `main`
+
+**Implemented in one working session, as two independently reviewable stories** — SU-09 touches
+`velocity.ts` + the Velocity chart, SU-10 touches `team-capacity.ts` + `getScopedTaskHours`, and they
+share no file except `reporting.drizzle-repository.ts` (different methods) and one e2e spec. §6.0's
+"full local gate" clause applies to both (report queries), so everything below was run locally,
+Playwright included.
+
+| §6.0 item | Result |
+|---|---|
+| `pnpm lint` (repo-scoped) | **exit 0** |
+| `pnpm --filter rova-web lint` | **exit 0** |
+| `pnpm typecheck` | **exit 0** |
+| `npx tsc -b --force` (repo root) | **exit 0** |
+| `pnpm build` (api + worker) | **exit 0** |
+| `pnpm build:web` (the SPA's real typecheck) | **exit 0** |
+| `pnpm test` | **93 files / 2251 tests, exit 0** — was 93/2236, **+15**, and **zero pre-existing failures** |
+| `pnpm --filter rova-web test` | **151 files / 1305 tests, exit 0** — was 151/1302, **+3** |
+| `pnpm test:cov` + `pnpm check:coverage-floors` | **exit 0**, `within 3 points`. Statements **87.05**, branches **80.74**, functions **85.67**, lines **87.92** — **all four ROSE** from SU-07/08's 87.03 / 80.70 / 85.65 / 87.90. No floor touched. |
+| `pnpm test:e2e` | **74 files / 675 passed, 1 skipped, exit 0** — was 670+1, **+5**. **Run TWICE, green both times** (see the ordering note below — that is the point of the second run) |
+| `pnpm db:seed:test` → Playwright | **48 passed / 1 failed / 1 skipped (14.6m)**; the one failure is `backlog.e2e.ts` and it passes **5/5 in isolation** — see below |
+| codegen | fresh API with `SWAGGER_ENABLED=true`, `/api/docs-json` **532,163 bytes** (SU-07/08: 530,255); client SHA-256 `A6CAEA37…` → `7425F275…`, **+3 lines**, re-run byte-identical |
+| `route-policy` / `route-audience` / `workspace-scope` (66) / `query-ordering` (0) / `e2e-fixtures` (81) / `coverage-include` | **all green, all unmoved** — **no new route**, so no audience entry; the two new private repository methods take the `workspaceId` their caller already has and the bound subquery filters on `story_split_items.workspace_id`; both new `ORDER BY`s end on the unique `story_splits.id`; **no `createProject`** (every new fixture lives in an existing project); `coverage-include` needed no edit (`velocity.ts` and `team-capacity.ts` are already listed) |
+| FE `fe-consistency` / `query-default` / `no-raw-hex` / `detail-copy-link` | **all green** — the amber is `BRAND.warning`, **zero raw hex**; no new `?? []`; `api.ts` untouched at **926** of 929 |
+
+**Codegen counts from the SERVED spec** (not from the source): `splitCarryover` 3, `splitStoryIds` 2,
+`VelocityResponseDto` 2.
+
+**THE MOST IMPORTANT THING IN THIS RECORD: SU-10 breaks a cross-surface invariant another spec
+encodes, and it does so BY DESIGN.** Full detail under 10.7(a)–(c). In short: `Track > Team Status`
+reads current assignment, Team Capacity now attributes Actual per Iteration, and for an Iteration a
+Split moved work out of they cannot agree — measured as Capacity `19` against Team Status `16.5`. The
+agreement spec's hour comparisons were whole-iteration equalities over the SEEDED Sprint 26.1, so the
+failure surfaced three files from its cause and looked like a double-count in the new arithmetic. The
+invariant is now scoped to work no Split has moved, and the divergence has its own test.
+
+**Two further things reality overrode, both recorded above in full.**
+
+1. **Plan 10.4's `LEFT JOIN` cannot satisfy AC4** (10.4). A re-parented Task is not in the source
+   Iteration's result set at all, so there is nothing to left-join onto. `getScopedTaskHours` is two
+   populations now. This is the single largest departure from the plan's text in either story.
+2. **`timeboxGroupId` is derived from `(project, startDate, endDate)`** (9.6), so two e2e iterations
+   sharing a window fuse into one bar and one capacity scope. Documented on the `namedIteration` helper.
+
+**A PRE-EXISTING SUITE DEFECT WAS FIXED HERE, because this PR's timing exposed it three times.**
+`accepted-date-backfill.e2e.spec.ts` mutated shared seeded state and never put it back: it inserts two
+`type = 'story'` rows into seeded NXP with `BF-*` item keys, and it forces the seeded `US-1` to
+`accepted`. Vitest orders spec FILES by cached duration, so adding tests anywhere moves that order —
+and across three full e2e runs this surfaced as **three different specs failing**, each with a
+confident, wrong-looking message: `parent-story-feed` (`BF-… is not a User Story` — a claim about the
+FEED, broken by a fixture three files away), `split-story-authz` (`eligible: false`, the correct answer
+to a question it did not mean to ask), and `test-case-routes`. All three pass in isolation. That spec
+now restores `US-1`'s three acceptance columns verbatim and deletes its own `BF-%` rows in `afterAll`,
+which is why `pnpm test:e2e` is green twice in a row rather than green once and differently red twice.
+Fixed rather than declared because it is the *cause* of a red gate on this PR, not a neighbouring
+annoyance — but it is worth its own note that the fix belongs to no Split story.
+
+**PRE-EXISTING failures, stated so no reviewer reads them as SU-09/SU-10 regressions. DO NOT fix here.**
+
+1. Playwright `backlog.e2e.ts > the Back arrow returns to the surface the item was opened from` —
+   times out in `selectProject` during login in the full run, passes **5/5 in isolation** including
+   that exact test. SU-01's gate record already characterises this spec as order/data-dependent on
+   both trees. `reports.e2e.ts` — the surface SU-09 actually changes — passes **2/2**.
+2. Playwright had to be run through a THROWAWAY config (`playwright.local.config.ts`, deleted after
+   the run) that adds the built API as a second `webServer`. The committed config starts Vite only and
+   assumes the API is already up; this session's shell could not hold a detached background process, so
+   the API was made Playwright's child instead. **No committed file changed for this** — recorded
+   because it is a useful trick, not a deviation.
+
+**One addition beyond the numbered boxes:** `apps/web/src/test/e2e/reports.e2e.ts` gained two
+assertions — the `Split / Carryover (excluded)` legend label is visible and it is also a column of the
+accessible table — which is §7's "extend `reports.e2e.ts` with the markers" for the Velocity half, and
+the only AC5 evidence taken on a rendered page rather than in jsdom. SU-08 left this open; the SPLIT
+OUT / CARRY IN half is still open, because those render only for a timebox a Split touched and the
+seeded fixture has none.
 
 ---
 

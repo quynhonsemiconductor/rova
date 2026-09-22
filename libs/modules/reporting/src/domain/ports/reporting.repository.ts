@@ -193,6 +193,17 @@ export interface IReportingRepository {
     iterationIds: string[],
     scope: TeamScope,
   ): Promise<CapacityRecord[]>;
+  /**
+   * Tasks in scope for the requested iterations, with their hours.
+   *
+   * `actualHours` comes back ALREADY ATTRIBUTED to those iterations (Phase 7 SU-10): a Task carried
+   * forward by a Split contributes only the hours logged while these iterations owned it. The
+   * arithmetic is `attributeActualHours`; the window that picks its two bounds needs the iteration
+   * ids, which is why it cannot live in `rollUpTeamCapacity`.
+   *
+   * `getTaskTotals` on the work-item side must NOT do this — Task Detail shows the full accumulated
+   * Actual (AC6), and the two answering differently is the point rather than an inconsistency.
+   */
   getScopedTaskHours(
     workspaceId: string,
     projectId: string,
