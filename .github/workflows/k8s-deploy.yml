@@ -93,6 +93,16 @@ jobs:
       # §4c splits clamav out — clamav/clamav publishes no arm64 tag. Do not copy
       # this value to that product.
       platforms: linux/arm64
+      # ── ONE IMAGE PER DOCKERFILE STAGE ────────────────────────────────────────
+      # The reusable passes `build-target: <service>`, which this Dockerfile REQUIRES:
+      # it has a stage per service (`api`, `worker`, `migrator`), and with no target
+      # Docker builds the LAST one. That shipped `rova-api` and `rova-worker` as
+      # byte-identical copies of the migrator, so every api pod ran migrate.js and died
+      # with "permission denied for database rova" — an error about grants that were
+      # correct, rather than about an image that was not.
+      #
+      # Nothing here needs setting. The note exists because the symptom points somewhere
+      # else entirely, and three repositories holding the same image looks healthy.
     secrets:
       # ── The AWS role the build/attest job assumes via OIDC ───────────────────
       # The reusable takes the role ARN directly (it does not derive it). The
