@@ -770,7 +770,14 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           sql`${departureActual} is not null`,
           // Anything the resident query already admits belongs to it, so the two sets cannot overlap
           // even if a future rule made a source and a target share a timebox.
-          sql`not ${residentInIterations(parent, iterationIds)}`,
+          //
+          // `coalesce(…, false)` because this runs under THREE-VALUED logic and both columns the
+          // predicate reads are nullable: a `[Continued]` Story moved to the backlog (or whose
+          // iteration is deleted — the FK sets it NULL) leaves `task.iteration_id` and
+          // `parent.iteration_id` NULL, `NULL or NULL` is UNKNOWN, and `NOT UNKNOWN` is UNKNOWN, which
+          // the WHERE drops. Such a row is admitted by neither population, so the retained Actual this
+          // one exists to preserve (SRS §10.5) would silently vanish. UNKNOWN means "not resident".
+          sql`not coalesce(${residentInIterations(parent, iterationIds)}, false)`,
           teamMatches(scope, resolvedTeam),
         ),
       );
@@ -828,6 +835,18 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       .where(
         and(
           eq(storySplitItems.workspaceId, workspaceId),
+          /**
+           * BOTH sides of the join carry the workspace, not just the driver table.
+           *
+           * `split_id` is a plain FK with no composite workspace constraint, so the item row's own
+           * predicate says nothing about which workspace the SPLIT belongs to — and this subquery
+           * selects from the split (`team_id`, `split_at`, the iteration columns), which then flows
+           * into `resolvedTeam`, `teamName` and `teamMatches`. `findSplits` already filters this
+           * column; the omission here was the file's one outlier. A database with a single workspace
+           * in it cannot show the difference, which is why the test that pins this builds the
+           * cross-workspace pair by hand.
+           */
+          eq(storySplits.workspaceId, workspaceId),
           eq(storySplitItems.taskId, tasks.id),
           eq(storySplitItems.splitSide, 'continued'),
           inArray(matchedIterationId, iterationIds),
