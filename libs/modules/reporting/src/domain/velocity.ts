@@ -20,20 +20,38 @@ export interface VelocityItem {
   acceptedEquivalent: boolean;
   /** The persisted acceptance timestamp. Null while not accepted. */
   acceptedDate: Date | null;
+  /**
+   * `work_items.split_id is not null` — this Story IS a Split's `[Unfinished]` historical
+   * placeholder (Phase 7 plan D6), so its points are carried-over history and never delivery.
+   *
+   * It is the FLAG and not the split id: the classifier asks one yes/no question of the row, and
+   * which Split produced it is the Split banner's business, not Velocity's.
+   */
+  splitCarryover: boolean;
 }
 
-export type VelocitySegment = 'during' | 'after' | 'not-accepted' | 'unclassified';
+export type VelocitySegment =
+  'during' | 'after' | 'not-accepted' | 'unclassified' | 'split-carryover';
 
 /**
- * Which of the three mutually exclusive segments an item's points belong to.
+ * Which of the mutually exclusive segments an item's points belong to.
  *
- * `unclassified` is the fourth outcome the SRS forces us to model: an item that IS
+ * `unclassified` is the outcome the SRS forces us to model: an item that IS
  * accepted-equivalent but has no `acceptedDate`. "An Accepted/Release item without
  * `acceptedDate` is a data-quality error. DEV must backfill it from auditable history;
  * the report must not guess whether it was accepted during or after the Iteration."
  * Guessing either way would misstate velocity, so it is surfaced instead.
+ *
+ * `split-carryover` is decided FIRST, and the order is load-bearing rather than stylistic
+ * (Phase 7 SU-09 9.1). A Split's `[Unfinished]` placeholder is written `accepted` with a real
+ * `accepted_date` equal to the Split timestamp (SU-BR-09) — which is inside the source
+ * iteration's window — so every later branch would classify it `during` and the source sprint
+ * would appear to have delivered exactly the points it carried forward. This is declared
+ * divergence #4 in the Phase 7 plan: the ONE deliberate exception to the Phase 6 rule that
+ * `accepted` + `accepted_date` means delivered.
  */
 export function classify(item: VelocityItem, iterationEndBoundary: Date): VelocitySegment {
+  if (item.splitCarryover) return 'split-carryover';
   if (!item.acceptedEquivalent) return 'not-accepted';
   if (item.acceptedDate === null) return 'unclassified';
   return item.acceptedDate.getTime() <= iterationEndBoundary.getTime() ? 'during' : 'after';
@@ -57,20 +75,40 @@ export interface VelocityBar {
   unclassified: number;
   /** Count of items behind `unclassified`, for the UI's data-quality warning. */
   unclassifiedItems: number;
+  /**
+   * Points belonging to Split/Carryover placeholders — rendered as its own EXCLUDED segment and in
+   * no average (Phase 7 SU-09, SRS §10.4).
+   *
+   * Not folded into `acceptedDuring`: the work is real and it is visible in this sprint, so hiding
+   * the segment would make the bar shorter with nothing on screen to say why — the same argument
+   * `unclassified` is surfaced for. It is simply not DELIVERY.
+   */
+  splitCarryover: number;
+  /**
+   * The work item ids behind `splitCarryover`, de-duplicated, in first-seen order.
+   *
+   * Ids rather than a count, because the excluded population has to be IDENTIFIABLE: "which stories
+   * were left out of this bar" is a question a reader auditing a sprint asks, and a bare number
+   * cannot answer it. The count is `splitStoryIds.length`, so there is no second field to keep in
+   * step with the sum.
+   */
+  splitStoryIds: string[];
   /** How many Team iterations were fused. 1 for a selected Team. */
   iterationCount: number;
 }
 
 /**
- * Split one timebox's currently-assigned items into the three stacked segments.
+ * Split one timebox's currently-assigned items into the stacked segments.
  *
  * De-duplicates by work item id first: for All Teams the same item can be reached through
  * more than one Team's iteration join, and counting it twice would inflate the bar
  * (§2 "de-duplicate Work Items by ID").
  *
- * Invariant (§3): during + after + notAccepted + unclassified equals the sum of every
- * distinct assigned item's plan estimate. `unclassified` is part of the identity on
- * purpose — dropping it would break the invariant the SRS states.
+ * Invariant (§3, as amended by Phase 7 §8 Q7): during + after + notAccepted + unclassified +
+ * splitCarryover equals the sum of every distinct assigned item's plan estimate. `unclassified`
+ * and `splitCarryover` are part of the identity on purpose — dropping either would break the
+ * invariant, and the five-way form is the one that holds in the presence of a data-quality row,
+ * which the four-way form the SRS states does not.
  */
 export function buildBar(input: {
   timeboxKey: string;
@@ -87,6 +125,8 @@ export function buildBar(input: {
   let notAccepted = 0;
   let unclassified = 0;
   let unclassifiedItems = 0;
+  let splitCarryover = 0;
+  const splitStoryIds: string[] = [];
 
   for (const item of input.items) {
     if (seen.has(item.id)) continue;
@@ -106,6 +146,11 @@ export function buildBar(input: {
         unclassified += points;
         unclassifiedItems += 1;
         break;
+      case 'split-carryover':
+        splitCarryover += points;
+        // Pushed inside the de-duplication guard, so the list and the sum count the same rows.
+        splitStoryIds.push(item.id);
+        break;
     }
   }
 
@@ -119,6 +164,8 @@ export function buildBar(input: {
     notAccepted: roundForDisplay(notAccepted),
     unclassified: roundForDisplay(unclassified),
     unclassifiedItems,
+    splitCarryover: roundForDisplay(splitCarryover),
+    splitStoryIds,
     iterationCount: input.iterationCount,
   };
 }
@@ -143,6 +190,12 @@ export interface VelocityAverages {
  * "`acceptedAfter` and `notAccepted` are visual context and are excluded from every
  * trend/average calculation." Work accepted late did not happen in that iteration, so
  * counting it would make a chronically late team look fast.
+ *
+ * UNCHANGED BY PHASE 7 SU-09, and deliberately so: reading `acceptedDuring` alone means
+ * `unclassified` and `splitCarryover` are out of Trend / Last 3 / Best 3 / Worst 3 for free (AC3).
+ * That is asserted rather than trusted — `velocity.spec.ts` compares the averages of the same
+ * bars with and without a placeholder present, because "for free" is exactly the kind of claim
+ * that stops being true when someone adds a fifth term to the wrong sum.
  */
 export function computeAverages(barsOldestFirst: readonly VelocityBar[]): VelocityAverages {
   const during = barsOldestFirst.map((b) => b.acceptedDuring);

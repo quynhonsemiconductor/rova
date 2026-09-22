@@ -43,6 +43,22 @@ test.describe('Reports', () => {
     // Velocity §6: `Team: {Team Name|All Teams}`.
     await expect(page.getByText('Team: All Teams')).toBeVisible()
     await expect(page.getByRole('table', { name: /Velocity as a table/ })).toBeAttached()
+    /**
+     * Phase 7 SU-09 AC5 — the excluded segment NAMES ITSELF, in words, on the rendered page.
+     *
+     * The chart is `aria-hidden` and an amber stack segment cannot say why it is outside the trend, so
+     * the legend label is the requirement: "Split / Carryover (excluded)". Asserted on the legend AND
+     * as a column of the accessible table, because the point of the pair is that a screen reader gets
+     * the same fourth number a sighted reader sees.
+     *
+     * Rendered whether or not this project's window contains a Split — it is a segment of a stack
+     * whose scale every bar shares, so a key that came and went would change the chart's meaning
+     * between two renders of the same report.
+     */
+    await expect(page.getByText('Split / Carryover (excluded)').first()).toBeVisible()
+    await expect(
+      page.getByRole('columnheader', { name: 'Split / Carryover (excluded)' }),
+    ).toBeAttached()
 
     // ── Team Capacity ───────────────────────────────────────────────────────
     await type.selectOption('capacity')
