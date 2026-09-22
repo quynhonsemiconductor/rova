@@ -2389,6 +2389,31 @@ locally** against a real database. No new `createProject`: both cases reuse this
 and the second principal is a `users` + `workspace_members` + `grantProjectAccess` triple, the pattern
 the file's own `report:view` test already uses.
 
+**AND A SECOND SHARED-STATE LEAK SURFACED HERE, exactly as the SU-09/SU-10 gate record predicted it
+would.** Adding two e2e tests reshuffled vitest's file order again — it orders spec FILES by cached
+duration — and the full local run failed in `test-case-routes.e2e.spec.ts` with
+`['TC-1','TC-2','TC-14',…,'TC-24']`: eleven Test Cases `test-result-flow.e2e.spec.ts` hangs off the
+seeded `US-1` (one per Phase E test, via `freshResult`) and never removed, read by a spec three
+directories away as a rank-order defect in its own read path. **This is the same class as the
+`accepted-date-backfill` leak SU-09 fixed and it is a DIFFERENT leaker**, which is the point worth
+carrying forward: the class is not closed, and the next person to add an e2e test may well expose a
+third. Fixed at the source, with the leak measured rather than inferred —
+
+| live Test Cases on `US-1` after `test-result-flow` alone | |
+|---|---|
+| before | **13** (2 seeded + 11 leaked) |
+| after | **2** |
+
+— every creation now going through a `newTestCase` helper that records the id, `afterAll` deleting
+them and **asserting `204`/`404`** rather than firing and forgetting, and `test-case-routes` then
+passing against that same database under `E2E_SKIP_RESET=true`, which reproduces the failing order
+deliberately. The seeded Story stays the parent: tester eligibility (BR8) resolves from it, so minting
+a different parent would quietly change what those tests prove. `pnpm test:e2e` is then **74 files /
+677 passed + 1 skipped, green TWICE in a row** (609s, 611s) — twice for the same reason the earlier
+record ran it twice, since each run rewrites the duration cache that decides the next run's order.
+**Worth knowing: CI was green on this branch both before and after the offending commit**, because its
+file order did not happen to collide. A single CI run cannot see an order-dependent leak.
+
 
 ---
 
