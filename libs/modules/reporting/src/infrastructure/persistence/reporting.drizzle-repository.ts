@@ -818,6 +818,21 @@ export class ReportingDrizzleRepository implements IReportingRepository {
    * (`query-ordering` ratchet).
    *
    * Runs on the partial `ix_ssi_task` index, which §2.2 flagged as load-bearing for exactly this join.
+   *
+   * PERFORMANCE, KNOWN AND MEASURED (PR #638 review, advisory): this subquery is embedded FOUR times
+   * in the departed statement — the departure bound in the SELECT and again as the membership
+   * predicate, the departure TEAM inside `resolvedTeam` (which reaches the select list, the `teams`
+   * join and `teamMatches`), and the arrival bound. Postgres does not merge identical correlated
+   * subplans, so `EXPLAIN ANALYZE` shows four separate `SubPlan`s. What it also shows is that the
+   * DUPLICATION is not the expensive part: the projections run once per SURVIVING row (2 loops on the
+   * measured tree) while the membership subplan runs once per CANDIDATE task (71 loops) — total
+   * execution 4.5 ms against 11.8 ms of planning. A `LATERAL` keyed on `tasks.id`, projecting
+   * `team_id` and `actual_hours_at_split` together, would collapse the projections to one AND turn the
+   * membership filter into a join, letting the planner drive from `story_split_items` instead of
+   * scanning every Task — the bigger of the two wins. Deferred deliberately rather than rewritten at
+   * the end of a review cycle: do it when the departed population stops being "the Tasks a Split
+   * carried out of these iterations", or when this report's task count makes the 71-loop filter
+   * visible.
    */
   private splitBound(
     workspaceId: string,
