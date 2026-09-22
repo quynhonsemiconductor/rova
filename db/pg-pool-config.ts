@@ -24,7 +24,7 @@
  * before anything is cut over.
  */
 import { resolveDatabaseUrl, type DatabaseUrlParts } from './database-url';
-import { iamPasswordProvider } from './pg-iam';
+import { getIamAuthToken, iamPasswordProvider } from './pg-iam';
 import { pgOptions } from './pg-ssl';
 
 export type DatabaseAuthMode = 'password' | 'iam';
@@ -104,4 +104,50 @@ export function resolvePoolConfig(env: PoolAuthParts = process.env): PoolConnect
     // Traffic is encrypted either way and never leaves the VPC.
     ssl: { rejectUnauthorized: false },
   };
+}
+
+/**
+ * The MIGRATION connection.
+ *
+ * `DATABASE_MIGRATION_URL` still wins when set — that is the escape hatch for a
+ * privileged credential supplied by hand. Otherwise this is the ordinary resolution,
+ * so the migrator gets IAM auth for free wherever the application does.
+ *
+ * Note which role that is: the chart sets DATABASE_USER to `<product>_migrator`, never
+ * the application role. §5d gives the app `statement_timeout = 30s`, which would kill
+ * the 600s migration §4 sets deliberately, and DDL rights have no business on a
+ * runtime role.
+ */
+export function resolveMigrationPoolConfig(
+  env: PoolAuthParts & { DATABASE_MIGRATION_URL?: string } = process.env,
+): PoolConnectionConfig {
+  if (env.DATABASE_MIGRATION_URL) return pgOptions(env.DATABASE_MIGRATION_URL);
+  return resolvePoolConfig(env);
+}
+
+/**
+ * A connection URL with a freshly minted IAM token as the password.
+ *
+ * WHY A URL AT ALL, when everything else here avoids one: the seed helpers take a
+ * connection STRING and build their own pool. Changing that signature reaches much
+ * further than this change should, and a URL is safe for their lifetime — a token
+ * lives 15 minutes and seeding is measured in seconds.
+ *
+ * DO NOT use this for a long-lived pool. The token is fixed at the moment the string
+ * is built, so a pool holding it fails once it expires — which is exactly the failure
+ * mode `iamPasswordProvider` exists to prevent. This is for short, bounded work.
+ *
+ * The password is percent-encoded: a SigV4 token is full of characters that are
+ * structural in a URL (`/`, `+`, `=`, `&`), and interpolating one raw yields either a
+ * parse error or a URL that parses into the wrong host.
+ */
+export async function resolveIamUrl(env: PoolAuthParts = process.env): Promise<string> {
+  const host = requiredForIam('DATABASE_HOST', env.DATABASE_HOST);
+  const port = Number(requiredForIam('DATABASE_PORT', env.DATABASE_PORT?.toString()));
+  const database = requiredForIam('DATABASE_NAME', env.DATABASE_NAME);
+  const user = requiredForIam('DATABASE_USER', env.DATABASE_USER);
+  const region = env.AWS_REGION ?? 'ap-southeast-1';
+
+  const token = await getIamAuthToken({ hostname: host, port, username: user, region });
+  return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(token)}@${host}:${port}/${database}?sslmode=require`;
 }
