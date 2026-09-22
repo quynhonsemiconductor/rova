@@ -36,6 +36,9 @@ import {
   iterationTeamBaselines,
   memberCapacity,
   releaseTeamTargets,
+  storySplitItems,
+  storySplits,
+  tasks,
   teams,
   workItems,
 } from '@db/schema/work';
@@ -43,7 +46,7 @@ import { users } from '@db/schema/identity';
 import { workspaceMembers } from '@db/schema/workspace';
 
 import { ACCESS_LEVEL_PERMISSIONS } from '@shared-kernel';
-import { PAY_PROJECT_ID } from '../../db/seeds/constants';
+import { PAY_PROJECT_ID, TEAM_ALPHA_ID } from '../../db/seeds/constants';
 import {
   ADMIN_USER_ID,
   WORKSPACE_ID,
@@ -1794,6 +1797,156 @@ describe('Phase 6 reports (e2e)', () => {
     });
     expect(targetAfter.totals.estimateHours).toBe(0);
     expect(targetAfter.teams).toEqual([]);
+  });
+
+  it('keeps the retained Actual when the Continued Story is moved to the BACKLOG (review follow-up)', async () => {
+    /**
+     * THREE-VALUED LOGIC, and the reason `departedTaskRows` negates through `coalesce`.
+     *
+     * The departed population is "not resident here", spelled
+     * `not (task.iteration_id in (…) or parent.iteration_id in (…))`. Both columns are nullable, so
+     * once the `[Continued]` Story goes to the backlog — `trg_cascade_iteration_to_tasks` takes the
+     * Task's own iteration with it — the predicate is `NULL or NULL` = UNKNOWN, `NOT UNKNOWN` is
+     * UNKNOWN, and the WHERE drops the row. The resident query excludes it too (NULL is not `in`
+     * anything), so the source Iteration's retained hours were admitted by NEITHER population and
+     * simply disappeared. Reachable with no deletion at all: moving a carried-forward Story to the
+     * backlog is an ordinary act, and `iterations.on delete set null` reaches the same state.
+     */
+    const source = await namedIteration(
+      'SU10 Backlog',
+      shift(localToday, -71),
+      shift(localToday, -68),
+    );
+    const target = await namedIteration(
+      'SU10 BacklogT',
+      shift(localToday, -67),
+      shift(localToday, -64),
+    );
+    const story = await newSplittableStory('SU10 to backlog', source.id, {
+      points: '5',
+      estimate: '8',
+      todo: '6',
+      actual: '2',
+    });
+
+    const result = await items.splitWorkItem(
+      admin,
+      story.id,
+      splitInput(source.id, target.id, 2, 3),
+    );
+    // The premise, and the number that must survive the move.
+    expect(
+      (await reporting.getTeamCapacity(admin, { projectId, iterationId: source.id })).totals
+        .actualHours,
+    ).toBe(2);
+
+    await items.updateWorkItem(admin, result.continued.id, { iterationId: null });
+
+    // Guards the premise rather than assuming the trigger fired: BOTH iteration ids must now be NULL,
+    // which is the only state in which the old `not (…)` returned UNKNOWN.
+    const [movedTask] = await db
+      .select({ iterationId: tasks.iterationId })
+      .from(tasks)
+      .where(eq(tasks.parentId, result.continued.id));
+    const [movedParent] = await db
+      .select({ iterationId: workItems.iterationId })
+      .from(workItems)
+      .where(eq(workItems.id, result.continued.id));
+    expect(movedTask.iterationId).toBeNull();
+    expect(movedParent.iterationId).toBeNull();
+
+    // AC4 still holds: those hours were spent inside the source Iteration, and moving the Story
+    // afterwards says nothing about that. This read 0 before the `coalesce`.
+    const afterMove = await reporting.getTeamCapacity(admin, {
+      projectId,
+      iterationId: source.id,
+    });
+    expect(afterMove.totals.actualHours).toBe(2);
+  });
+
+  it('refuses to read a Split row from ANOTHER workspace (review follow-up)', async () => {
+    /**
+     * CROSS-WORKSPACE SCOPING, built by hand because a single-workspace database cannot show it.
+     *
+     * `story_split_items.split_id` is a plain FK with no composite workspace constraint, so an item
+     * row's own `workspace_id` predicate says nothing about which workspace its SPLIT belongs to —
+     * and `splitBound` selects FROM the split (`team_id`, `split_at`, both iteration columns), which
+     * flows into `resolvedTeam`, `teamName` and the team filter. Until this fix the subquery
+     * constrained only the item side.
+     *
+     * No product path creates such a pair — `splitWorkItem` writes both rows in one transaction with
+     * one workspace — which is exactly why it is worth pinning: there is nothing else stopping the
+     * predicate from being dropped again, and every other test in this file would still pass.
+     * `story_splits.workspace_id` takes no FK, so the alien workspace id needs no workspace row.
+     *
+     * The Task is left in the TARGET while the report is asked about the SOURCE, so the only route by
+     * which it could appear at all is the alien Split's `source_iteration_id`.
+     */
+    const source = await namedIteration(
+      'SU10 Alien',
+      shift(localToday, -79),
+      shift(localToday, -76),
+    );
+    const target = await namedIteration(
+      'SU10 AlienT',
+      shift(localToday, -75),
+      shift(localToday, -72),
+    );
+    const carrier = await newSplittableStory('SU10 alien carrier', target.id, {
+      points: '5',
+      estimate: '8',
+      todo: '6',
+      actual: '4',
+    });
+    const placeholder = await items.createWorkItem(admin, projectId, 'story', 'SU10 alien ph', {
+      iterationId: source.id,
+      storyPoints: '2',
+    });
+    const [task] = await items.listTasks(admin, carrier.id);
+
+    // Nothing to report for the source yet — the Task lives in the target.
+    const before = await reporting.getTeamCapacity(admin, { projectId, iterationId: source.id });
+    expect(before.totals.actualHours).toBe(0);
+
+    const alienSplitId = randomUUID();
+    await db.insert(storySplits).values({
+      id: alienSplitId,
+      // The whole point: this row belongs to a DIFFERENT workspace…
+      workspaceId: randomUUID(),
+      projectId,
+      // …and names a real team, so a leak shows up as a NAMED bucket rather than as `No Team`.
+      teamId: TEAM_ALPHA_ID,
+      continuedStoryId: carrier.id,
+      unfinishedStoryId: placeholder.id,
+      sourceIterationId: source.id,
+      targetIterationId: target.id,
+      sourceMarkerDate: shift(localToday, -77),
+      targetMarkerDate: shift(localToday, -74),
+      movedTodoHours: '0',
+      actualHoursAtSplit: '1',
+    });
+    await db.insert(storySplitItems).values({
+      id: randomUUID(),
+      // …while the ITEM row is in THIS workspace, which is all the old predicate checked.
+      workspaceId: WORKSPACE_ID,
+      splitId: alienSplitId,
+      itemKind: 'task',
+      taskId: task.id,
+      splitSide: 'continued',
+      actualHoursAtSplit: '1',
+    });
+
+    try {
+      const after = await reporting.getTeamCapacity(admin, { projectId, iterationId: source.id });
+      // Unchanged: the alien Split yields no bound, so the Task joins neither population.
+      expect(after.totals.actualHours).toBe(0);
+      expect(after.teams).toEqual([]);
+      // Stated separately, because the foreign team NAME is the leak a reader would actually see.
+      expect(after.teams.map((t) => t.name)).not.toContain('Team Alpha');
+    } finally {
+      // Remove this file's hand-made rows — `story_split_items.split_id` cascades.
+      await db.delete(storySplits).where(eq(storySplits.id, alienSplitId));
+    }
   });
 });
 
