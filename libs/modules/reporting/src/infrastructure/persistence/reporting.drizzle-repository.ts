@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import {
@@ -13,6 +13,7 @@ import {
   projects,
   releaseDailySnapshots,
   releases,
+  storySplitItems,
   storySplits,
   tasks,
   teams,
@@ -34,6 +35,7 @@ import {
 // `team-scope.sql.spec.ts`. No `scope.kind === 'team' ? … : undefined` ternary survives in this
 // file: that shape treats an unhandled scope kind as "read everything".
 import { inList, teamMatches, timeboxInScope } from './team-scope.sql';
+import { attributeActualHours } from '../../domain/team-capacity';
 import type { CapacityRecord, ScopedTaskHours } from '../../domain/team-capacity';
 import type { VelocityItem } from '../../domain/velocity';
 import {
@@ -53,6 +55,20 @@ const LEAF_TYPES = ['story', 'defect'] as const;
 
 const num = (v: string | null): number => (v === null ? 0 : Number(v));
 const nullableNum = (v: string | null): number | null => (v === null ? null : Number(v));
+
+/**
+ * "This Task is assigned to one of these iterations" — Team Status's rule, not a new one.
+ *
+ * A Task is in scope when the TASK or its parent Story/Defect names the iteration. Extracted because
+ * SU-10 needs it twice and in opposite senses: the resident population is what it admits, and the
+ * departed population is what it does not. Two spellings of one predicate, one of them negated, is
+ * how the two sets come to overlap and double an hour.
+ *
+ * `parent` is an `alias(workItems, …)`, taken structurally so the caller keeps its own alias name.
+ */
+function residentInIterations(parent: { iterationId: PgColumn }, iterationIds: string[]): SQL {
+  return sql`(${tasks.iterationId} in ${inList(iterationIds)} or ${parent.iterationId} in ${inList(iterationIds)})`;
+}
 
 @Injectable()
 export class ReportingDrizzleRepository implements IReportingRepository {
@@ -516,6 +532,26 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     }));
   }
 
+  /**
+   * Task hours in scope for the requested iterations, with Actual already ATTRIBUTED (SU-10).
+   *
+   * TWO POPULATIONS, read separately and concatenated, because they answer two different questions
+   * and a single widened query would have to branch on which one each row belongs to in four places:
+   *
+   *  • {@link residentTaskRows} — work assigned to these iterations right now. This is the whole of
+   *    the report before Phase 7, and it still carries the Estimate and To Do.
+   *  • {@link departedTaskRows} — work a Split carried OUT of these iterations. It contributes ONLY
+   *    the Actual hours the iteration had already earned (SRS §10.5), which is the half of SU-10 that
+   *    could not exist before `story_splits` did: `tasks.actual_hours` is one scalar with no temporal
+   *    dimension, so without this the source's hours VANISH the moment the Task is re-parented
+   *    (plan 10.1), and AC4's "the Source keeps its pre-Split Actual" would be unachievable.
+   *
+   * The two sets are disjoint by construction — a valid target Iteration must start after the source
+   * ENDS (§8 Q3), so a source and a target can never be siblings of one fused timebox, and `departed`
+   * additionally excludes anything the resident predicate already admits. `rollUpTeamCapacity`
+   * de-duplicates by task id behind that, so a future rule that broke the disjointness would show up
+   * as one row winning rather than as doubled hours.
+   */
   async getScopedTaskHours(
     workspaceId: string,
     projectId: string,
@@ -523,6 +559,20 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     scope: TeamScope,
   ): Promise<ScopedTaskHours[]> {
     if (iterationIds.length === 0) return [];
+    const [resident, departed] = await Promise.all([
+      this.residentTaskRows(workspaceId, projectId, iterationIds, scope),
+      this.departedTaskRows(workspaceId, projectId, iterationIds, scope),
+    ]);
+    return [...resident, ...departed];
+  }
+
+  /** Tasks currently assigned to these iterations — the pre-Phase-7 population, unchanged but for §10.5. */
+  private async residentTaskRows(
+    workspaceId: string,
+    projectId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<ScopedTaskHours[]> {
     const parent = alias(workItems, 'parent');
     const team = alias(teams, 'task_team');
     const iteration = alias(iterations, 'task_iteration');
@@ -553,6 +603,18 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         estimateHours: tasks.estimateHours,
         todoHours: tasks.todoHours,
         actualHours: tasks.actualHours,
+        actualAtArrival: this.splitBound(
+          workspaceId,
+          iterationIds,
+          'arrival',
+          storySplitItems.actualHoursAtSplit,
+        ),
+        actualAtDeparture: this.splitBound(
+          workspaceId,
+          iterationIds,
+          'departure',
+          storySplitItems.actualHoursAtSplit,
+        ),
       })
       .from(tasks)
       .innerJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
@@ -567,7 +629,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           eq(tasks.workspaceId, workspaceId),
           eq(tasks.projectId, projectId),
           isNull(tasks.deletedAt),
-          sql`(${tasks.iterationId} in ${inList(iterationIds)} or ${parent.iterationId} in ${inList(iterationIds)})`,
+          residentInIterations(parent, iterationIds),
           /**
            * For a team-restricted reader this also drops the `No Team` bucket.
            *
@@ -588,8 +650,161 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       ownerName: r.ownerName,
       estimateHours: num(r.estimateHours),
       todoHours: num(r.todoHours),
-      actualHours: num(r.actualHours),
+      /**
+       * SU-10 10.2/10.4 — ATTRIBUTED here, so `rollUpTeamCapacity` and its member / `Unassigned` /
+       * `No Team` grouping stay untouched (AC7). The arithmetic is in the domain because it is a rule
+       * worth unit-testing; the WINDOW is in SQL because it needs the iteration ids and an ordered
+       * `limit 1`, which is a database question.
+       *
+       * For a resident row the ARRIVAL bound is what matters: a Task carried in by a Split brought
+       * hours it earned elsewhere, and this Iteration counts only what was logged after it arrived.
+       *
+       * `nullableNum` and not `num`: `Number(null)` is `0`, and an absent UPPER bound emphatically
+       * does not mean zero — it means "count everything logged so far".
+       */
+      actualHours: attributeActualHours({
+        actualHours: num(r.actualHours),
+        actualAtArrival: nullableNum(r.actualAtArrival),
+        actualAtDeparture: nullableNum(r.actualAtDeparture),
+      }),
     }));
+  }
+
+  /**
+   * Tasks a Split carried OUT of these iterations, contributing their retained Actual only.
+   *
+   * **`estimateHours` and `todoHours` are ZERO, and that is the rule rather than a shortcut.** The
+   * Estimate and the To Do FOLLOW the Task (BR-27, satisfied by D3/D4 — nothing is copied or
+   * rolled up), which is why SU-08's e2e asserts the source burndown's remaining To Do dropping to
+   * `0` on the Split date. Only the Actual is historical: those hours were spent inside this
+   * Iteration and no later event can move them (SRS §10.5).
+   *
+   * MEMBERSHIP IS `actualAtDeparture IS NOT NULL`, i.e. the departure bound found a Split row. That
+   * makes the predicate and the value the same fact — a task admitted here always has something to
+   * contribute, and there is no second `exists` clause to keep in step with the subquery beside it.
+   *
+   * The team's third tier is the SPLIT's own `team_id` — the Story's team AS AT the Split — not the
+   * iteration's, because the Task's iteration is now the TARGET and reading it here would file this
+   * Iteration's history under the team that inherited the work. The same choice, for the same reason,
+   * as the burndown markers in {@link findSplits}.
+   */
+  private async departedTaskRows(
+    workspaceId: string,
+    projectId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<ScopedTaskHours[]> {
+    const parent = alias(workItems, 'parent');
+    const team = alias(teams, 'task_team');
+    const departureActual = this.splitBound(
+      workspaceId,
+      iterationIds,
+      'departure',
+      storySplitItems.actualHoursAtSplit,
+    );
+    const departureTeam = this.splitBound(
+      workspaceId,
+      iterationIds,
+      'departure',
+      storySplits.teamId,
+    );
+    const resolvedTeam = sql`coalesce(${tasks.teamId}, ${parent.teamId}, ${departureTeam})`;
+
+    const rows = await this.db
+      .select({
+        taskId: tasks.id,
+        teamId: sql<string | null>`${resolvedTeam}`,
+        teamName: team.name,
+        teamStatus: team.status,
+        ownerId: tasks.assigneeId,
+        ownerName: users.displayName,
+        actualHours: tasks.actualHours,
+        actualAtArrival: this.splitBound(
+          workspaceId,
+          iterationIds,
+          'arrival',
+          storySplitItems.actualHoursAtSplit,
+        ),
+        actualAtDeparture: departureActual,
+      })
+      .from(tasks)
+      .innerJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
+      .leftJoin(team, sql`${team.id} = ${resolvedTeam}`)
+      .leftJoin(users, eq(users.id, tasks.assigneeId))
+      .where(
+        and(
+          eq(tasks.workspaceId, workspaceId),
+          eq(tasks.projectId, projectId),
+          isNull(tasks.deletedAt),
+          sql`${departureActual} is not null`,
+          // Anything the resident query already admits belongs to it, so the two sets cannot overlap
+          // even if a future rule made a source and a target share a timebox.
+          sql`not ${residentInIterations(parent, iterationIds)}`,
+          teamMatches(scope, resolvedTeam),
+        ),
+      );
+
+    return rows.map((r) => ({
+      taskId: r.taskId,
+      teamId: r.teamId,
+      teamName: r.teamName,
+      teamArchived: r.teamStatus === 'archived',
+      ownerId: r.ownerId,
+      ownerName: r.ownerName,
+      estimateHours: 0,
+      todoHours: 0,
+      actualHours: attributeActualHours({
+        actualHours: num(r.actualHours),
+        actualAtArrival: nullableNum(r.actualAtArrival),
+        actualAtDeparture: nullableNum(r.actualAtDeparture),
+      }),
+    }));
+  }
+
+  /**
+   * One bound of a Task's Actual-hour window, as a correlated scalar subquery (SU-10 10.3/10.4).
+   *
+   * ONE method for both directions and both selected columns, because the only differences are WHICH
+   * iteration column is matched and which way the ordering runs — the join, the workspace predicate,
+   * the `continued`-side restriction and the `limit 1` are common, and two copies of that is how one
+   * of them comes to be missing a predicate. The same argument as {@link findSplits}.
+   *
+   * `split_side = 'continued'` is the whole of "only a MOVE shifts hours": a Task listed on the
+   * `unfinished` side stayed where it was with the placeholder, so it has no bound from that Split and
+   * keeps today's behaviour (plan 10.2). That is why the `unfinished` case needs no branch anywhere.
+   *
+   * `arrival` takes the LATEST Split into these iterations and `departure` the EARLIEST Split out of
+   * them — an explicit window, NOT "the most recent row", which gives the middle Iteration of a
+   * three-Iteration carry the wrong answer (§8 Q1b). Ordered on `split_at` with `id` as the
+   * tiebreaker, so two Splits committed in the same instant still resolve to one deterministic row
+   * (`query-ordering` ratchet).
+   *
+   * Runs on the partial `ix_ssi_task` index, which §2.2 flagged as load-bearing for exactly this join.
+   */
+  private splitBound(
+    workspaceId: string,
+    iterationIds: string[],
+    bound: 'arrival' | 'departure',
+    value: PgColumn,
+  ): SQL<string | null> {
+    const matchedIterationId =
+      bound === 'arrival' ? storySplits.targetIterationId : storySplits.sourceIterationId;
+    const direction = bound === 'arrival' ? desc : asc;
+    const subquery = this.db
+      .select({ value })
+      .from(storySplitItems)
+      .innerJoin(storySplits, eq(storySplits.id, storySplitItems.splitId))
+      .where(
+        and(
+          eq(storySplitItems.workspaceId, workspaceId),
+          eq(storySplitItems.taskId, tasks.id),
+          eq(storySplitItems.splitSide, 'continued'),
+          inArray(matchedIterationId, iterationIds),
+        ),
+      )
+      .orderBy(direction(storySplits.splitAt), direction(storySplits.id))
+      .limit(1);
+    return sql<string | null>`(${subquery})`;
   }
 
   // ── Release Tracking ──────────────────────────────────────────────────────

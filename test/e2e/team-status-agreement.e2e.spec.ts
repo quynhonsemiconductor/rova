@@ -1,5 +1,6 @@
 /**
- * Team Status and the Phase 6 Team Capacity report must report the SAME hours.
+ * Team Status and the Phase 6 Team Capacity report must report the SAME hours — for work no Split
+ * has moved.
  *
  * Both surfaces answer one question — "what is this team committed to in this iteration" — from the
  * same `work.tasks` rows, and the Team Capacity SRS says so twice: the scoped Task set comes from
@@ -10,6 +11,24 @@
  * Latent rather than visible on the seeded fixture — every seeded task is uniformly team-tagged and no
  * parent is deleted — so the divergences are built here on purpose. That is the point: a test that
  * only reads the happy fixture is what let three of these ship.
+ *
+ * ⚠ AMENDED BY PHASE 7 SU-10, IN TWO WAYS. READ BOTH BEFORE TIGHTENING ANYTHING BACK.
+ * ─────────────────────────────────────────────────────────────────────────────────
+ * 1. **The two surfaces now DIVERGE, by design, on an Iteration a Split moved work out of.** SU-10
+ *    (SRS §10.5, plan §8 Q1) makes Team Capacity report Actual hours ATTRIBUTED PER ITERATION: the
+ *    source keeps the hours it had earned by the Split, the target counts only what was logged after
+ *    it. Team Status has no such rule and is not asked to — it reads CURRENT assignment, so the moment
+ *    a Task is re-parented forward its hours leave that screen entirely. The SRS sentence quoted above
+ *    is about the SOURCE (same table, same scoped-task rule), and both surfaces still honour it; what
+ *    SU-10 adds is a historical dimension that only the report has. {@link splitDivergence} pins the
+ *    difference explicitly so it cannot regress into a silent one.
+ * 2. **The hour comparisons run against an iteration THIS SPEC OWNS, not the seeded current one.**
+ *    They were whole-iteration equalities over `SEEDED.nxp.iterationCurrentId`, so any other spec that
+ *    split a story out of Sprint 26.1 changed the number under them — `split-story-flow.e2e.spec.ts`
+ *    does exactly that, and the failure surfaced as "Capacity is 2.5h higher", which reads like a
+ *    double-count in the attribution rather than like shared mutable fixture state. Owning the scope
+ *    keeps every original claim and removes the dependency, which is the same treatment SU-01's gate
+ *    record applied to the split preview specs for the same reason.
  */
 import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,6 +37,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
+import { IterationsService } from '@modules/iterations';
 import { WorkItemsService } from '@modules/work-items';
 import { TeamStatusService } from '@modules/team-status';
 import { ReportingService } from '@modules/reporting';
@@ -28,10 +48,20 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
   let app: NestFastifyApplication;
   let db: DrizzleDB;
   let items: WorkItemsService;
+  let iterationsSvc: IterationsService;
   let teamStatus: TeamStatusService;
   let reporting: ReportingService;
   const actor = adminActor();
-  const iterationId = SEEDED.nxp.iterationCurrentId;
+  /**
+   * This spec's OWN iteration — see amendment 2 above. Created inside the seeded NXP project, so
+   * `test/e2e-fixtures.ratchet.spec.ts` (81 `createProject` calls) does not move.
+   *
+   * Its window is unique in this project, which is load-bearing rather than cosmetic:
+   * `timeboxGroupId` is derived from `(project, startDate, endDate)`, and Team Capacity FUSES a
+   * timebox group while Team Status does not — so two iterations sharing a window would make the two
+   * surfaces disagree for a reason that has nothing to do with what is under test.
+   */
+  let iterationId: string;
   const teamId = SEEDED.nxp.teamAlphaId;
 
   /** Sum of a scope's task hours as TEAM STATUS reports them. */
@@ -69,8 +99,17 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
     app = await bootRallyApp();
     db = app.get<DrizzleDB>(DRIZZLE);
     items = app.get(WorkItemsService);
+    iterationsSvc = app.get(IterationsService);
     teamStatus = app.get(TeamStatusService);
     reporting = app.get(ReportingService);
+
+    const iteration = await iterationsSvc.createIteration(
+      actor,
+      SEEDED.nxp.projectId,
+      `Agreement sprint ${uniqueKey()}`,
+      { state: 'committed', startDate: '2026-03-02', endDate: '2026-03-13' },
+    );
+    iterationId = iteration.id;
   });
 
   afterAll(async () => {
@@ -140,6 +179,77 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
 
   it('agrees under All Teams too', async () => {
     expect(await teamStatusHours(null)).toEqual(await capacityHours(undefined));
+  });
+
+  /**
+   * The ONE place the two surfaces are SUPPOSED to disagree, asserted rather than left to be
+   * rediscovered as a failure in an unrelated spec (Phase 7 SU-10, SRS §10.5, plan §8 Q1).
+   *
+   * A Split moves the Task forward, so Team Status — which reads CURRENT assignment — stops counting
+   * it in this Iteration at all. Team Capacity keeps the hours the Iteration had already earned,
+   * because they were spent here and no later event can move them. The gap is therefore exactly the
+   * Task's Actual as at the Split, and asserting the DIFFERENCE rather than two absolute totals is
+   * what keeps this true whatever else the iteration holds.
+   *
+   * Estimate and To Do are asserted to STILL agree, which is the other half of the rule: only the
+   * Actual is historical. The Estimate and the To Do follow the Task (BR-27, satisfied by D3/D4), and
+   * that is the same fact SU-08's e2e reads from the other side as the source burndown's remaining To
+   * Do dropping to zero on the Split date.
+   */
+  it('DIVERGES on Actual once a Split has moved work out — by design (SU-10)', async () => {
+    const target = await iterationsSvc.createIteration(
+      actor,
+      SEEDED.nxp.projectId,
+      `Agreement target ${uniqueKey()}`,
+      { state: 'committed', startDate: '2026-03-16', endDate: '2026-03-27' },
+    );
+    const story = await items.createWorkItem(
+      actor,
+      SEEDED.nxp.projectId,
+      'story',
+      `Split divergence ${uniqueKey()}`,
+      { iterationId, teamId, storyPoints: '5' },
+    );
+    await items.createTask(actor, story.id, `Split divergence task ${uniqueKey()}`, {
+      estimateHours: '8',
+      todoHours: '8',
+      actualHours: '3',
+    });
+
+    const before = { status: await teamStatusHours(teamId), capacity: await capacityHours(teamId) };
+    // The premise: before the Split the two surfaces agree on this work, so the gap below is created
+    // by the Split and by nothing else.
+    expect(before.status).toEqual(before.capacity);
+
+    await items.splitWorkItem(actor, story.id, {
+      expectedSourceIterationId: iterationId,
+      targetIterationId: target.id,
+      unfinished: { title: '[Unfinished] agreement', planEstimate: 2 },
+      continued: {
+        title: '[Continued] agreement',
+        planEstimate: 3,
+        releaseId: null,
+        scheduleState: 'in_progress',
+      },
+      // The Task is not named, so it stays on `[Continued]` and follows it into the target.
+      unfinishedTaskIds: [],
+      unfinishedDefectIds: [],
+      unfinishedTestCaseIds: [],
+    });
+
+    const status = await teamStatusHours(teamId);
+    const capacity = await capacityHours(teamId);
+
+    // The Task left Team Status entirely — its Estimate, To Do and Actual all go with it.
+    expect(status.estimate).toBe(before.status.estimate - 8);
+    expect(status.actual).toBe(before.status.actual - 3);
+
+    // Team Capacity lets the Estimate and the To Do go too…
+    expect(capacity.estimate).toBe(status.estimate);
+    expect(capacity.todo).toBe(status.todo);
+    // …and KEEPS the three hours this Iteration earned. That is AC4, and it is the whole difference.
+    expect(capacity.actual).toBe(status.actual + 3);
+    expect(capacity.actual).toBe(before.capacity.actual);
   });
 
   it('does NOT overwrite To Do when only the Estimate is edited', async () => {

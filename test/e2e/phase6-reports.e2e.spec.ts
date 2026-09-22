@@ -34,6 +34,7 @@ import { WorkItemsService } from '@modules/work-items';
 import {
   iterationDailySnapshots,
   iterationTeamBaselines,
+  memberCapacity,
   releaseTeamTargets,
   teams,
   workItems,
@@ -1383,12 +1384,12 @@ describe('Phase 6 reports (e2e)', () => {
     expect(Number((await todayRow(target)).todo)).toBe(13);
   });
 
-  // ── Split on Velocity (Phase 7 SU-09 9.6) ───────────────────────────────────
+  // ── Split on Velocity and Team Capacity (Phase 7 SU-09 9.6 / SU-10 10.7) ────
 
   /**
-   * NOTHING BELOW TICKS THE SNAPSHOT JOB, which is what keeps SU-08's "this block is last on
-   * purpose" requirement intact even though these tests now run after it. Velocity is a LIVE query —
-   * recalculated from current assignment on every render — so there is no
+   * NEITHER BLOCK BELOW TICKS THE SNAPSHOT JOB, which is what keeps SU-08's "this block is last on
+   * purpose" requirement intact even though these tests now run after it. Velocity and Team Capacity
+   * are both LIVE queries — recalculated from current assignment on every render — so there is no
    * capture-once fixture ordering to protect here.
    *
    * Every iteration these tests create is CLOSED or closed-enough that no later `takeSnapshots()`
@@ -1520,6 +1521,141 @@ describe('Phase 6 reports (e2e)', () => {
     // deliberate exception to it (plan §0 divergence 4).
     expect(bar?.acceptedDuring).toBe(0);
     expect(bar?.splitCarryover).toBe(8);
+  });
+
+  it("attributes a moved Task's Actual to both Iterations and to neither twice (SU-10 AC4/AC5/AC6)", async () => {
+    const source = await namedIteration(
+      'SU10 Source',
+      shift(localToday, -27),
+      shift(localToday, -24),
+    );
+    const target = await namedIteration(
+      'SU10 Target',
+      shift(localToday, -23),
+      shift(localToday, -21),
+    );
+    const story = await newSplittableStory('SU10 carry', source.id, {
+      points: '5',
+      estimate: '8',
+      todo: '6',
+      actual: '2',
+    });
+    const [task] = await items.listTasks(admin, story.id);
+
+    /**
+     * SU-10 AC1/AC2 (10.6) — planned member capacity is not touched by a Split. Inserted directly
+     * because capacity is written on `Track > Team Status`, which is out of this suite's reach, and
+     * because the number only has to EXIST for the regression to be meaningful: a capacity total that
+     * silently moved when work was re-parented is the failure this pins.
+     */
+    const teamId = await newTeam('SU10 capacity');
+    await db.insert(memberCapacity).values({
+      workspaceId: WORKSPACE_ID,
+      projectId,
+      teamId,
+      iterationId: source.id,
+      userId: ADMIN_USER_ID,
+      capacityHours: '40',
+    });
+
+    const before = await reporting.getTeamCapacity(admin, { projectId, iterationId: source.id });
+    expect(before.totals.actualHours).toBe(2);
+    expect(before.totals.todoHours).toBe(6);
+    expect(before.totals.capacityHours).toBe(40);
+
+    await items.splitWorkItem(admin, story.id, splitInput(source.id, target.id, 2, 3));
+
+    const sourceAfter = await reporting.getTeamCapacity(admin, {
+      projectId,
+      iterationId: source.id,
+    });
+    /**
+     * AC4 — the source KEEPS the two hours it had already earned, even though the Task itself is no
+     * longer assigned to it. Before SU-10 this read `0`: `tasks.actual_hours` is one scalar with no
+     * temporal dimension, so re-parenting the Task took every hour with it (plan 10.1).
+     */
+    expect(sourceAfter.totals.actualHours).toBe(2);
+    // …and ONLY the Actual stays. Estimate and To Do follow the Task (BR-27), which is the same fact
+    // SU-08's e2e reads from the other side as the source burndown's To Do dropping to 0.
+    expect(sourceAfter.totals.estimateHours).toBe(0);
+    expect(sourceAfter.totals.todoHours).toBe(0);
+    // AC1/AC2 — planned capacity is untouched.
+    expect(sourceAfter.totals.capacityHours).toBe(40);
+
+    const targetAfter = await reporting.getTeamCapacity(admin, {
+      projectId,
+      iterationId: target.id,
+    });
+    // AC5 / SU-08 AC8 — nothing has been logged since the Split, so the target OPENS at 0h Actual…
+    expect(targetAfter.totals.actualHours).toBe(0);
+    // …while the Estimate and the To Do arrived whole with the Task (AC3).
+    expect(targetAfter.totals.estimateHours).toBe(8);
+    expect(targetAfter.totals.todoHours).toBe(6);
+
+    // Five more hours logged after the move.
+    await items.updateWorkItem(admin, task.id, { actualHours: '7' });
+    const sourceLater = await reporting.getTeamCapacity(admin, {
+      projectId,
+      iterationId: source.id,
+    });
+    const targetLater = await reporting.getTeamCapacity(admin, {
+      projectId,
+      iterationId: target.id,
+    });
+    expect(sourceLater.totals.actualHours).toBe(2);
+    expect(targetLater.totals.actualHours).toBe(5);
+    // The whole point, stated as the invariant 10.7 asks for: source + target = the Task's total,
+    // once.
+    expect(sourceLater.totals.actualHours + targetLater.totals.actualHours).toBe(7);
+
+    /**
+     * AC6 — Task Detail keeps showing the FULL accumulated Actual, from `getTaskTotals`, which must
+     * never get the attribution join. The two reads disagreeing is the DESIGN: one answers "how much
+     * has been spent on this Task", the other "how much of it belongs to this Iteration". A later
+     * refactor that "fixed" the inconsistency would break AC6, which is why this assertion sits
+     * beside the two above rather than in its own file.
+     */
+    const totals = await items.getTaskTotals(admin, story.id);
+    expect(Number(totals.actualHours)).toBe(7);
+  });
+
+  it('windows a Task carried across THREE Iterations, middle one included (SU-10 10.3, §8 Q1b)', async () => {
+    /**
+     * The case "the most recent Split row" gets wrong. Three windows, two Splits, snapshots 3 then 7,
+     * and a Task that ends at 10 hours: the MIDDLE Iteration's claim is bounded BELOW by the Split
+     * that brought the Task in and ABOVE by the Split that took it out, and reading only the latest
+     * row would hand it the 7→10 window that belongs to the third.
+     */
+    const first = await namedIteration('SU10 I1', shift(localToday, -41), shift(localToday, -38));
+    const second = await namedIteration('SU10 I2', shift(localToday, -37), shift(localToday, -34));
+    const third = await namedIteration('SU10 I3', shift(localToday, -33), shift(localToday, -30));
+    const story = await newSplittableStory('SU10 three hops', first.id, {
+      points: '5',
+      estimate: '9',
+      todo: '9',
+      actual: '3',
+    });
+    const [task] = await items.listTasks(admin, story.id);
+
+    // Hop 1: 3 hours are on the clock, so the first Iteration's share is fixed at 3.
+    await items.splitWorkItem(admin, story.id, splitInput(first.id, second.id, 1, 4));
+    // Four more hours logged while the second Iteration owned it.
+    await items.updateWorkItem(admin, task.id, { actualHours: '7' });
+    // Hop 2: the ORIGINAL row is the `[Continued]` side again, so it is the same story id.
+    await items.splitWorkItem(admin, story.id, splitInput(second.id, third.id, 1, 3));
+    // Three more in the third.
+    await items.updateWorkItem(admin, task.id, { actualHours: '10' });
+
+    const actualIn = async (iterationId: string) =>
+      (await reporting.getTeamCapacity(admin, { projectId, iterationId })).totals.actualHours;
+
+    expect([await actualIn(first.id), await actualIn(second.id), await actualIn(third.id)]).toEqual(
+      [3, 4, 3],
+    );
+    // Attributed ONCE across the chain, in full.
+    expect(
+      (await actualIn(first.id)) + (await actualIn(second.id)) + (await actualIn(third.id)),
+    ).toBe(10);
   });
 });
 
