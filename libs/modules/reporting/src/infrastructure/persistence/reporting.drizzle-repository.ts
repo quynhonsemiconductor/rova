@@ -677,16 +677,41 @@ export class ReportingDrizzleRepository implements IReportingRepository {
    * Estimate and the To Do FOLLOW the Task (BR-27, satisfied by D3/D4 — nothing is copied or
    * rolled up), which is why SU-08's e2e asserts the source burndown's remaining To Do dropping to
    * `0` on the Split date. Only the Actual is historical: those hours were spent inside this
-   * Iteration and no later event can move them (SRS §10.5).
+   * Iteration and **no later SPLIT can move them** (SRS §10.5).
+   *
+   * THAT CLAIM IS ABOUT SPLIT AND IS NOT ABSOLUTE, so do not read it as "these hours are frozen".
+   * A later SOFT DELETE of the Task or of its parent Story removes them from this report, because
+   * both ends of this read must be live — `isNull(tasks.deletedAt)` below and the `innerJoin` on
+   * `parent`. That is deliberate and it is the rule the RESIDENT population already follows: deleted
+   * work leaves the report entirely rather than lingering as hours under an item the reader cannot
+   * open. Unlike {@link findSplits}, which can let a marker go because "its numbers are already in the
+   * frozen series", Team Capacity is live and has no series to fall back on — so those hours are
+   * simply absent for as long as the item is deleted, and return if `deleted_at` is cleared in the
+   * database (a soft delete has no product-level undo). Pinned by `phase6-reports.e2e.spec.ts`
+   * "drops a departed Task's retained Actual once the work itself is deleted".
    *
    * MEMBERSHIP IS `actualAtDeparture IS NOT NULL`, i.e. the departure bound found a Split row. That
    * makes the predicate and the value the same fact — a task admitted here always has something to
    * contribute, and there is no second `exists` clause to keep in step with the subquery beside it.
    *
-   * The team's third tier is the SPLIT's own `team_id` — the Story's team AS AT the Split — not the
-   * iteration's, because the Task's iteration is now the TARGET and reading it here would file this
-   * Iteration's history under the team that inherited the work. The same choice, for the same reason,
-   * as the burndown markers in {@link findSplits}.
+   * The team's third tier is the SPLIT's own `team_id` — the Story's team AS AT the Split — standing
+   * in for the iteration's, because the Task's iteration is now the TARGET and reading it here would
+   * file this Iteration's history under the team that inherited the work. **The first two tiers are
+   * the CURRENT ones, exactly as for a resident row**, so this is a FALLBACK for team-less work and
+   * not a snapshot of ownership; {@link findSplits} reads the same column as its FIRST tier because a
+   * marker describes only a past event, whereas a capacity row describes work that still exists.
+   *
+   * WHICH MAKES OWNERSHIP THE ONE DIMENSION HERE A LATER EDIT CAN STILL MOVE — an accepted
+   * limitation, recorded in the same spirit as §8 Q1c on {@link attributeActualHours}.
+   * `story_split_items` snapshots HOURS, not who held the Task (it has no assignee column), so
+   * re-assigning a departed Task re-files this Iteration's retained Actual under the new member. The
+   * Iteration's TOTAL never moves — only the member row it sits in does. Left live on purpose: that
+   * is the product-wide rule for Actual hours rather than a Split-specific quirk, since a resident row
+   * and `Track > Team Status` both read `tasks.assignee_id` live too, and freezing it HERE would make
+   * this one population disagree with every other hour on the same screen. Closing it properly needs
+   * an `assignee_id_at_split` column and a decision from the BA about whose number the report is, not
+   * a different `coalesce` here. Pinned by `phase6-reports.e2e.spec.ts` "files a departed Task's
+   * retained Actual under whoever owns the Task TODAY".
    */
   private async departedTaskRows(
     workspaceId: string,
@@ -716,6 +741,9 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         teamId: sql<string | null>`${resolvedTeam}`,
         teamName: team.name,
         teamStatus: team.status,
+        // The CURRENT assignee, not a snapshot — see the docblock: `story_split_items` carries hours,
+        // not ownership, so a later re-assignment moves this Iteration's retained Actual to the new
+        // member's row (accepted limitation, total unchanged).
         ownerId: tasks.assigneeId,
         ownerName: users.displayName,
         actualHours: tasks.actualHours,
@@ -728,6 +756,9 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         actualAtDeparture: departureActual,
       })
       .from(tasks)
+      // BOTH ends must be live, so a Task or Story deleted AFTER the Split takes its retained Actual
+      // out of this report with it — the "no later Split can move them" claim above does not cover a
+      // delete. Same rule as the resident population.
       .innerJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
       .leftJoin(team, sql`${team.id} = ${resolvedTeam}`)
       .leftJoin(users, eq(users.id, tasks.assigneeId))

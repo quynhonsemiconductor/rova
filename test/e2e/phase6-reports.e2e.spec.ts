@@ -1421,6 +1421,34 @@ describe('Phase 6 reports (e2e)', () => {
     return { id: iteration.id, name };
   }
 
+  /** A second named principal who may hold a Task in this fixture's project. */
+  async function newProjectMember(displayName: string): Promise<string> {
+    const userId = randomUUID();
+    await db.insert(users).values({
+      id: userId,
+      email: `su10-${userId.slice(0, 8)}@qnsc.dev`,
+      displayName,
+    });
+    await db
+      .insert(workspaceMembers)
+      .values({ workspaceId: WORKSPACE_ID, userId, status: 'active' });
+    // `admin`, so `assertAssignable` accepts them for a team-less Task — the narrowest grant that
+    // makes a re-assignment legal is a project-level one (work-items.service.ts:3277).
+    await grantProjectAccess(app, userId, projectId, 'admin');
+    return userId;
+  }
+
+  /** One member's Actual in a capacity report, across whichever team bucket they landed in. */
+  function memberActual(
+    report: { teams: { members: { id: string | null; hours: { actualHours: number } }[] }[] },
+    memberId: string,
+  ): number {
+    return report.teams
+      .flatMap((t) => t.members)
+      .filter((m) => m.id === memberId)
+      .reduce((sum, m) => sum + m.hours.actualHours, 0);
+  }
+
   it('gives a Split placeholder its OWN excluded Velocity segment (SU-09 AC1/AC2/AC4/AC6)', async () => {
     /**
      * Both windows are CLOSED, because Velocity only reports iterations whose local end date is
@@ -1656,6 +1684,116 @@ describe('Phase 6 reports (e2e)', () => {
     expect(
       (await actualIn(first.id)) + (await actualIn(second.id)) + (await actualIn(third.id)),
     ).toBe(10);
+  });
+
+  // ── SU-10 review follow-up (PR #638): the two limits of "the source keeps its hours" ────────
+  //
+  // Both cases pin a LIMIT of the retained Actual that `departedTaskRows`' docblock now states
+  // outright. They exist because the first version of that docblock claimed more than the code does —
+  // "no later event can move them", and a team snapshot implying ownership was snapshotted too — and a
+  // prose-only correction is the kind that drifts back. Neither test asserts a new behaviour: each
+  // asserts the behaviour that was always there, so the comment can no longer disagree with it.
+
+  it("files a departed Task's retained Actual under whoever owns the Task TODAY (review follow-up)", async () => {
+    /**
+     * THE ACCEPTED LIMITATION: ownership is read LIVE while the hours are historical.
+     *
+     * `story_split_items` snapshots `actual_hours_at_split` and nothing about who held the Task, so a
+     * re-assignment after the Split re-files the source Iteration's retained hours under the new
+     * member. Deliberate — a resident row and `Track > Team Status` read `tasks.assignee_id` live too,
+     * so freezing it only here would make one population disagree with every other hour on the screen.
+     * What must NOT move is the Iteration's total, and that is asserted on both sides of the change.
+     */
+    const source = await namedIteration(
+      'SU10 Owner',
+      shift(localToday, -55),
+      shift(localToday, -52),
+    );
+    const target = await namedIteration(
+      'SU10 OwnerT',
+      shift(localToday, -51),
+      shift(localToday, -48),
+    );
+    const story = await newSplittableStory('SU10 owner move', source.id, {
+      points: '5',
+      estimate: '8',
+      todo: '6',
+      actual: '2',
+    });
+    const [task] = await items.listTasks(admin, story.id);
+    await items.updateWorkItem(admin, task.id, { assigneeId: ADMIN_USER_ID });
+
+    await items.splitWorkItem(admin, story.id, splitInput(source.id, target.id, 2, 3));
+
+    const before = await reporting.getTeamCapacity(admin, { projectId, iterationId: source.id });
+    expect(before.totals.actualHours).toBe(2);
+    // The premise: the retained hours really are on the original owner's row, not merely in the total.
+    expect(memberActual(before, ADMIN_USER_ID)).toBe(2);
+
+    const successor = await newProjectMember('SU10 successor');
+    await items.updateWorkItem(admin, task.id, { assigneeId: successor });
+
+    const after = await reporting.getTeamCapacity(admin, { projectId, iterationId: source.id });
+    // The Iteration's history is intact — this is the claim SU-10 exists to make (AC4).
+    expect(after.totals.actualHours).toBe(2);
+    // …but the member row it sits in followed the Task. Both halves asserted, so this cannot pass by
+    // the hours being counted twice or by the successor's row simply being absent.
+    expect(memberActual(after, successor)).toBe(2);
+    expect(memberActual(after, ADMIN_USER_ID)).toBe(0);
+  });
+
+  it("drops a departed Task's retained Actual once the work itself is deleted (review follow-up)", async () => {
+    /**
+     * THE OTHER LIMIT: "no later event can move them" is about SPLIT, not about DELETE.
+     *
+     * `departedTaskRows` requires both the Task and its parent to be live, so soft-deleting the
+     * `[Continued]` Story after the Split takes the source Iteration's retained hours with it. That is
+     * the rule the resident population already follows — deleted work leaves the report rather than
+     * lingering as hours under an item the reader cannot open — and Team Capacity, unlike SU-08's
+     * burndown markers, has no frozen series to fall back on, so the number is absent rather than
+     * preserved. Asserted as the row being GONE (`teams` empty), not merely summing to zero.
+     */
+    const source = await namedIteration(
+      'SU10 Deleted',
+      shift(localToday, -63),
+      shift(localToday, -60),
+    );
+    const target = await namedIteration(
+      'SU10 DeletedT',
+      shift(localToday, -59),
+      shift(localToday, -56),
+    );
+    const story = await newSplittableStory('SU10 delete after split', source.id, {
+      points: '5',
+      estimate: '8',
+      todo: '6',
+      actual: '2',
+    });
+
+    const result = await items.splitWorkItem(
+      admin,
+      story.id,
+      splitInput(source.id, target.id, 2, 3),
+    );
+    const kept = await reporting.getTeamCapacity(admin, { projectId, iterationId: source.id });
+    expect(kept.totals.actualHours).toBe(2);
+
+    // The `[Continued]` side IS the original row, moved forward, and the Task hangs off it.
+    await items.deleteWorkItem(admin, result.continued.id);
+
+    const afterDelete = await reporting.getTeamCapacity(admin, {
+      projectId,
+      iterationId: source.id,
+    });
+    expect(afterDelete.totals.actualHours).toBe(0);
+    expect(afterDelete.teams).toEqual([]);
+    // The target loses it too, which is what makes this consistency rather than a Split-only hole.
+    const targetAfter = await reporting.getTeamCapacity(admin, {
+      projectId,
+      iterationId: target.id,
+    });
+    expect(targetAfter.totals.estimateHours).toBe(0);
+    expect(targetAfter.teams).toEqual([]);
   });
 });
 

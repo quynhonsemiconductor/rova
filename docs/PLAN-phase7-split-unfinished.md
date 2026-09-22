@@ -2342,6 +2342,54 @@ the only AC5 evidence taken on a rendered page rather than in jsdom. SU-08 left 
 OUT / CARRY IN half is still open, because those render only for a timebox a Split touched and the
 seeded fixture has none.
 
+#### SU-10 review follow-up — `qnsc-code-review` on PR #638, both items fixed 2026-09-22
+
+Two advisory findings, **both `documentation`** (one medium, one low), both on `departedTaskRows`, and
+the verdict was "nothing blocking". Taken anyway, because in both cases **the docblock claimed more
+than the code does** — and an over-claiming comment beside correct code is the kind of thing the next
+session trusts. No behaviour changed in either fix; what changed is that each claim is now exact and
+**pinned by a test**, so the comment can no longer drift away from the query.
+
+1. **"Ownership is snapshotted" was never true, and the team sentence implied it was** (medium).
+   The reviewer read *"the team's third tier is the SPLIT's own `team_id` — the Story's team AS AT the
+   Split … the same choice as `findSplits`"* as the row being resolved **as at the Split**, and then
+   correctly asked why the MEMBER dimension is the live `tasks.assignee_id`. Two things were wrong with
+   the sentence rather than with the SQL:
+   - the first two team tiers are `tasks.team_id` and `parent.team_id`, i.e. **current**, exactly as for
+     a resident row — the Split's team only stands in for the **iteration** tier, which would otherwise
+     read the TARGET iteration's team. So it is a FALLBACK for team-less work, not a snapshot;
+   - `findSplits` is **not** the same choice: it reads that column FIRST, because a marker describes only
+     a past event, whereas a capacity row describes work that still exists.
+
+   Which leaves the reviewer's substantive point standing: **ownership is the one dimension here a later
+   edit can still move.** `story_split_items` has no assignee column (§2.2 — it snapshots hours), so
+   re-assigning a departed Task re-files the source Iteration's retained Actual under the new member.
+   Recorded as an accepted limitation in the §8 Q1c style, with the reason it is *left* live: a resident
+   row and `Track > Team Status` both read the assignee live, so freezing it in this one population
+   would make it disagree with every other hour on the same screen. Closing it needs an
+   `assignee_id_at_split` column **and a BA ruling about whose number the report is** — not a different
+   `coalesce`. Pinned by a new e2e: the Iteration's total stays `2` across a re-assignment while the
+   member row it sits in moves from the original owner (`2 → 0`) to the successor (`0 → 2`), both halves
+   asserted so it cannot pass by double-counting or by the successor's row merely being absent.
+2. **"No later event can move them" is about SPLIT, not about DELETE** (low). The reviewer spotted that
+   `isNull(tasks.deletedAt)` plus the `innerJoin` on a live `parent` drops the departed row entirely
+   once the Task or its Story is soft-deleted after the Split — which is a later event moving the hours,
+   so the code and its justification disagreed. **The code is right and the sentence was too strong.**
+   Deleted work leaving the report is the rule the resident population already follows, and the SRS
+   §10.5 claim is about a Split not being able to re-attribute the hours. Qualified in place, with the
+   part `findSplits` can rely on and Team Capacity cannot: there is **no frozen series** here, so the
+   hours are absent for as long as the item is deleted (a soft delete has no product-level undo;
+   clearing `deleted_at` in the database brings them back). Pinned by a second e2e that asserts the row
+   is **GONE** — `teams: []` on both the source and the target — rather than merely summing to zero.
+
+Gate for the follow-up: `pnpm typecheck` exit 0, `pnpm lint` exit 0, `pnpm test` **93 files / 2251
+tests** unchanged (no unit-level code changed — the ratchets, including `e2e-fixtures` at 81 and
+`query-ordering` at 0, are in that run), and `phase6-reports.e2e.spec.ts` **25 → 27 tests, green
+locally** against a real database. No new `createProject`: both cases reuse this spec's own project,
+and the second principal is a `users` + `workspace_members` + `grantProjectAccess` triple, the pattern
+the file's own `report:view` test already uses.
+
+
 ---
 
 ## 7. Test strategy
