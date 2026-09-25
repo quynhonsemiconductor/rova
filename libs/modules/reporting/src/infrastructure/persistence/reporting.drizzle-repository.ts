@@ -440,6 +440,19 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         // {accepted, release}. `Completed` is NOT accepted-equivalent.
         acceptedEquivalent: sql<boolean>`${workItems.scheduleState} in (${acceptedScheduleStatesSql()})`,
         acceptedDate: workItems.acceptedDate,
+        /**
+         * Phase 7 SU-09 9.2 — is this row a Split's `[Unfinished]` placeholder (plan D6)?
+         *
+         * A PREDICATE, not the id: the classifier asks one yes/no question, and `split_id` itself
+         * would tempt a later reader into resolving the Split here, inside a query that runs once per
+         * velocity render.
+         *
+         * NOT an exclusion, which is what separates this call site from SU-08 8.1's three. There the
+         * placeholder had to leave a delivered-points SUM; here it earns its own visible segment, so
+         * filtering it out in SQL would delete the segment instead of building it — recorded in 8.1's
+         * own "left alone, with reasons" list for exactly this reason.
+         */
+        splitCarryover: sql<boolean>`${workItems.splitId} is not null`,
       })
       .from(workItems)
       .leftJoin(iteration, eq(iteration.id, workItems.iterationId))
@@ -458,6 +471,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       planEstimate: nullableNum(r.planEstimate),
       acceptedEquivalent: r.acceptedEquivalent,
       acceptedDate: r.acceptedDate,
+      splitCarryover: r.splitCarryover,
     }));
   }
 

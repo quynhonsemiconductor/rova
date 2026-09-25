@@ -5380,6 +5380,9 @@ export interface components {
         notAccepted: number
         unclassified: number
         unclassifiedItems: number
+        splitCarryover: number
+        /** @description The `[Unfinished]` placeholders behind splitCarryover — the excluded population. */
+        splitStoryIds: string[]
         iterationCount: number
       }[]
       averages: {

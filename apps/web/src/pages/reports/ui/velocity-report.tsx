@@ -1,13 +1,18 @@
 /**
- * Reports > Velocity (Velocity SRS §6).
+ * Reports > Velocity (Velocity SRS §6, Phase 7 SU-09 for the fourth segment).
  *
- * A stacked bar per completed timebox — Accepted During / Accepted After / Not Accepted — with
- * a flat Trend line at the window average, and the Last 3 / Best 3 / Worst 3 summary above it.
- * Only During feeds the trend and the averages; the other two segments are context.
+ * A stacked bar per completed timebox — Accepted During / Accepted After / Not Accepted / Split ·
+ * Carryover — with a flat Trend line at the window average, and the Last 3 / Best 3 / Worst 3 summary
+ * above it. Only During feeds the trend and the averages; everything else is context.
  *
  * Points belonging to an accepted item with no acceptance timestamp are in no segment at all.
  * They arrive as `unclassified` and are reported as a data-quality gap, because the SRS forbids
  * guessing whether such an item was accepted during or after the iteration.
+ *
+ * The Split/Carryover segment is the points a Split left behind as its `[Unfinished]` placeholder. It
+ * is amber and its legend says `(excluded)` out loud: the placeholder is stored `accepted` with a real
+ * acceptance date, so a reader who knows the Phase 6 rule would otherwise expect those points in
+ * During, and a silently shorter bar is the one outcome SU-09 exists to prevent.
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -63,6 +68,14 @@ export function VelocityReport({
 
   const bars = data?.bars ?? []
   const averages = data?.averages
+  /**
+   * How many `[Unfinished]` placeholders the window excludes, from the ids the bars carry.
+   *
+   * `splitStoryIds.length` rather than a second server field: one list means the count and the
+   * summed points can never disagree. A Story belongs to exactly one iteration, so no id is reached
+   * twice across bars and this needs no de-duplication of its own.
+   */
+  const carriedOverStories = bars.reduce((sum, bar) => sum + bar.splitStoryIds.length, 0)
   // A flat line at the window average: the SRS's Trend is one value repeated across the bars,
   // not a per-bar figure.
   const chartData = bars.map((bar) => ({ ...bar, trend: averages?.trend }))
@@ -150,6 +163,9 @@ export function VelocityReport({
             t('velocity.series.during'),
             t('velocity.series.after'),
             t('velocity.series.notAccepted'),
+            // The amber segment is not colour-only: a screen reader gets the same fourth number a
+            // sighted reader sees in the stack (plan 9.4).
+            t('velocity.series.splitCarryover'),
           ],
           // The Trend is deliberately absent: it is one repeated value, already stated in the
           // legend, and a column of the same number on every row is noise to read aloud.
@@ -158,6 +174,7 @@ export function VelocityReport({
             bar.acceptedDuring,
             bar.acceptedAfter,
             bar.notAccepted,
+            bar.splitCarryover,
           ]),
         }}
         isEmpty={bars.length === 0}
@@ -171,6 +188,12 @@ export function VelocityReport({
               color={BRAND.reportNotAccepted}
               label={t('velocity.series.notAccepted')}
             />
+            {/* AC5 — the label says `(excluded)` in words, because the colour alone cannot say why
+                these points are outside the trend. Rendered unconditionally, unlike the burndown's
+                marker legend: this is a SEGMENT of a stack whose scale every bar shares, so a legend
+                that appeared only in windows containing a Split would change the chart's key between
+                two renders of the same report. */}
+            <ChartLegendItem color={BRAND.warning} label={t('velocity.series.splitCarryover')} />
             <ChartLegendItem
               color={BRAND.reportTrend}
               shape="line"
@@ -179,12 +202,22 @@ export function VelocityReport({
           </>
         }
         footer={
-          data && data.unclassifiedItems > 0 ? (
-            <p className="mt-2 flex items-center justify-center gap-1.5 text-ui-xs text-destructive">
-              <AlertTriangle size={12} />
-              {t('velocity.unclassified', { count: data.unclassifiedItems })}
-            </p>
-          ) : null
+          <>
+            {data && data.unclassifiedItems > 0 ? (
+              <p className="mt-2 flex items-center justify-center gap-1.5 text-ui-xs text-destructive">
+                <AlertTriangle size={12} />
+                {t('velocity.unclassified', { count: data.unclassifiedItems })}
+              </p>
+            ) : null}
+            {/* Amber and plain text, with NO icon and no `role="alert"`: a Split is a recorded fact,
+                not a data-quality fault, and the destructive line above it is the one thing on this
+                chart a reader must act on. Present only when a Split actually touched the window. */}
+            {carriedOverStories > 0 ? (
+              <p className="mt-2 text-center text-ui-xs text-warning">
+                {t('velocity.splitCarryoverNote', { count: carriedOverStories })}
+              </p>
+            ) : null}
+          </>
         }
       >
         <ComposedChart data={chartData} margin={{ top: 8, right: 18, left: 8, bottom: 14 }}>
@@ -204,6 +237,21 @@ export function VelocityReport({
             stackId="velocity"
             name={t('velocity.series.after')}
             fill={BRAND.reportAfter}
+            barSize={52}
+          />
+          {/**
+           * The excluded segment sits BELOW `notAccepted` in the stack, which is deliberate and is
+           * about the rounded cap rather than about meaning: `radius` lives on whichever segment is
+           * drawn topmost, and a zero-height `splitCarryover` rect — which is every bar in a window
+           * no Split touched — would leave the stack square-topped. Placing it here keeps
+           * `notAccepted` as the cap for every bar, and it is the honest neighbour anyway: both are
+           * points this iteration did not deliver.
+           */}
+          <Bar
+            dataKey="splitCarryover"
+            stackId="velocity"
+            name={t('velocity.series.splitCarryover')}
+            fill={BRAND.warning}
             barSize={52}
           />
           <Bar
