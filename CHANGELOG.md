@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.7.19](https://github.com/quynhonsemiconductor/rova/compare/v0.7.18...v0.7.19) (2026-09-25)
+
+
+### ✨ Features
+
+* **db:** authenticate to Postgres with IAM, which is what the roles require ([#636](https://github.com/quynhonsemiconductor/rova/issues/636)) ([3140a85](https://github.com/quynhonsemiconductor/rova/commit/3140a85c864ac3a34128d0b82ab9955396efe354))
+* **reporting:** exclude split carryover points from velocity ([#637](https://github.com/quynhonsemiconductor/rova/issues/637)) ([8990c4c](https://github.com/quynhonsemiconductor/rova/commit/8990c4c24307190f4a5a86d862434a3eacc81428))
+* serve /livez, wire the Kubernetes delivery path, immutable ECR tags ([#626](https://github.com/quynhonsemiconductor/rova/issues/626)) ([9435598](https://github.com/quynhonsemiconductor/rova/commit/94355981b2aae2deec7d1ac947eb4c5c73aed137))
+* **work-items:** commit a story split in one transaction ([#623](https://github.com/quynhonsemiconductor/rova/issues/623)) ([fc2a93a](https://github.com/quynhonsemiconductor/rova/commit/fc2a93ac97986e590fbc3fec59d9f203f943bf68))
+* **work-items:** configure both stories in the split modal ([#619](https://github.com/quynhonsemiconductor/rova/issues/619)) ([ea710d2](https://github.com/quynhonsemiconductor/rova/commit/ea710d2e8309de1e14e4df726c2f3ee395224eca))
+* **work-items:** distribute tasks, defects and test cases between the split panels ([#621](https://github.com/quynhonsemiconductor/rova/issues/621)) ([b315310](https://github.com/quynhonsemiconductor/rova/commit/b315310f3ecba65c8a34a01e0db04eaabbe4defa))
+* **work-items:** trace a split and show it on the iteration burndown ([#624](https://github.com/quynhonsemiconductor/rova/issues/624)) ([465e427](https://github.com/quynhonsemiconductor/rova/commit/465e427687a99064042ac965bc0c43dcc6faeb0e))
+
+
+### 🐛 Bug Fixes
+
+* **ci:** restore infra-plan.yml, which a bad edit emptied ([#629](https://github.com/quynhonsemiconductor/rova/issues/629)) ([b23e4c0](https://github.com/quynhonsemiconductor/rova/commit/b23e4c0e8c15d40be37a7774934e4a69dcab3be9))
+* **db:** give the migrator the IAM auth the application already has ([#639](https://github.com/quynhonsemiconductor/rova/issues/639)) ([1a5c16c](https://github.com/quynhonsemiconductor/rova/commit/1a5c16cbda2e5f67f54bbcca818d7c6efa3dbb3b))
+* **test-cases:** show the parent's inherited Team on a Test Case ([#642](https://github.com/quynhonsemiconductor/rova/issues/642)) ([38b1e83](https://github.com/quynhonsemiconductor/rova/commit/38b1e83abcb23035cf1dd8d41b4d7c8f29ecdf0a))
+* **web:** grow a grid row to fit a cell that wrapped ([#643](https://github.com/quynhonsemiconductor/rova/issues/643)) ([8897518](https://github.com/quynhonsemiconductor/rova/commit/889751867780ea1da5244c690b3674f2285468fc))
+
 ## [0.7.18](https://github.com/quynhonsemiconductor/rova/compare/v0.7.17...v0.7.18) (2026-09-16)
 
 
