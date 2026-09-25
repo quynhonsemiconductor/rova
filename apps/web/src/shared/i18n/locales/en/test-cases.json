@@ -144,6 +144,9 @@
       "verdict": "Filter by Verdict",
       "tester": "Filter by Tester"
     },
+    "history": {
+      "subtitle": "Activity log for field changes on this Test Result."
+    },
     "detail": {
       "notFound": "No Test Result found",
       "notFoundHint": "Check the link and try again."

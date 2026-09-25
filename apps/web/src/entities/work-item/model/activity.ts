@@ -33,6 +33,11 @@ export function formatActivityValue(value: unknown): string {
   return String(value)
 }
 
+/** Did this side of the change carry no value at all? */
+function isBlankValue(value: unknown): boolean {
+  return value === null || value === undefined || value === ''
+}
+
 /**
  * Actions whose `changes.field` does not name the thing that changed in the entity's OWN terms.
  *
@@ -109,6 +114,24 @@ export function activityFieldLabel(log: ActivityLike): string {
 /** Build a Rally-style revision Description from an activity-log entry. */
 export function describeActivity(log: ActivityLike): string {
   if (log.changes) {
+    /**
+     * DE-18: a row with NOTHING on either side states the change, not two empties.
+     *
+     * Until the writer recorded a plain-text preview for rich-text fields, every rich-text change
+     * was stored as `old: null, new: null` — so the sentence below rendered "Notes changed from
+     * (empty) to (empty)" for an edit that saved real text, and the log could not be used for the
+     * review US-93/US-97 exist for. The writer is fixed (`richTextPreview`), but EVERY ROW ALREADY
+     * WRITTEN still carries the two nulls and the bodies are not recoverable, so a writer-side fix
+     * alone would leave the history the BA was reading untouched.
+     *
+     * "Notes changed" is the whole truth available for such a row: it names the field and the fact,
+     * and it never puts a value in the reader's mouth. `formatActivityValue`'s "(empty)" keeps its
+     * meaning for the case it is right about — ONE side empty (cleared, or filled for the first
+     * time), which is exactly what new rich-text rows now produce.
+     */
+    if (isBlankValue(log.changes.old) && isBlankValue(log.changes.new)) {
+      return `${activityFieldLabel(log)} changed`
+    }
     return `${activityFieldLabel(log)} changed from ${formatActivityValue(
       log.changes.old,
     )} to ${formatActivityValue(log.changes.new)}`

@@ -7,7 +7,8 @@ export interface ActivityDiffEntry {
   change: ActivityChange;
 }
 
-// Rich-text fields: record that they changed, never the body (SRS §7).
+// Rich-text fields: logged as a bounded plain-text preview of each side, never the markup and
+// never the whole body (SRS §7; see `richTextPreview`).
 const RICH_TEXT = [
   'description',
   'notes',

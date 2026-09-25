@@ -12,7 +12,11 @@ export function HistoryTab({ testResultId }: { testResultId: string }) {
     <ActivityHistoryTab
       logs={logs}
       title={t('detail.tabs.history')}
-      subtitle={t('history.subtitle')}
+      // DE-18: its OWN subtitle. Both history tabs read the `test-cases` namespace, and this one
+      // used `history.subtitle` — the Test CASE sentence — so a Test Result's revision log
+      // announced itself as "…on this Test Case", naming the wrong record on the one surface whose
+      // whole purpose is to say what happened to THIS one.
+      subtitle={t('results.history.subtitle')}
     />
   )
 }

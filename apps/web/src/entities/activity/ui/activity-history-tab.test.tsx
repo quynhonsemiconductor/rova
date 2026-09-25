@@ -196,4 +196,51 @@ describe('ActivityHistoryTab', () => {
 
     expect(screen.getByText('Work Item Archived')).toBeInTheDocument()
   })
+
+  // ── Rich-text field changes (DE-18, US-93 TC-25 / US-97 TC-37) ──────────────
+
+  /**
+   * The reported defect, both halves of it.
+   *
+   * The writer used to store `old: null, new: null` for any rich-text field, so a Notes edit that
+   * saved real text rendered "Notes changed from (empty) to (empty)" — the log said nothing, on the
+   * one tab whose purpose is review. The writer now records a bounded plain-text preview
+   * (`richTextPreview`), and the renderer has to do two different things:
+   *
+   *   • a row with a value on either side reads as the value (the new rows);
+   *   • a row with NOTHING on either side states the change and stops — the rows already written,
+   *     whose bodies are gone and cannot be recovered by any migration.
+   */
+  function richTextRow(id: string, old: unknown, next: unknown) {
+    return { ...ROW, id, action: 'test_case.updated', changes: { field: 'notes', old, new: next } }
+  }
+
+  it('renders the NEW value of a rich-text change, not a second "(empty)"', () => {
+    renderTab({ data: [richTextRow('r-1', null, 'US97 edit probe note')], isLoading: false })
+
+    expect(
+      screen.getByText('Notes changed from (empty) to US97 edit probe note'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/to \(empty\)/)).not.toBeInTheDocument()
+  })
+
+  it('renders both sides when a rich-text field was edited over existing text', () => {
+    renderTab({ data: [richTextRow('r-2', 'first note', 'second note')], isLoading: false })
+
+    expect(screen.getByText('Notes changed from first note to second note')).toBeInTheDocument()
+  })
+
+  it('keeps "(empty)" for the side that really is empty — a CLEARED field', () => {
+    renderTab({ data: [richTextRow('r-3', 'first note', null)], isLoading: false })
+
+    expect(screen.getByText('Notes changed from first note to (empty)')).toBeInTheDocument()
+  })
+
+  it('states the change with no values at all for a row written before the preview existed', () => {
+    renderTab({ data: [richTextRow('r-4', null, null)], isLoading: false })
+
+    expect(screen.getByText('Notes changed')).toBeInTheDocument()
+    // The defect verbatim: two empties is a claim about the values, and this row has none.
+    expect(screen.queryByText(/\(empty\)/)).not.toBeInTheDocument()
+  })
 })

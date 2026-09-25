@@ -165,8 +165,9 @@ export class TestResultsService {
     );
 
     // TX1: outside the transaction, `logSafe` — matching releases/projects (`TestCasesService`'s
-    // identical reasoning): a revision-log failure must never fail the mutation. Scalar-only diff
-    // rows, never a rich-text body (TEST_RESULT_ACTIVITY_CONFIG.richText). `contextId` = the Test
+    // identical reasoning): a revision-log failure must never fail the mutation. Scalar diff rows,
+    // with rich-text fields reduced to a bounded plain-text preview
+    // (TEST_RESULT_ACTIVITY_CONFIG.richText). `contextId` = the Test
     // Case's own id, matching Test Case activity's own `contextId` (the parent Work Item) one
     // level up — a Result's Revision History belongs to its Result, and its Test Case's history is
     // a SEPARATE feed (C6), not this one.
