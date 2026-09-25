@@ -32,6 +32,7 @@ import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from '@tanstack/react-router'
 import { useDetailBack } from '@/shared/lib/use-detail-back'
+import { useDetailTab } from '@/shared/lib/use-detail-tab'
 import {
   Bell,
   BellOff,
@@ -92,6 +93,19 @@ import { entityDetailUrl } from '@/shared/lib/entity-link'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type DetailTab = 'details' | 'tasks' | 'test-cases' | 'connections' | 'history'
+
+/**
+ * Every tab this page can show, for the URL's benefit (DE-19 — see `useDetailTab`). A Task shows a
+ * subset of them, which is why the rendered tab is still narrowed against the built `tabs` list
+ * below rather than taken from the URL alone.
+ */
+const DETAIL_TABS: readonly DetailTab[] = [
+  'details',
+  'tasks',
+  'test-cases',
+  'connections',
+  'history',
+]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -173,7 +187,9 @@ export function WorkItemDetailPage() {
   const { itemKey } = useParams({ from: '/auth/item/$itemKey' })
   // Back means back — the Backlog is only where a deep link lands (see `useDetailBack`).
   const back = useDetailBack({ to: '/backlog' })
-  const [activeTab, setActiveTab] = useState<DetailTab>('details')
+  // DE-19 / US-93 TC-23 AC1: in the URL, not in state, so Back from a Test Case (or any record
+  // opened from a tab) returns to the TAB the reader left, not to Details. See `useDetailTab`.
+  const [activeTab, setActiveTab] = useDetailTab(DETAIL_TABS, 'details')
 
   // P1-10: sidebar collapse — persisted in localStorage so preference survives navigation
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -378,6 +394,7 @@ export function WorkItemDetailPage() {
   // The route component persists across itemKey changes, so a Story's "Tasks"
   // tab could remain selected on a Task that has no such tab. Derive the tab to
   // render (fall back to Details) instead of resetting state — no effect/ref.
+  // It also guards a URL naming a tab THIS item type does not have (`?tab=tasks` on a Task).
   const activeTabId: DetailTab = tabs.some((tb) => tb.id === activeTab) ? activeTab : 'details'
 
   return (

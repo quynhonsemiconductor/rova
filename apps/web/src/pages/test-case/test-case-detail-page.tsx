@@ -9,11 +9,11 @@
  *
  * Three tabs: `Details`, `Results` (Phase D) and `Revision History` (C6).
  */
-import { useState } from 'react'
 import { useParams, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { FileText, FlaskConical, History } from 'lucide-react'
 import { useDetailBack } from '@/shared/lib/use-detail-back'
+import { useDetailTab } from '@/shared/lib/use-detail-tab'
 import {
   useTestCaseByKey,
   useTestCaseTypes,
@@ -48,11 +48,16 @@ import { ResultsTab } from './ui/results-tab'
 
 type DetailTab = 'details' | 'results' | 'history'
 
+/** Every tab this page can show, for the URL's benefit (DE-19 — see `useDetailTab`). */
+const DETAIL_TABS: readonly DetailTab[] = ['details', 'results', 'history']
+
 export function TestCaseDetailPage() {
   const { t } = useTranslation('test-cases')
   const back = useDetailBack({ to: '/backlog' })
   const { testCaseKey } = useParams({ from: '/auth/test-case/$testCaseKey' })
-  const [activeTab, setActiveTab] = useState<DetailTab>('details')
+  // In the URL for the same reason the Work Item page keeps it there (DE-19): Back from a Test
+  // Result must return to the Results LIST it was opened from, not to Details.
+  const [activeTab, setActiveTab] = useDetailTab(DETAIL_TABS, 'details')
 
   const byKeyQuery = useTestCaseByKey(testCaseKey)
   const { data: testCaseByKey, isLoading, isError, error } = byKeyQuery
