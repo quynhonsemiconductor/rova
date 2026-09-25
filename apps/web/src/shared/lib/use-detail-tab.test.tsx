@@ -78,6 +78,42 @@ describe('useDetailTab', () => {
     expect(replace).toHaveBeenCalledWith('/item/US-39')
   })
 
+  /**
+   * Re-selecting the active tab must not rewrite the entry the tab is STORED IN — this handler runs
+   * on every click of it, and a byte-identical `replaceState` + router commit buys nothing.
+   */
+  it('writes nothing when the URL already says what the click asks for', () => {
+    location = {
+      pathname: '/item/US-39',
+      searchStr: '?tab=test-cases',
+      search: { tab: 'test-cases' },
+    }
+    const { result } = renderHook(() => useDetailTab(TABS, 'details'))
+
+    result.current[1]('test-cases')
+
+    expect(replace).not.toHaveBeenCalled()
+  })
+
+  it('writes nothing for the default tab when the URL carries no parameter either', () => {
+    const { result } = renderHook(() => useDetailTab(TABS, 'details'))
+
+    result.current[1]('details')
+
+    expect(replace).not.toHaveBeenCalled()
+  })
+
+  it('still normalises an explicit ?tab=details away, rather than freezing it', () => {
+    // The guard compares the href it would WRITE (no parameter, for the fallback) with the current
+    // one, so this URL is not mistaken for already-canonical.
+    location = { pathname: '/item/US-39', searchStr: '?tab=details', search: { tab: 'details' } }
+    const { result } = renderHook(() => useDetailTab(TABS, 'details'))
+
+    result.current[1]('details')
+
+    expect(replace).toHaveBeenCalledWith('/item/US-39')
+  })
+
   it('keeps any other search parameter the URL carries', () => {
     location = { pathname: '/item/US-39', searchStr: '?from=iteration', search: {} }
     const { result } = renderHook(() => useDetailTab(TABS, 'details'))

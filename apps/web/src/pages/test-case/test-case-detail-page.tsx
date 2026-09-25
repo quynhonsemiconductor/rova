@@ -46,10 +46,17 @@ import { TestCaseUnavailable } from './ui/test-case-unavailable'
 import { HistoryTab } from './ui/history-tab'
 import { ResultsTab } from './ui/results-tab'
 
-type DetailTab = 'details' | 'results' | 'history'
-
-/** Every tab this page can show, for the URL's benefit (DE-19 — see `useDetailTab`). */
-const DETAIL_TABS: readonly DetailTab[] = ['details', 'results', 'history']
+/**
+ * The tab ids, as ONE list, with the union derived from it and the rendered strip built from it
+ * (DE-19 — see `useDetailTab`).
+ *
+ * `useDetailTab` ignores a `?tab=` it does not recognise, so a tab present in the strip but missing
+ * from this list would be written to the URL, read back as `details`, and reproduce the defect with
+ * no compile error. One list, a derived union, and a `Record` keyed by that union: a tab added here
+ * without meta is TS2739, and a tab given meta without being here cannot be named at all.
+ */
+const DETAIL_TABS = ['details', 'results', 'history'] as const
+type DetailTab = (typeof DETAIL_TABS)[number]
 
 export function TestCaseDetailPage() {
   const { t } = useTranslation('test-cases')
@@ -155,6 +162,22 @@ export function TestCaseDetailPage() {
       setField({ [field]: html || null })
     }
 
+  const tabMeta: Record<DetailTab, { label: string; icon: React.ReactNode }> = {
+    details: { label: t('detail.tabs.details'), icon: <FileText size={19} /> },
+    results: {
+      label: t('results.tabName'),
+      icon: (
+        <span className="flex items-center gap-1.5">
+          <FlaskConical size={19} />
+          <span className="text-ui-xs font-semibold tabular-nums">
+            {resultCount ?? EMPTY_VALUE}
+          </span>
+        </span>
+      ),
+    },
+    history: { label: t('detail.tabs.history'), icon: <History size={19} /> },
+  }
+
   return (
     <DetailLayout
       onBack={back}
@@ -165,22 +188,7 @@ export function TestCaseDetailPage() {
         url: entityDetailUrl('testCase', testCase.testCaseKey),
       }}
       title={testCase.name}
-      tabs={[
-        { key: 'details', label: t('detail.tabs.details'), icon: <FileText size={19} /> },
-        {
-          key: 'results',
-          label: t('results.tabName'),
-          icon: (
-            <span className="flex items-center gap-1.5">
-              <FlaskConical size={19} />
-              <span className="text-ui-xs font-semibold tabular-nums">
-                {resultCount ?? EMPTY_VALUE}
-              </span>
-            </span>
-          ),
-        },
-        { key: 'history', label: t('detail.tabs.history'), icon: <History size={19} /> },
-      ]}
+      tabs={DETAIL_TABS.map((key) => ({ key, ...tabMeta[key] }))}
       activeTab={activeTab}
       onTabChange={(k) => setActiveTab(k as DetailTab)}
     >

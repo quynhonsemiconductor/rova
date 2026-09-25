@@ -28,6 +28,11 @@ import { useRouter, useRouterState } from '@tanstack/react-router'
  * declares `validateSearch` (see `accept-invitation-page.tsx`), so there is no typed search schema
  * to route this through, and declaring one on the record routes would make `search` part of the
  * contract of every `Link` that opens them.
+ *
+ * APPLIED TO the three pages of the chain the defect was reported against — Work Item, Test Case,
+ * Test Result. The other detail surfaces (Releases, Milestones, Portfolio, Projects, Capacity Plan,
+ * Iteration) still hold their tab in `useState` and still lose it on Back; tracked as issue #644
+ * rather than batched in here, so the fix stays the size of the defect.
  */
 export function useDetailTab<T extends string>(
   /** Every tab the page can show — anything else in the URL is ignored. */
@@ -47,7 +52,14 @@ export function useDetailTab<T extends string>(
       if (tab === fallback) params.delete('tab')
       else params.set('tab', tab)
       const query = params.toString()
-      router.history.replace(`${location.pathname}${query ? `?${query}` : ''}`)
+      const href = `${location.pathname}${query ? `?${query}` : ''}`
+      // Re-selecting the tab already in the URL must not rewrite the entry the tab is stored in:
+      // a byte-identical `replaceState` + router commit buys nothing, and this handler runs on every
+      // click of the active tab. An explicit `?tab=details` still passes, because the href built for
+      // the fallback carries no parameter and therefore differs from it — so that URL normalises to
+      // the canonical one on the next selection instead of being frozen by this guard.
+      if (href === `${location.pathname}${location.searchStr}`) return
+      router.history.replace(href)
     },
     [router, location.pathname, location.searchStr, fallback],
   )

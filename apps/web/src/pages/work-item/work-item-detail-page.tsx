@@ -92,20 +92,16 @@ import { entityDetailUrl } from '@/shared/lib/entity-link'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type DetailTab = 'details' | 'tasks' | 'test-cases' | 'connections' | 'history'
-
 /**
- * Every tab this page can show, for the URL's benefit (DE-19 — see `useDetailTab`). A Task shows a
- * subset of them, which is why the rendered tab is still narrowed against the built `tabs` list
- * below rather than taken from the URL alone.
+ * The tab ids, as ONE list, with the union derived from it (DE-19 — see `useDetailTab`).
+ *
+ * Two copies is what this guards against: `useDetailTab` ignores a `?tab=` it does not recognise, so
+ * a tab added to the rendered strip but missing from this list would be accepted by `setTab`, read
+ * back as `details`, and reproduce the very defect — silently, with no compile error. Deriving the
+ * union means `TabDef.id` below cannot name anything this list does not contain.
  */
-const DETAIL_TABS: readonly DetailTab[] = [
-  'details',
-  'tasks',
-  'test-cases',
-  'connections',
-  'history',
-]
+const DETAIL_TABS = ['details', 'tasks', 'test-cases', 'connections', 'history'] as const
+type DetailTab = (typeof DETAIL_TABS)[number]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

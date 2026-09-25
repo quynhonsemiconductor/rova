@@ -11,11 +11,11 @@
  * deep link) — never a hardcoded forward `navigate()`, which pushes a new stack entry instead of
  * consuming one and corrupts a SECOND Back from wherever this page led to.
  */
-import { useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { FileText, History } from 'lucide-react'
 import { useDetailBack } from '@/shared/lib/use-detail-back'
+import { useDetailTab } from '@/shared/lib/use-detail-tab'
 import {
   useTestResult,
   useTestCase,
@@ -48,7 +48,13 @@ import { testResultUnavailableReason } from './model/unavailable-reason'
 import { TestResultUnavailable } from './ui/test-result-unavailable'
 import { HistoryTab } from './ui/history-tab'
 
-type DetailTab = 'details' | 'history'
+/**
+ * The tab ids, as ONE list, with the union derived from it (DE-19 — see `useDetailTab`). The third
+ * page in the chain the defect was reported against (Work Item → Test Case → Test Result), so it
+ * keeps the chain uniform rather than leaving the convention applied to two thirds of it.
+ */
+const DETAIL_TABS = ['details', 'history'] as const
+type DetailTab = (typeof DETAIL_TABS)[number]
 
 // F1: derived from the ONE VERDICT_LABEL (test-result-columns.tsx), not a second hardcoded list.
 const VERDICT_OPTIONS = Object.keys(VERDICT_LABEL) as TestResult['verdict'][]
@@ -56,7 +62,7 @@ const VERDICT_OPTIONS = Object.keys(VERDICT_LABEL) as TestResult['verdict'][]
 export function TestResultDetailPage() {
   const { t } = useTranslation('test-cases')
   const { testResultId } = useParams({ from: '/auth/test-result/$testResultId' })
-  const [activeTab, setActiveTab] = useState<DetailTab>('details')
+  const [activeTab, setActiveTab] = useDetailTab(DETAIL_TABS, 'details')
 
   const resultQuery = useTestResult(testResultId)
   const { data: result, isLoading, isError, error } = resultQuery
@@ -128,6 +134,13 @@ export function TestResultDetailPage() {
     )
   }
 
+  // One entry per id in `DETAIL_TABS`, keyed by the derived union — a missing entry is TS2739, and
+  // the strip below is built from the SAME list `useDetailTab` validates the URL against.
+  const tabMeta: Record<DetailTab, { label: string; icon: React.ReactNode }> = {
+    details: { label: t('detail.tabs.details'), icon: <FileText size={19} /> },
+    history: { label: t('detail.tabs.history'), icon: <History size={19} /> },
+  }
+
   return (
     <DetailLayout
       onBack={back}
@@ -138,10 +151,7 @@ export function TestResultDetailPage() {
         url: entityDetailUrl('testResult', testResult.id),
       }}
       title={testResult.build}
-      tabs={[
-        { key: 'details', label: t('detail.tabs.details'), icon: <FileText size={19} /> },
-        { key: 'history', label: t('detail.tabs.history'), icon: <History size={19} /> },
-      ]}
+      tabs={DETAIL_TABS.map((key) => ({ key, ...tabMeta[key] }))}
       activeTab={activeTab}
       onTabChange={(k) => setActiveTab(k as DetailTab)}
     >
