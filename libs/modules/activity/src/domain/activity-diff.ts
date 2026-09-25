@@ -44,6 +44,18 @@ export const RICH_TEXT_PREVIEW_MAX = 120;
  *   • an empty/blank body stays `null`, so "(empty)" keeps meaning empty rather than "blank markup".
  *
  * Tag boundaries become a space BEFORE tags are stripped, or `<p>a</p><p>b</p>` would read "ab".
+ *
+ * THE ENTITIES DECODED ARE THE SERIALISER'S ESCAPE SET, not a general HTML entity table: TipTap
+ * parses pasted markup into its document model, so a `&mdash;` arrives as the character itself and
+ * only `&`, `<`, `>`, `"`, `'` (plus `&nbsp;`) are escaped on the way back out. A named or numeric
+ * entity that does reach here survives literally, which is the honest outcome — this is a preview,
+ * and inventing a character the document does not contain would be worse than showing the source.
+ *
+ * `&amp;` is decoded LAST, and the order is load-bearing (review finding, #640). Text the reader
+ * literally typed as `&lt;` is stored by the editor as `&amp;lt;`; decoding `&amp;` first yields
+ * `&lt;`, which the next pass then turns into a bare `<` — a character the document never showed,
+ * written into an append-only table that cannot be corrected afterwards. Decoding every other
+ * entity first is lossless, because none of their patterns match inside `&amp;lt;`.
  */
 export function richTextPreview(value: unknown): string | null {
   // A rich-text column is text or NULL, so anything else is a config mistake (a non-text field
@@ -53,15 +65,22 @@ export function richTextPreview(value: unknown): string | null {
   const text = value
     .replace(/<[^>]*>/g, ' ')
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim();
   if (!text) return null;
-  return text.length > RICH_TEXT_PREVIEW_MAX ? `${text.slice(0, RICH_TEXT_PREVIEW_MAX)}…` : text;
+
+  // CODE POINTS, not code units: `String.prototype.slice` cuts a surrogate pair in half when the
+  // boundary lands mid-pair, so an emoji at the cap left a lone surrogate — rendered as U+FFFD and
+  // then permanent, this table being append-only. `Array.from` iterates code points, which also
+  // makes the cap mean the characters its name claims.
+  const chars = Array.from(text);
+  if (chars.length <= RICH_TEXT_PREVIEW_MAX) return text;
+  return `${chars.slice(0, RICH_TEXT_PREVIEW_MAX).join('')}…`;
 }
 
 /** Normalise numeric-string / null|undefined for a stable "did it change" check. */

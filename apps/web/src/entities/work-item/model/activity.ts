@@ -26,16 +26,24 @@ export function humanizeToken(token: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-/** Render an activity-log field value for display in a revision Description. */
-export function formatActivityValue(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '(empty)'
-  if (typeof value === 'object') return JSON.stringify(value)
-  return String(value)
-}
-
-/** Did this side of the change carry no value at all? */
+/**
+ * Did this side of the change carry no value at all?
+ *
+ * ONE definition of blank, used by `formatActivityValue` below — and through it by
+ * `describeActivity`'s nothing-to-show branch, which compares the two RENDERED sides rather than
+ * re-testing blankness itself (review finding, #640). The two predicates used to test the same three
+ * conditions separately, and the sentence's correctness depends on them agreeing: a side counts as
+ * "nothing" exactly when it would render "(empty)".
+ */
 function isBlankValue(value: unknown): boolean {
   return value === null || value === undefined || value === ''
+}
+
+/** Render an activity-log field value for display in a revision Description. */
+export function formatActivityValue(value: unknown): string {
+  if (isBlankValue(value)) return '(empty)'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
 }
 
 /**
@@ -115,26 +123,38 @@ export function activityFieldLabel(log: ActivityLike): string {
 export function describeActivity(log: ActivityLike): string {
   if (log.changes) {
     /**
-     * DE-18: a row with NOTHING on either side states the change, not two empties.
+     * DE-18: when the two sides would READ THE SAME, state the change and stop.
      *
-     * Until the writer recorded a plain-text preview for rich-text fields, every rich-text change
-     * was stored as `old: null, new: null` — so the sentence below rendered "Notes changed from
-     * (empty) to (empty)" for an edit that saved real text, and the log could not be used for the
-     * review US-93/US-97 exist for. The writer is fixed (`richTextPreview`), but EVERY ROW ALREADY
-     * WRITTEN still carries the two nulls and the bodies are not recoverable, so a writer-side fix
-     * alone would leave the history the BA was reading untouched.
+     * Three different rows land here, and one sentence is right for all of them, because what they
+     * have in common is exactly what can be said — the field changed, and this feed cannot show the
+     * difference:
      *
-     * "Notes changed" is the whole truth available for such a row: it names the field and the fact,
-     * and it never puts a value in the reader's mouth. `formatActivityValue`'s "(empty)" keeps its
-     * meaning for the case it is right about — ONE side empty (cleared, or filled for the first
-     * time), which is exactly what new rich-text rows now produce.
+     *   • the rows written BEFORE the preview existed, which carry `old: null, new: null` (rich-text
+     *     changes were logged as the field name only). Their bodies are not recoverable by any
+     *     migration, so the writer-side fix cannot repair them and this branch is the only thing
+     *     that can — it is why the fix is on both sides.
+     *   • a FORMATTING-ONLY edit: `changed()` compares the raw markup while the value recorded is the
+     *     flattened preview, so bolding a word (`<p>hello</p>` → `<p><b>hello</b></p>`) is a real
+     *     change with two identical previews. "Notes changed from hello to hello" is not false, but
+     *     it reads as a glitch — which is the class of defect DE-18 itself was.
+     *   • an edit BEYOND the preview window: change character 400 of a Description and the first 120
+     *     are identical on both sides.
+     *
+     * Raised as a review finding on #640, which offered the alternative of gating rich-text entries
+     * on `changed(richTextPreview(old), richTextPreview(new))` in the WRITER instead. Rejected, and
+     * for a reason the finding could not see from one file: that gate cannot tell the second case
+     * from the third, so it would silently drop real edits to any document longer than the preview —
+     * trading a sentence that reads oddly for a revision feed that omits changes. The row is kept;
+     * only the claim about the values is dropped, since there is none to make.
      */
-    if (isBlankValue(log.changes.old) && isBlankValue(log.changes.new)) {
+    const { old, new: next } = log.changes
+    // One comparison covers all three: two blanks both render "(empty)", so they are equal here too.
+    if (formatActivityValue(old) === formatActivityValue(next)) {
       return `${activityFieldLabel(log)} changed`
     }
     return `${activityFieldLabel(log)} changed from ${formatActivityValue(
-      log.changes.old,
-    )} to ${formatActivityValue(log.changes.new)}`
+      old,
+    )} to ${formatActivityValue(next)}`
   }
   // A diff-less action's own sentence where it has one, otherwise the humanised token. The lookup is
   // here rather than inside `activityFieldLabel` because these rows are NOT field changes: there is no

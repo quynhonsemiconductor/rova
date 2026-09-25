@@ -243,4 +243,31 @@ describe('ActivityHistoryTab', () => {
     // The defect verbatim: two empties is a claim about the values, and this row has none.
     expect(screen.queryByText(/\(empty\)/)).not.toBeInTheDocument()
   })
+
+  /**
+   * Review finding (#640): two IDENTICAL previews must not read "from hello to hello".
+   *
+   * `changed()` compares the raw markup while the recorded value is the flattened preview, so two
+   * sides can be equal on a real change — a formatting-only edit (bolding a word), or an edit beyond
+   * the 120-character preview window. The row stays (the field did change) and the sentence drops the
+   * claim about values, which is the same sentence a pre-preview row gets, for the same reason: the
+   * feed knows it changed and cannot show the difference.
+   *
+   * The alternative the finding offered — dropping such entries in the WRITER, by gating on preview
+   * equality — is rejected in `describeActivity`'s own docblock: it cannot tell a formatting-only
+   * edit from an edit past the window, so it would silently omit real changes to long documents.
+   */
+  it('states the change without values when a formatting-only edit leaves both previews equal', () => {
+    renderTab({ data: [richTextRow('r-5', 'hello', 'hello')], isLoading: false })
+
+    expect(screen.getByText('Notes changed')).toBeInTheDocument()
+    expect(screen.queryByText(/from hello to hello/)).not.toBeInTheDocument()
+  })
+
+  it('keeps naming both values whenever they actually differ', () => {
+    // The guard above must not swallow the ordinary case it sits in front of.
+    renderTab({ data: [richTextRow('r-6', 'hello', 'hello there')], isLoading: false })
+
+    expect(screen.getByText('Notes changed from hello to hello there')).toBeInTheDocument()
+  })
 })

@@ -38,10 +38,29 @@ describe('richTextPreview', () => {
     expect(richTextPreview('<p>&nbsp;</p>')).toBeNull();
   });
 
-  it('decodes the entities the editor writes, so a preview reads as the reader typed it', () => {
+  it("decodes the serialiser's escape set, so a preview reads as the reader typed it", () => {
     expect(richTextPreview('<p>a &amp; b &lt;c&gt; &quot;d&quot; &#39;e&#39;</p>')).toBe(
       'a & b <c> "d" \'e\'',
     );
+  });
+
+  /**
+   * Review finding (#640): `&amp;` must be decoded LAST.
+   *
+   * Text the reader literally typed as `&lt;` is stored by the editor as `&amp;lt;`. Decoding
+   * `&amp;` first yields `&lt;`, which the next pass turns into a bare `<` — a character the
+   * document never displayed, written into an append-only table that cannot be corrected later.
+   */
+  it('does not decode a double-escaped entity twice', () => {
+    expect(richTextPreview('<p>&amp;lt;div&amp;gt;</p>')).toBe('&lt;div&gt;');
+    expect(richTextPreview('<p>&amp;amp;</p>')).toBe('&amp;');
+  });
+
+  it('leaves an entity outside that set alone rather than inventing a character', () => {
+    // TipTap parses pasted markup into its model, so `&mdash;` arrives as the character itself and
+    // never reaches here escaped. One that does is shown as its source — this is a preview, and a
+    // guessed character would misreport the document.
+    expect(richTextPreview('<p>a &mdash; b</p>')).toBe('a &mdash; b');
   });
 });
 
@@ -103,6 +122,27 @@ describe('diffFields', () => {
 
     expect(preview).toHaveLength(RICH_TEXT_PREVIEW_MAX + 1); // + the ellipsis
     expect(preview.endsWith('…')).toBe(true);
+  });
+
+  /**
+   * Review finding (#640): the cap must count CODE POINTS.
+   *
+   * `String.prototype.slice` cuts a surrogate pair in half when the boundary lands mid-pair, leaving
+   * a lone surrogate that renders as U+FFFD — and permanently, this table being append-only. The cap
+   * test above uses `'x'.repeat(...)`, which is BMP-only and passes either way, so this is the case
+   * that actually holds the rule.
+   */
+  it('truncates on a character boundary, never inside a surrogate pair', () => {
+    const before: Item = { name: 'A', points: 1, notes: null };
+    // 🙂 is one code point, two UTF-16 code units — and at 10 over the cap, a code-unit `slice`
+    // would land mid-pair.
+    const emoji = '🙂'.repeat(RICH_TEXT_PREVIEW_MAX + 10);
+    const preview = diffFields(before, { notes: emoji }, config)[0].change.new as string;
+
+    expect(Array.from(preview)).toHaveLength(RICH_TEXT_PREVIEW_MAX + 1); // + the ellipsis
+    // The defect, stated directly: no half of a pair may survive on its own.
+    expect(preview).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+    expect(preview.endsWith('🙂…')).toBe(true);
   });
 
   it('separates block boundaries, so two paragraphs do not read as one word', () => {
