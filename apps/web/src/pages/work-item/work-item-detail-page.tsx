@@ -32,6 +32,7 @@ import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from '@tanstack/react-router'
 import { useDetailBack } from '@/shared/lib/use-detail-back'
+import { useDetailTab } from '@/shared/lib/use-detail-tab'
 import {
   Bell,
   BellOff,
@@ -91,7 +92,16 @@ import { entityDetailUrl } from '@/shared/lib/entity-link'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type DetailTab = 'details' | 'tasks' | 'test-cases' | 'connections' | 'history'
+/**
+ * The tab ids, as ONE list, with the union derived from it (DE-19 — see `useDetailTab`).
+ *
+ * Two copies is what this guards against: `useDetailTab` ignores a `?tab=` it does not recognise, so
+ * a tab added to the rendered strip but missing from this list would be accepted by `setTab`, read
+ * back as `details`, and reproduce the very defect — silently, with no compile error. Deriving the
+ * union means `TabDef.id` below cannot name anything this list does not contain.
+ */
+const DETAIL_TABS = ['details', 'tasks', 'test-cases', 'connections', 'history'] as const
+type DetailTab = (typeof DETAIL_TABS)[number]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -173,7 +183,9 @@ export function WorkItemDetailPage() {
   const { itemKey } = useParams({ from: '/auth/item/$itemKey' })
   // Back means back — the Backlog is only where a deep link lands (see `useDetailBack`).
   const back = useDetailBack({ to: '/backlog' })
-  const [activeTab, setActiveTab] = useState<DetailTab>('details')
+  // DE-19 / US-93 TC-23 AC1: in the URL, not in state, so Back from a Test Case (or any record
+  // opened from a tab) returns to the TAB the reader left, not to Details. See `useDetailTab`.
+  const [activeTab, setActiveTab] = useDetailTab(DETAIL_TABS, 'details')
 
   // P1-10: sidebar collapse — persisted in localStorage so preference survives navigation
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -378,6 +390,7 @@ export function WorkItemDetailPage() {
   // The route component persists across itemKey changes, so a Story's "Tasks"
   // tab could remain selected on a Task that has no such tab. Derive the tab to
   // render (fall back to Details) instead of resetting state — no effect/ref.
+  // It also guards a URL naming a tab THIS item type does not have (`?tab=tasks` on a Task).
   const activeTabId: DetailTab = tabs.some((tb) => tb.id === activeTab) ? activeTab : 'details'
 
   return (

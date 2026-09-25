@@ -21,6 +21,16 @@ const useDetailBackMock = vi.fn((fallback: unknown) => {
 vi.mock('@/shared/lib/use-detail-back', () => ({
   useDetailBack: (fallback: unknown) => useDetailBackMock(fallback),
 }))
+/**
+ * The tab lives in the URL now (DE-19, `useDetailTab`), and this file mocks
+ * `@tanstack/react-router` down to `useParams` + `Link` — so the real hook's `useRouter` /
+ * `useRouterState` are not there to call. `useState` is the same contract from the PAGE's side; the
+ * hook's own behaviour is asserted in `shared/lib/use-detail-tab.test.tsx`.
+ */
+vi.mock('@/shared/lib/use-detail-tab', async () => {
+  const { useState } = await import('react')
+  return { useDetailTab: (_tabs: readonly string[], fallback: string) => useState(fallback) }
+})
 
 const testResult = vi.fn()
 const testCase = vi.fn()
