@@ -30,10 +30,24 @@ const REPORT = {
       acceptedDuring: 34,
       acceptedAfter: 4,
       notAccepted: 9,
+      splitCarryover: 0,
+      splitStoryIds: [],
     },
   ],
   averages: { last3: 34, best3: 34, worst3: 34, trend: 34, sampleSize: 1 },
   unclassifiedItems: 0,
+}
+
+/** The same window with one story carried forward by a Split — SU-09's fourth segment. */
+const WITH_CARRYOVER = {
+  ...REPORT,
+  bars: [
+    {
+      ...REPORT.bars[0],
+      splitCarryover: 13,
+      splitStoryIds: ['11111111-1111-1111-1111-111111111111'],
+    },
+  ],
 }
 
 function renderReport() {
@@ -89,5 +103,57 @@ describe('VelocityReport', () => {
     mockGET.mockReturnValue(new Promise(() => {}))
     renderReport()
     expect(screen.getByText('velocity.title')).toBeInTheDocument()
+  })
+
+  // ── the excluded Split / Carryover segment (SU-09 9.4, AC1/AC5) ─────────────
+
+  it('names the excluded segment in the legend whether or not the window has a Split', async () => {
+    // Unconditional on purpose: it is a segment of a shared scale, so a key that appeared only in
+    // windows containing a Split would change between two renders of the same report.
+    renderReport()
+    await waitFor(() =>
+      expect(screen.getAllByText('velocity.series.splitCarryover').length).toBeGreaterThan(0),
+    )
+  })
+
+  it('puts the carried-forward points in the hidden data table, so the amber is not colour-only', async () => {
+    mockGET.mockResolvedValue({
+      data: WITH_CARRYOVER,
+      error: undefined,
+      response: { status: 200 },
+    })
+    renderReport()
+
+    // The fifth column heading, and the value under it. `getAllBy…` because the legend carries the
+    // same label — that duplication is the point of having both.
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole('columnheader', { name: 'velocity.series.splitCarryover' }),
+      ).toHaveLength(1),
+    )
+    const row = screen.getByRole('row', { name: /Sprint 26\.1/ })
+    expect(row).toHaveTextContent('13')
+  })
+
+  it('states how many stories were carried forward, and says nothing when none were', async () => {
+    /**
+     * The footnote reads `splitStoryIds.length`, so this is also what pins that field having a
+     * consumer. It is amber and iconless, unlike the `unclassified` line above it: a Split is a
+     * recorded fact, not a fault.
+     */
+    mockGET.mockResolvedValue({
+      data: WITH_CARRYOVER,
+      error: undefined,
+      response: { status: 200 },
+    })
+    const carried = renderReport()
+    await waitFor(() => expect(screen.getByText('velocity.splitCarryoverNote')).toBeInTheDocument())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    carried.unmount()
+
+    mockGET.mockResolvedValue({ data: REPORT, error: undefined, response: { status: 200 } })
+    renderReport()
+    await waitFor(() => expect(screen.getByText('velocity.title')).toBeInTheDocument())
+    expect(screen.queryByText('velocity.splitCarryoverNote')).not.toBeInTheDocument()
   })
 })

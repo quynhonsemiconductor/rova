@@ -140,7 +140,14 @@ describe('TestCaseDetailPage', () => {
     expect(screen.getByText('Retired Type')).toBeInTheDocument()
   })
 
-  it('BR5: renders Project backlog when teamId is null, with no Team control to edit it', () => {
+  /**
+   * DE-20 / Story 5 AC3 — INVERTED. This used to assert "Project backlog", which is what the page
+   * rendered for a null Team and what the defect is: the Team field ECHOES the parent's inherited
+   * value (BR5, read-only), and the parent Story's own Team field names that absence "No team". So
+   * the negative below is the contract, not decoration — rendering both sentences would pass a
+   * positive-only assertion while still telling the reader two different things about one field.
+   */
+  it('BR5 / AC3: renders the parent’s own "No team", not "Project backlog", when teamId is null', () => {
     canPermission.mockReturnValue(true)
     testCaseByKey.mockReturnValue({
       data: testCase({ teamId: null, teamName: null }),
@@ -149,10 +156,11 @@ describe('TestCaseDetailPage', () => {
     })
     render(<TestCaseDetailPage />)
 
-    expect(screen.getByText('Project backlog')).toBeInTheDocument()
+    expect(screen.getByText('No team')).toBeInTheDocument()
+    expect(screen.queryByText('Project backlog')).not.toBeInTheDocument()
   })
 
-  it('SRS §6.3 / Story 5 AC3: renders the real Team name when teamId is set, never the Project backlog fallback', () => {
+  it('SRS §6.3 / Story 5 AC3: renders the real Team name when teamId is set, never the no-team fallback', () => {
     canPermission.mockReturnValue(true)
     testCaseByKey.mockReturnValue({
       data: testCase({ teamId: 'team-1', teamName: 'Team Alpha' }),
@@ -162,6 +170,7 @@ describe('TestCaseDetailPage', () => {
     render(<TestCaseDetailPage />)
 
     expect(screen.getByText('Team Alpha')).toBeInTheDocument()
+    expect(screen.queryByText('No team')).not.toBeInTheDocument()
     expect(screen.queryByText('Project backlog')).not.toBeInTheDocument()
   })
 

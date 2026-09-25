@@ -1382,6 +1382,145 @@ describe('Phase 6 reports (e2e)', () => {
     // The MEASURED series does move, which is the point of the pair: 4 resident + 9 carried in.
     expect(Number((await todayRow(target)).todo)).toBe(13);
   });
+
+  // ── Split on Velocity (Phase 7 SU-09 9.6) ───────────────────────────────────
+
+  /**
+   * NOTHING BELOW TICKS THE SNAPSHOT JOB, which is what keeps SU-08's "this block is last on
+   * purpose" requirement intact even though these tests now run after it. Velocity is a LIVE query —
+   * recalculated from current assignment on every render — so there is no
+   * capture-once fixture ordering to protect here.
+   *
+   * Every iteration these tests create is CLOSED or closed-enough that no later `takeSnapshots()`
+   * would write for it anyway, and all fixtures stay inside this file's existing project, so the
+   * `e2e-fixtures` ratchet (81) does not move.
+   */
+
+  /**
+   * Like `newIteration`, but hands back the NAME too: a Velocity bar is found by name, not by id.
+   *
+   * ⚠ EVERY CALLER BELOW USES A WINDOW NO OTHER ITERATION IN THIS FILE USES, and that is a hard
+   * requirement rather than tidiness. `timeboxGroupId` is DERIVED from `(project, startDate, endDate)`
+   * (`timeboxGroupIdFor`), so two iterations sharing a window are one fused timebox — one Velocity
+   * bar, one capacity scope, `min(name)` as its label. Two of these tests were written with the same
+   * `-20…-14` window and reported another test's placeholder points as their own, which reads as a
+   * double-count in the attribution rather than as a fixture collision.
+   */
+  async function namedIteration(
+    label: string,
+    start: string,
+    end: string,
+  ): Promise<{ id: string; name: string }> {
+    const name = `${label} ${uniqueKey()}`;
+    const iteration = await iterationsSvc.createIteration(admin, projectId, name, {
+      state: 'committed',
+      startDate: start,
+      endDate: end,
+    });
+    return { id: iteration.id, name };
+  }
+
+  it('gives a Split placeholder its OWN excluded Velocity segment (SU-09 AC1/AC2/AC4/AC6)', async () => {
+    /**
+     * Both windows are CLOSED, because Velocity only reports iterations whose local end date is
+     * already past — a current sprint produces no bar at all and the test would pass for the wrong
+     * reason. The target still opens after the source closes, which §8 Q3 requires of a legal target.
+     */
+    const source = await namedIteration(
+      'SU09 Source',
+      shift(localToday, -19),
+      shift(localToday, -16),
+    );
+    const target = await namedIteration(
+      'SU09 Target',
+      shift(localToday, -15),
+      shift(localToday, -12),
+    );
+    const story = await newSplittableStory('SU09 carry', source.id, {
+      points: '5',
+      estimate: '4',
+      todo: '4',
+    });
+
+    const result = await items.splitWorkItem(
+      admin,
+      story.id,
+      splitInput(source.id, target.id, 2, 3),
+    );
+
+    const report = await reporting.getVelocity(admin, { projectId });
+    const sourceBar = report.bars.find((b) => b.name === source.name);
+    const targetBar = report.bars.find((b) => b.name === target.name);
+    expect(sourceBar, 'the closed source iteration must still produce a bar').toBeDefined();
+    expect(targetBar, 'the closed target iteration must produce one too').toBeDefined();
+
+    // AC1/AC2 — the placeholder's 2 points are in the excluded segment and in NO measured one.
+    expect(sourceBar?.splitCarryover).toBe(2);
+    expect(sourceBar?.splitStoryIds).toEqual([result.unfinished.id]);
+    expect(sourceBar?.acceptedDuring).toBe(0);
+    expect(sourceBar?.acceptedAfter).toBe(0);
+    expect(sourceBar?.notAccepted).toBe(0);
+    expect(sourceBar?.unclassified).toBe(0);
+
+    /**
+     * AC4 — `[Continued]` is the ORIGINAL row, moved forward, and it carries NO `split_id` (plan D6
+     * gives that column to the placeholder alone). So it is classified by the ordinary rule in its
+     * target: 3 points, not accepted. Asserting `splitCarryover: 0` here is the half that would fail
+     * if the predicate had been written against the Split rather than against the column.
+     */
+    expect(targetBar?.notAccepted).toBe(3);
+    expect(targetBar?.splitCarryover).toBe(0);
+    expect(targetBar?.splitStoryIds).toEqual([]);
+  });
+
+  it('keeps the placeholder OUT of During even when its acceptance falls inside the window (SU-09 9.1)', async () => {
+    /**
+     * THE CASE THAT MAKES THE CLASSIFIER'S ORDER OBSERVABLE END TO END, and it needs one direct
+     * UPDATE to reach — for the same reason `velocity-data-quality.e2e.spec.ts` needs one.
+     *
+     * A real Split stamps `accepted_date` = the Split timestamp, which is NOW; a Velocity-eligible
+     * iteration closed before today; so a Split confirmed through the API always lands AFTER its
+     * source window and would read as `acceptedAfter`. The realistic shape — a Split confirmed
+     * mid-sprint in a sprint that has since closed — has `accepted_date` INSIDE the window, which is
+     * the only shape where every branch below `splitCarryover` would answer `during`. Back-dating the
+     * column reproduces exactly that row.
+     */
+    const source = await namedIteration('SU09 Mid', shift(localToday, -11), shift(localToday, -9));
+    const target = await namedIteration('SU09 MidT', shift(localToday, -8), shift(localToday, -7));
+    const story = await newSplittableStory('SU09 mid carry', source.id, {
+      points: '8',
+      estimate: '4',
+      todo: '4',
+    });
+    const result = await items.splitWorkItem(
+      admin,
+      story.id,
+      splitInput(source.id, target.id, 8, 0),
+    );
+
+    const insideWindow = new Date(`${shift(localToday, -10)}T10:00:00.000Z`);
+    await db
+      .update(workItems)
+      .set({ acceptedDate: insideWindow })
+      .where(eq(workItems.id, result.unfinished.id));
+
+    // Guards the premise: `trg_sync_accepted_date` COALESCEs rather than re-stamps, so the back-dated
+    // value survives. If it ever did not, every assertion below would pass vacuously.
+    const [placeholder] = await db
+      .select({ acceptedDate: workItems.acceptedDate, state: workItems.scheduleState })
+      .from(workItems)
+      .where(eq(workItems.id, result.unfinished.id));
+    expect(placeholder.state).toBe('accepted');
+    expect(placeholder.acceptedDate?.toISOString()).toBe(insideWindow.toISOString());
+
+    const bar = (await reporting.getVelocity(admin, { projectId })).bars.find(
+      (b) => b.name === source.name,
+    );
+    // Accepted, inside the window, with a real timestamp — `during` by the Phase 6 rule, and the one
+    // deliberate exception to it (plan §0 divergence 4).
+    expect(bar?.acceptedDuring).toBe(0);
+    expect(bar?.splitCarryover).toBe(8);
+  });
 });
 
 /** Shift a `YYYY-MM-DD` date by whole days, staying in the calendar. */

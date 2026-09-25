@@ -2014,28 +2014,98 @@ own `test:` PR, the same class as SU-01's two Windows `grep` failures, and **not
 
 `feat(reporting): exclude split carryover points from velocity`
 
-- [ ] **9.1** `libs/modules/reporting/src/domain/velocity.ts` — add `'split-carryover'` to the
+- [x] **9.1** `libs/modules/reporting/src/domain/velocity.ts` — add `'split-carryover'` to the
       classification. It must be decided **before** the accepted checks:
       `if (item.splitCarryover) return 'split-carryover';` — the placeholder is `accepted` with a
       real `accepted_date`, so any later branch would classify it `during`.
-- [ ] **9.2** `getVelocityItems` (`reporting.drizzle-repository.ts:307`) selects
+      **DONE 2026-09-21.** `VelocityItem` gained `splitCarryover: boolean` (the PREDICATE, not the
+      split id — the classifier asks one yes/no question of the row) and `VelocitySegment` gained a
+      fifth member. The branch is the FIRST statement in `classify`, and the ORDER has its own test
+      rather than being implied by the happy case: five placeholder shapes, each of which would land in
+      a DIFFERENT later bucket (`during` / `after` / `unclassified` / `not-accepted` / unpointed), all
+      assert `split-carryover`, so moving the branch down by one line fails.
+- [x] **9.2** `getVelocityItems` (`reporting.drizzle-repository.ts:307`) selects
       `splitCarryover: sql\`${workItems.splitId} is not null\``.
-- [ ] **9.3** `buildBar` gains a `splitCarryover` accumulator; `computeAverages` is **untouched** —
+      **DONE.** Selected, **not filtered** — and the port docblock says so, because this is the one
+      `split_id` call site that is deliberately NOT an exclusion: SU-08 8.1's three had to remove the
+      placeholder from a delivered-points SUM, whereas here it earns its own visible segment, so a
+      `where` would delete the segment instead of building it. 8.1's own "left alone, with reasons"
+      list already named this as SU-09's.
+- [x] **9.3** `buildBar` gains a `splitCarryover` accumulator; `computeAverages` is **untouched** —
       it already reads `acceptedDuring` only, so trend / Last 3 / Best 3 / Worst 3 exclude the
       placeholder for free (AC3). **Assert that with a test rather than trusting it.**
-- [ ] **9.4** FE: a fourth stacked `<Bar>` in `velocity-report.tsx`, amber token, legend
+      **DONE, and asserted rather than trusted.** `computeAverages` has ZERO code change; the test
+      builds the same three-bar window twice — once with a **40-point** placeholder in the middle bar,
+      which is the largest number in the set and would dominate every average if it leaked in — and
+      asserts `computeAverages(withPlaceholder)` **deep-equals** `computeAverages(without)`. It also
+      asserts the placeholder IS present (`splitCarryover === 40`) first, so the comparison cannot pass
+      by comparing two identical inputs.
+      `VelocityBar` also gained **`splitStoryIds: string[]`** (§3.3's second field), pushed INSIDE the
+      de-duplication guard so the list and the points count the same rows — asserted with one
+      placeholder reached twice through two Teams' joins (`['ph1','ph2']`, and `5` rather than `7`).
+      The count is `splitStoryIds.length`, so there is no second field to keep in step with the sum.
+- [x] **9.4** FE: a fourth stacked `<Bar>` in `velocity-report.tsx`, amber token, legend
       `Split / Carryover (excluded)` (AC5), and the segment added to `ChartFrame`'s hidden data table.
-- [ ] **9.5** ⚠ **AC6's invariant does not match the shipped code and must be reconciled** — §8 Q7.
+      **DONE.** `fill={BRAND.warning}` (zero raw hex — `no-raw-hex` still 0), legend entry, and a fifth
+      hidden-table column + cell, so the amber is not colour-only.
+      **TWO CHOICES WORTH THE NEXT READER'S TIME, both in the component's own comments.**
+      (a) The new `<Bar>` sits **below** `notAccepted` in the stack rather than on top: `radius` lives on
+      whichever segment is drawn topmost, and a zero-height `splitCarryover` rect — which is every bar
+      in a window no Split touched — would have left the stack square-capped. It is the honest
+      neighbour anyway (both are points this iteration did not deliver).
+      (b) The legend entry renders **unconditionally**, unlike SU-08's marker legend which renders only
+      for a direction actually drawn. A segment shares the stack's scale, so a key that came and went
+      would change the chart's meaning between two renders of the same report.
+      One addition beyond the box, which is what gives `splitStoryIds` a consumer: an amber, **iconless**
+      footnote (`velocity.splitCarryoverNote`) reading `splitStoryIds.length` across the bars. Iconless
+      and with no `role="alert"` deliberately — a Split is a recorded fact, and the `unclassified` line
+      above it is the one thing on this chart a reader must act on.
+- [x] **9.5** ⚠ **AC6's invariant does not match the shipped code and must be reconciled** — §8 Q7.
       `classify` has a **fifth** bucket, `'unclassified'` (an `accepted` item with a NULL
       `accepted_date`, deliberately never guessed). So the true invariant is
       `acceptedDuring + acceptedAfter + notAccepted + unclassified + splitCarryover = displayed
       points`. Encode **that** and say so in the PR, rather than writing an assertion that passes only
       while no data-quality row exists.
-- [ ] **9.6** Tests: `velocity.spec.ts` — a placeholder is `split-carryover` not `during`; averages
+      **DONE — the five-way form is encoded, and both extra buckets are populated in the SAME bar**, so
+      the test cannot pass for as long as a data-quality row and a Split merely fail to coexist:
+      5 during + 3 after + 8 notAccepted + 2 unclassified + 13 splitCarryover = **31**. `buildBar`'s
+      docblock states the amended invariant and names §8 Q7; the four-way assertion the file already
+      had is kept as its own (still-true) case for a Split-free bar.
+- [x] **9.6** Tests: `velocity.spec.ts` — a placeholder is `split-carryover` not `during`; averages
       identical with and without a placeholder present (AC3); `[Continued]` still classified by the
       normal `acceptedDate` rule in the target (AC4); the five-way invariant (AC6).
       `test/e2e/phase6-reports.e2e.spec.ts` extended, and `velocity-data-quality.e2e.spec.ts` checked
       for interference with the `unclassified` bucket.
+      **DONE. `velocity.spec.ts` 13 → 21; `phase6-reports.e2e.spec.ts` gained 2 velocity cases;
+      `velocity-report.test.tsx` 4 → 7.**
+      E2E case 1 (AC1/AC2/AC4/AC6): a CLOSED source and a CLOSED target, split 5 → 2 + 3. The source
+      bar reads `splitCarryover: 2`, `splitStoryIds: [placeholder.id]` and **0 in all four** measured
+      buckets; the target bar reads `notAccepted: 3` and `splitCarryover: 0` — which is AC4 at the
+      database level, and the half that would fail if the predicate had been written against the Split
+      rather than against `work_items.split_id` (plan D6 gives that column to the placeholder alone).
+      E2E case 2 (9.1's order, end to end): **one direct `UPDATE` back-dates the placeholder's
+      `accepted_date` INTO the source window**, for the same reason `velocity-data-quality.e2e.spec.ts`
+      needs one — a Split stamps `accepted_date = now()` and a Velocity-eligible iteration closed
+      before today, so a Split confirmed through the API can only ever read as `acceptedAfter`. The
+      realistic shape (confirmed mid-sprint, sprint has since closed) is the only one where every branch
+      below `splitCarryover` answers `during`. The premise is guarded first (the row really is
+      `accepted` with the back-dated timestamp — `trg_sync_accepted_date` COALESCEs rather than
+      re-stamps), then `acceptedDuring` is **0** and `splitCarryover` is **8**.
+      `velocity-data-quality.e2e.spec.ts` needed **no change and is not interfered with**: its two rows
+      carry no `split_id`, so its `measured` sum and its `unclassified` assertion are untouched —
+      confirmed by the suite, and its `[P6-VEL-008]` evidence line still prints
+      `unclassified=4 acceptedDuring=0 acceptedAfter=5 notAccepted=0 measuredTotal=5`.
+      FE: the legend label is asserted, the fifth column heading is asserted **exactly once** with the
+      `13` under it in the `Sprint 26.1` row, and the footnote is asserted present with a carryover and
+      **absent without one** (which is what pins `splitStoryIds` having a consumer).
+      **⚠ E2E FIXTURE TRAP FOUND HERE, and it cost two wrong-looking failures — documented on the
+      `namedIteration` helper so the next session does not pay for it again.** `timeboxGroupId` is
+      DERIVED from `(project, startDate, endDate)` (`timeboxGroupIdFor`), so two iterations sharing a
+      window are ONE fused timebox — one Velocity bar, one capacity scope, `min(name)` as its label. Two
+      of these tests were first written with the same `-20…-14` window and read each other's placeholder
+      points (`splitCarryover: 10` where 8 was expected), which reads as a double-count in the
+      classifier rather than as a fixture collision. **Every iteration these tests create now uses a
+      window no other iteration in the file uses.**
 
 **AC coverage:** AC1 (9.2+9.4), AC2 (9.1), AC3 (9.3+9.6), AC4 (9.6), AC5 (9.4), AC6 (9.5).
 

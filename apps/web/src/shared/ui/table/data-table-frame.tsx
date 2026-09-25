@@ -101,8 +101,29 @@ export function DataTableFrame<K extends string>({
 }: DataTableFrameProps<K>) {
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${className ?? ''}`}>
+      {/*
+        `[&>*]:shrink-0` is load-bearing, and it is the whole of the row-height defect.
+
+        This scroll region is a COLUMN flex container with a definite height (`flex-1` inside a
+        `min-h-0` column). Its children — the sticky header, the totals bar and every body row — are
+        therefore flex items, and a flex item's default `flex-shrink: 1` applies to the MAIN axis,
+        which here is height. As soon as the rows overflow the viewport, the browser shrinks them all
+        to fit, down to whatever floor they declare: `TableRow`'s `min-h-[35px]`. Overflow scrolling
+        does not save it — the shrink happens first, and the scrollbar then measures the shrunken
+        content.
+
+        So a row whose Name wrapped to two or three lines was squeezed back to one row's worth of
+        height while its text kept the height it needed, and the surplus painted OVER the row above
+        and was cut off at the bottom (DE-21). Removing the cells' `overflow-hidden` — the earlier
+        fix in `status-row.tsx` — made that surplus visible rather than clipped; it could not make
+        the row grow, because nothing in the cell was ever the constraint.
+
+        Fixed here, once, rather than per row component: every grid in the app renders its rows as
+        direct children of this element (`children` is spread inline, not wrapped), so this is the
+        single place that governs all of them, including the skeleton/empty/error nodes.
+      */}
       <div
-        className="flex flex-1 flex-col overflow-auto"
+        className="flex flex-1 flex-col overflow-auto [&>*]:shrink-0"
         style={{ backgroundColor: bodyBackground }}
       >
         <DataTableHeader {...header} leading={leading} className={padClassName} />
