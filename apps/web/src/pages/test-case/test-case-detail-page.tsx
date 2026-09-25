@@ -250,10 +250,23 @@ export function TestCaseDetailPage() {
               </DetailField>
 
               <DetailField label={t('fields.team')}>
-                {/* NULL = "Project backlog" (SRS §5), read-only (BR5). */}
-                <DetailReadonlyValue>
-                  {testCase.teamName ?? t('fields.projectBacklog')}
-                </DetailReadonlyValue>
+                {/*
+                  DE-20 / Story 5 AC3: an INHERITED field must read the way its parent reads.
+
+                  A Test Case's Team is the parent Work Item's, copied at create time and read-only
+                  after (BR5), so a null here means exactly one thing — the parent has no Team. The
+                  fallback said "Project backlog" instead, which is the true statement about the
+                  BACKLOG the row sits in (a null `team_id` is the Project Backlog, BA ruling
+                  2026-08-17) but the wrong statement about the FIELD: the parent Story's own Team
+                  field says "No team" (`TeamSelectField`'s placeholder), so the same absence was
+                  named two different things one click apart, and the Test Case appeared to claim a
+                  team its parent does not have.
+
+                  The inherited value is echoed, not reinterpreted — so this says what the parent
+                  says. The Project Backlog remains the right word where the subject IS the backlog
+                  (create forms, bulk-move refusals); it is not the right word for an echo.
+                */}
+                <DetailReadonlyValue>{testCase.teamName ?? t('fields.noTeam')}</DetailReadonlyValue>
               </DetailField>
 
               <DetailField label={t('fields.workProduct')}>
