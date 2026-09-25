@@ -94,8 +94,11 @@ describe('diffFields', () => {
   });
 
   it('bounds a rich-text preview, so one row can never carry a whole document', () => {
+    // Annotated `Item`, not an inline literal: `diffFields` infers `T` from `before`, so a literal
+    // `notes: null` narrows `T['notes']` to `null` and the string below stops being assignable.
+    const before: Item = { name: 'A', points: 1, notes: null };
     const long = 'x'.repeat(RICH_TEXT_PREVIEW_MAX + 50);
-    const out = diffFields({ name: 'A', points: 1, notes: null }, { notes: long }, config);
+    const out = diffFields(before, { notes: long }, config);
     const preview = out[0].change.new as string;
 
     expect(preview).toHaveLength(RICH_TEXT_PREVIEW_MAX + 1); // + the ellipsis
@@ -103,11 +106,9 @@ describe('diffFields', () => {
   });
 
   it('separates block boundaries, so two paragraphs do not read as one word', () => {
-    const out = diffFields(
-      { name: 'A', points: 1, notes: null },
-      { notes: '<p>alpha</p><p>beta</p>' },
-      config,
-    );
+    const before: Item = { name: 'A', points: 1, notes: null };
+    const out = diffFields(before, { notes: '<p>alpha</p><p>beta</p>' }, config);
+
     expect(out[0].change.new).toBe('alpha beta');
   });
 
