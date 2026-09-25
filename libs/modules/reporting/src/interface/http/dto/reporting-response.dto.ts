@@ -107,6 +107,17 @@ const VelocityBarSchema = z.object({
   // average — surfaced so the gap is visible rather than absorbed.
   unclassified: z.number(),
   unclassifiedItems: z.number().int(),
+  /**
+   * Phase 7 SU-09 — points carried forward by a Split, as their OWN excluded segment (SRS §10.4).
+   *
+   * ADDITIVE, so the `openapi` breaking-change diff stays clean (plan §3.3). The reconciliation
+   * invariant is five-way, not four: `acceptedDuring + acceptedAfter + notAccepted + unclassified +
+   * splitCarryover` = the displayed points (§8 Q7).
+   */
+  splitCarryover: z.number(),
+  splitStoryIds: z
+    .array(z.string().uuid())
+    .describe('The `[Unfinished]` placeholders behind splitCarryover — the excluded population.'),
   iterationCount: z.number().int(),
 });
 

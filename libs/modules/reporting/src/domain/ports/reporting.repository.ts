@@ -176,6 +176,9 @@ export interface IReportingRepository {
    * `scope` narrows by the ITEM's own team (falling back to its iteration's), not by the
    * timebox — a team-scoped report may legitimately include a SHARED, team-less iteration, and
    * an item's team and its iteration's team are not kept in step by anything.
+   *
+   * `splitCarryover` rides along as `split_id is not null` (SU-09 9.2). Rows are NOT filtered by it:
+   * a Split placeholder gets its own excluded segment, so the classifier needs to see the row.
    */
   getVelocityItems(
     workspaceId: string,

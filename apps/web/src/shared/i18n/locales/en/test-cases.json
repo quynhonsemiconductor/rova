@@ -77,7 +77,7 @@
     "notes": "Notes",
     "project": "Project",
     "team": "Team",
-    "projectBacklog": "Project backlog",
+    "noTeam": "No team",
     "workProduct": "Work Product",
     "type": "Type",
     "method": "Method",
