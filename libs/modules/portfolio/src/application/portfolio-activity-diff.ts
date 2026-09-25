@@ -6,10 +6,11 @@ import type { ActivityDiffConfig } from '@modules/activity';
  * `state` gets its own action, matching how milestones separate a status change from an
  * ordinary edit — a funnel transition is the event a reader scans for.
  *
- * `notes` / `releaseNotes` / `description` are declared as RICH TEXT so the logger records
- * that they changed without storing the body. That is the same rule every other module
- * follows and the reason `activity_logs` never holds rich text: the history is a feed, not
- * a second copy of the document.
+ * `notes` / `releaseNotes` / `description` are declared as RICH TEXT so the logger records a
+ * bounded plain-text PREVIEW of each side rather than the markup or the whole body. That is the
+ * same rule every other module follows and the reason `activity_logs` never holds a document: the
+ * history is a feed, not a second copy of it — but a feed that cannot name the new value cannot be
+ * reviewed either, which is the defect the preview settles (DE-18).
  *
  * Deliberately excluded: `rank` (reordering is not a content change and would bury the
  * feed), and the derived rollup/progress/health values, which no one edits.

@@ -326,8 +326,9 @@ export class TestCasesService {
       this.testCaseRepo.update(id, input, actor.workspaceId, tx),
     );
 
-    // TX1: outside the transaction, `logSafe` — see `create`'s identical reasoning. C3: scalar-only
-    // diff rows, never a rich-text body (TEST_CASE_ACTIVITY_CONFIG.richText). `contextId` = the
+    // TX1: outside the transaction, `logSafe` — see `create`'s identical reasoning. C3: scalar diff
+    // rows, with rich-text fields reduced to a bounded plain-text preview
+    // (TEST_CASE_ACTIVITY_CONFIG.richText). `contextId` = the
     // parent Work Item's id, matching create (B2), so the Story's own Revision History includes
     // this edit too.
     await this.activityLogger.logSafe(

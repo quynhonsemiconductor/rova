@@ -974,7 +974,8 @@ export const projectMembers = workSchema.table(
 // tab. Written in the SAME transaction as the mutation so the actor sees their
 // change immediately. Deliberately SEPARATE from audit.audit_logs (async,
 // outbox-fed, SOC2 compliance) — different consistency, retention and access.
-// Append-only; never stores rich-text bodies, secrets or tokens.
+// Append-only; never stores markup, whole rich-text bodies, secrets or tokens —
+// a rich-text change records a bounded plain-text preview (see richTextPreview).
 
 // The SINGLE shared activity store for every entity's Revision History
 // (work items, tasks, attachments, iterations, projects, milestones, releases).
@@ -982,7 +983,9 @@ export const projectMembers = workSchema.table(
 // parent anchor so a parent's history can include its children (e.g. task and
 // attachment logs surface on the parent work item). Written in the SAME
 // transaction as the mutation (see ActivityLogger) so the actor sees the change
-// immediately. Append-only; never stores rich-text bodies.
+// immediately. Append-only; a rich-text change records a bounded plain-text
+// preview of each side (libs/modules/activity `richTextPreview`), never markup
+// and never a whole document.
 export const activityLogs = workSchema.table(
   'activity_logs',
   {

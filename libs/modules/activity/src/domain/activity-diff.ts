@@ -7,7 +7,10 @@ import type { ActivityChange } from './activity-log.types';
 export interface ActivityDiffConfig<T> {
   /** Fields to diff, in the order entries should be emitted. */
   fields: (keyof T & string)[];
-  /** Fields whose body is never logged — record that they changed, old/new null. */
+  /**
+   * Fields whose body is a rich-text document — logged as a bounded plain-text PREVIEW
+   * ({@link richTextPreview}), never the markup and never the whole document.
+   */
   richText?: (keyof T & string)[];
   /** Field → action name (e.g. `scheduleState` → 'work_item.schedule_state_changed').
    *  When omitted, the caller supplies the action. */
@@ -18,6 +21,66 @@ export interface ActivityDiffEntry {
   /** Present when the config maps the field to an action; else the caller decides. */
   action?: string;
   change: ActivityChange;
+}
+
+/** Longest plain-text preview a rich-text field change records. Bounded on purpose — see below. */
+export const RICH_TEXT_PREVIEW_MAX = 120;
+
+/**
+ * The value a rich-text field change records: its text, flattened and bounded.
+ *
+ * DE-18. Rich-text fields used to log `old: null, new: null` — the field NAME only — and the reader
+ * saw the consequence: "Notes changed from (empty) to (empty)" for an edit that saved real text.
+ * Enum and number changes rendered their values, so the log was legible for everything EXCEPT the
+ * seven fields a tester actually writes into, and US-93/US-97's stated purpose (review the change)
+ * could not be served by it.
+ *
+ * A preview, not the body, and the distinction is the whole design:
+ *   • the markup goes — `activity_logs` is a feed, and storing HTML would make every row a partial
+ *     copy of a document that has its own home and its own sanitiser;
+ *   • the length is capped at {@link RICH_TEXT_PREVIEW_MAX}, so one row's size is bounded no matter
+ *     how long the field grows — a 40KB Description cannot land 40KB in an append-only table twice
+ *     (once as `old`, once as `new`) per save;
+ *   • an empty/blank body stays `null`, so "(empty)" keeps meaning empty rather than "blank markup".
+ *
+ * Tag boundaries become a space BEFORE tags are stripped, or `<p>a</p><p>b</p>` would read "ab".
+ *
+ * THE ENTITIES DECODED ARE THE SERIALISER'S ESCAPE SET, not a general HTML entity table: TipTap
+ * parses pasted markup into its document model, so a `&mdash;` arrives as the character itself and
+ * only `&`, `<`, `>`, `"`, `'` (plus `&nbsp;`) are escaped on the way back out. A named or numeric
+ * entity that does reach here survives literally, which is the honest outcome — this is a preview,
+ * and inventing a character the document does not contain would be worse than showing the source.
+ *
+ * `&amp;` is decoded LAST, and the order is load-bearing (review finding, #640). Text the reader
+ * literally typed as `&lt;` is stored by the editor as `&amp;lt;`; decoding `&amp;` first yields
+ * `&lt;`, which the next pass then turns into a bare `<` — a character the document never showed,
+ * written into an append-only table that cannot be corrected afterwards. Decoding every other
+ * entity first is lossless, because none of their patterns match inside `&amp;lt;`.
+ */
+export function richTextPreview(value: unknown): string | null {
+  // A rich-text column is text or NULL, so anything else is a config mistake (a non-text field
+  // declared `richText`). Previewing it would stringify an object into the feed; returning null
+  // degrades to "X changed" instead, which is true of any value.
+  if (typeof value !== 'string') return null;
+  const text = value
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return null;
+
+  // CODE POINTS, not code units: `String.prototype.slice` cuts a surrogate pair in half when the
+  // boundary lands mid-pair, so an emoji at the cap left a lone surrogate — rendered as U+FFFD and
+  // then permanent, this table being append-only. `Array.from` iterates code points, which also
+  // makes the cap mean the characters its name claims.
+  const chars = Array.from(text);
+  if (chars.length <= RICH_TEXT_PREVIEW_MAX) return text;
+  return `${chars.slice(0, RICH_TEXT_PREVIEW_MAX).join('')}…`;
 }
 
 /** Normalise numeric-string / null|undefined for a stable "did it change" check. */
@@ -32,7 +95,8 @@ export function changed(before: unknown, after: unknown): boolean {
 /**
  * Diff `before` against the requested `input` change-set per `config`. Only
  * fields present in `input` AND actually changed produce an entry; rich-text
- * fields emit the field name with null old/new (never the body).
+ * fields record a bounded plain-text preview of each side ({@link richTextPreview}),
+ * never the markup and never the whole document.
  */
 export function diffFields<T extends Record<string, unknown>>(
   before: T,
@@ -52,8 +116,8 @@ export function diffFields<T extends Record<string, unknown>>(
       action: config.action?.(field),
       change: {
         field,
-        old: isRich ? null : (cur[field] ?? null),
-        new: isRich ? null : (next[field] ?? null),
+        old: isRich ? richTextPreview(cur[field]) : (cur[field] ?? null),
+        new: isRich ? richTextPreview(next[field]) : (next[field] ?? null),
       },
     });
   }
