@@ -51,7 +51,83 @@ export interface ScopedTaskHours {
   ownerName: string | null;
   estimateHours: number;
   todoHours: number;
+  /**
+   * Actual hours ALREADY ATTRIBUTED to the requested Iteration (Phase 7 SU-10, SRS §10.5).
+   *
+   * For a Task no Split ever moved this is simply `tasks.actual_hours`, and that is the overwhelming
+   * majority. For a Task carried forward by a Split it is the slice of that scalar which belongs to
+   * the iteration being reported — see {@link attributeActualHours}. The repository applies the
+   * arithmetic because the WINDOW needs the iteration ids, which the roll-up below does not have.
+   *
+   * Task Detail deliberately shows something different: the FULL accumulated Actual, from
+   * `getTaskTotals`, which must never get this attribution (SU-10 10.5).
+   */
   actualHours: number;
+}
+
+/**
+ * What one Task's Split history says about ONE iteration's claim on its Actual hours.
+ *
+ * `tasks.actual_hours` is a single manually-edited scalar with NO temporal dimension —
+ * `0052_task_actual_hours_manual.sql` dropped the `time_logs` → `actual_hours` trigger, and
+ * `time_logs` is per-work-item and per-date, feeds no report, and cannot stand in for it. So when a
+ * Task follows `[Continued]` into the next Iteration, its ENTIRE accumulated Actual would move with
+ * it: gone from the source, arriving whole in the target. The only durable record of "how much had
+ * been logged by then" is the Split Event's per-Task snapshot (`story_split_items.actual_hours_at_split`),
+ * which is why plan §2.2 stores it.
+ *
+ * The two bounds are chosen by an explicit WINDOW over the Task's `continued`-side Split rows, not by
+ * "the most recent one" — a Task carried across three Iterations has three rows, and "most recent"
+ * gives the middle Iteration the wrong answer from the third Iteration on (§8 Q1b).
+ */
+export interface TaskActualWindow {
+  /** `tasks.actual_hours` as it stands NOW — the full accumulated scalar. */
+  actualHours: number;
+  /**
+   * `actual_hours_at_split` of the LATEST Split that carried this Task INTO the reported iteration.
+   *
+   * Null when the Task did not arrive by a Split, i.e. it has been here since it was created — then
+   * the iteration's claim starts at zero.
+   */
+  actualAtArrival: number | null;
+  /**
+   * `actual_hours_at_split` of the EARLIEST Split that carried this Task OUT of the reported
+   * iteration.
+   *
+   * Null when the Task never left — then the claim runs to whatever is logged today. EARLIEST rather
+   * than latest, because the first departure is when this iteration stopped owning the work.
+   */
+  actualAtDeparture: number | null;
+}
+
+/**
+ * How many of a Task's Actual hours belong to the reported Iteration.
+ *
+ * `max(0, upper − lower)`, with the bounds defaulting to "everything logged so far" and "zero".
+ *
+ * Worked example — one Task carried across three Iterations, snapshots 3 then 7, now at 10 hours:
+ *   • I1 (source of the first Split): arrival null, departure 3   → 3
+ *   • I2 (target of the first, source of the second): 3 → 7       → 4
+ *   • I3 (target of the second, never left): 7 → 10               → 3
+ * Ten hours, once. A Task on the `unfinished` side of a Split never moved, so it has no
+ * `continued`-side row for that Split and keeps today's behaviour by construction.
+ *
+ * THE CLAMP IS §8 Q1a'S RULING, NOT DEFENSIVENESS. `actual_hours` is manually editable, so a
+ * correction DOWNWARDS after the Split can leave the current value below the snapshot: 3 hours
+ * recorded at the Split, later corrected to 2. Unclamped, the target would contribute −1 and would
+ * silently eat an hour from another member's row in the same total. The ruling is that the source
+ * keeps its snapshot and the target contributes `0`; the correction is therefore visible as a
+ * disagreement between Task Detail and this report, which is honest, rather than as a negative
+ * number, which is not.
+ *
+ * KNOWN LIMITATION, §8 Q1c, accepted by the product owner: hours edited retroactively for work done
+ * BEFORE a Split are attributed to the target, because nothing about the number says when it was
+ * earned. There is no reconstruction that could know otherwise.
+ */
+export function attributeActualHours(window: TaskActualWindow): number {
+  const lower = window.actualAtArrival ?? 0;
+  const upper = window.actualAtDeparture ?? window.actualHours;
+  return Math.max(0, upper - lower);
 }
 
 export interface TeamCapacityMemberRow {

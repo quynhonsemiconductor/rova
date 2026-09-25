@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   NO_TEAM_LABEL,
   UNASSIGNED_LABEL,
+  attributeActualHours,
   describeEmptiness,
   rollUpTeamCapacity,
   type CapacityRecord,
@@ -236,5 +237,115 @@ describe('describeEmptiness', () => {
     const nothing = rollUpTeamCapacity({ capacities: [], tasks: [] });
     expect(describeEmptiness(nothing)).toEqual({ hasCapacity: false, hasTaskHours: false });
     expect(nothing.teams).toEqual([]);
+  });
+});
+
+/**
+ * Phase 7 SU-10 — how much of a Task's Actual belongs to ONE Iteration (§8 Q1, plan 10.2/10.3).
+ *
+ * These are the FOUR Task shapes 10.7 enumerates plus the three-Iteration carry. The arithmetic is
+ * tested here, without a database, because a sign error or a missing clamp is visible in one line;
+ * WHICH Split row supplies each bound is a windowing question answered by SQL and proved by
+ * `phase6-reports.e2e.spec.ts`.
+ */
+describe('attributeActualHours (SU-10, AC4/AC5)', () => {
+  it('leaves a Task no Split ever moved on its full Actual (shape 1: no split row)', () => {
+    // Both bounds absent: nothing arrived, nothing left, so the iteration owns every hour. This is
+    // the overwhelming majority of rows and it must not change.
+    expect(
+      attributeActualHours({ actualHours: 6, actualAtArrival: null, actualAtDeparture: null }),
+    ).toBe(6);
+  });
+
+  it('leaves a Task on the UNFINISHED side on its full Actual (shape 2)', () => {
+    /**
+     * A Task listed on the `unfinished` side did not move — it stayed in the source Iteration with the
+     * placeholder. So the repository's `split_side = 'continued'` predicate finds no bound for it and
+     * it reaches this function in exactly the shape above. Asserted as its own case rather than folded
+     * into shape 1, because the CLAIM is different: "the placeholder's Tasks keep today's behaviour"
+     * is a rule, and it holding by construction is the thing worth pinning.
+     */
+    expect(
+      attributeActualHours({ actualHours: 4, actualAtArrival: null, actualAtDeparture: null }),
+    ).toBe(4);
+  });
+
+  it('gives the target ZERO when no new work was logged after the Split (shape 3)', () => {
+    // The source keeps all 3 (its own departure bound); the target has 3 → 3.
+    expect(
+      attributeActualHours({ actualHours: 3, actualAtArrival: 3, actualAtDeparture: null }),
+    ).toBe(0);
+    // And the source's own claim on the same Task, for the pair: nothing arrived, 3 left.
+    expect(
+      attributeActualHours({ actualHours: 3, actualAtArrival: null, actualAtDeparture: 3 }),
+    ).toBe(3);
+  });
+
+  it('gives the target only the post-Split delta when new work was logged (shape 4)', () => {
+    // 3 hours at the Split, 10 now: the target earned 7 and the source still reports 3.
+    expect(
+      attributeActualHours({ actualHours: 10, actualAtArrival: 3, actualAtDeparture: null }),
+    ).toBe(7);
+    expect(
+      attributeActualHours({ actualHours: 10, actualAtArrival: null, actualAtDeparture: 3 }),
+    ).toBe(3);
+  });
+
+  it('clamps a downward correction to 0 instead of contributing negative hours (§8 Q1a)', () => {
+    /**
+     * `actual_hours` is manually editable, so 3 recorded at the Split can be corrected to 2 afterwards.
+     * Unclamped the target would contribute −1, which does not merely look wrong: it would subtract an
+     * hour from a DIFFERENT member's row inside the same team total. The ruling is that the source
+     * keeps its snapshot and the target contributes nothing.
+     */
+    expect(
+      attributeActualHours({ actualHours: 2, actualAtArrival: 3, actualAtDeparture: null }),
+    ).toBe(0);
+    expect(
+      attributeActualHours({ actualHours: 2, actualAtArrival: null, actualAtDeparture: 3 }),
+    ).toBe(3);
+  });
+
+  it('windows a Task carried across THREE Iterations, middle one included (§8 Q1b)', () => {
+    /**
+     * Snapshots 3 then 7, currently at 10. Each Iteration's bounds come from its own position in the
+     * chain, and the MIDDLE one is the case "the most recent split row" gets wrong — it would give I2
+     * the 7 → 10 window that belongs to I3.
+     */
+    const total = 10;
+    const i1 = attributeActualHours({
+      actualHours: total,
+      actualAtArrival: null,
+      actualAtDeparture: 3,
+    });
+    const i2 = attributeActualHours({
+      actualHours: total,
+      actualAtArrival: 3,
+      actualAtDeparture: 7,
+    });
+    const i3 = attributeActualHours({
+      actualHours: total,
+      actualAtArrival: 7,
+      actualAtDeparture: null,
+    });
+
+    expect([i1, i2, i3]).toEqual([3, 4, 3]);
+    // The property that matters across the whole chain: the hours are attributed ONCE, in full.
+    expect(i1 + i2 + i3).toBe(total);
+  });
+
+  it('treats a 0 arrival bound as a real measurement, not as an absent one', () => {
+    /**
+     * A Split confirmed before anyone logged an hour snapshots `0`. `0` and `null` happen to produce
+     * the same lower bound, so this case cannot fail today — it pins the DEPARTURE side, where they
+     * differ completely: `0` means "this iteration owned it and nothing was logged", `null` means
+     * "it never left, so count everything".
+     */
+    expect(attributeActualHours({ actualHours: 5, actualAtArrival: 0, actualAtDeparture: 0 })).toBe(
+      0,
+    );
+    expect(
+      attributeActualHours({ actualHours: 5, actualAtArrival: 0, actualAtDeparture: null }),
+    ).toBe(5);
   });
 });

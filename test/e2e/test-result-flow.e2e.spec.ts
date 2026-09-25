@@ -25,6 +25,8 @@ import { ADMIN_USER_ID, NXP_STORY_1_ID, NXP_TEST_CASE_2_ID } from '../../db/seed
 describe('test result routes (e2e)', () => {
   let app: NestFastifyApplication;
   let token: string;
+  /** Every Test Case this file created on the SEEDED Story — see `newTestCase`. */
+  const createdTestCaseIds: string[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -42,6 +44,18 @@ describe('test result routes (e2e)', () => {
   });
 
   afterAll(async () => {
+    /**
+     * TAKE THIS FILE'S TEST CASES BACK OFF THE SEEDED STORY — see {@link newTestCase}.
+     *
+     * Loud rather than best-effort: a cleanup that silently 403s or 404s would put the leak back
+     * with nothing failing to say so.
+     */
+    for (const id of createdTestCaseIds) {
+      const response = await del(`/test-cases/${id}`);
+      expect([204, 404], `cleanup of test case ${id}: ${response.body}`).toContain(
+        response.statusCode,
+      );
+    }
     await app?.close();
   });
 
@@ -69,6 +83,26 @@ describe('test result routes (e2e)', () => {
 
   function del(url: string) {
     return app.inject({ method: 'DELETE', url, headers: { authorization: `Bearer ${token}` } });
+  }
+
+  /**
+   * A Test Case on the SEEDED Story, REMEMBERED so `afterAll` can remove it again.
+   *
+   * `test-case-routes.e2e.spec.ts` asserts that Story's list is exactly `['TC-1', 'TC-2']` — a claim
+   * about rank ORDER, which needs a closed set to mean anything. Every case this file hangs off
+   * `NXP_STORY_1_ID` (eleven of them, one per Phase E test) was therefore visible to that spec
+   * whenever vitest happened to run this file first — and it orders files by CACHED DURATION, so
+   * adding a test anywhere in the suite can reshuffle it. That is the same class as
+   * `accepted-date-backfill.e2e.spec.ts`'s `US-1` leak and it gets the same remedy: put back what you
+   * touched. The seeded Story stays the parent on purpose — tester eligibility (BR8) is resolved from
+   * it, so minting a different parent would quietly change what these tests prove.
+   */
+  async function newTestCase(payload: Record<string, unknown>): Promise<{ id: string }> {
+    const response = await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, payload);
+    expect(response.statusCode, response.body).toBe(201);
+    const testCase = JSON.parse(response.body) as { id: string };
+    createdTestCaseIds.push(testCase.id);
+    return testCase;
   }
 
   it('BR11: refuses a Result missing Build/run_date/tester (validation before the handler)', async () => {
@@ -127,10 +161,7 @@ describe('test result routes (e2e)', () => {
       // A fresh Test Case, not the seeded NXP_TEST_CASE_2_ID, so this scenario's own two/three
       // inserts are the ONLY Results ever attached to it (parallel test files may also post to the
       // shared seeded fixture above).
-      const testCase = JSON.parse(
-        (await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, { name: 'Flow scenario case' }))
-          .body,
-      );
+      const testCase = await newTestCase({ name: 'Flow scenario case' });
 
       // BR12: adding a Result never replaces an earlier one — both must remain listed.
       const first = JSON.parse(
@@ -216,9 +247,7 @@ describe('test result routes (e2e)', () => {
   });
 
   it('joins the tester name onto the row (a name is a property of the ROW)', async () => {
-    const testCase = JSON.parse(
-      (await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, { name: 'Tester name case' })).body,
-    );
+    const testCase = await newTestCase({ name: 'Tester name case' });
     const result = JSON.parse(
       (
         await post(`/test-cases/${testCase.id}/test-results`, {
@@ -234,13 +263,7 @@ describe('test result routes (e2e)', () => {
 
   describe('PATCH/DELETE /test-results/:id (Phase E)', () => {
     async function freshResult() {
-      const testCase = JSON.parse(
-        (
-          await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, {
-            name: `Edit case ${randomUUID()}`,
-          })
-        ).body,
-      );
+      const testCase = await newTestCase({ name: `Edit case ${randomUUID()}` });
       const result = JSON.parse(
         (
           await post(`/test-cases/${testCase.id}/test-results`, {
@@ -274,13 +297,7 @@ describe('test result routes (e2e)', () => {
 
     it('BR13: testCaseId/workItemId are silently ignored on PATCH (asserted against the STORED response)', async () => {
       const { testCase, result } = await freshResult();
-      const otherCase = JSON.parse(
-        (
-          await post(`/work-items/${NXP_STORY_1_ID}/test-cases`, {
-            name: `Other case ${randomUUID()}`,
-          })
-        ).body,
-      );
+      const otherCase = await newTestCase({ name: `Other case ${randomUUID()}` });
 
       const response = await patch(`/test-results/${result.id}`, {
         testCaseId: otherCase.id,
