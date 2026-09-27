@@ -1948,6 +1948,100 @@ describe('Phase 6 reports (e2e)', () => {
       await db.delete(storySplits).where(eq(storySplits.id, alienSplitId));
     }
   });
+
+  // ── SU-10 review follow-up, round 3 (PR #638): a Split INSIDE one fused timebox ─────────────
+  //
+  // `getTeamCapacity` reports a TIMEBOX, not an iteration: `iterationIds` is every sibling sharing the
+  // selected iteration's `timeboxGroupId`. That id is derived from the dates ONCE, at create, and a
+  // later date edit deliberately does not regroup — so two siblings can drift into sequence, and a
+  // Split between them is legal (§8 Q3 only asks the target to open after the source closes). These
+  // fixtures build exactly that: both iterations created on ONE window, then the second moved later.
+
+  /** Two siblings of ONE timebox group, the second then moved to open after the first closes. */
+  async function sequentialSiblings(label: string, start: number) {
+    const first = await namedIteration(
+      `${label} A`,
+      shift(localToday, start),
+      shift(localToday, start + 3),
+    );
+    const second = await namedIteration(
+      `${label} B`,
+      shift(localToday, start),
+      shift(localToday, start + 3),
+    );
+    await iterationsSvc.updateIteration(admin, second.id, {
+      startDate: shift(localToday, start + 4),
+      endDate: shift(localToday, start + 7),
+    });
+    return { first, second };
+  }
+
+  it('keeps every Actual hour of a Task split between two siblings of ONE timebox (review round 3)', async () => {
+    /**
+     * The first case the reviewer named. A→B is the only Split, and both ends are in the reported set,
+     * so before the fix that one row was BOTH the latest arrival and the earliest departure:
+     * `max(0, 2 − 2)` = 0, for a Task that never left the timebox.
+     */
+    const { first, second } = await sequentialSiblings('SU10 Fused', -95);
+    const story = await newSplittableStory('SU10 fused carry', first.id, {
+      points: '5',
+      estimate: '8',
+      todo: '6',
+      actual: '2',
+    });
+    const [task] = await items.listTasks(admin, story.id);
+
+    await items.splitWorkItem(admin, story.id, splitInput(first.id, second.id, 2, 3));
+
+    const report = await reporting.getTeamCapacity(admin, { projectId, iterationId: first.id });
+    // The premise: the edit did NOT regroup, so this really is one fused timebox of two iterations.
+    expect(report.timebox.iterationCount).toBe(2);
+    expect(report.totals.actualHours).toBe(2);
+    // The Estimate and To Do stayed inside the timebox with the Task, too.
+    expect(report.totals.estimateHours).toBe(8);
+    expect(report.totals.todoHours).toBe(6);
+
+    // Hours logged after the internal move still belong to the same timebox.
+    await items.updateWorkItem(admin, task.id, { actualHours: '7' });
+    const later = await reporting.getTeamCapacity(admin, { projectId, iterationId: second.id });
+    expect(later.timebox.iterationCount).toBe(2);
+    expect(later.totals.actualHours).toBe(7);
+  });
+
+  it('windows a chain whose first hop is INSIDE the reported timebox (review round 3)', async () => {
+    /**
+     * The second case the reviewer named: I1→I2→I3 reported over {I1, I2}. Before the fix the
+     * departed population took the I1→I2 Split as both its earliest departure and its latest arrival
+     * and reported 0 instead of the 7 hours logged before the Task left the timebox.
+     */
+    const { first, second } = await sequentialSiblings('SU10 Chain', -111);
+    const third = await namedIteration(
+      'SU10 Chain C',
+      shift(localToday, -103),
+      shift(localToday, -100),
+    );
+    const story = await newSplittableStory('SU10 chain carry', first.id, {
+      points: '5',
+      estimate: '9',
+      todo: '9',
+      actual: '3',
+    });
+    const [task] = await items.listTasks(admin, story.id);
+
+    await items.splitWorkItem(admin, story.id, splitInput(first.id, second.id, 1, 4));
+    await items.updateWorkItem(admin, task.id, { actualHours: '7' });
+    await items.splitWorkItem(admin, story.id, splitInput(second.id, third.id, 1, 3));
+    await items.updateWorkItem(admin, task.id, { actualHours: '10' });
+
+    const fused = await reporting.getTeamCapacity(admin, { projectId, iterationId: first.id });
+    const last = await reporting.getTeamCapacity(admin, { projectId, iterationId: third.id });
+    expect(fused.timebox.iterationCount).toBe(2);
+    expect(last.timebox.iterationCount).toBe(1);
+    expect(fused.totals.actualHours).toBe(7);
+    expect(last.totals.actualHours).toBe(3);
+    // Ten hours, attributed once across the two timeboxes.
+    expect(fused.totals.actualHours + last.totals.actualHours).toBe(10);
+  });
 });
 
 /** Shift a `YYYY-MM-DD` date by whole days, staying in the calendar. */

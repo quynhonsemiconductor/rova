@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql, type SQL } from 'drizzle-orm';
 import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
@@ -546,11 +546,13 @@ export class ReportingDrizzleRepository implements IReportingRepository {
    *    dimension, so without this the source's hours VANISH the moment the Task is re-parented
    *    (plan 10.1), and AC4's "the Source keeps its pre-Split Actual" would be unachievable.
    *
-   * The two sets are disjoint by construction — a valid target Iteration must start after the source
-   * ENDS (§8 Q3), so a source and a target can never be siblings of one fused timebox, and `departed`
-   * additionally excludes anything the resident predicate already admits. `rollUpTeamCapacity`
-   * de-duplicates by task id behind that, so a future rule that broke the disjointness would show up
-   * as one row winning rather than as doubled hours.
+   * The two sets are disjoint by construction — `departed` excludes anything the resident predicate
+   * already admits. NOTE that a source and a target CAN be siblings of one fused timebox: §8 Q3 only
+   * requires the target to open after the source closes, and `timeboxGroupId` is fixed at create, so
+   * a sibling whose dates are edited later stays in the group. {@link splitBound} therefore treats a
+   * Split with BOTH ends inside `iterationIds` as an internal move that bounds nothing.
+   * `rollUpTeamCapacity` de-duplicates by task id behind that, so a future rule that broke the
+   * disjointness would show up as one row winning rather than as doubled hours.
    */
   async getScopedTaskHours(
     workspaceId: string,
@@ -811,9 +813,11 @@ export class ReportingDrizzleRepository implements IReportingRepository {
    * `unfinished` side stayed where it was with the placeholder, so it has no bound from that Split and
    * keeps today's behaviour (plan 10.2). That is why the `unfinished` case needs no branch anywhere.
    *
-   * `arrival` takes the LATEST Split into these iterations and `departure` the EARLIEST Split out of
-   * them — an explicit window, NOT "the most recent row", which gives the middle Iteration of a
-   * three-Iteration carry the wrong answer (§8 Q1b). Ordered on `split_at` with `id` as the
+   * `arrival` takes the LATEST Split into these iterations FROM OUTSIDE them, and `departure` the
+   * EARLIEST Split out of them TO OUTSIDE them — an explicit window, NOT "the most recent row", which
+   * gives the middle Iteration of a three-Iteration carry the wrong answer (§8 Q1b). A Split with both
+   * ends inside the set is an internal move of a fused timebox and bounds neither side. Ordered on
+   * `split_at` with `id` as the
    * tiebreaker, so two Splits committed in the same instant still resolve to one deterministic row
    * (`query-ordering` ratchet).
    *
@@ -842,6 +846,8 @@ export class ReportingDrizzleRepository implements IReportingRepository {
   ): SQL<string | null> {
     const matchedIterationId =
       bound === 'arrival' ? storySplits.targetIterationId : storySplits.sourceIterationId;
+    const otherEndIterationId =
+      bound === 'arrival' ? storySplits.sourceIterationId : storySplits.targetIterationId;
     const direction = bound === 'arrival' ? desc : asc;
     const subquery = this.db
       .select({ value })
@@ -865,6 +871,24 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           eq(storySplitItems.taskId, tasks.id),
           eq(storySplitItems.splitSide, 'continued'),
           inArray(matchedIterationId, iterationIds),
+          /**
+           * A bound is a crossing of the SET's edge, not of one iteration's (PR #638 review, round 3).
+           *
+           * `iterationIds` is a fused timebox (`findTimeboxSiblings`), and a timebox group CAN hold
+           * two sequential iterations: `timeboxGroupId` is derived from the dates once, at create,
+           * and is deliberately never recomputed when a sibling's dates are edited later — so A and B
+           * created on one window, with B then moved to open after A closes, are still one group, and
+           * A→B is a legal Split under §8 Q3. Without this predicate that one Split is BOTH the
+           * latest arrival and the earliest departure of the set, `max(0, s − s)` is 0, and the
+           * timebox loses every Actual hour of a Task that never left it. The same collapse hits a
+           * chain I1→I2→I3 reported over {I1, I2}: the I1→I2 Split is taken as both bounds and 7
+           * becomes 0.
+           *
+           * A move whose other end is also in the set is neither an arrival nor a departure for the
+           * set, so it yields no bound at all. `source_iteration_id`/`target_iteration_id` are NOT
+           * NULL, so `not in` has no three-valued trap here.
+           */
+          notInArray(otherEndIterationId, iterationIds),
         ),
       )
       .orderBy(direction(storySplits.splitAt), direction(storySplits.id))

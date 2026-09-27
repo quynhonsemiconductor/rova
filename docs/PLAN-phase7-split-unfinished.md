@@ -2459,6 +2459,34 @@ and the two runs either side were green — nothing here touches unit-tested cod
 `phase6-reports.e2e.spec.ts` **27 → 29**, and `pnpm test:e2e` **74 files / 679 passed + 1 skipped,
 green twice in a row** (638s, 764s).
 
+#### SU-10 review follow-up, ROUND 3 — `qnsc-code-review` on PR #638, one `high` finding, fixed 2026-09-28
+
+**A Split inside one fused timebox was read as both bounds** (`bug`, high). `getTeamCapacity` passes
+`splitBound` a TIMEBOX (`findTimeboxSiblings`), and the reviewer asked whether a group can hold
+non-overlapping iterations. **It can:** `timeboxGroupIdFor` hashes `(project, start, end)` once at
+create, and `IterationDrizzleRepository.update` never recomputes it — so two siblings created on one
+window, with one later moved to open after the other closes, stay one group, and a Split between them
+passes §8 Q3. That single A→B row was then the latest arrival AND the earliest departure of the set,
+`max(0, s − s)` = 0, and the timebox lost every Actual hour of a Task that never left it. The chain
+I1→I2→I3 reported over {I1, I2} collapsed the same way (7 → 0).
+
+Fix: a bound is a crossing of the SET's edge — `splitBound` now also requires the Split's other end to
+be `not in` the set, so an intra-set move bounds nothing (both iteration columns are NOT NULL, so no
+three-valued trap). The `getScopedTaskHours` docblock's claim that a source and a target "can never be
+siblings of one fused timebox" was false and is corrected. Pinned by two e2e tests, **both measured
+FAILING with the fix reverted** (`expected 0 to be 2`, `expected 0 to be 7`).
+
+**Residual limitation, not fixed:** a Task that leaves the set and RE-ENTERS it (A→X→B, where A and B
+are drifted siblings and X is outside the group, between them) still reads `max(0, s₁ − s₂)` = 0,
+because one `[arrival, departure]` window cannot describe two disjoint residencies. Reaching it needs
+a sibling moved past a whole other iteration; the correct fix is a per-iteration (or telescoping
+Σdepartures − Σarrivals) attribution, which changes the §8 Q1a clamp semantics and needs a product
+decision rather than a review-round patch.
+
+Round-3 gate: `pnpm typecheck` exit 0, eslint + prettier clean on the changed files, `pnpm test`
+**94 files / 2284 tests**, `phase6-reports.e2e.spec.ts` + `team-status-agreement.e2e.spec.ts`
+**37 passed** (phase6 29 → 31).
+
 
 ---
 
