@@ -13,7 +13,7 @@ overrides:
   # root primitive, CVSS 5.4). Raised 5.10.0 -> 5.12.3. Still an EXACT pin, for the reason the
   # note below gives: the value's job is to keep ONE fastify copy in the tree, so a range here
   # would reintroduce the two-copy type mismatch it exists to prevent.
-  fastify: "5.12.4"
+  fastify: "5.12.5"
   "esbuild@<0.25.0": ">=0.25.0"
   # GHSA-rgw5-rvv9-x895 — HIGH (CVSS 7.5) DoS via unbounded intermediate arrays,
   # vulnerable <5.0.9, fixed 5.0.9. It explicitly BYPASSES the CVE-2026-14257
