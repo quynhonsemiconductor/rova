@@ -431,7 +431,7 @@ resource "aws_secretsmanager_secret_version" "tunnel_token" {
 # SSE was the compatibility question and it is answered: NotificationSseController
 # writes a `: heartbeat` every 25s, inside Cloudflare's ~100s idle timeout.
 module "tunnel_api" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/tunnel-agent?ref=tunnel-agent-v1.0.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/tunnel-agent?ref=tunnel-agent-v1.1.0"
 
   tunnel_token_secret_arn = length(aws_secretsmanager_secret.tunnel_token) > 0 ? aws_secretsmanager_secret.tunnel_token[0].arn : ""
   // Same local as the tunnel's own ingress rule above: the connector forwards to this
@@ -1701,7 +1701,7 @@ locals {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.4.0"
 
   cpu_architecture = var.cpu_architecture
   # Same gate as OTEL_ENABLED below: only switches log driver once a real
@@ -1949,7 +1949,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.4.0"
 
   cpu_architecture = var.cpu_architecture
   use_firelens     = module.firelens_agent_worker.enabled
