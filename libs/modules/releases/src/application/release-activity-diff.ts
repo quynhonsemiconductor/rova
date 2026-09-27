@@ -3,7 +3,8 @@ import type { ActivityDiffConfig } from '@modules/activity';
 /**
  * Fields whose changes appear in a release's Revision History. Status changes get
  * their own action so the feed reads "changed status" distinctly; everything else
- * is a generic 'release.updated'. Rich-text bodies are never logged (name only).
+ * is a generic 'release.updated'. Rich-text fields record a bounded plain-text
+ * preview, never markup or a whole body.
  */
 export const RELEASE_ACTIVITY_CONFIG: ActivityDiffConfig<Record<string, unknown>> = {
   fields: [

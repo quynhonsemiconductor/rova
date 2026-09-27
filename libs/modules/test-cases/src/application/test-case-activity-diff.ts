@@ -5,9 +5,11 @@ import type { ActivityDiffConfig } from '@modules/activity';
  *
  * The seven content fields (`description`, `objective`, `preconditions`, `validationInput`,
  * `validationExpectedResult`, `postconditions`, `notes`) are declared as RICH TEXT so the logger
- * records that they changed without storing the body — the same rule `PORTFOLIO_ACTIVITY_CONFIG`
- * follows and the reason `activity_logs` never holds rich text: the history is a feed, not a
- * second copy of the document.
+ * records a bounded plain-text PREVIEW of each side rather than the markup or the whole body — the
+ * same rule `PORTFOLIO_ACTIVITY_CONFIG` follows, and the reason `activity_logs` never holds a
+ * document: the history is a feed, not a second copy of it. It is a preview rather than nothing
+ * because the feed is read for REVIEW (US-93 TC-25), and before DE-18 every one of these seven
+ * rendered "changed from (empty) to (empty)".
  *
  * Deliberately excluded: `rank` (reordering is not a content change), and `lastVerdict` /
  * `lastRun` / `lastResultId` (BR9 — trigger-maintained, never part of this write's diff; a Result
