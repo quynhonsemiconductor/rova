@@ -21,7 +21,7 @@ overrides:
   # fixed 5.0.8) — so 5.0.8 is no longer a safe floor, not merely an older one.
   # The range spans every published major, so force the whole tree to 5.0.9 (leaf
   # util; the tree already accepted a forced 5.x across majors).
-  "brace-expansion": "5.0.9"
+  "brace-expansion": "5.0.12"
   # THREE advisories now, each raising this floor in turn — GHSA-pm4m-ph32-ghv5, then
   # GHSA-5p4m-2wfm-xmqj (CVE-2026-59870, quadratic CPU in !!omap resolution, CVSS 7.5,
   # fixed 4.3.1), and now GHSA-2883-xcg3-v3hh (CVSS 7.5): `maxTotalMergeKeys` counts only
