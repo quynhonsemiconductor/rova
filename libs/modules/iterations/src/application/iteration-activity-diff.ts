@@ -6,7 +6,7 @@ export interface IterationActivityDiffEntry {
 }
 
 // Non-state fields only — state transitions are logged separately (commit/accept).
-// Rich-text fields record the field name only, never the body.
+// Rich-text fields record a bounded plain-text preview, never markup or a whole body.
 const CONFIG: ActivityDiffConfig<Record<string, unknown>> = {
   fields: ['name', 'goal', 'theme', 'notes', 'teamId', 'plannedVelocity', 'startDate', 'endDate'],
   richText: ['theme', 'notes', 'goal'],
