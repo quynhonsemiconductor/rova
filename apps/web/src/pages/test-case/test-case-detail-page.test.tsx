@@ -13,6 +13,18 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }))
 vi.mock('@/shared/lib/use-detail-back', () => ({ useDetailBack: () => vi.fn() }))
+/**
+ * The tab now lives in the URL (DE-19, `useDetailTab`), and this file mocks `@tanstack/react-router`
+ * down to `useParams` + `Link` — so the real hook's `useRouter`/`useRouterState` are not there to
+ * call. Substituted with `useState`, which is the same contract from the PAGE's side (a value and a
+ * setter) and keeps the tab-switching assertions below exercising the page rather than the router.
+ * The hook's own behaviour — reading the URL, replacing the entry — is asserted in
+ * `shared/lib/use-detail-tab.test.tsx`.
+ */
+vi.mock('@/shared/lib/use-detail-tab', async () => {
+  const { useState } = await import('react')
+  return { useDetailTab: (_tabs: readonly string[], fallback: string) => useState(fallback) }
+})
 vi.mock('@/shared/lib/deep-link-project', () => ({
   useRecordProject: () => ({ projectId: 'proj-1', projectKey: 'NXP', projectName: 'NX Platform' }),
 }))

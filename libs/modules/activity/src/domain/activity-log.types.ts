@@ -13,7 +13,13 @@ import { activityEntityTypeEnum } from '../../../../../db/schema/enums';
  */
 export type ActivityEntityType = (typeof activityEntityTypeEnum.enumValues)[number];
 
-/** A single field change. Rich-text fields record the field name only (old/new null). */
+/**
+ * A single field change.
+ *
+ * A rich-text field records a bounded plain-text PREVIEW of each side (`richTextPreview`,
+ * `activity-diff.ts`) — never the markup, never the whole document. `null` on a side means that
+ * side was genuinely empty, which is what lets the UI say "(empty)" and be believed (DE-18).
+ */
 export interface ActivityChange {
   field: string;
   old: unknown;

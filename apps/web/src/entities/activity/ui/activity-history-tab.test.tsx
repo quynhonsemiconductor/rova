@@ -196,4 +196,78 @@ describe('ActivityHistoryTab', () => {
 
     expect(screen.getByText('Work Item Archived')).toBeInTheDocument()
   })
+
+  // ── Rich-text field changes (DE-18, US-93 TC-25 / US-97 TC-37) ──────────────
+
+  /**
+   * The reported defect, both halves of it.
+   *
+   * The writer used to store `old: null, new: null` for any rich-text field, so a Notes edit that
+   * saved real text rendered "Notes changed from (empty) to (empty)" — the log said nothing, on the
+   * one tab whose purpose is review. The writer now records a bounded plain-text preview
+   * (`richTextPreview`), and the renderer has to do two different things:
+   *
+   *   • a row with a value on either side reads as the value (the new rows);
+   *   • a row with NOTHING on either side states the change and stops — the rows already written,
+   *     whose bodies are gone and cannot be recovered by any migration.
+   */
+  function richTextRow(id: string, old: unknown, next: unknown) {
+    return { ...ROW, id, action: 'test_case.updated', changes: { field: 'notes', old, new: next } }
+  }
+
+  it('renders the NEW value of a rich-text change, not a second "(empty)"', () => {
+    renderTab({ data: [richTextRow('r-1', null, 'US97 edit probe note')], isLoading: false })
+
+    expect(
+      screen.getByText('Notes changed from (empty) to US97 edit probe note'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/to \(empty\)/)).not.toBeInTheDocument()
+  })
+
+  it('renders both sides when a rich-text field was edited over existing text', () => {
+    renderTab({ data: [richTextRow('r-2', 'first note', 'second note')], isLoading: false })
+
+    expect(screen.getByText('Notes changed from first note to second note')).toBeInTheDocument()
+  })
+
+  it('keeps "(empty)" for the side that really is empty — a CLEARED field', () => {
+    renderTab({ data: [richTextRow('r-3', 'first note', null)], isLoading: false })
+
+    expect(screen.getByText('Notes changed from first note to (empty)')).toBeInTheDocument()
+  })
+
+  it('states the change with no values at all for a row written before the preview existed', () => {
+    renderTab({ data: [richTextRow('r-4', null, null)], isLoading: false })
+
+    expect(screen.getByText('Notes changed')).toBeInTheDocument()
+    // The defect verbatim: two empties is a claim about the values, and this row has none.
+    expect(screen.queryByText(/\(empty\)/)).not.toBeInTheDocument()
+  })
+
+  /**
+   * Review finding (#640): two IDENTICAL previews must not read "from hello to hello".
+   *
+   * `changed()` compares the raw markup while the recorded value is the flattened preview, so two
+   * sides can be equal on a real change — a formatting-only edit (bolding a word), or an edit beyond
+   * the 120-character preview window. The row stays (the field did change) and the sentence drops the
+   * claim about values, which is the same sentence a pre-preview row gets, for the same reason: the
+   * feed knows it changed and cannot show the difference.
+   *
+   * The alternative the finding offered — dropping such entries in the WRITER, by gating on preview
+   * equality — is rejected in `describeActivity`'s own docblock: it cannot tell a formatting-only
+   * edit from an edit past the window, so it would silently omit real changes to long documents.
+   */
+  it('states the change without values when a formatting-only edit leaves both previews equal', () => {
+    renderTab({ data: [richTextRow('r-5', 'hello', 'hello')], isLoading: false })
+
+    expect(screen.getByText('Notes changed')).toBeInTheDocument()
+    expect(screen.queryByText(/from hello to hello/)).not.toBeInTheDocument()
+  })
+
+  it('keeps naming both values whenever they actually differ', () => {
+    // The guard above must not swallow the ordinary case it sits in front of.
+    renderTab({ data: [richTextRow('r-6', 'hello', 'hello there')], isLoading: false })
+
+    expect(screen.getByText('Notes changed from hello to hello there')).toBeInTheDocument()
+  })
 })
