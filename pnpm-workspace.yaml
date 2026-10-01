@@ -37,7 +37,7 @@ overrides:
   #
   # `^` and not `>=`: the looser form resolves into 5.x, whose API @nestjs/swagger 11.x and
   # cosmiconfig were not built against. The 5.x line has its own entry below.
-  "js-yaml@4": "^4.3.2"
+  "js-yaml@4": "^5.4.1"
   # GHSA-pm4m-ph32-ghv5 — js-yaml 5.x, fixed in 5.2.2. Transitive via cosmiconfig
   # (@nestjs/cli, commitlint) + @nestjs/swagger. Newly published advisory that
   # also affects main; pinned via override.
