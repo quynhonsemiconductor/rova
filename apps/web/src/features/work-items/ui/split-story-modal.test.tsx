@@ -155,12 +155,12 @@ describe('SplitStoryModal', () => {
     expect(screen.getByText('Splitting US-1: Upgrade NX workspace to v21')).toBeInTheDocument()
   })
 
-  it('renders BOTH panel headings, and names the source Iteration on the [Unfinished] side', () => {
+  it('renders BOTH panel headings with the mockup’s side names', () => {
     renderModal()
-    // The `[Unfinished]` Story stays in the source Iteration (BR-09), which is why the heading says
-    // so rather than leaving the reader to infer it.
-    expect(screen.getByText('[Unfinished] — stays in Sprint 26.1')).toBeInTheDocument()
-    expect(screen.getByText('[Continued] — moves to a later iteration')).toBeInTheDocument()
+    // The source Iteration is not repeated in the heading: the `[Unfinished]` side's read-only
+    // Iteration field states it (BR-09), as the BA mockup draws it.
+    expect(screen.getByText('[Unfinished] · New historical Story')).toBeInTheDocument()
+    expect(screen.getByText('[Continued] · Original Story')).toBeInTheDocument()
   })
 
   it('renders `Split story` ENABLED on a valid draft', () => {
@@ -174,7 +174,7 @@ describe('SplitStoryModal', () => {
 
   it('keeps `Split story` disabled while the draft is invalid, and re-enables it (AC6)', () => {
     renderModal()
-    const title = screen.getByLabelText('Title', { selector: '#split-continued-title' })
+    const title = screen.getByLabelText('Name', { selector: '#split-continued-title' })
     fireEvent.change(title, { target: { value: '  ' } })
     expect(screen.getByRole('button', { name: 'Split story' })).toBeDisabled()
     fireEvent.change(title, { target: { value: 'Continued work' } })
@@ -344,7 +344,7 @@ describe('SplitStoryModal', () => {
   }
 
   const estimateField = (side: SplitSide) =>
-    screen.getByLabelText('Plan Estimate (pts)', { selector: `#split-${side}-estimate` })
+    screen.getByLabelText('Plan Estimate', { selector: `#split-${side}-estimate` })
 
   it('summarises what the split carries, and the point comparison (BR-13)', () => {
     useSplitPreview.mockReturnValue(queryReady(previewWithChildren()))
@@ -473,7 +473,7 @@ describe('SplitStoryModal', () => {
 
   it('trims the titles it sends, without trimming what the reader sees', async () => {
     renderModal()
-    const title = screen.getByLabelText('Title', { selector: '#split-unfinished-title' })
+    const title = screen.getByLabelText('Name', { selector: '#split-unfinished-title' })
     fireEvent.change(title, { target: { value: '  Historical record  ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Split story' }))
     await waitFor(() => expect(splitMutation.mutateAsync).toHaveBeenCalled())

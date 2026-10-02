@@ -14,16 +14,15 @@
     "confirmDisabled": "Saving a split is not available yet"
   },
   "panels": {
-    "unfinished": "[Unfinished] — stays in {{iteration}}",
-    "unfinishedNoIteration": "[Unfinished]",
-    "continued": "[Continued] — moves to a later iteration"
+    "unfinished": "[Unfinished] · New historical Story",
+    "continued": "[Continued] · Original Story"
   },
   "fields": {
-    "title": "Title",
+    "title": "Name",
     "release": "Release",
     "iteration": "Iteration",
     "scheduleState": "Schedule State",
-    "planEstimate": "Plan Estimate (pts)",
+    "planEstimate": "Plan Estimate",
     "feature": "Feature",
     "unscheduledOption": "Unscheduled",
     "iterationPlaceholder": "Choose a later iteration"
@@ -37,11 +36,20 @@
     "tasks": "Tasks",
     "defects": "Defects",
     "testCases": "Test Cases",
-    "empty": "No items — use the arrow buttons or drag here",
+    "empty": "Drag {{kind}} here or use the arrow buttons",
     "move": "Move {{key}} to {{destination}}",
     "destinationUnfinished": "[Unfinished]",
     "destinationContinued": "[Continued]",
-    "todo": "{{hours}}h To Do",
+    "hours": "{{hours}}h",
+    "columns": {
+      "id": "ID",
+      "name": "Name",
+      "state": "State",
+      "todo": "To Do",
+      "priority": "Priority",
+      "type": "Type",
+      "verdict": "Verdict"
+    },
     "explicit": "Explicit: {{iteration}}"
   },
   "footer": {

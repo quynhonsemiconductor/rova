@@ -48,8 +48,8 @@ test.describe('Split a user story', () => {
     await expect(dialog).toBeVisible({ timeout: 15_000 })
     // The title names the Story, and both panels arrive from ONE preview round trip.
     await expect(dialog.getByText(/^Splitting US-1:/)).toBeVisible()
-    await expect(dialog.getByText('[Unfinished] — stays in Sprint 26.1')).toBeVisible()
-    await expect(dialog.getByText('[Continued] — moves to a later iteration')).toBeVisible()
+    await expect(dialog.getByText('[Unfinished] · New historical Story')).toBeVisible()
+    await expect(dialog.getByText('[Continued] · Original Story')).toBeVisible()
 
     // The target picker offers the server's `targets` — earliest first (BR-06/AC5).
     //

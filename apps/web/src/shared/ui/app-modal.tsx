@@ -42,7 +42,13 @@ interface AppModalProps {
   title: string
   /** Optional secondary line in the header */
   subtitle?: string
-  /** Card width in pixels. Default: 480 */
+  /** Optional leading icon in the header, rendered in a tinted tile before the title. */
+  icon?: ReactNode
+  /**
+   * Card width in pixels. Default: 480. Never wider than the viewport: the card is capped at
+   * `100vw - 1.5rem`, so a wide modal (e.g. Split story) shrinks on a narrow screen instead of
+   * overflowing it.
+   */
   width?: number
   children: ReactNode
   className?: string
@@ -53,6 +59,7 @@ export function AppModal({
   onClose,
   title,
   subtitle,
+  icon,
   width = 480,
   children,
   className,
@@ -94,7 +101,12 @@ export function AppModal({
            * `90dvh`, not `90vh`: on a mobile browser `vh` is the tallest viewport, including the
            * space the collapsing URL bar occupies, so a `90vh` card can still be cut off there.
            */
-          style={{ width, maxHeight: '90dvh', border: `1px solid ${BRAND.border}` }}
+          style={{
+            width,
+            maxWidth: 'calc(100vw - 1.5rem)',
+            maxHeight: '90dvh',
+            border: `1px solid ${BRAND.border}`,
+          }}
         >
           {/* ── Header ───────────────────────────────────────────────────── */}
           <div
@@ -104,21 +116,31 @@ export function AppModal({
               borderBottom: `1px solid ${BRAND.borderSubtle}`,
             }}
           >
-            <div>
-              <DialogPrimitive.Title
-                className="text-ui-lg font-semibold"
-                style={{ color: BRAND.textPrimary }}
-              >
-                {title}
-              </DialogPrimitive.Title>
-              {subtitle && (
-                <DialogPrimitive.Description
-                  className="text-ui-sm"
-                  style={{ color: BRAND.textMuted }}
+            <div className="flex min-w-0 items-center gap-3">
+              {icon && (
+                <span
+                  aria-hidden="true"
+                  className="flex shrink-0 items-center justify-center rounded bg-accent-blue p-2 text-primary"
                 >
-                  {subtitle}
-                </DialogPrimitive.Description>
+                  {icon}
+                </span>
               )}
+              <div className="min-w-0">
+                <DialogPrimitive.Title
+                  className="text-ui-lg font-semibold break-words"
+                  style={{ color: BRAND.textPrimary }}
+                >
+                  {title}
+                </DialogPrimitive.Title>
+                {subtitle && (
+                  <DialogPrimitive.Description
+                    className="text-ui-sm break-words"
+                    style={{ color: BRAND.textMuted }}
+                  >
+                    {subtitle}
+                  </DialogPrimitive.Description>
+                )}
+              </div>
             </div>
 
             <DialogPrimitive.Close asChild>

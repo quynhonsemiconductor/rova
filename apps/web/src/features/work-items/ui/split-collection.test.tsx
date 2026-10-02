@@ -206,12 +206,12 @@ describe('SplitCollection', () => {
   it('shows a Task’s state and To Do, and `--` for an unset To Do — never 0h', () => {
     renderModal()
     const tasks = list(continuedPanel(), 'Tasks')
-    expect(within(tasks).getByText('3h To Do')).toBeInTheDocument()
+    expect(within(tasks).getByText('3h')).toBeInTheDocument()
     // TA-3 has `todoHours: null`. `0h` would be a measurement the server never made.
     expect(within(tasks).getByText('--')).toBeInTheDocument()
     expect(within(tasks).getByText('In-Progress')).toBeInTheDocument()
     // TA-1's `0` IS a measurement, and reads as such on the other side.
-    expect(within(list(unfinishedPanel(), 'Tasks')).getByText('0h To Do')).toBeInTheDocument()
+    expect(within(list(unfinishedPanel(), 'Tasks')).getByText('0h')).toBeInTheDocument()
   })
 
   // ── Review follow-up (2026-09-17): a row and the footer are the same quantity ─
@@ -232,7 +232,7 @@ describe('SplitCollection', () => {
   it('formats a row’s To Do exactly as the footer that sums it (en)', () => {
     useSplitPreview.mockReturnValue(queryReady(previewWithBigHours()))
     renderModal()
-    expect(within(list(continuedPanel(), 'Tasks')).getByText('1,234.5h To Do')).toBeInTheDocument()
+    expect(within(list(continuedPanel(), 'Tasks')).getByText('1,234.5h')).toBeInTheDocument()
     expect(screen.getByText('0h Actual · 1,234.5h To Do')).toBeInTheDocument()
   })
 
@@ -240,7 +240,7 @@ describe('SplitCollection', () => {
     setFormatPrefs({ locale: 'de' })
     useSplitPreview.mockReturnValue(queryReady(previewWithBigHours()))
     renderModal()
-    expect(within(list(continuedPanel(), 'Tasks')).getByText('1.234,5h To Do')).toBeInTheDocument()
+    expect(within(list(continuedPanel(), 'Tasks')).getByText('1.234,5h')).toBeInTheDocument()
     expect(screen.getByText('0h Actual · 1.234,5h To Do')).toBeInTheDocument()
   })
 
@@ -279,13 +279,13 @@ describe('SplitCollection', () => {
     // dropping real, and this test is what says so.
     renderModal()
     expect(document.body.querySelector('[aria-roledescription="draggable"]')).toBeNull()
-    expect(document.body.querySelector('li[tabindex]')).toBeNull()
+    expect(document.body.querySelector('[role="listitem"][tabindex]')).toBeNull()
   })
 
   it('counts each side separately, and the count follows a move', () => {
     renderModal()
     const tasksPill = (panel: HTMLElement) =>
-      within(panel).getByRole('list', { name: 'Tasks' }).previousElementSibling?.textContent
+      within(panel).getByRole('heading', { name: 'Tasks' }).parentElement?.textContent
     expect(tasksPill(unfinishedPanel())).toBe('Tasks1')
     expect(tasksPill(continuedPanel())).toBe('Tasks2')
     fireEvent.click(screen.getByRole('button', { name: 'Move TA-1 to [Continued]' }))
@@ -297,17 +297,23 @@ describe('SplitCollection', () => {
 
   it('renders the drop state on an empty side and blocks nothing (AC5)', () => {
     renderModal()
-    // The copy names BOTH paths — "use the arrow buttons or drag here" — deliberately (review
-    // follow-up): the arrow button is the primary and the only KEYBOARD path, so an empty state that
-    // said only "Drop items here" told a screen-reader user to do the one thing they cannot. It is
-    // still not a validation message: an empty side is a legal split.
-    const emptyCopy = 'No items — use the arrow buttons or drag here'
+    // The copy names BOTH paths — the mockup's "Drag {kind} here" plus "or use the arrow buttons" —
+    // deliberately (review follow-up): the arrow button is the primary and the only KEYBOARD path, so
+    // an empty state that said only "drag here" would tell a screen-reader user to do the one thing
+    // they cannot. It is still not a validation message: an empty side is a legal split.
+    const emptyCopy = (kind: string) => `Drag ${kind} here or use the arrow buttons`
     // The `[Unfinished]` Defects and Test Cases lists start empty (BR-15).
-    expect(within(list(unfinishedPanel(), 'Defects')).getByText(emptyCopy)).toBeInTheDocument()
-    expect(within(list(unfinishedPanel(), 'Test Cases')).getByText(emptyCopy)).toBeInTheDocument()
+    expect(
+      within(list(unfinishedPanel(), 'Defects')).getByText(emptyCopy('Defects')),
+    ).toBeInTheDocument()
+    expect(
+      within(list(unfinishedPanel(), 'Test Cases')).getByText(emptyCopy('Test Cases')),
+    ).toBeInTheDocument()
     // Emptying the Tasks side too — still no message, still no alert.
     fireEvent.click(screen.getByRole('button', { name: 'Move TA-1 to [Continued]' }))
-    expect(within(list(unfinishedPanel(), 'Tasks')).getByText(emptyCopy)).toBeInTheDocument()
+    expect(
+      within(list(unfinishedPanel(), 'Tasks')).getByText(emptyCopy('Tasks')),
+    ).toBeInTheDocument()
     expect(document.body.querySelector('[role="alert"]')).toBeNull()
     expect(document.body.querySelector('[aria-invalid="true"]')).toBeNull()
   })
