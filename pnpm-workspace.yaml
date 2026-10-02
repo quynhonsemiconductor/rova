@@ -41,7 +41,10 @@ overrides:
   # GHSA-pm4m-ph32-ghv5 — js-yaml 5.x, fixed in 5.2.2. Transitive via cosmiconfig
   # (@nestjs/cli, commitlint) + @nestjs/swagger. Newly published advisory that
   # also affects main; pinned via override.
-  "js-yaml@5": "^5.2.2"
+  #
+  # RAISED 5.2.2 -> 5.4.1 for GHSA-r3ph-w7gj-g6xm (CVSS 5.3): the 5.x line's `maxTotalMergeKeys`
+  # had the same empty-merge-source CPU hole the 4.x entry above describes, fixed in 5.4.1.
+  "js-yaml@5": "^5.4.1"
   # GHSA-c96f-x56v-gq3h — HIGH "DDoS with HTTP2", fixed in 9.7.0. Transitive
   # via fastify@5.10.0 / @nestjs/platform-fastify (declared range ^9.6.0, so
   # 9.7.0 is in-range). A newly published advisory that also affects main.
@@ -63,7 +66,11 @@ overrides:
   # `main` under the four new advisories: an override written to CLOSE this parser's holes is
   # what carried the tree into the unpatched major. Keep the floor inside the declared major, the
   # way the undici pins below keep each consumer inside the major it asks for.
-  "fast-uri@<3.1.6": ">=3.1.6 <4.0.0"
+  #
+  # RAISED 3.1.6 -> 3.1.8 for GHSA-hrr3-gc8f-f4qj (CVSS 4.8, inconsistent host case normalisation
+  # via percent-encoded octets), fixed in 3.1.8 on the 3.x line. Upper bound kept, for the reason
+  # above.
+  "fast-uri@<3.1.8": ">=3.1.8 <4.0.0"
   # GHSA-55q2-fjhq-7xh7 — DOMPurify, "IN_PLACE hook removal leaves a detached subtree
   # executable", fixed in 3.4.13. This one REACHES PRODUCTION and is a real XSS sink:
   # dompurify is a DIRECT dependency of apps/web (^3.4.12), used to sanitise rendered
@@ -73,7 +80,11 @@ overrides:
   # the advisory published. The override is here anyway so a fresh resolution cannot go
   # backwards, and so `@types/dompurify` (which pins the runtime package as a real
   # dependency, not a peer) moves with it.
-  "dompurify@<3.4.13": ">=3.4.13"
+  #
+  # RAISED 3.4.13 -> 3.4.16 for GHSA-p98j-92pf-mc4p (CVSS 2.3): a node-removing `afterSanitize`
+  # hook in IN_PLACE mode left the detached subtree's event handlers armed — the same sink as
+  # above, so it is the same production exposure. Introduced in 3.4.13, fixed in 3.4.16.
+  "dompurify@<3.4.16": ">=3.4.16"
   # GHSA-2v37-7h3g-55p8 — nanoid, "custom generators can loop indefinitely when size is
   # zero". Reached only via postcss -> nanoid, i.e. the web BUILD toolchain, and postcss
   # calls it with a fixed non-zero size — so the zero-size path is not reachable here.
@@ -141,8 +152,27 @@ overrides:
   # Keep each consumer inside the major it declares:
   #   7.x — jsdom → vitest         (patched in 7.29.0)
   #   8.x — testcontainers          (patched in 8.9.0)
-  "undici@>=7.0.0 <7.29.0": ">=7.29.0 <8.0.0"
-  "undici@>=8.0.0 <8.9.0": ">=8.9.0"
+  #
+  # RAISED 7.29.0 -> 7.29.1 and 8.9.0 -> 8.10.2 for eleven further advisories on both lines (the
+  # worst GHSA-rfgv-xxqx-mfg5, CVSS 7.5, DoS via an unrequested WebSocket subprotocol; also TLS
+  # validation bypass in BalancedPool, Set-Cookie leakage through shared caches, response
+  # splitting via the retry interceptor). Still dev-only, still one range per major.
+  "undici@>=7.0.0 <7.29.1": ">=7.29.1 <8.0.0"
+  "undici@>=8.0.0 <8.10.2": ">=8.10.2"
+  # GHSA-f596-whhp-79r4 (CVSS 3.7, server leaks handler error messages in status) and
+  # GHSA-m9gg-hp2v-232j (CVSS 7.4, `getAuthContext` can report unauthorised certificates as
+  # authorised), both fixed in 1.14.5 on the 1.14 line. RUNTIME: reached via @nestjs/terminus and
+  # the OpenTelemetry gRPC exporters (sdk-node). Floor kept inside 1.x, the major every consumer
+  # declares.
+  "@grpc/grpc-js@>=1.14.0 <1.14.5": ">=1.14.5 <2.0.0"
+  # GHSA-hrh2-vp3x-79xf (CVSS 9.1) — path traversal via a symlink chain, fixed in 11.1.4.
+  # DEV-ONLY: @swc/cli -> @xhmikosr/bin-wrapper -> downloader -> decompress, which unpacks the
+  # swc binary at install time. Not shipped in the runtime image.
+  "@xhmikosr/decompress@>=11.0.0 <11.1.4": ">=11.1.4 <12.0.0"
+  # GHSA-67c8-pqhq-4rmx (CVSS 9.2) — prototype-pollution gadget in ThreadPool options (execArgv /
+  # env) allowing RCE, fixed in 4.9.4 on the 4.x line. DEV-ONLY: @swc/cli (via @nestjs/cli) uses it
+  # for parallel compilation. Kept inside 4.x, the major @swc/cli declares.
+  "piscina@<4.9.4": ">=4.9.4 <5.0.0"
 # pnpm 11 wrote this block during its migration and left every value as the literal
 # placeholder "set this to true or false". Unresolved, pnpm treats the decision as unmade,
 # refuses to run those postinstalls, and exits 1 with ERR_PNPM_IGNORED_BUILDS — and because
