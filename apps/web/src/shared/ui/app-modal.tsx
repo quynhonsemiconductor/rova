@@ -134,7 +134,7 @@ export function AppModal({
                 </DialogPrimitive.Title>
                 {subtitle && (
                   <DialogPrimitive.Description
-                    className="text-ui-sm"
+                    className="text-ui-sm break-words"
                     style={{ color: BRAND.textMuted }}
                   >
                     {subtitle}

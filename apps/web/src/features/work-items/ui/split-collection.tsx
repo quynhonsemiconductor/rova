@@ -115,18 +115,15 @@ export function SplitCollection<T extends { id: string }>({
     width: ID_WIDTH,
   }
   const nameColumn: PanelTableColumn = { key: 'name', label: t('collections.columns.name') }
-  const kindColumns: PanelTableColumn[] = columns.map(({ key, label: colLabel, width }) => ({
-    key,
-    label: colLabel,
-    width,
-  }))
   const moveColumn: PanelTableColumn = {
     key: 'move',
     label: '',
     width: MOVE_WIDTH,
     align: 'center',
   }
-  const tableColumns = [idColumn, nameColumn, ...kindColumns, moveColumn]
+  // `SplitCollectionColumn<T>` IS a `PanelTableColumn` (key/label/width plus `render`), so the kind
+  // columns go in as-is: header and cells read one array, and cannot fall out of step.
+  const tableColumns: PanelTableColumn[] = [idColumn, nameColumn, ...columns, moveColumn]
 
   return (
     <Card
@@ -168,7 +165,10 @@ export function SplitCollection<T extends { id: string }>({
               // validation message: it blocks nothing and says nothing about correctness.
               <div
                 role="listitem"
-                className="flex h-14 items-center justify-center px-3 text-ui-sm font-semibold text-foreground-subtle"
+                className={cn(
+                  'flex h-14 items-center justify-center text-ui-sm font-semibold text-foreground-subtle',
+                  ROW_PAD,
+                )}
               >
                 {t('collections.empty', { kind: label })}
               </div>
@@ -185,12 +185,8 @@ export function SplitCollection<T extends { id: string }>({
                   itemKey={keyOf(row)}
                   title={titleOf(row)}
                   subtitle={subtitleOf?.(row)}
-                  cells={columns.map((col, index) => (
-                    <PanelTableCell
-                      key={col.key}
-                      column={kindColumns[index]}
-                      className="min-w-0 overflow-hidden"
-                    >
+                  cells={columns.map((col) => (
+                    <PanelTableCell key={col.key} column={col} className="min-w-0 overflow-hidden">
                       {col.render(row)}
                     </PanelTableCell>
                   ))}
