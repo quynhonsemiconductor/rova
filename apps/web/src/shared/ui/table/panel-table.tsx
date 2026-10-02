@@ -152,6 +152,8 @@ export function PanelTableRow({
   className?: string
   style?: React.CSSProperties
   children?: ReactNode
+  /** Forwarded to the row element (React 19 ref-as-prop) — e.g. a dnd-kit draggable node. */
+  ref?: React.Ref<HTMLDivElement>
   // A row is often the click target that opens a record, so it takes the interaction props a
   // caller needs (`role`, `tabIndex`, `onClick`, `onKeyDown`). What it never takes is geometry.
 } & Omit<React.HTMLAttributes<HTMLDivElement>, 'style' | 'className' | 'children'>) {

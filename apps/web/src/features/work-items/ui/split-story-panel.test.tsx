@@ -130,14 +130,14 @@ describe('SplitStoryPanel', () => {
 
   it('seeds both titles and both estimates from the preview (BR-12, §8 Q10)', () => {
     renderModal()
-    expect(within(unfinishedPanel()).getByLabelText('Title')).toHaveValue(
+    expect(within(unfinishedPanel()).getByLabelText('Name')).toHaveValue(
       '[Unfinished] Upgrade NX workspace to v21',
     )
-    expect(within(continuedPanel()).getByLabelText('Title')).toHaveValue(
+    expect(within(continuedPanel()).getByLabelText('Name')).toHaveValue(
       '[Continued] Upgrade NX workspace to v21',
     )
-    expect(within(unfinishedPanel()).getByLabelText('Plan Estimate (pts)')).toHaveValue('5')
-    expect(within(continuedPanel()).getByLabelText('Plan Estimate (pts)')).toHaveValue('5')
+    expect(within(unfinishedPanel()).getByLabelText('Plan Estimate')).toHaveValue('5')
+    expect(within(continuedPanel()).getByLabelText('Plan Estimate')).toHaveValue('5')
   })
 
   it('renders `[Unfinished]` Release / Iteration / Schedule State as VALUES, not as controls', () => {
@@ -162,10 +162,10 @@ describe('SplitStoryPanel', () => {
   it('leaves Title and Plan Estimate EDITABLE on the `[Unfinished]` side', () => {
     renderModal()
     const panel = unfinishedPanel()
-    const title = within(panel).getByLabelText('Title')
+    const title = within(panel).getByLabelText('Name')
     fireEvent.change(title, { target: { value: 'Historical record' } })
     expect(title).toHaveValue('Historical record')
-    const estimate = within(panel).getByLabelText('Plan Estimate (pts)')
+    const estimate = within(panel).getByLabelText('Plan Estimate')
     fireEvent.change(estimate, { target: { value: '2' } })
     expect(estimate).toHaveValue('2')
   })
@@ -186,8 +186,8 @@ describe('SplitStoryPanel', () => {
   it('makes all five fields editable on the `[Continued]` side', () => {
     renderModal()
     const panel = continuedPanel()
-    expect(within(panel).getByLabelText('Title')).toBeInTheDocument()
-    expect(within(panel).getByLabelText('Plan Estimate (pts)')).toBeInTheDocument()
+    expect(within(panel).getByLabelText('Name')).toBeInTheDocument()
+    expect(within(panel).getByLabelText('Plan Estimate')).toBeInTheDocument()
     // Release, Iteration and Schedule State are real pickers on this side.
     expect(within(panel).getAllByRole('combobox')).toHaveLength(3)
   })
@@ -271,18 +271,18 @@ describe('SplitStoryPanel', () => {
 
   it('marks a blanked title `aria-invalid`, and only that field', () => {
     renderModal()
-    const title = within(unfinishedPanel()).getByLabelText('Title')
+    const title = within(unfinishedPanel()).getByLabelText('Name')
     fireEvent.change(title, { target: { value: '   ' } })
     expect(title).toHaveAttribute('aria-invalid', 'true')
-    expect(within(continuedPanel()).getByLabelText('Title')).not.toHaveAttribute('aria-invalid')
-    expect(within(unfinishedPanel()).getByLabelText('Plan Estimate (pts)')).not.toHaveAttribute(
+    expect(within(continuedPanel()).getByLabelText('Name')).not.toHaveAttribute('aria-invalid')
+    expect(within(unfinishedPanel()).getByLabelText('Plan Estimate')).not.toHaveAttribute(
       'aria-invalid',
     )
   })
 
   it('removes `aria-invalid` again once the field is valid', () => {
     renderModal()
-    const title = within(continuedPanel()).getByLabelText('Title')
+    const title = within(continuedPanel()).getByLabelText('Name')
     fireEvent.change(title, { target: { value: '' } })
     expect(title).toHaveAttribute('aria-invalid', 'true')
     fireEvent.change(title, { target: { value: 'Continued work' } })
@@ -291,7 +291,7 @@ describe('SplitStoryPanel', () => {
 
   it('marks an estimate that is not a number ≥ 0, and leaves an EMPTY one alone', () => {
     renderModal()
-    const estimate = within(continuedPanel()).getByLabelText('Plan Estimate (pts)')
+    const estimate = within(continuedPanel()).getByLabelText('Plan Estimate')
     for (const invalid of ['-', '-2', 'abc']) {
       fireEvent.change(estimate, { target: { value: invalid } })
       expect(estimate, invalid).toHaveAttribute('aria-invalid', 'true')
@@ -305,8 +305,8 @@ describe('SplitStoryPanel', () => {
 
   it('says NOTHING about an invalid field — no message, no hint, no toast, no alert (AC6, SRS §12)', () => {
     renderModal()
-    fireEvent.change(within(unfinishedPanel()).getByLabelText('Title'), { target: { value: '' } })
-    fireEvent.change(within(continuedPanel()).getByLabelText('Plan Estimate (pts)'), {
+    fireEvent.change(within(unfinishedPanel()).getByLabelText('Name'), { target: { value: '' } })
+    fireEvent.change(within(continuedPanel()).getByLabelText('Plan Estimate'), {
       target: { value: '-9' },
     })
     // The field is marked, so the state IS being rendered…
@@ -368,7 +368,7 @@ describe('SplitStoryPanel', () => {
     // follows the DRAFT, and a blank title is what closes it.
     renderModal()
     expect(confirmButton()).toBeEnabled()
-    const title = within(continuedPanel()).getByLabelText('Title')
+    const title = within(continuedPanel()).getByLabelText('Name')
     fireEvent.change(title, { target: { value: '' } })
     expect(confirmButton()).toBeDisabled()
     fireEvent.change(title, { target: { value: 'Continued work' } })
@@ -379,7 +379,7 @@ describe('SplitStoryPanel', () => {
 
   it('is disabled by an invalid ESTIMATE too, on either side', () => {
     renderModal()
-    const estimate = within(unfinishedPanel()).getByLabelText('Plan Estimate (pts)')
+    const estimate = within(unfinishedPanel()).getByLabelText('Plan Estimate')
     fireEvent.change(estimate, { target: { value: '-2' } })
     expect(confirmButton()).toBeDisabled()
     // …and still no words about it (AC6): the field is marked, nothing is said.

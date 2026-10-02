@@ -54,6 +54,13 @@ import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { NativeSelect } from '@/shared/ui/native-select'
 
+/**
+ * The mockup's field block: Name across the full width, then Release / Iteration / Schedule State /
+ * Plan Estimate as a 2×2 grid. Collapses to one column on a narrow viewport. Both sides use the same
+ * grid, so their fields line up row for row across the divider.
+ */
+const FIELD_GRID = 'grid grid-cols-1 gap-3 sm:grid-cols-2'
+
 interface PanelProps {
   preview: SplitPreview
   draft: SplitDraft
@@ -87,8 +94,12 @@ function UnfinishedFields({ preview, draft, derived, dispatch }: PanelProps) {
   const { t } = useTranslation('split-story')
 
   return (
-    <div className="space-y-3">
-      <FormField label={t('fields.title')} htmlFor="split-unfinished-title">
+    <div className={FIELD_GRID}>
+      <FormField
+        label={t('fields.title')}
+        htmlFor="split-unfinished-title"
+        className="sm:col-span-2"
+      >
         <Input
           id="split-unfinished-title"
           value={draft.unfinished.title}
@@ -141,7 +152,7 @@ function UnfinishedFields({ preview, draft, derived, dispatch }: PanelProps) {
         resulting STATE, which is true whether or not the Story had a Feature. No warning styling and
         no message (SRS §11) — this is a fact about the placeholder, not a caution.
       */}
-      <FormField label={t('fields.feature')}>
+      <FormField label={t('fields.feature')} className="sm:col-span-2">
         <DetailReadonlyValue>{t('readonly.featureCleared')}</DetailReadonlyValue>
       </FormField>
     </div>
@@ -172,8 +183,12 @@ function ContinuedFields({ preview, draft, derived, dispatch }: PanelProps) {
     currentReleaseId !== null && !releases.rows.some((release) => release.id === currentReleaseId)
 
   return (
-    <div className="space-y-3">
-      <FormField label={t('fields.title')} htmlFor="split-continued-title">
+    <div className={FIELD_GRID}>
+      <FormField
+        label={t('fields.title')}
+        htmlFor="split-continued-title"
+        className="sm:col-span-2"
+      >
         <Input
           id="split-continued-title"
           value={draft.continued.title}
@@ -283,7 +298,7 @@ function SplitCollections({ side, preview, draft, dispatch }: PanelProps & { sid
     })
 
   return (
-    <div className="space-y-3 pt-1">
+    <div className="space-y-3">
       <SplitCollection
         kind="task"
         side={side}
@@ -291,37 +306,39 @@ function SplitCollections({ side, preview, draft, dispatch }: PanelProps & { sid
         rows={rowsOnSide(preview.tasks, unfinishedIdsFor(draft, 'task'), side)}
         keyOf={(task) => task.itemKey}
         titleOf={(task) => task.title}
-        meta={(task) => (
-          <>
-            {/*
-              THE 6-vs-3 STATE WART, inherited from SU-01 and handled here as §6 PR 3.2 requires.
-              `tasks[].state` is typed `WorkItemScheduleState` (six values) because the read model
-              projects `tasks.state` onto that field, while only `defined｜in_progress｜completed` can
+        columns={[
+          {
+            key: 'state',
+            label: t('collections.columns.state'),
+            width: STATE_COL,
+            /*
+              THE 6-vs-3 STATE WART, inherited from SU-01 (§6 PR 3.2). `tasks[].state` is typed
+              `WorkItemScheduleState` (six values) while only `defined｜in_progress｜completed` can
               occur. `ScheduleStateBadge` takes all six from the SHARED config with a fallback, so
-              there is no `switch` here and therefore no unreachable arm — condition (a) satisfied
-              without writing dead branches. Narrowing the DTO is a BACKEND change and is out of
-              scope for a front-end PR (it would also need the `openapi` breaking-change check
-              condition (b) warns about); the canonical projection is still file-private in
-              `work-item.drizzle-repository.ts`, so promoting it — never copying it — remains SU-06's
-              option.
-            */}
-            <ScheduleStateBadge state={task.state} />
-            <span className="text-ui-xs whitespace-nowrap text-foreground-subtle">
-              {/*
-                THE TERNARY IS NOT REDUNDANT, even though `formatPoints(null)` is already
-                `EMPTY_VALUE`. Collapsing it puts the em-dash INSIDE the string and renders
-                `—h To Do`, which reads as "an amount of hours we are not showing" instead of "no
-                estimate". The ternary chooses between a bare em-dash and a value WITH ITS UNIT;
-                `formatPoints` chooses how the number looks. Two decisions, both needed.
-                `0` is a real measurement and must still render `0h To Do`, which is why the test
-                asserts it separately from the null case.
-              */}
-              {task.todoHours === null
-                ? EMPTY_VALUE
-                : t('collections.todo', { hours: formatPoints(task.todoHours) })}
-            </span>
-          </>
-        )}
+              there is no `switch` here and therefore no unreachable arm. Narrowing the DTO is a
+              BACKEND change and out of scope for a front-end PR.
+            */
+            render: (task) => <ScheduleStateBadge state={task.state} />,
+          },
+          {
+            key: 'todo',
+            label: t('collections.columns.todo'),
+            width: META_COL,
+            /*
+              THE TERNARY IS NOT REDUNDANT, even though `formatPoints(null)` is already
+              `EMPTY_VALUE`: collapsing it puts the em-dash INSIDE the string and renders `—h`,
+              which reads as "an amount of hours we are not showing" instead of "no estimate".
+              `0` is a real measurement and must still render `0h`.
+            */
+            render: (task) => (
+              <span className="font-mono text-ui-xs whitespace-nowrap text-foreground-subtle">
+                {task.todoHours === null
+                  ? EMPTY_VALUE
+                  : t('collections.hours', { hours: formatPoints(task.todoHours) })}
+              </span>
+            ),
+          },
+        ]}
         onMove={move('task')}
       />
 
@@ -332,24 +349,33 @@ function SplitCollections({ side, preview, draft, dispatch }: PanelProps & { sid
         rows={rowsOnSide(preview.defects, unfinishedIdsFor(draft, 'defect'), side)}
         keyOf={(defect) => defect.itemKey}
         titleOf={(defect) => defect.title}
-        meta={(defect) => (
-          <>
-            {/*
-              BR-18 / SU-04 AC4 — a Defect's OWN Iteration, which Split never writes. Stated inline in
-              an amber token because it is a fact the reader should see before distributing the row,
-              and stated in NO other way: no warning sentence, no icon, and it blocks nothing
-              (SRS §12). Absent when the Defect has none — which per §8 Q8's ruling stays unscheduled
-              and appears in no Iteration report, a no-op Split does not change.
-            */}
-            {defect.explicitIterationName && (
-              <span className="text-ui-xs whitespace-nowrap text-warning">
-                {t('collections.explicit', { iteration: defect.explicitIterationName })}
-              </span>
-            )}
-            <ScheduleStateBadge state={defect.scheduleState} />
-            <PriorityBadge priority={defect.priority} />
-          </>
-        )}
+        /*
+          BR-18 / SU-04 AC4 — a Defect's OWN Iteration, which Split never writes. Stated under the
+          name in an amber token (the mockup's placement) because it is a fact the reader should see
+          before distributing the row, and stated in NO other way: no warning sentence, no icon, and
+          it blocks nothing (SRS §12). Absent when the Defect has none.
+        */
+        subtitleOf={(defect) =>
+          defect.explicitIterationName ? (
+            <span className="block w-full truncate text-ui-xs text-warning">
+              {t('collections.explicit', { iteration: defect.explicitIterationName })}
+            </span>
+          ) : null
+        }
+        columns={[
+          {
+            key: 'state',
+            label: t('collections.columns.state'),
+            width: STATE_COL,
+            render: (defect) => <ScheduleStateBadge state={defect.scheduleState} />,
+          },
+          {
+            key: 'priority',
+            label: t('collections.columns.priority'),
+            width: META_COL,
+            render: (defect) => <PriorityBadge priority={defect.priority} />,
+          },
+        ]}
         onMove={move('defect')}
       />
 
@@ -362,29 +388,36 @@ function SplitCollections({ side, preview, draft, dispatch }: PanelProps & { sid
         // (§3.1's per-entity field ruling) — which is exactly why these two are props.
         keyOf={(testCase) => testCase.testCaseKey}
         titleOf={(testCase) => testCase.name}
-        meta={(testCase) => (
-          <>
-            <span className="text-ui-xs whitespace-nowrap text-foreground-subtle">
-              {testCase.type}
-            </span>
-            {/*
+        columns={[
+          {
+            key: 'type',
+            label: t('collections.columns.type'),
+            width: STATE_COL,
+            render: (testCase) => (
+              <span className="truncate text-ui-xs text-foreground-subtle">{testCase.type}</span>
+            ),
+          },
+          {
+            key: 'verdict',
+            label: t('collections.columns.verdict'),
+            width: META_COL,
+            /*
               REUSES `VerdictBadge` + `TEST_VERDICT_STYLE` rather than re-styling verdicts (§8 Q17).
-              The boundaries lint does NOT refuse this: FSD allows same-layer imports
-              (`features` → `features`), so promoting the badge to `shared/ui` — which §6 PR 5.1
-              expected to be necessary — would have been a bigger diff for no rule.
-              The guard exists because the preview types `lastVerdict` as `string | null` while the
-              badge takes the six-member union: an unknown verdict renders as `Not Run` (BR10's
-              null case) instead of indexing the style map with a missing key and crashing the modal.
-            */}
-            <VerdictBadge verdict={knownVerdict(testCase.lastVerdict)} />
-          </>
-        )}
+              The preview types `lastVerdict` as `string | null` while the badge takes the six-member
+              union: an unknown verdict renders as `Not Run` instead of crashing the modal.
+            */
+            render: (testCase) => <VerdictBadge verdict={knownVerdict(testCase.lastVerdict)} />,
+          },
+        ]}
         onMove={move('testCase')}
       />
     </div>
   )
 }
 
+/** Widths of the two kind columns, shared by all three tables so they align vertically. */
+const STATE_COL = 96
+const META_COL = 76
 /** `null` for anything the verdict style map does not know — rendered as `Not Run`. */
 function knownVerdict(value: string | null): keyof typeof TEST_VERDICT_STYLE | null {
   return value !== null && value in TEST_VERDICT_STYLE

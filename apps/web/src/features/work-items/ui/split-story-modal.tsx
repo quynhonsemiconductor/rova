@@ -29,6 +29,7 @@
  */
 import { useEffect, useReducer, useState } from 'react'
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
+import { ArrowRight, GitBranch } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 
@@ -177,30 +178,39 @@ export function SplitStoryModal({
       open={open}
       onClose={onClose}
       title={t('modal.title', { key: itemKey, title })}
-      width={880}
+      icon={<GitBranch size={18} />}
+      width={1280}
     >
-      <ModalBody className="space-y-4">
+      {/*
+        BA mockup layout (2026-10-02): two panels side by side from `lg` up, separated by a divider,
+        on the subtle surface tint so each collection `Card` reads as its own block; stacked below
+        `lg`. The panels own their padding, so the body itself is unpadded.
+      */}
+      <ModalBody className="bg-surface-subtle p-0">
         {preview.isLoading ? (
-          <p className="text-ui-sm text-foreground-subtle">{t('loading')}</p>
+          <p className="p-5 text-ui-sm text-foreground-subtle">{t('loading')}</p>
         ) : preview.isError ? (
           // `isError` is read explicitly. `value` is `undefined` both in flight and after a failure,
           // so a surface that only checked for absence would render an empty split as a fact.
-          <LoadErrorState error={preview.error} title={t('error.title')} size="sm" />
+          <div className="p-5">
+            <LoadErrorState error={preview.error} title={t('error.title')} size="sm" />
+          </div>
         ) : previewValue ? (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <section aria-labelledby="split-panel-unfinished" className="space-y-2">
+            <div className="grid grid-cols-1 divide-y divide-border-subtle lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+              <section
+                aria-labelledby="split-panel-unfinished"
+                className="min-w-0 space-y-4 p-4 sm:p-5"
+              >
                 <h3
                   id="split-panel-unfinished"
-                  className="text-ui-sm font-semibold text-foreground"
+                  className="text-ui-md font-semibold text-foreground"
                 >
-                  {previewValue.story.iterationName
-                    ? t('panels.unfinished', { iteration: previewValue.story.iterationName })
-                    : t('panels.unfinishedNoIteration')}
+                  {t('panels.unfinished')}
                 </h3>
                 {draft && derived && (
                   <SplitStoryPanel
@@ -212,8 +222,11 @@ export function SplitStoryModal({
                   />
                 )}
               </section>
-              <section aria-labelledby="split-panel-continued" className="space-y-2">
-                <h3 id="split-panel-continued" className="text-ui-sm font-semibold text-foreground">
+              <section
+                aria-labelledby="split-panel-continued"
+                className="min-w-0 space-y-4 p-4 sm:p-5"
+              >
+                <h3 id="split-panel-continued" className="text-ui-md font-semibold text-foreground">
                   {t('panels.continued')}
                 </h3>
                 {draft && derived && (
@@ -258,6 +271,7 @@ export function SplitStoryModal({
           */}
           <Button disabled={!derived?.canConfirm || splitStory.isPending} onClick={confirmSplit}>
             {splitStory.isPending ? t('modal.confirming') : t('modal.confirm')}
+            <ArrowRight size={14} aria-hidden="true" />
           </Button>
         </div>
       </ModalFooter>
