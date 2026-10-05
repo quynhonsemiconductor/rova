@@ -18,6 +18,22 @@ import {
 const boom = new Error('boom')
 
 describe('listResource', () => {
+  it('hands out the SAME empty array on every call while there is no data (React 301 on US-120)', () => {
+    // A fresh `[]` per render changed the reference `useRowRerank` re-syncs on during render, so a
+    // Tasks / Test Cases tab mounted before its fetch resolved looped until React threw.
+    const loading = listResource<number>({ data: undefined, isLoading: true })
+    const again = listResource<number>({ data: undefined, isLoading: true })
+    const failed = listResource<number>({ data: undefined, isError: true, error: boom })
+    expect(again.rows).toBe(loading.rows)
+    expect(failed.rows).toBe(loading.rows)
+    // Shared, so it must not be writable by one caller on behalf of all the others.
+    expect(Object.isFrozen(loading.rows)).toBe(true)
+  })
+
+  it('passes a real answer through by reference, including a measured empty one', () => {
+    const data: number[] = []
+    expect(listResource<number>({ data }).rows).toBe(data)
+  })
   it('returns phase "loading" while the request is in flight, and no error', () => {
     const r = listResource<number>({ data: undefined, isLoading: true })
     expect(r.phase).toBe('loading')

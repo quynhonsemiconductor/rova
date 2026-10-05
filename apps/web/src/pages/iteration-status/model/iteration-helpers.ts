@@ -50,7 +50,23 @@ export function iterationStatusTotals(rows: readonly TotalsRow[]): {
     taskEst += (row.toDo ?? 0) + (row.actual ?? 0)
     toDoSum += row.toDo ?? 0
   }
-  return { planEst, taskEst, toDoSum, count: rows.length }
+  return {
+    planEst: roundToTenth(planEst),
+    taskEst: roundToTenth(taskEst),
+    toDoSum: roundToTenth(toDoSum),
+    count: rows.length,
+  }
+}
+
+/**
+ * One decimal place — the precision the Totals row displays.
+ *
+ * The sums are float additions of decimal inputs, so `7.2 + 36` style totals came out as
+ * `43.200000000000001` and the label overflowed into the next column (Production, 2026-10-05).
+ * Rounding the NUMBER rather than formatting the string keeps every consumer of the totals agreed.
+ */
+function roundToTenth(n: number): number {
+  return Math.round(n * 10) / 10
 }
 
 /** A row's sortable fields, in the shape the comparator reads. */

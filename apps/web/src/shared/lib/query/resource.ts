@@ -101,6 +101,20 @@ function pending<T>(q: QueryLike<T>): boolean {
 }
 
 /**
+ * The ONE empty array every not-yet-answered list resource hands out.
+ *
+ * `q.data ?? []` minted a fresh array on every render while a query was pending (or failed, or
+ * disabled). Anything keyed on the REFERENCE of `rows` then saw a change on every render — and
+ * `useRowRerank` re-syncs its optimistic copy DURING render when its `items` reference changes, so a
+ * Tasks or Test Cases tab that re-rendered before its fetch resolved set state, re-rendered, got
+ * another new `[]`, and hit React's "Too many re-renders" (minified error 301). Production, 2026-10-05:
+ * opening the Tasks tab on US-120 replaced the page with the error boundary.
+ *
+ * Frozen so a caller that mutates it throws instead of corrupting every other empty resource.
+ */
+const NO_ROWS: readonly never[] = Object.freeze([])
+
+/**
  * Wrap a list query. Pass the query result itself, not `query.data`.
  *
  * ```ts
@@ -118,7 +132,7 @@ function pending<T>(q: QueryLike<T>): boolean {
  * optimisable, and `pnpm lint` fails on the one-line form.
  */
 export function listResource<T>(q: QueryLike<T[]>): ListResource<T> {
-  const rows = q.data ?? []
+  const rows = q.data ?? (NO_ROWS as unknown as T[])
   const isError = q.isError === true
   const isLoading = pending(q) && !isError
   return {
