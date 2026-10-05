@@ -12,6 +12,9 @@ import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { Pool } from 'pg';
+
+import { pgOptions } from '../../db/pg-ssl';
 
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
@@ -39,6 +42,38 @@ describe('lifecycle dates (e2e)', () => {
   let app: NestFastifyApplication;
   let db: DrizzleDB;
   let seededTimeZone: string | undefined;
+
+  /**
+   * Write a PRE-MIGRATION row shape: `start_date`/`actual_end_date` NULL on a row already in the
+   * state. Only possible with the stamping trigger disabled, and `ALTER TABLE … DISABLE TRIGGER`
+   * needs the table OWNER — CI connects the app as a non-owner role (`must be owner of table`), so
+   * this runs on the migration connection, exactly as a manual correction would. One transaction,
+   * so the trigger can never be left disabled for a concurrent writer.
+   */
+  async function asOwnerWithoutTrigger(
+    table: 'work_items' | 'tasks',
+    trigger: string,
+    statement: string,
+    params: unknown[],
+  ): Promise<void> {
+    const url = process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_URL;
+    if (!url) throw new Error('needs DATABASE_MIGRATION_URL or DATABASE_URL');
+    const pool = new Pool(pgOptions(url));
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query(`alter table work.${table} disable trigger ${trigger}`);
+      await client.query(statement, params);
+      await client.query(`alter table work.${table} enable trigger ${trigger}`);
+      await client.query('commit');
+    } catch (err) {
+      await client.query('rollback');
+      throw err;
+    } finally {
+      client.release();
+      await pool.end();
+    }
+  }
 
   async function today(): Promise<string> {
     const rows = await db.execute<{ d: string }>(
@@ -170,16 +205,12 @@ describe('lifecycle dates (e2e)', () => {
     it('does not stamp an edit to a Story that was already In-Progress (no guessed date)', async () => {
       const id = await story('in_progress');
       // Simulate a pre-migration row: in progress, never dated.
-      await db.execute(
-        sql`alter table work.work_items disable trigger trg_stamp_story_lifecycle_dates`,
+      await asOwnerWithoutTrigger(
+        'work_items',
+        'trg_stamp_story_lifecycle_dates',
+        'update work.work_items set start_date = null where id = $1::uuid',
+        [id],
       );
-      try {
-        await db.execute(sql`update work.work_items set start_date = null where id = ${id}::uuid`);
-      } finally {
-        await db.execute(
-          sql`alter table work.work_items enable trigger trg_stamp_story_lifecycle_dates`,
-        );
-      }
       await db.execute(sql`update work.work_items set title = 'edited' where id = ${id}::uuid`);
       expect((await storyDates(id)).start_date).toBeNull();
     });
@@ -297,16 +328,12 @@ describe('lifecycle dates (e2e)', () => {
     async function undate(table: 'work_items' | 'tasks', id: string): Promise<void> {
       const trigger =
         table === 'tasks' ? 'trg_stamp_task_lifecycle_dates' : 'trg_stamp_story_lifecycle_dates';
-      await db.execute(sql.raw(`alter table work.${table} disable trigger ${trigger}`));
-      try {
-        await db.execute(
-          sql.raw(
-            `update work.${table} set start_date = null, actual_end_date = null where id = '${id}'`,
-          ),
-        );
-      } finally {
-        await db.execute(sql.raw(`alter table work.${table} enable trigger ${trigger}`));
-      }
+      await asOwnerWithoutTrigger(
+        table,
+        trigger,
+        `update work.${table} set start_date = null, actual_end_date = null where id = $1::uuid`,
+        [id],
+      );
     }
 
     it('dates from the FIRST logged transition, workspace-local, and leaves rows without history blank', async () => {
