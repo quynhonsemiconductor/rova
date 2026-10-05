@@ -369,6 +369,40 @@ describe('lifecycle dates (e2e)', () => {
       expect(await storyDates(withoutHistory)).toEqual({ start_date: null, actual_end_date: null });
     });
 
+    it('pins the LOG CONTRACT: history written by the real service is what the backfill reads', async () => {
+      /**
+       * The case above writes `activity_logs` rows by hand, so it pins the backfill against this
+       * file's idea of the format. This one writes them through `WorkItemsService.updateWorkItem` —
+       * the production writer (`activity-diff.ts` → ActivityLogger) — then erases the stamped dates
+       * and asks the backfill to recover them. If the writer's action strings or `changes` payload
+       * ever drift from the backfill's WHERE clauses, this fails in CI instead of silently matching
+       * zero rows on a deployment (PR #653 review, round 3).
+       */
+      const workItems = app.get(WorkItemsService);
+      const actor = adminActor();
+      const storyId = await story('defined');
+      const taskId = await task(storyId, 'defined');
+
+      await workItems.updateWorkItem(actor, taskId, { scheduleState: 'in_progress' });
+      await workItems.updateWorkItem(actor, taskId, { scheduleState: 'completed' });
+      await workItems.updateWorkItem(actor, storyId, { scheduleState: 'in_progress' });
+      await workItems.updateWorkItem(actor, storyId, { scheduleState: 'accepted' });
+
+      const stamped = { story: await storyDates(storyId), task: await taskDates(taskId) };
+      // The service wrote real history, so every date is set before we erase it.
+      expect(Object.values(stamped.story).every(Boolean)).toBe(true);
+      expect(Object.values(stamped.task).every(Boolean)).toBe(true);
+
+      await undate('work_items', storyId);
+      await undate('tasks', taskId);
+      expect(await storyDates(storyId)).toEqual({ start_date: null, actual_end_date: null });
+
+      await db.execute(sql`select work.backfill_lifecycle_dates()`);
+
+      expect(await storyDates(storyId)).toEqual(stamped.story);
+      expect(await taskDates(taskId)).toEqual(stamped.task);
+    });
+
     it('never overwrites a date that is already set', async () => {
       const id = await story();
       await setStoryState(id, 'in_progress');
