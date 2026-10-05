@@ -4,7 +4,12 @@ import { fireEvent, render, screen } from '@testing-library/react'
 
 const { can } = vi.hoisted(() => ({ can: vi.fn() }))
 vi.mock('@/features/access/api', () => ({ useProjectPermissions: () => ({ can }) }))
-vi.mock('@/features/reporting/api', () => ({ downloadReportCsv: vi.fn() }))
+vi.mock('@/features/reporting/api', async (importOriginal) => ({
+  // The badge's real visibility rule; only the network call is stubbed.
+  hasCarryoverActivity: (await importOriginal<typeof import('@/features/reporting/api')>())
+    .hasCarryoverActivity,
+  downloadReportCsv: vi.fn(),
+}))
 
 import '@/shared/i18n/i18n'
 import { CarryoverBadge } from './carryover-badge'

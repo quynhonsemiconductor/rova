@@ -19,8 +19,15 @@ const CarryoverOptionIterationSchema = z.object({
   name: z.string(),
   iterationKey: z.string().nullable(),
   state: z.string(),
-  startDate: z.string().describe('YYYY-MM-DD'),
-  endDate: z.string().describe('YYYY-MM-DD'),
+  /**
+   * NON-nullable here, unlike `current` below — by design: an Iteration with no window can contain no
+   * selectable date, so the eligibility rule (`isCurrentOrLater`) never admits a dateless one. Do not
+   * "align" this with `current`, which can be any Iteration the Story sits in.
+   */
+  startDate: z
+    .string()
+    .describe('YYYY-MM-DD — always set: a dateless Iteration is never eligible.'),
+  endDate: z.string().describe('YYYY-MM-DD — always set: a dateless Iteration is never eligible.'),
   teamId: z.string().uuid().nullable(),
 });
 

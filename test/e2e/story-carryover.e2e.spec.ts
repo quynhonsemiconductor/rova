@@ -406,6 +406,34 @@ describe('Story Target End Date + Carryover (Phase 7 CO)', () => {
                     'manual_move', ${it_.A}::uuid, '2030-01-25')`,
       ),
     ).toMatch(/manual move records no target_end_date/);
+    // R3 held by the database: a Task snapshot under a Manual Move is refused at INSERT (round 2).
+    const [anyTask] = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(eq(tasks.parentId, story.id));
+    const manualId = randomUUID();
+    await db.execute(sql`insert into work.iteration_transitions
+        (id, workspace_id, project_id, story_id, type, source_iteration_id)
+      values (${manualId}::uuid, ${WORKSPACE_ID}::uuid, ${NXP}::uuid, ${story.id}::uuid,
+              'manual_move', ${it_.A}::uuid)`);
+    expect(
+      await refusal(
+        sql`insert into work.iteration_transition_tasks (id, workspace_id, transition_id, task_id, state)
+            values (gen_random_uuid(), ${WORKSPACE_ID}::uuid, ${manualId}::uuid, ${anyTask.id}::uuid,
+                    'in_progress')`,
+      ),
+    ).toMatch(/belongs to a carryover transition only/);
+  });
+
+  it('holds "Defects carry no Target End Date" in the database too (round 2)', async () => {
+    const defect = await service.createWorkItem(actor, NXP, 'defect', 'CO defect raw', {
+      teamId: TEAM_ALPHA_ID,
+      iterationId: it_.A,
+    });
+    await db.execute(
+      sql`update work.work_items set target_end_date = '2030-01-15' where id = ${defect.id}::uuid`,
+    );
+    expect((await storyRow(defect.id)).targetEndDate).toBeNull();
   });
 
   it('refuses a Defect, an accepted target and an Editor with no Team in the project', async () => {

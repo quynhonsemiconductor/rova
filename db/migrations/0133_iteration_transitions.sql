@@ -125,4 +125,25 @@ CREATE TRIGGER "trg_iteration_transitions_guard"
 
 CREATE TRIGGER "trg_iteration_transition_tasks_immutable"
   BEFORE UPDATE OR DELETE ON "work"."iteration_transition_tasks"
-  FOR EACH ROW EXECUTE FUNCTION "work"."refuse_iteration_transition_change"();
+  FOR EACH ROW EXECUTE FUNCTION "work"."refuse_iteration_transition_change"();--> statement-breakpoint
+
+-- Ruling R3, held by the DATABASE (PR #653 review, round 2): a Task snapshot belongs to a CARRYOVER
+-- only. A Manual Move is not an attribution boundary, so a snapshot row under one — from a seed, raw
+-- SQL or a writer bug — would silently make it one in Team Capacity.
+CREATE OR REPLACE FUNCTION "work"."guard_iteration_transition_task"()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM "work"."iteration_transitions" t
+     WHERE t."id" = NEW."transition_id" AND t."type" = 'carryover'
+  ) THEN
+    RAISE EXCEPTION 'a task snapshot belongs to a carryover transition only (transition %)', NEW."transition_id"
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+
+CREATE TRIGGER "trg_iteration_transition_tasks_carryover_only"
+  BEFORE INSERT ON "work"."iteration_transition_tasks"
+  FOR EACH ROW EXECUTE FUNCTION "work"."guard_iteration_transition_task"();

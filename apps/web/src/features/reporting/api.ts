@@ -294,18 +294,22 @@ const REPORT_TIMEOUT_MS = 30_000
 /**
  * TanStack's own cancellation signal, plus a hard timeout. Combined by hand rather than with
  * `AbortSignal.any`, which Safari only shipped in 17.4 and jsdom does not implement.
+ *
+ * Returns `done`, which every caller runs in `finally` (PR 653 review, round 2): a request that
+ * completes normally never aborts, so without it each call would leave a 30 s timer and its closure
+ * alive. The listener is attached BEFORE the already-aborted check, so that path clears it too.
  */
-function withTimeout(signal: AbortSignal): AbortSignal {
+function withTimeout(signal?: AbortSignal): { signal: AbortSignal; done: () => void } {
   const controller = new AbortController()
-  const abort = (reason: unknown) => controller.abort(reason)
-  if (signal.aborted) abort(signal.reason)
-  else signal.addEventListener('abort', () => abort(signal.reason), { once: true })
   const timer = setTimeout(
-    () => abort(new DOMException('Report request timed out', 'TimeoutError')),
+    () => controller.abort(new DOMException('Report request timed out', 'TimeoutError')),
     REPORT_TIMEOUT_MS,
   )
-  controller.signal.addEventListener('abort', () => clearTimeout(timer), { once: true })
-  return controller.signal
+  const done = () => clearTimeout(timer)
+  controller.signal.addEventListener('abort', done, { once: true })
+  if (signal?.aborted) controller.abort(signal.reason)
+  else signal?.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
+  return { signal: controller.signal, done }
 }
 
 /**
@@ -325,19 +329,29 @@ export function useCarryoverReport({
   return useQuery({
     queryKey: reportingKeys.carryover(projectId ?? '', teamId, iterationId ?? ''),
     queryFn: async ({ signal }) => {
-      const { data, error, response } = await apiClient.GET('/v1/reports/carryover', {
-        params: {
-          query: { projectId: projectId!, teamId, iterationId: iterationId!, direction: 'all' },
-        },
-        signal: withTimeout(signal),
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      if (!data) throw new Error(`Carryover report came back empty (${response.status})`)
-      return data
+      const timeout = withTimeout(signal)
+      try {
+        const { data, error, response } = await apiClient.GET('/v1/reports/carryover', {
+          params: {
+            query: { projectId: projectId!, teamId, iterationId: iterationId!, direction: 'all' },
+          },
+          signal: timeout.signal,
+        })
+        if (error) throw new Error(apiErrorMessage(error, response.status))
+        if (!data) throw new Error(`Carryover report came back empty (${response.status})`)
+        return data
+      } finally {
+        timeout.done()
+      }
     },
     enabled: !!projectId && !!iterationId,
     staleTime: LIVE,
-    placeholderData: (previous) => previous,
+    /**
+     * NO `placeholderData` (PR 653 review, round 2). It kept the PREVIOUS Iteration's whole report
+     * on screen under the NEW selection's label while the fetch ran, and `data` was never empty so
+     * no loading state covered it. Its only purpose was smoothing Direction switches, which no longer
+     * refetch at all (Direction is not in the key) — so a new Iteration now shows the skeleton.
+     */
   })
 }
 
@@ -446,10 +460,14 @@ async function exportErrorMessage(error: unknown, status: number): Promise<strin
  * matches the screen.
  */
 export async function downloadReportCsv(req: ReportExportRequest): Promise<void> {
-  const { data, error, response } = await requestExport(
-    req,
-    withTimeout(new AbortController().signal),
-  )
+  const timeout = withTimeout()
+  let result: Awaited<ReturnType<typeof requestExport>>
+  try {
+    result = await requestExport(req, timeout.signal)
+  } finally {
+    timeout.done()
+  }
+  const { data, error, response } = result
   if (error || !data) throw new Error(await exportErrorMessage(error, response.status))
   const name = filenameFrom(response.headers.get('content-disposition'), `${req.report}.csv`)
   const url = URL.createObjectURL(data as Blob)
@@ -461,4 +479,14 @@ export async function downloadReportCsv(req: ReportExportRequest): Promise<void>
   link.remove()
   // Deferred: revoking synchronously after `click()` can abort the download on Safari / iOS.
   setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+/**
+ * Whether the compact Carryover badge has anything to show — the SAME rule `CarryoverBadge` hides
+ * on, exported so a caller that must render NULL when nothing shows (a footer slot) shares it.
+ */
+export function hasCarryoverActivity(
+  summary: CarryoverSummary | null | undefined,
+): summary is CarryoverSummary {
+  return !!summary && (summary.carryIn > 0 || summary.carryOut > 0)
 }

@@ -3711,6 +3711,19 @@ describe('WorkItemsService', () => {
         ).resolves.toBeDefined();
       });
 
+      it('names the real remedy when the current Iteration has no window (round 2)', async () => {
+        workItemRepo.listProjectIterations.mockResolvedValue([
+          { ...A, startDate: null, endDate: null },
+          B,
+        ]);
+        await expect(
+          service.updateWorkItem(mockActor, 'wi-1', { targetEndDate: '2026-06-10' }),
+        ).rejects.toMatchObject({
+          code: 'TARGET_END_DATE_INVALID',
+          message: expect.stringContaining('no start or end date'),
+        });
+      });
+
       it('refuses a Target End Date riding along with an Iteration change (PR #653 review)', async () => {
         workItemRepo.findIterationScope.mockResolvedValue({
           projectId: 'proj-1',
@@ -3783,6 +3796,23 @@ describe('WorkItemsService', () => {
           expect.anything(),
         );
         expect(workItemRepo.update).not.toHaveBeenCalled();
+        expect(transitionRepo.create).not.toHaveBeenCalled();
+      });
+
+      it('re-validates the SOURCE under the lock — refused if its window moved past the target (round 2)', async () => {
+        workItemRepo.lockIteration.mockImplementation(async (id: string) =>
+          id === 'iter-a'
+            ? { ...A, startDate: '2026-06-16', endDate: '2026-06-30' }
+            : ([B, SHARED].find((it) => it.id === id) ?? null),
+        );
+        await expect(service.carryOverWorkItem(mockActor, 'wi-1', body)).rejects.toMatchObject({
+          code: 'CARRYOVER_TARGET_INVALID',
+        });
+        expect(workItemRepo.lockIteration).toHaveBeenCalledWith(
+          'iter-a',
+          'ws-1',
+          expect.anything(),
+        );
         expect(transitionRepo.create).not.toHaveBeenCalled();
       });
 

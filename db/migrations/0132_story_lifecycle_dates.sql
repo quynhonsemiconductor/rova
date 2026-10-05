@@ -66,8 +66,14 @@ $$;--> statement-breakpoint
 -- so `workspace_local_date`'s settings lookup resolves the same row every time (planner-cached STABLE
 -- function), and `activity_logs` has no `(entity_type, action)` index — each CTE is one sequential
 -- scan. Measured locally: 200,008 activity rows → the whole function runs in 0.51 s, so the lock
--- window is sub-second. Batch it by PK range only if a deployment's activity history grows by
--- orders of magnitude beyond that.
+-- window is sub-second. OPS GATE: if `select count(*) from work.activity_logs` exceeds 2,000,000 on
+-- a target before this migration runs (10× the measured case), switch to the batched form — loop the
+-- four UPDATEs over `id` ranges of 10,000 with a COMMIT between — instead of the single statement.
+--
+-- A ZERO result is legitimate (a fresh deployment has no history), so it is reported, not asserted:
+-- the function RAISEs a NOTICE with the counts, and `story-lifecycle-dates.e2e.spec.ts` pins the
+-- log CONTRACT (action strings, `changes->>'new'`) by running this same function over entries
+-- written in the service's own format — a drift there fails CI, not a deploy.
 CREATE OR REPLACE FUNCTION "work"."backfill_lifecycle_dates"()
 RETURNS integer LANGUAGE plpgsql AS $$
 DECLARE
@@ -130,6 +136,7 @@ BEGIN
    WHERE t."id" = f.entity_id AND t."actual_end_date" IS NULL;
   GET DIAGNOSTICS n = ROW_COUNT; touched := touched + n;
 
+  RAISE NOTICE 'backfill_lifecycle_dates: % row(s) dated from activity history', touched;
   RETURN touched;
 END;
 $$;--> statement-breakpoint
@@ -141,10 +148,13 @@ SELECT "work"."backfill_lifecycle_dates"();--> statement-breakpoint
 CREATE OR REPLACE FUNCTION "work"."stamp_story_lifecycle_dates"()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  -- Defects (and every other work_items type) carry no lifecycle dates (plan D12).
+  -- Defects (and every other work_items type) carry no lifecycle dates AND no Target End Date
+  -- (plan D12). The service already refuses `targetEndDate` on a non-Story; clearing it here holds
+  -- the same floor for seeds and raw SQL, as the header promises (PR #653 review, round 2).
   IF NEW."type" <> 'story' THEN
     NEW."start_date" := NULL;
     NEW."actual_end_date" := NULL;
+    NEW."target_end_date" := NULL;
     RETURN NEW;
   END IF;
 

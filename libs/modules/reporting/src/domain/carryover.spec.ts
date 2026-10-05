@@ -49,6 +49,11 @@ const AB = event('e1', '2026-06-15T01:00:00.000Z', 'A', 'B', [task(3)]);
 const BC = event('e2', '2026-06-29T01:00:00.000Z', 'B', 'C', [task(7)]);
 
 describe('summarise', () => {
+  it('counts a move between two Iterations of the set ONCE, as Carry In (matches its row)', () => {
+    const summary = summarise([AB], ['A', 'B']);
+    expect([summary?.carryIn, summary?.carryOut]).toEqual([1, 0]);
+    expect(summary?.transferredTodoHours).toBe(2);
+  });
   it('counts Carry In for the target', () => {
     expect(summarise([AB, BC], ['B'])?.carryIn).toBe(1);
   });

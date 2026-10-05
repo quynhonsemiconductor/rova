@@ -16,7 +16,7 @@ import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from '
 import { BRAND } from '@/shared/config/brand'
 import { useIterationOptions } from '@/features/iterations/api'
 import { listResource } from '@/shared/lib/query/resource'
-import { useIterationBurndown } from '@/features/reporting/api'
+import { hasCarryoverActivity, useIterationBurndown } from '@/features/reporting/api'
 import { iterationsInScope, reportScopeLabel } from '@/features/reporting/scope'
 import { IterationPicker } from '@/shared/ui/timebox-picker'
 import {
@@ -274,20 +274,23 @@ export function IterationBurndownReport({
           />
         }
         footer={
-          <>
-            {/* Phase 7 CO-08 — compact Carryover context; the series and Split markers are untouched.
-                The badge owns its hide decision and chrome, so nothing stays behind when it hides. */}
-            <CarryoverBadge
-              summary={data?.carryover}
-              onOpenReport={() => selectedId && onOpenCarryover?.(selectedId)}
-              className="mx-auto mt-2"
-            />
-            {notes.length > 0 ? (
-              <p className="mt-2 text-center text-ui-xs text-foreground-subtle">
-                {notes.join(' ')}
-              </p>
-            ) : null}
-          </>
+          // `null` when there is nothing to show, so `ChartFrame` skips its footer wrapper — the
+          // contract the pre-Carryover code kept (PR 653 review, round 2).
+          hasCarryoverActivity(data?.carryover) || notes.length > 0 ? (
+            <>
+              {/* Phase 7 CO-08 — compact Carryover context; the series and Split markers are untouched. */}
+              <CarryoverBadge
+                summary={data?.carryover}
+                onOpenReport={() => selectedId && onOpenCarryover?.(selectedId)}
+                className="mx-auto mt-2"
+              />
+              {notes.length > 0 ? (
+                <p className="mt-2 text-center text-ui-xs text-foreground-subtle">
+                  {notes.join(' ')}
+                </p>
+              ) : null}
+            </>
+          ) : null
         }
       >
         <ComposedChart data={points} margin={{ top: 12, right: 16, left: 4, bottom: 12 }}>

@@ -4524,9 +4524,9 @@ export interface components {
         name: string
         iterationKey: string | null
         state: string
-        /** @description YYYY-MM-DD */
+        /** @description YYYY-MM-DD — always set: a dateless Iteration is never eligible. */
         startDate: string
-        /** @description YYYY-MM-DD */
+        /** @description YYYY-MM-DD — always set: a dateless Iteration is never eligible. */
         endDate: string
         teamId: string | null
       }[]

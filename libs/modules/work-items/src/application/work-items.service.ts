@@ -1995,6 +1995,14 @@ export class WorkItemsService {
     }
 
     const { current, eligible } = await this.carryoverContext(item);
+    if (current && (current.startDate === null || current.endDate === null)) {
+      // A dateless current Iteration admits NO date at all, so "choose another date" would name a
+      // remedy that cannot work (PR 653 review, round 2). Name the real one.
+      throw new PreconditionFailedException(
+        'TARGET_END_DATE_INVALID',
+        'The current iteration has no start or end date — give it dates, or move the story to a dated iteration',
+      );
+    }
     const verdict = current
       ? targetEndVerdict(input.targetEndDate, item, current, eligible)
       : 'invalid';
@@ -2079,16 +2087,23 @@ export class WorkItemsService {
       }
 
       /**
-       * Re-validate the TARGET under the lock too (PR #653 review). The eligible set above was read
-       * before the transaction; between it and the commit the target may have been accepted or had its
-       * window edited. `FOR SHARE` blocks a concurrent state change until this commits, so the check
-       * and the move see the same row.
+       * Re-validate BOTH Iterations under the lock (PR #653 review, rounds 1 and 2). The eligible set
+       * above was read before the transaction; between it and the commit the target may have been
+       * accepted or re-dated, and the SOURCE's window — the "current or later" reference point — may
+       * have moved too. Both are re-read `FOR SHARE` (blocking a concurrent edit until commit) and the
+       * full rule re-runs on the locked rows, so the check, the move and the immutable event all see
+       * the same data.
        */
+      // Sequential, on the one transaction connection: a deterministic lock order.
+      const lockedSource = await this.workItemRepo.lockIteration(current.id, actor.workspaceId, tx);
       const lockedTarget = await this.workItemRepo.lockIteration(target.id, actor.workspaceId, tx);
       if (
+        !lockedSource ||
         !lockedTarget ||
-        !isEligibleIteration(story, lockedTarget, current) ||
-        !containsDate(lockedTarget, input.targetEndDate)
+        !isEligibleIteration(story, lockedTarget, lockedSource) ||
+        !containsDate(lockedTarget, input.targetEndDate) ||
+        lockedSource.endDate === null ||
+        input.targetEndDate <= lockedSource.endDate
       ) {
         throw new PreconditionFailedException(
           'CARRYOVER_TARGET_INVALID',

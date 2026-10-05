@@ -36,15 +36,25 @@ export function lastAccessedIterationKey(projectId: string): string {
   return `${STORAGE_KEYS.LAST_ACCESSED_ITERATION}:${projectId}`
 }
 
-/** Persist `iterationId` as the project's last-viewed Iteration, read by {@link useSelectedIteration}. */
+/**
+ * Persist `iterationId` as the project's last-viewed Iteration, read by {@link useSelectedIteration}.
+ *
+ * Best-effort (PR 653 review, round 2): `localStorage.setItem` throws in Safari private mode and on a
+ * full quota, and a throw here would abort the caller — the badge's "View report" would silently do
+ * nothing. Losing the persisted default is the acceptable failure; the read side tolerates a gap.
+ */
 export function rememberIteration(projectId: string, iterationId: string): void {
-  localStorage.setItem(lastAccessedIterationKey(projectId), iterationId)
+  try {
+    localStorage.setItem(lastAccessedIterationKey(projectId), iterationId)
+  } catch {
+    // Storage unavailable — the in-memory selection still applies for this page.
+  }
 }
 
 export function useSelectedIteration(projectId: string | undefined, iterations: Timebox[]) {
   const [chosenId, setChosenId] = useState<string | null>(null)
 
-  const persistedId = projectId ? localStorage.getItem(lastAccessedIterationKey(projectId)) : null
+  const persistedId = projectId ? readStored(lastAccessedIterationKey(projectId)) : null
 
   const selectedId =
     chosenId && iterations.some((i) => i.id === chosenId)
@@ -59,4 +69,13 @@ export function useSelectedIteration(projectId: string | undefined, iterations: 
   }
 
   return { selectedId, select }
+}
+
+/** `localStorage.getItem` that treats an unavailable store as "nothing persisted". */
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
 }

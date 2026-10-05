@@ -83,8 +83,10 @@ export function summarise(
   const touched = involving(events, iterationIds);
   if (touched.length === 0) return null;
   return {
-    carryIn: touched.filter((event) => isIn(event, ids)).length,
-    carryOut: touched.filter((event) => isOut(event, ids)).length,
+    carryIn: touched.filter((event) => rowDirection(event, ids) === 'in').length,
+    // An event with BOTH ends in the set is counted ONCE, as Carry In — the same label its row
+    // carries — so the KPIs, the rows and the CSV can never disagree (PR #653 review, round 2).
+    carryOut: touched.filter((event) => rowDirection(event, ids) === 'out').length,
     transferredTodoHours: sum(touched.flatMap((event) => event.tasks.map((t) => t.todoHours))),
   };
 }

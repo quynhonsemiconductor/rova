@@ -9,7 +9,7 @@
 import { ArrowRightLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import type { CarryoverSummary } from '@/features/reporting/api'
+import { hasCarryoverActivity, type CarryoverSummary } from '@/features/reporting/api'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 
@@ -27,7 +27,7 @@ export function CarryoverBadge({
   className?: string
 }) {
   const { t } = useTranslation('carryover')
-  if (!summary || (summary.carryIn === 0 && summary.carryOut === 0)) return null
+  if (!hasCarryoverActivity(summary)) return null
 
   return (
     <div
