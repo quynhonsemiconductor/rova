@@ -176,3 +176,31 @@ describe('StatusRow — Dev Owner survives a reload on screen (GAP-P2-IS-004)', 
     expect(screen.queryByText('Workspace Admin')).toBeNull()
   })
 })
+
+/**
+ * Phase 7 CO-01 — Iteration Status shows a Story's system-managed Start Date, read-only; `Not set`
+ * before it is stamped; and nothing on a Defect row, which carries no such date (SRS §5.3).
+ */
+describe('StatusRow — Start Date (CO-01)', () => {
+  it('shows a Story its stamped Start Date as text', () => {
+    renderRow({ startDate: '2026-09-01' } as Partial<IterationStatusItem>)
+    expect(screen.getByText('2026-09-01')).toBeTruthy()
+  })
+
+  it('reads Not set on a Story that has not started', () => {
+    renderRow({ startDate: '2026-09-01', targetEndDate: null } as Partial<IterationStatusItem>)
+    renderRow({ startDate: null, targetEndDate: '2026-09-30' } as Partial<IterationStatusItem>)
+    // One `Not set` per row: the unstamped Start Date and the unset Target End.
+    expect(screen.getAllByText('Not set')).toHaveLength(2)
+  })
+
+  it('shows the Target End Date read-only (CO-03)', () => {
+    renderRow({ targetEndDate: '2026-09-30' } as Partial<IterationStatusItem>)
+    expect(screen.getByText('2026-09-30')).toBeTruthy()
+  })
+
+  it('leaves the cell empty on a Defect row', () => {
+    renderRow({ type: 'defect', startDate: null } as Partial<IterationStatusItem>)
+    expect(screen.queryByText('Not set')).toBeNull()
+  })
+})

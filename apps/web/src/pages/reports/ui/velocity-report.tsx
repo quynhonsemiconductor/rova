@@ -37,6 +37,7 @@ import {
 
 import { EmptyState } from '@/shared/ui/empty-state'
 
+import { ReportExportButton } from './report-export-button'
 import { ReportSurface } from './report-surface'
 
 const fmt = (value: number | null | undefined) => (value == null ? '--' : value.toFixed(2))
@@ -87,17 +88,20 @@ export function VelocityReport({
         team: teamScopeLabel(data?.context.teamName, t('common:allTeams')),
       })}
       controls={
-        <label className="flex items-center gap-2 text-ui-xs font-semibold text-foreground-subtle">
-          {t('velocity.window')}
-          <CompactSelect
-            value={String(window)}
-            onChange={(event) => changeWindow(Number(event.target.value) as VelocityWindow)}
-            aria-label={t('velocity.window')}
-          >
-            <option value="5">{t('velocity.windowLast', { count: 5 })}</option>
-            <option value="10">{t('velocity.windowLast', { count: 10 })}</option>
-          </CompactSelect>
-        </label>
+        <>
+          <label className="flex items-center gap-2 text-ui-xs font-semibold text-foreground-subtle">
+            {t('velocity.window')}
+            <CompactSelect
+              value={String(window)}
+              onChange={(event) => changeWindow(Number(event.target.value) as VelocityWindow)}
+              aria-label={t('velocity.window')}
+            >
+              <option value="5">{t('velocity.windowLast', { count: 5 })}</option>
+              <option value="10">{t('velocity.windowLast', { count: 10 })}</option>
+            </CompactSelect>
+          </label>
+          <ReportExportButton request={{ report: 'velocity', projectId, teamId, window }} />
+        </>
       }
       // The three averages were a centred block above the chart; every other summary in the app
       // is a left-aligned MetricStrip under the header. Same numbers, same place as Team

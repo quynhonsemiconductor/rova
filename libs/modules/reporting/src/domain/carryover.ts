@@ -1,0 +1,223 @@
+import { roundForDisplay } from './report-scope';
+
+/**
+ * The Carryover read model (Phase 7 CO-08 … CO-10, plan Tasks 8 and 10).
+ *
+ * Pure: every rule here is a decision over event rows already in memory, so each formula is
+ * unit-tested on its own (`carryover.spec.ts`). The repository reads ONLY `carryover` transitions —
+ * Split Events and Manual Moves are never in the input (CO-BR-35), so nothing here has to exclude
+ * them.
+ *
+ * Iterations are matched as a SET, because every report reads the selected Iteration's fused timebox
+ * (`findTimeboxSiblings`): for All Teams that is every participating Team's Iteration.
+ */
+
+export type CarryoverDirection = 'in' | 'out';
+export type CarryoverDirectionFilter = 'all' | CarryoverDirection;
+export const CARRYOVER_DIRECTION_FILTERS = ['all', 'in', 'out'] as const;
+
+/** One Task's snapshot at a Carryover, plus its current cumulative Actual. */
+export interface StoredCarryoverTask {
+  taskId: string;
+  estimateHours: number | null;
+  todoHours: number | null;
+  actualHours: number | null;
+  /** `tasks.actual_hours` today — the upper bound of the LAST hop (plan D10). */
+  currentActualHours: number;
+}
+
+/** One `carryover` transition as the report reads it. */
+export interface StoredCarryoverEvent {
+  transitionId: string;
+  /** ISO timestamp. */
+  occurredAt: string;
+  storyId: string;
+  storyKey: string;
+  storyTitle: string;
+  storyStartDate: string | null;
+  targetEndDate: string | null;
+  sourceIterationId: string | null;
+  sourceIterationName: string | null;
+  targetIterationId: string | null;
+  targetIterationName: string | null;
+  tasks: StoredCarryoverTask[];
+}
+
+/** The compact badge on Burndown and Team Capacity (CO-BR-34/36/37). */
+export interface CarryoverSummary {
+  carryIn: number;
+  carryOut: number;
+  transferredTodoHours: number;
+}
+
+const sum = (values: readonly (number | null)[]): number =>
+  roundForDisplay(values.reduce<number>((total, v) => total + (v ?? 0), 0));
+
+function isIn(event: StoredCarryoverEvent, ids: ReadonlySet<string>): boolean {
+  return event.targetIterationId !== null && ids.has(event.targetIterationId);
+}
+
+function isOut(event: StoredCarryoverEvent, ids: ReadonlySet<string>): boolean {
+  return event.sourceIterationId !== null && ids.has(event.sourceIterationId);
+}
+
+/** Events that touch the set at either end. */
+export function involving(
+  events: readonly StoredCarryoverEvent[],
+  iterationIds: readonly string[],
+): StoredCarryoverEvent[] {
+  const ids = new Set(iterationIds);
+  return events.filter((event) => isIn(event, ids) || isOut(event, ids));
+}
+
+/**
+ * CO-BR-36/37 — Carry In (events INTO the set), Carry Out (events OUT of it) and the To Do those
+ * events transferred, Σ of the snapshot To Do of every involving event (each event once). `null` when
+ * nothing touched the set, which hides the badge.
+ */
+export function summarise(
+  events: readonly StoredCarryoverEvent[],
+  iterationIds: readonly string[],
+): CarryoverSummary | null {
+  const ids = new Set(iterationIds);
+  const touched = involving(events, iterationIds);
+  if (touched.length === 0) return null;
+  return {
+    carryIn: touched.filter((event) => isIn(event, ids)).length,
+    carryOut: touched.filter((event) => isOut(event, ids)).length,
+    transferredTodoHours: sum(touched.flatMap((event) => event.tasks.map((t) => t.todoHours))),
+  };
+}
+
+/**
+ * CO-BR-40 / plan D10 — Actual After for one event: per Task, the Actual logged after this event
+ * and before the Task's NEXT Carryover (or until now, when there is none), clamped at 0.
+ *
+ * `allEvents` is the project's whole Carryover history in scope, so the "next snapshot of the same
+ * Task" is found even when that event left an Iteration outside the reported set.
+ */
+export function actualAfter(
+  event: StoredCarryoverEvent,
+  allEvents: readonly StoredCarryoverEvent[],
+): number {
+  const later = allEvents.filter((other) => isAfter(other, event)).sort(compareEvents);
+  let total = 0;
+  for (const task of event.tasks) {
+    const base = task.actualHours ?? 0;
+    const next = later
+      .map((other) => other.tasks.find((t) => t.taskId === task.taskId))
+      .find((t) => t !== undefined);
+    const upper = next ? (next.actualHours ?? 0) : task.currentActualHours;
+    total += Math.max(0, upper - base);
+  }
+  return roundForDisplay(total);
+}
+
+function compareEvents(a: StoredCarryoverEvent, b: StoredCarryoverEvent): number {
+  if (a.occurredAt !== b.occurredAt) return a.occurredAt < b.occurredAt ? -1 : 1;
+  return a.transitionId < b.transitionId ? -1 : a.transitionId > b.transitionId ? 1 : 0;
+}
+
+function isAfter(other: StoredCarryoverEvent, event: StoredCarryoverEvent): boolean {
+  return compareEvents(other, event) > 0;
+}
+
+/** One row of the Carryover report, in the SRS column order (CO-BR-40). */
+export interface CarryoverRow {
+  transitionId: string;
+  direction: CarryoverDirection;
+  storyId: string;
+  storyKey: string;
+  storyTitle: string;
+  fromIterationId: string | null;
+  fromIterationName: string | null;
+  toIterationId: string | null;
+  toIterationName: string | null;
+  /** ISO timestamp; the SPA renders it in the workspace time zone. */
+  movedAt: string;
+  startDate: string | null;
+  targetEndDate: string | null;
+  estimateHours: number;
+  todoHours: number;
+  actualBefore: number;
+  actualAfter: number;
+}
+
+/**
+ * The rows, oldest first, filtered by Direction (CO-BR-41 — the filter narrows ROWS only, never a
+ * KPI). An event with both ends in the set reads as `in`: the set received the Story.
+ */
+export function buildCarryoverRows(
+  allEvents: readonly StoredCarryoverEvent[],
+  iterationIds: readonly string[],
+  direction: CarryoverDirectionFilter,
+): CarryoverRow[] {
+  const ids = new Set(iterationIds);
+  return involving(allEvents, iterationIds)
+    .sort(compareEvents)
+    .filter((event) =>
+      direction === 'all' ? true : direction === 'in' ? isIn(event, ids) : isOut(event, ids),
+    )
+    .map((event) => ({
+      transitionId: event.transitionId,
+      direction: isIn(event, ids) ? 'in' : 'out',
+      storyId: event.storyId,
+      storyKey: event.storyKey,
+      storyTitle: event.storyTitle,
+      fromIterationId: event.sourceIterationId,
+      fromIterationName: event.sourceIterationName,
+      toIterationId: event.targetIterationId,
+      toIterationName: event.targetIterationName,
+      movedAt: event.occurredAt,
+      startDate: event.storyStartDate,
+      targetEndDate: event.targetEndDate,
+      estimateHours: sum(event.tasks.map((t) => t.estimateHours)),
+      todoHours: sum(event.tasks.map((t) => t.todoHours)),
+      actualBefore: sum(event.tasks.map((t) => t.actualHours)),
+      actualAfter: actualAfter(event, allEvents),
+    }));
+}
+
+/**
+ * CO-BR-38 / ruling R11 — unique affected Story ids over unique Stories in scope, as a percentage.
+ *
+ * Denominator = Stories scheduled in the set now (Split placeholders already excluded by the
+ * repository) ∪ Stories carried OUT of it (they are no longer scheduled there, but were). `0` when
+ * the denominator is 0.
+ */
+export function carryoverRate(
+  events: readonly StoredCarryoverEvent[],
+  iterationIds: readonly string[],
+  scheduledStoryIds: readonly string[],
+): number {
+  const ids = new Set(iterationIds);
+  const touched = involving(events, iterationIds);
+  const affected = new Set(touched.map((event) => event.storyId));
+  const carriedOut = touched.filter((event) => isOut(event, ids)).map((event) => event.storyId);
+  const denominator = new Set([...scheduledStoryIds, ...carriedOut]);
+  if (denominator.size === 0) return 0;
+  return roundForDisplay((affected.size / denominator.size) * 100, 1);
+}
+
+/** One bar pair of the trend chart (CO-BR-39). */
+export interface CarryoverTrendPoint {
+  iterationId: string;
+  name: string;
+  startDate: string | null;
+  carryIn: number;
+  carryOut: number;
+}
+
+/** Carry In / Carry Out for every Iteration in scope, in the order given (start date). */
+export function buildTrend(
+  events: readonly StoredCarryoverEvent[],
+  iterations: ReadonlyArray<{ id: string; name: string; startDate: string | null }>,
+): CarryoverTrendPoint[] {
+  return iterations.map((iteration) => ({
+    iterationId: iteration.id,
+    name: iteration.name,
+    startDate: iteration.startDate,
+    carryIn: events.filter((event) => event.targetIterationId === iteration.id).length,
+    carryOut: events.filter((event) => event.sourceIterationId === iteration.id).length,
+  }));
+}

@@ -78,7 +78,8 @@
     "milestoneNone": "--",
     "defectNone": "None",
     "defectClosed": "Closed",
-    "defectOpen": "{{value}} Open"
+    "defectOpen": "{{value}} Open",
+    "notSet": "Not set"
   },
   "create": {
     "title": "Add Item to Iteration",

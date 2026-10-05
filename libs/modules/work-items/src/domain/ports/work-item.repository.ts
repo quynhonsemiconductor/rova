@@ -1,5 +1,5 @@
 import type { CursorPayload, PagedResult, DbExecutor } from '@platform';
-import type { IterationState } from '../../../../../../db/schema/enums';
+import type { IterationState, TaskState } from '../../../../../../db/schema/enums';
 import type {
   WorkItem,
   CreateWorkItemInput,
@@ -296,6 +296,28 @@ export interface IWorkItemRepository {
     executor: DbExecutor,
   ): Promise<{ id: string; iterationId: string | null } | null>;
   softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void>;
+  /**
+   * EVERY live Task of a Story with its state and hours, read on the Carryover's own transaction
+   * (plan D6) — the effort snapshot (CO-BR-30).
+   *
+   * Deliberately NOT team-scoped, unlike {@link listTasksByParent}: every Task follows the Story
+   * (`trg_cascade_iteration_to_tasks`), so every Task needs a snapshot, or Team Capacity would
+   * attribute a later Iteration's Actual to the earlier one for the Tasks the caller could not see.
+   * Ordered by id (query-ordering ratchet). Hours are `numeric` strings, `null` preserved.
+   */
+  listTaskSnapshots(
+    parentId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<
+    Array<{
+      id: string;
+      state: TaskState;
+      estimateHours: string | null;
+      todoHours: string | null;
+      actualHours: string | null;
+    }>
+  >;
   reorderItems(
     items: Array<{ id: string; rank: string }>,
     workspaceId: string,

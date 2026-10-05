@@ -1,0 +1,73 @@
+{
+  "field": {
+    "label": "Target End Date",
+    "helper": "Available only from Start Date onward. Enabled dates belong to the current or a future iteration.",
+    "clear": "Clear",
+    "saveError": "Could not save the Target End Date"
+  },
+  "modal": {
+    "title": "This User Story will carry over",
+    "targetEndDate": "Target End Date",
+    "story": "User Story",
+    "from": "From",
+    "to": "To",
+    "chooseTarget": "Choose the iteration this story moves to",
+    "noDestination": "No destination iteration contains {{date}}.",
+    "tasks": "Tasks",
+    "taskSummary": "{{total}} total · {{unfinished}} unfinished",
+    "range": "{{start}} – {{end}}",
+    "cancel": "Cancel",
+    "accept": "Accept & Carry Over",
+    "submitError": "Could not carry the story over"
+  },
+  "history": {
+    "carriedOver": "accepted Carryover: {{source}} → {{target}} · Target End {{date}}",
+    "manualMove": "moved Iteration (manual): {{source}} → {{target}}",
+    "targetEndChanged": "changed Target End Date: {{old}} → {{new}}",
+    "unscheduled": "Unscheduled",
+    "none": "None"
+  },
+  "badge": {
+    "carryIn": "Carry In {{count}}",
+    "carryOut": "Carry Out {{count}}",
+    "todo": "{{hours}}h To Do",
+    "viewReport": "View report →",
+    "label": "Carryover"
+  },
+  "report": {
+    "title": "Carryover",
+    "direction": "Direction",
+    "directions": { "all": "All", "in": "Carry In", "out": "Carry Out" },
+    "kpis": {
+      "carryIn": "Carry In",
+      "carryOut": "Carry Out",
+      "transferredTodo": "Transferred To Do",
+      "rate": "Carryover Rate"
+    },
+    "trend": "Carryover trend",
+    "columns": {
+      "direction": "Direction",
+      "workItem": "Work Item",
+      "name": "Name",
+      "from": "From",
+      "to": "To",
+      "movedOn": "Moved On",
+      "startDate": "Start Date",
+      "targetEnd": "Target End",
+      "estimate": "Estimate",
+      "todo": "To Do",
+      "actualBefore": "Actual Before",
+      "actualAfter": "Actual After"
+    },
+    "empty": "No Carryover events for this Iteration.",
+    "noIteration": "Select an iteration to see its Carryover events.",
+    "error": {
+      "title": "Carryover report unavailable",
+      "body": "The report could not be loaded. Try again."
+    }
+  },
+  "export": {
+    "button": "Export CSV",
+    "error": "Could not export the report"
+  }
+}

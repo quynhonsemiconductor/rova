@@ -78,6 +78,20 @@ const numericFilter = z
 
 // ── List query ────────────────────────────────────────────────────────────────
 
+/**
+ * A calendar date, `YYYY-MM-DD`, that actually exists (`2026-02-30` is refused). Exported for the
+ * Carryover body, which takes the same shape.
+ */
+export const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD')
+  .refine((v) => {
+    const d = new Date(`${v}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+  }, 'Must be a real calendar date');
+
+// ── List query ────────────────────────────────────────────────────────────────
+
 export const WorkItemQuerySchema = PageQuerySchema.extend({
   projectId: z.string().uuid(),
   type: z.enum(WORK_ITEM_TYPES).optional(),
@@ -205,6 +219,13 @@ export const UpdateWorkItemSchema = z.object({
   devOwnerId: z.string().uuid().nullable().optional(),
   defectState: z.enum(DEFECT_STATES).nullable().optional(),
   fixedInBuild: z.string().max(255).nullable().optional(),
+  /**
+   * Phase 7 Carryover (D7) — Story-only Target End Date, or `null` to clear it. The server validates it
+   * against the same picker rule `GET /work-items/:id/carryover-options` serves: a non-Story is
+   * `TARGET_END_NOT_SUPPORTED`, a disabled date `TARGET_END_DATE_INVALID`, and a date after the current
+   * Iteration `TARGET_END_REQUIRES_CARRYOVER` (confirm it through `POST /work-items/:id/carryover`).
+   */
+  targetEndDate: isoDate.nullable().optional(),
 });
 
 export class UpdateWorkItemDto extends createZodDto(UpdateWorkItemSchema) {}

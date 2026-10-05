@@ -260,6 +260,10 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       devOwnerId: null,
       defectState: null,
       fixedInBuild: null,
+      // A Task's own lifecycle dates (0132); a Task has no forecast.
+      startDate: t.startDate,
+      actualEndDate: t.actualEndDate,
+      targetEndDate: null,
     };
   }
 
@@ -853,6 +857,10 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         devOwnerId: tasks.devOwnerId,
         defectState: sql<string | null>`null`.as('defect_state'),
         fixedInBuild: sql<string | null>`null`.as('fixed_in_build'),
+        // CO-02 AC5 — the Task list must show the SAME persisted dates as Task Detail.
+        startDate: tasks.startDate,
+        actualEndDate: tasks.actualEndDate,
+        targetEndDate: sql<string | null>`null`.as('target_end_date'),
       })
       .from(tasks)
       .leftJoin(parent, eq(parent.id, tasks.parentId))
@@ -1295,6 +1303,9 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         resolution: null,
         defectState: null,
         fixedInBuild: null,
+        startDate: t.startDate,
+        actualEndDate: t.actualEndDate,
+        targetEndDate: null,
       };
     }
 
@@ -1455,11 +1466,46 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           defectState: input.defectState as DefectState | null,
         }),
         ...(input.fixedInBuild !== undefined && { fixedInBuild: input.fixedInBuild }),
+        // Phase 7 Carryover (D7). Validated in the service; a Story-only column, and the Task branch
+        // above never reaches here. The two lifecycle dates are deliberately absent (trigger-owned).
+        ...(input.targetEndDate !== undefined && { targetEndDate: input.targetEndDate }),
         updatedAt: new Date(),
       })
       .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)))
       .returning();
     return toWorkItem(rows[0]);
+  }
+
+  async listTaskSnapshots(
+    parentId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<
+    Array<{
+      id: string;
+      state: TaskState;
+      estimateHours: string | null;
+      todoHours: string | null;
+      actualHours: string | null;
+    }>
+  > {
+    return executor
+      .select({
+        id: tasks.id,
+        state: tasks.state,
+        estimateHours: tasks.estimateHours,
+        todoHours: tasks.todoHours,
+        actualHours: tasks.actualHours,
+      })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.parentId, parentId),
+          eq(tasks.workspaceId, workspaceId),
+          isNull(tasks.deletedAt),
+        ),
+      )
+      .orderBy(asc(tasks.id));
   }
 
   async softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void> {

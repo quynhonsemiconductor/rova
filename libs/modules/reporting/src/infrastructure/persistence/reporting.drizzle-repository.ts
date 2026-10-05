@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNull, notInArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import {
   iterationTeamBaselines,
+  iterationTransitionTasks,
+  iterationTransitions,
   releaseTeamTargets,
   iterationDailySnapshots,
   iterations,
@@ -23,6 +25,7 @@ import { users } from '../../../../../../db/schema/identity';
 import { workspaceSettings } from '../../../../../../db/schema/workspace';
 import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
 import type { StoredSnapshot, StoredSplitEvent } from '../../domain/burndown';
+import type { StoredCarryoverEvent } from '../../domain/carryover';
 import type { ReleaseChild, ReleaseFeature, StoredBurnupRow } from '../../domain/release-tracking';
 import {
   DEFAULT_WORKING_DAYS,
@@ -360,6 +363,145 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     return this.findSplits(workspaceId, iterationIds, scope, 'target');
   }
 
+  // ── Carryover (Phase 7 CO-08 … CO-10) ─────────────────────────────────────
+
+  /**
+   * The project's `carryover` transitions in scope, oldest first, each with its Task snapshots.
+   *
+   * TWO queries rather than one wide join: an event with N Tasks would otherwise repeat its Story and
+   * Iteration columns N times, and an event with no Tasks would need a left join that then has to be
+   * folded back. The Story must be LIVE (a row that cannot be opened is not a row to report — the
+   * `findSplits` rule); the Iterations are left-joined because a name is decoration, and a deleted
+   * Iteration leaves the event with a NULL end (migration 0133 `ON DELETE SET NULL`).
+   *
+   * Tasks are inner-joined to LIVE tasks: a deleted Task leaves the report entirely, which is what
+   * Team Capacity's departed population does too, so the two cannot disagree.
+   */
+  async findCarryoverEvents(
+    workspaceId: string,
+    projectId: string,
+    scope: TeamScope,
+  ): Promise<StoredCarryoverEvent[]> {
+    if (isEmptyTeamScope(scope)) return [];
+    const story = alias(workItems, 'carryover_story');
+    const source = alias(iterations, 'carryover_source');
+    const target = alias(iterations, 'carryover_target');
+
+    const rows = await this.db
+      .select({
+        transitionId: iterationTransitions.id,
+        occurredAt: iterationTransitions.occurredAt,
+        storyId: story.id,
+        storyKey: story.itemKey,
+        storyTitle: story.title,
+        storyStartDate: story.startDate,
+        targetEndDate: iterationTransitions.targetEndDate,
+        sourceIterationId: iterationTransitions.sourceIterationId,
+        sourceIterationName: source.name,
+        targetIterationId: iterationTransitions.targetIterationId,
+        targetIterationName: target.name,
+      })
+      .from(iterationTransitions)
+      .innerJoin(story, and(eq(story.id, iterationTransitions.storyId), isNull(story.deletedAt)))
+      .leftJoin(source, eq(source.id, iterationTransitions.sourceIterationId))
+      .leftJoin(target, eq(target.id, iterationTransitions.targetIterationId))
+      .where(
+        and(
+          eq(iterationTransitions.workspaceId, workspaceId),
+          eq(iterationTransitions.projectId, projectId),
+          eq(iterationTransitions.type, 'carryover'),
+          teamMatches(scope, sql`coalesce(${iterationTransitions.teamId}, ${source.teamId})`),
+        ),
+      )
+      .orderBy(asc(iterationTransitions.occurredAt), asc(iterationTransitions.id));
+    if (rows.length === 0) return [];
+
+    const taskRows = await this.db
+      .select({
+        transitionId: iterationTransitionTasks.transitionId,
+        taskId: iterationTransitionTasks.taskId,
+        estimateHours: iterationTransitionTasks.estimateHoursAtMove,
+        todoHours: iterationTransitionTasks.todoHoursAtMove,
+        actualHours: iterationTransitionTasks.actualHoursAtMove,
+        currentActualHours: tasks.actualHours,
+      })
+      .from(iterationTransitionTasks)
+      .innerJoin(tasks, and(eq(tasks.id, iterationTransitionTasks.taskId), isNull(tasks.deletedAt)))
+      .where(
+        and(
+          eq(iterationTransitionTasks.workspaceId, workspaceId),
+          inArray(
+            iterationTransitionTasks.transitionId,
+            rows.map((row) => row.transitionId),
+          ),
+        ),
+      )
+      .orderBy(asc(iterationTransitionTasks.transitionId), asc(iterationTransitionTasks.id));
+
+    const byTransition = new Map<string, StoredCarryoverEvent['tasks']>();
+    for (const t of taskRows) {
+      const list = byTransition.get(t.transitionId) ?? [];
+      list.push({
+        taskId: t.taskId,
+        estimateHours: nullableNum(t.estimateHours),
+        todoHours: nullableNum(t.todoHours),
+        actualHours: nullableNum(t.actualHours),
+        currentActualHours: num(t.currentActualHours),
+      });
+      byTransition.set(t.transitionId, list);
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      occurredAt: row.occurredAt.toISOString(),
+      tasks: byTransition.get(row.transitionId) ?? [],
+    }));
+  }
+
+  async listScopedIterations(
+    workspaceId: string,
+    projectId: string,
+    scope: TeamScope,
+  ): Promise<IterationRow[]> {
+    if (isEmptyTeamScope(scope)) return [];
+    return this.db
+      .select(ITERATION_COLUMNS)
+      .from(iterations)
+      .where(
+        and(
+          eq(iterations.workspaceId, workspaceId),
+          eq(iterations.projectId, projectId),
+          timeboxInScope(scope),
+        ),
+      )
+      .orderBy(asc(iterations.startDate), asc(iterations.id));
+  }
+
+  async listScheduledStoryIds(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<string[]> {
+    if (iterationIds.length === 0 || isEmptyTeamScope(scope)) return [];
+    const iteration = alias(iterations, 'rate_iteration');
+    const rows = await this.db
+      .select({ id: workItems.id })
+      .from(workItems)
+      .leftJoin(iteration, eq(iteration.id, workItems.iterationId))
+      .where(
+        and(
+          eq(workItems.workspaceId, workspaceId),
+          inArray(workItems.iterationId, iterationIds),
+          eq(workItems.type, 'story'),
+          isNull(workItems.deletedAt),
+          isNull(workItems.splitId),
+          teamMatches(scope, sql`coalesce(${workItems.teamId}, ${iteration.teamId})`),
+        ),
+      )
+      .orderBy(asc(workItems.id));
+    return rows.map((row) => row.id);
+  }
+
   // ── Velocity ──────────────────────────────────────────────────────────────
 
   async findEligibleTimeboxes(
@@ -605,18 +747,8 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         estimateHours: tasks.estimateHours,
         todoHours: tasks.todoHours,
         actualHours: tasks.actualHours,
-        actualAtArrival: this.splitBound(
-          workspaceId,
-          iterationIds,
-          'arrival',
-          storySplitItems.actualHoursAtSplit,
-        ),
-        actualAtDeparture: this.splitBound(
-          workspaceId,
-          iterationIds,
-          'departure',
-          storySplitItems.actualHoursAtSplit,
-        ),
+        actualAtArrival: this.splitBound(workspaceId, iterationIds, 'arrival', 'actual'),
+        actualAtDeparture: this.splitBound(workspaceId, iterationIds, 'departure', 'actual'),
       })
       .from(tasks)
       .innerJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
@@ -723,18 +855,8 @@ export class ReportingDrizzleRepository implements IReportingRepository {
   ): Promise<ScopedTaskHours[]> {
     const parent = alias(workItems, 'parent');
     const team = alias(teams, 'task_team');
-    const departureActual = this.splitBound(
-      workspaceId,
-      iterationIds,
-      'departure',
-      storySplitItems.actualHoursAtSplit,
-    );
-    const departureTeam = this.splitBound(
-      workspaceId,
-      iterationIds,
-      'departure',
-      storySplits.teamId,
-    );
+    const departureActual = this.splitBound(workspaceId, iterationIds, 'departure', 'actual');
+    const departureTeam = this.splitBound(workspaceId, iterationIds, 'departure', 'team');
     const resolvedTeam = sql`coalesce(${tasks.teamId}, ${parent.teamId}, ${departureTeam})`;
 
     const rows = await this.db
@@ -749,12 +871,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         ownerId: tasks.assigneeId,
         ownerName: users.displayName,
         actualHours: tasks.actualHours,
-        actualAtArrival: this.splitBound(
-          workspaceId,
-          iterationIds,
-          'arrival',
-          storySplitItems.actualHoursAtSplit,
-        ),
+        actualAtArrival: this.splitBound(workspaceId, iterationIds, 'arrival', 'actual'),
         actualAtDeparture: departureActual,
       })
       .from(tasks)
@@ -842,58 +959,56 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     workspaceId: string,
     iterationIds: string[],
     bound: 'arrival' | 'departure',
-    value: PgColumn,
+    value: 'actual' | 'team',
   ): SQL<string | null> {
-    const matchedIterationId =
+    /**
+     * PHASE 7 CARRYOVER (plan D10): the boundary set is now the UNION of two event kinds — Split
+     * `continued`-side rows and Carryover snapshot rows — ordered by event time. Same window, same
+     * "a move with both ends inside the set bounds nothing" rule for both. Manual Moves are NOT
+     * boundaries (ruling R3, declared limitation), so `type = 'carryover'` is part of the rule.
+     *
+     * A Carryover's other end can be NULL (its Iteration was deleted, `ON DELETE SET NULL`); that is
+     * "outside the set", hence the `coalesce` to the nil uuid before `not in`. Split ends are NOT NULL.
+     */
+    const ids = inList(iterationIds);
+    const splitMatched =
       bound === 'arrival' ? storySplits.targetIterationId : storySplits.sourceIterationId;
-    const otherEndIterationId =
+    const splitOther =
       bound === 'arrival' ? storySplits.sourceIterationId : storySplits.targetIterationId;
-    const direction = bound === 'arrival' ? desc : asc;
-    const subquery = this.db
-      .select({ value })
-      .from(storySplitItems)
-      .innerJoin(storySplits, eq(storySplits.id, storySplitItems.splitId))
-      .where(
-        and(
-          eq(storySplitItems.workspaceId, workspaceId),
-          /**
-           * BOTH sides of the join carry the workspace, not just the driver table.
-           *
-           * `split_id` is a plain FK with no composite workspace constraint, so the item row's own
-           * predicate says nothing about which workspace the SPLIT belongs to — and this subquery
-           * selects from the split (`team_id`, `split_at`, the iteration columns), which then flows
-           * into `resolvedTeam`, `teamName` and `teamMatches`. `findSplits` already filters this
-           * column; the omission here was the file's one outlier. A database with a single workspace
-           * in it cannot show the difference, which is why the test that pins this builds the
-           * cross-workspace pair by hand.
-           */
-          eq(storySplits.workspaceId, workspaceId),
-          eq(storySplitItems.taskId, tasks.id),
-          eq(storySplitItems.splitSide, 'continued'),
-          inArray(matchedIterationId, iterationIds),
-          /**
-           * A bound is a crossing of the SET's edge, not of one iteration's (PR #638 review, round 3).
-           *
-           * `iterationIds` is a fused timebox (`findTimeboxSiblings`), and a timebox group CAN hold
-           * two sequential iterations: `timeboxGroupId` is derived from the dates once, at create,
-           * and is deliberately never recomputed when a sibling's dates are edited later — so A and B
-           * created on one window, with B then moved to open after A closes, are still one group, and
-           * A→B is a legal Split under §8 Q3. Without this predicate that one Split is BOTH the
-           * latest arrival and the earliest departure of the set, `max(0, s − s)` is 0, and the
-           * timebox loses every Actual hour of a Task that never left it. The same collapse hits a
-           * chain I1→I2→I3 reported over {I1, I2}: the I1→I2 Split is taken as both bounds and 7
-           * becomes 0.
-           *
-           * A move whose other end is also in the set is neither an arrival nor a departure for the
-           * set, so it yields no bound at all. `source_iteration_id`/`target_iteration_id` are NOT
-           * NULL, so `not in` has no three-valued trap here.
-           */
-          notInArray(otherEndIterationId, iterationIds),
-        ),
-      )
-      .orderBy(direction(storySplits.splitAt), direction(storySplits.id))
-      .limit(1);
-    return sql<string | null>`(${subquery})`;
+    const coMatched =
+      bound === 'arrival'
+        ? iterationTransitions.targetIterationId
+        : iterationTransitions.sourceIterationId;
+    const coOther =
+      bound === 'arrival'
+        ? iterationTransitions.sourceIterationId
+        : iterationTransitions.targetIterationId;
+    const splitValue = value === 'actual' ? storySplitItems.actualHoursAtSplit : storySplits.teamId;
+    const coValue =
+      value === 'actual' ? iterationTransitionTasks.actualHoursAtMove : iterationTransitions.teamId;
+    const direction = bound === 'arrival' ? sql`desc` : sql`asc`;
+
+    return sql<string | null>`(select b.value from (
+      select ${splitValue} as value, ${storySplits.splitAt} as at, ${storySplits.id} as id
+        from ${storySplitItems}
+        inner join ${storySplits} on ${storySplits.id} = ${storySplitItems.splitId}
+       where ${storySplitItems.workspaceId} = ${workspaceId}::uuid
+         and ${storySplits.workspaceId} = ${workspaceId}::uuid
+         and ${storySplitItems.taskId} = ${tasks.id}
+         and ${storySplitItems.splitSide} = 'continued'
+         and ${splitMatched} in ${ids}
+         and ${splitOther} not in ${ids}
+      union all
+      select ${coValue} as value, ${iterationTransitions.occurredAt} as at, ${iterationTransitions.id} as id
+        from ${iterationTransitionTasks}
+        inner join ${iterationTransitions} on ${iterationTransitions.id} = ${iterationTransitionTasks.transitionId}
+       where ${iterationTransitionTasks.workspaceId} = ${workspaceId}::uuid
+         and ${iterationTransitions.workspaceId} = ${workspaceId}::uuid
+         and ${iterationTransitionTasks.taskId} = ${tasks.id}
+         and ${iterationTransitions.type} = 'carryover'
+         and ${coMatched} in ${ids}
+         and coalesce(${coOther}, ${NIL_UUID}::uuid) not in ${ids}
+    ) b order by b.at ${direction}, b.id ${direction} limit 1)`;
   }
 
   // ── Release Tracking ──────────────────────────────────────────────────────

@@ -61,6 +61,11 @@ import {
   SplitWorkItemDto,
   SplitWorkItemResponseDto,
 } from './dto/split-work-item.dto';
+import {
+  CarryOverWorkItemDto,
+  CarryOverWorkItemResponseDto,
+  CarryoverOptionsResponseDto,
+} from './dto/carryover.dto';
 import type { WorkItem } from '../../domain/work-item.types';
 import type { WorkItemDetail } from '../../domain/story-split.types';
 import { BACKLOG_SORT_FIELDS } from '../../domain/work-item.types';
@@ -129,6 +134,11 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
     devOwnerId: w.devOwnerId,
     defectState: w.defectState,
     fixedInBuild: w.fixedInBuild,
+    // Phase 7 Carryover (0132). `?? null` for the same reason as the owner names: a read path that
+    // projects columns explicitly must not change the response shape.
+    startDate: w.startDate ?? null,
+    actualEndDate: w.actualEndDate ?? null,
+    targetEndDate: w.targetEndDate ?? null,
   };
 }
 
@@ -696,6 +706,46 @@ export class WorkItemsController {
       unfinished: toWorkItemDto(result.unfinished),
       continued: toWorkItemDto(result.continued),
     };
+  }
+
+  // ── Story Target End Date + Carryover (Phase 7 CO) ───────────────────────────
+
+  /**
+   * The Target End picker's feed (plan D8). `work_item:view`, like `split-preview`: a reader may open
+   * the Story and be shown the field disabled — `editable` carries the edit decision.
+   */
+  @Get(':id/carryover-options')
+  @ApiOperation({
+    summary: 'Target End Date picker window and Carryover targets for a user story',
+  })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: CarryoverOptionsResponseDto })
+  @ApiCommonErrors(401, 403, 404)
+  async getCarryoverOptions(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CarryoverOptionsResponseDto> {
+    return this.workItemsService.getCarryoverOptions(user, id);
+  }
+
+  /**
+   * Commit one same-ID Carryover (plan D6, CO-05). `work_item:edit`; the Team boundary is applied in
+   * the service first thing. 201 because it CREATES an event.
+   */
+  @Post(':id/carryover')
+  @ApiOperation({ summary: 'Carry a user story over to a later iteration (same ID)' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: CarryOverWorkItemResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 412)
+  async carryOverWorkItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CarryOverWorkItemDto,
+  ): Promise<CarryOverWorkItemResponseDto> {
+    const result = await this.workItemsService.carryOverWorkItem(user, id, dto);
+    return { transition: result.transition, workItem: toWorkItemDto(result.workItem) };
   }
 
   // ── Activity (Revision History) ──────────────────────────────────────────────

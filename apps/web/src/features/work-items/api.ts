@@ -18,6 +18,7 @@ export { useStoryOptions, type StoryOption } from './story-options'
 // SPA api layer (SU-06's `useSplitWorkItem` included) belongs in `split-api.ts`, so this line never
 // has to grow again.
 export * from './split-api'
+export * from './carryover-api'
 // The RECORD read's shape (SU-07) — declared, with its reasoning, in `split-api.ts`. Type-only, and
 // from the module this file already re-exports, so there is no cycle.
 import type { WorkItemDetail } from './split-api'

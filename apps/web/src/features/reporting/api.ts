@@ -69,6 +69,12 @@ type ReleaseTrackingQuery = NonNullable<
 export type ReleaseBurnup = Json<'ReportingController_getReleaseBurnup'>
 export type BurnupPoint = ReleaseBurnup['points'][number]
 
+/** Phase 7 Carryover (CO-08 … CO-10). */
+export type CarryoverReport = Json<'ReportingController_getCarryover'>
+export type CarryoverRow = CarryoverReport['rows'][number]
+export type CarryoverDirection = CarryoverReport['direction']
+export type CarryoverSummary = NonNullable<IterationBurndown['carryover']>
+
 /** Team is part of every key: switching the global Team selector must refetch, not reuse. */
 export const reportingKeys = {
   all: ['reports'] as const,
@@ -78,6 +84,12 @@ export const reportingKeys = {
     ['reports', 'velocity', projectId, teamId ?? 'all', window] as const,
   teamCapacity: (projectId: string, teamId: string | undefined, iterationId: string) =>
     ['reports', 'team-capacity', projectId, teamId ?? 'all', iterationId] as const,
+  carryover: (
+    projectId: string,
+    teamId: string | undefined,
+    iterationId: string,
+    direction: CarryoverDirection,
+  ) => ['reports', 'carryover', projectId, teamId ?? 'all', iterationId, direction] as const,
   releaseTracking: (
     projectId: string,
     teamId: string | undefined,
@@ -275,4 +287,90 @@ export function useReleaseBurnup({
     // Burnup days are finalised like burndown days: only today's point can still move.
     staleTime: FROZEN,
   })
+}
+
+// -- Carryover (Phase 7 CO-10) -------------------------------------------------
+
+export function useCarryoverReport({
+  projectId,
+  teamId,
+  iterationId,
+  direction,
+}: Scope & { iterationId: string | undefined; direction: CarryoverDirection }) {
+  return useQuery({
+    queryKey: reportingKeys.carryover(projectId ?? '', teamId, iterationId ?? '', direction),
+    queryFn: async () => {
+      const { data, error, response } = await apiClient.GET('/v1/reports/carryover', {
+        params: {
+          query: { projectId: projectId!, teamId, iterationId: iterationId!, direction },
+        },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as CarryoverReport
+    },
+    enabled: !!projectId && !!iterationId,
+    staleTime: LIVE,
+    placeholderData: (previous) => previous,
+  })
+}
+
+// -- CSV export (Phase 7 rulings R1/R4, plan D11) ------------------------------
+
+/** Which export route serves each report type, and the query it needs. */
+export type ReportExportRequest =
+  | { report: 'burndown'; projectId: string; teamId?: string; iterationId: string }
+  | { report: 'velocity'; projectId: string; teamId?: string; window: VelocityWindow }
+  | { report: 'capacity'; projectId: string; teamId?: string; iterationId: string }
+  | {
+      report: 'carryover'
+      projectId: string
+      teamId?: string
+      iterationId: string
+      direction: CarryoverDirection
+    }
+
+function exportUrl(req: ReportExportRequest): { path: string; query: Record<string, string> } {
+  const base: Record<string, string> = { projectId: req.projectId }
+  if (req.teamId) base.teamId = req.teamId
+  switch (req.report) {
+    case 'burndown':
+      return { path: 'iteration-burndown', query: { ...base, iterationId: req.iterationId } }
+    case 'velocity':
+      return { path: 'velocity', query: { ...base, window: String(req.window) } }
+    case 'capacity':
+      return { path: 'team-capacity', query: { ...base, iterationId: req.iterationId } }
+    case 'carryover':
+      return {
+        path: 'carryover',
+        query: { ...base, iterationId: req.iterationId, direction: req.direction },
+      }
+  }
+}
+
+/** The filename the server put in `Content-Disposition`, or a fallback. */
+function filenameFrom(header: string | null, fallback: string): string {
+  const match = header ? /filename="([^"]+)"/.exec(header) : null
+  return match?.[1] ?? fallback
+}
+
+/**
+ * Download one report as CSV through the BFF (same-origin cookie), as a blob. The server applies the
+ * SAME query — and the same `report:export` gate — as the JSON report, so the file matches the screen.
+ */
+export async function downloadReportCsv(req: ReportExportRequest): Promise<void> {
+  const { path, query } = exportUrl(req)
+  const { data, error, response } = await apiClient.GET(
+    `/v1/reports/${path}/export` as '/v1/reports/carryover/export',
+    { params: { query: query as never }, parseAs: 'blob' },
+  )
+  if (error || !data) throw new Error(apiErrorMessage(error, response.status))
+  const name = filenameFrom(response.headers.get('content-disposition'), `${path}.csv`)
+  const url = URL.createObjectURL(data as Blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }

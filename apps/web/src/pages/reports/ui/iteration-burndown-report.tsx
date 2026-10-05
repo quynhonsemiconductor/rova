@@ -28,6 +28,8 @@ import {
   axisLabel,
 } from '@/shared/ui/chart'
 
+import { CarryoverBadge } from './carryover-badge'
+import { ReportExportButton } from './report-export-button'
 import { ReportSurface } from './report-surface'
 import { splitMarkerLines } from './split-marker-lines'
 import { SplitMarkerContext, SplitMarkerLegend } from './split-markers'
@@ -37,9 +39,12 @@ import { EmptyState } from '@/shared/ui/empty-state'
 export function IterationBurndownReport({
   projectId,
   teamId,
+  onOpenCarryover,
 }: {
   projectId: string
   teamId: string | undefined
+  /** Phase 7 CO-08 — the badge's View report opens the Carryover report on this Iteration. */
+  onOpenCarryover?: (iterationId: string) => void
 }) {
   const { t } = useTranslation(['reports', 'common', 'split-story'])
   /**
@@ -162,6 +167,11 @@ export function IterationBurndownReport({
         <>
           <span className="text-ui-xs font-semibold text-foreground-subtle">{t('iteration')}</span>
           <IterationPicker iterations={iterations} selectedId={selectedId} onSelect={select} />
+          <ReportExportButton
+            request={
+              selectedId ? { report: 'burndown', projectId, teamId, iterationId: selectedId } : null
+            }
+          />
           {/**
            * `data !== undefined` FIRST, and that is the whole point of the guard.
            *
@@ -263,9 +273,20 @@ export function IterationBurndownReport({
           />
         }
         footer={
-          notes.length > 0 ? (
-            <p className="mt-2 text-center text-ui-xs text-foreground-subtle">{notes.join(' ')}</p>
-          ) : null
+          <>
+            {/* Phase 7 CO-08 — compact Carryover context; the series and Split markers are untouched. */}
+            <div className="mt-2 flex justify-center">
+              <CarryoverBadge
+                summary={data?.carryover}
+                onOpenReport={() => selectedId && onOpenCarryover?.(selectedId)}
+              />
+            </div>
+            {notes.length > 0 ? (
+              <p className="mt-2 text-center text-ui-xs text-foreground-subtle">
+                {notes.join(' ')}
+              </p>
+            ) : null}
+          </>
         }
       >
         <ComposedChart data={points} margin={{ top: 12, right: 16, left: 4, bottom: 12 }}>

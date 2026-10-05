@@ -34,13 +34,24 @@ function parse(value: string | null | undefined): Date | null {
 export function Calendar({
   value,
   onSelect,
+  isDateDisabled,
+  defaultMonth,
 }: {
   value?: string | null
   /** Fires with the picked day as an ISO date-only string (yyyy-MM-dd). */
   onSelect: (iso: string) => void
+  /**
+   * Optional, additive: a day this returns `true` for is rendered disabled (`disabled` +
+   * `aria-disabled`) and cannot be picked. Receives the day as `yyyy-MM-dd`.
+   */
+  isDateDisabled?: (iso: string) => boolean
+  /** Month to open on when there is no `value` (`yyyy-MM-dd`); never rendered as selected. */
+  defaultMonth?: string | null
 }) {
   const selected = parse(value)
-  const [month, setMonth] = useState(() => startOfMonth(selected ?? new Date()))
+  const [month, setMonth] = useState(() =>
+    startOfMonth(selected ?? parse(defaultMonth) ?? new Date()),
+  )
   const today = new Date()
 
   const days = eachDayOfInterval({
@@ -88,17 +99,25 @@ export function Calendar({
           const inMonth = isSameMonth(day, month)
           const isSelected = selected != null && isSameDay(day, selected)
           const isToday = isSameDay(day, today)
+          const iso = format(day, 'yyyy-MM-dd')
+          const disabled = isDateDisabled?.(iso) ?? false
           return (
             <button
               key={day.toISOString()}
               type="button"
-              onClick={() => onSelect(format(day, 'yyyy-MM-dd'))}
+              disabled={disabled}
+              aria-disabled={disabled || undefined}
+              data-date={iso}
+              onClick={() => {
+                if (!disabled) onSelect(iso)
+              }}
               className={cn(
                 'mx-auto flex h-8 w-8 items-center justify-center rounded-full text-ui-sm tabular-nums transition-colors',
                 !inMonth && 'text-foreground-faint',
-                inMonth && !isSelected && 'text-foreground hover:bg-surface-hover',
+                inMonth && !isSelected && !disabled && 'text-foreground hover:bg-surface-hover',
                 isToday && !isSelected && 'font-semibold text-primary',
                 isSelected && 'bg-primary font-semibold text-white',
+                disabled && 'cursor-not-allowed text-foreground-faint line-through opacity-60',
               )}
             >
               {format(day, 'd')}

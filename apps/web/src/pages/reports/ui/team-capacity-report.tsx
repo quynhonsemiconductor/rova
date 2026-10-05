@@ -33,6 +33,8 @@ import { IterationPicker } from '@/shared/ui/timebox-picker'
 import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { NUMERIC_CELL_CLASS } from '@/shared/lib/utils'
 
+import { CarryoverBadge } from './carryover-badge'
+import { ReportExportButton } from './report-export-button'
 import { ReportSurface } from './report-surface'
 import { useSelectedIteration } from '../model/use-selected-iteration'
 
@@ -68,9 +70,12 @@ const hoursFor = (values: TeamCapacityTeam['totals'], key: HourKey): number =>
 export function TeamCapacityReport({
   projectId,
   teamId,
+  onOpenCarryover,
 }: {
   projectId: string
   teamId: string | undefined
+  /** Phase 7 CO-09 — the badge's View report opens the Carryover report on this Iteration. */
+  onOpenCarryover?: (iterationId: string) => void
 }) {
   const { t } = useTranslation(['reports', 'common'])
   /**
@@ -169,6 +174,11 @@ export function TeamCapacityReport({
         <>
           <span className="text-ui-xs font-semibold text-foreground-subtle">{t('iteration')}</span>
           <IterationPicker iterations={iterations} selectedId={selectedId} onSelect={select} />
+          <ReportExportButton
+            request={
+              selectedId ? { report: 'capacity', projectId, teamId, iterationId: selectedId } : null
+            }
+          />
           <ColumnFieldsMenu {...table.fieldsMenuProps} />
         </>
       }
@@ -217,6 +227,15 @@ export function TeamCapacityReport({
         ) : undefined
       }
     >
+      {/* Phase 7 CO-09 — the same compact Carryover badge as Burndown. */}
+      {data?.carryover && (
+        <div className="flex justify-start px-3 py-2">
+          <CarryoverBadge
+            summary={data.carryover}
+            onOpenReport={() => selectedId && onOpenCarryover?.(selectedId)}
+          />
+        </div>
+      )}
       <DataTableFrame<ColKey>
         header={table.headerProps}
         leading={<div className="w-6 shrink-0" />}

@@ -42,8 +42,20 @@ export function usePendingPatch<TEntity extends object, TPatch extends object = 
 
   useResetOnIdChange(entityId, () => setPending({} as TPatch))
 
+  /**
+   * Merge `patch` into the pending edits. A key set to `undefined` is DROPPED rather than stored:
+   * `undefined` already means "not patched" in every write DTO, and storing it would overlay the
+   * entity's real value with `undefined` and keep the form dirty. This is how a caller discards one
+   * staged field after the server changed it through another path (e.g. a confirmed Carryover).
+   */
   const setField = useCallback((patch: Partial<TPatch>) => {
-    setPending((prev) => ({ ...prev, ...patch }))
+    setPending((prev) => {
+      const next = { ...prev, ...patch } as Record<string, unknown>
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === undefined) delete next[key]
+      }
+      return next as TPatch
+    })
   }, [])
 
   const cancel = useCallback(() => setPending({} as TPatch), [])

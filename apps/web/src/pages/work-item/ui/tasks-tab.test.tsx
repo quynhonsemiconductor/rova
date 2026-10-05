@@ -91,6 +91,37 @@ function renderTab() {
   )
 }
 
+/**
+ * Phase 7 CO-02 AC5 — the Task list shows the SAME persisted lifecycle dates Task Detail does: the
+ * same row field, through the same read-only `DateField` and the same `Not set` placeholder the
+ * sidebar uses (`detail-sidebar.test.tsx` "lifecycle dates" pins that side).
+ */
+describe('TasksTab — lifecycle dates (CO-02)', () => {
+  it('renders Start Date and Actual End Date columns, read-only', () => {
+    tasks.mockReturnValue({
+      data: [task({ startDate: '2026-09-02', actualEndDate: '2026-09-05' } as Partial<WorkItem>)],
+      isLoading: false,
+      isError: false,
+    })
+    renderTab()
+    expect(screen.getByText('Start Date')).toBeTruthy()
+    expect(screen.getByText('Actual End Date')).toBeTruthy()
+    expect(screen.getByText('2026-09-02')).toBeTruthy()
+    expect(screen.getByText('2026-09-05')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Task TA-1 start date' })).toBeNull()
+  })
+
+  it('reads Not set before the Task has entered In-Progress or Completed', () => {
+    tasks.mockReturnValue({
+      data: [task({ startDate: null, actualEndDate: null } as Partial<WorkItem>)],
+      isLoading: false,
+      isError: false,
+    })
+    renderTab()
+    expect(screen.getAllByText('Not set')).toHaveLength(2)
+  })
+})
+
 describe("TasksTab — the Project column is the record's project (P6-E2E-003)", () => {
   it('resolves the projectId it was handed, not the selected project', () => {
     renderTab()

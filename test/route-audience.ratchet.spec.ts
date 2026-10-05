@@ -345,6 +345,13 @@ const AUDIENCE: Record<string, Audience> = {
   'ReportingController.getReleaseTracking': 'admin',
   'ReportingController.getTeamCapacity': 'admin',
   'ReportingController.getVelocity': 'admin',
+  // Phase 7 Carryover — the dedicated report (`report:view`) and the four CSV exports, which carry
+  // the NEW `report:export` (rulings R1/R4: Workspace Admin + Project Admin, never Editor).
+  'ReportingController.getCarryover': 'admin',
+  'ReportingController.exportCarryover': 'admin',
+  'ReportingController.exportIterationBurndown': 'admin',
+  'ReportingController.exportTeamCapacity': 'admin',
+  'ReportingController.exportVelocity': 'admin',
 
   // ── ScmController ── the integration is workspace configuration; the two per-item reads are
   // the work-item detail's SCM panel and belong to whoever can see the item.
@@ -405,6 +412,10 @@ const AUDIENCE: Record<string, Audience> = {
   // is the one being MODIFIED. Audience `editor` for the same reason as the preview: splitting is an
   // Editor action (§3.2:79), and the two routes must not disagree about who the feature is for.
   'WorkItemsController.splitWorkItem': 'editor',
+  // Phase 7 Carryover — the Target End picker feed and the same-ID Carryover write. Story editors
+  // (incl. an Editor on their own Team) hold `work_item:view` / `work_item:edit`.
+  'WorkItemsController.getCarryoverOptions': 'editor',
+  'WorkItemsController.carryOverWorkItem': 'editor',
   'WorkItemsController.getTaskTotals': 'editor',
   'WorkItemsController.getWorkItem': 'editor',
   'WorkItemsController.listAttachments': 'editor',

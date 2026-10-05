@@ -12,7 +12,11 @@
  * array re-opens that on every one of them at once; see `shared/lib/query/resource.ts`.
  */
 import { useTranslation } from 'react-i18next'
-import { describeActivity, type ActivityLike } from '@/entities/work-item/model/activity'
+import {
+  carryoverActivityLabel,
+  describeActivity,
+  type ActivityLike,
+} from '@/entities/work-item/model/activity'
 import type { ListResource } from '@/shared/lib/query/resource'
 import { formatDateTime } from '@/shared/lib/utils'
 import { LoadErrorState } from '@/shared/ui/load-error-state'
@@ -40,6 +44,23 @@ export function ActivityHistoryTab({
 }) {
   const { t } = useTranslation()
   const logs = resource.rows
+
+  /** Carryover entries (CO-07) read through i18n; everything else keeps `describeActivity`. */
+  function describe(log: ActivityRow): string {
+    const carryover = carryoverActivityLabel(log)
+    if (!carryover) return describeActivity(log)
+    const blank = (value: string, fallback: string) => (value === '' ? fallback : value)
+    const unscheduled = t('carryover:history.unscheduled')
+    const none = t('carryover:history.none')
+    const values = carryover.values
+    return t(carryover.key, {
+      ...values,
+      source: blank(values.source ?? '', unscheduled),
+      target: blank(values.target ?? '', unscheduled),
+      old: blank(values.old ?? '', none),
+      new: blank(values.new ?? '', none),
+    })
+  }
 
   if (resource.isLoading) {
     return (
@@ -92,7 +113,7 @@ export function ActivityHistoryTab({
               <span className="font-mono text-ui-sm text-primary-light tabular-nums">
                 {revision}
               </span>
-              <span className="text-foreground">{describeActivity(log)}</span>
+              <span className="text-foreground">{describe(log)}</span>
               <span className="font-mono text-ui-sm text-muted-foreground">
                 {formatDateTime(log.createdAt)}
               </span>

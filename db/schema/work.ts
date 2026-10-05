@@ -61,6 +61,7 @@ import {
   testVerdictEnum,
   storySplitSideEnum,
   storySplitItemKindEnum,
+  iterationTransitionTypeEnum,
 } from './enums';
 import { files } from './storage';
 
@@ -175,6 +176,20 @@ export const workItems = workSchema.table(
     // NULL while accepted is a data-quality error, not "accepted at an unknown time":
     // the reports report it rather than guessing During vs After.
     acceptedDate: timestamp('accepted_date', { withTimezone: true }),
+    /**
+     * Phase 7 Carryover lifecycle dates (migration 0132, plan D2) — STORY ONLY.
+     *
+     * `start_date` / `actual_end_date` are the FIRST entry into `in_progress` / `accepted`, as a
+     * workspace-local date, stamped by `trg_stamp_story_lifecycle_dates` and never rewritten or
+     * cleared (CO-BR-06/07/10). Unlike `accepted_date` above, which is the CURRENT acceptance and is
+     * cleared on reopen. Neither belongs to any `Create*`/`Update*` schema — only the trigger writes them.
+     *
+     * `target_end_date` is the Story editor's forecast (CO-BR-12), validated by the service against
+     * the eligible Iterations (plan D5/D7); no trigger touches it.
+     */
+    startDate: date('start_date'),
+    actualEndDate: date('actual_end_date'),
+    targetEndDate: date('target_end_date'),
     acceptanceCriteria: text('acceptance_criteria'),
     // Dedicated rich-text fields (sanitized server-side), distinct from comments.
     notes: text('notes'),
@@ -1187,6 +1202,13 @@ export const tasks = workSchema.table(
     estimateHours: numeric('estimate_hours', { precision: 8, scale: 2 }),
     todoHours: numeric('todo_hours', { precision: 8, scale: 2 }),
     actualHours: numeric('actual_hours', { precision: 8, scale: 2 }),
+    /**
+     * First entry into `in_progress` / `completed`, workspace-local, stamped by
+     * `trg_stamp_task_lifecycle_dates` and never rewritten (migration 0132, CO-BR-08/09/10).
+     * In no request schema.
+     */
+    startDate: date('start_date'),
+    actualEndDate: date('actual_end_date'),
     rank: varchar('rank', { length: 255 }).notNull().default(''),
     createdBy: uuid('created_by').notNull(),
     updatedBy: uuid('updated_by'),
@@ -1631,5 +1653,74 @@ export const storySplitItems = workSchema.table(
        OR (${t.itemKind} = 'defect' AND ${t.taskId} IS NULL AND ${t.workItemId} IS NOT NULL AND ${t.testCaseId} IS NULL)
        OR (${t.itemKind} = 'test_case' AND ${t.taskId} IS NULL AND ${t.workItemId} IS NULL AND ${t.testCaseId} IS NOT NULL)`,
     ),
+  }),
+);
+
+// ── iteration_transitions ─────────────────────────────────────────────────
+/**
+ * One row per user-initiated Story Iteration change (Phase 7 Carryover plan D3, migration 0133):
+ * a confirmed `carryover` or a `manual_move` (ruling R8). IMMUTABLE — a trigger refuses UPDATE and
+ * DELETE, except the FK's own `SET NULL` after an Iteration is deleted (CO-BR-46).
+ *
+ * Ids only, never names (CO-BR-45): names are display data and ride in the activity metadata.
+ */
+export const iterationTransitions = workSchema.table(
+  'iteration_transitions',
+  {
+    id: uuid('id').primaryKey(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    /** The Story's team AT THE MOVE. NULL = project backlog. */
+    teamId: uuid('team_id'),
+    storyId: uuid('story_id')
+      .notNull()
+      .references(() => workItems.id),
+    type: iterationTransitionTypeEnum('type').notNull(),
+    /** NULL only for a Manual Move to/from Unscheduled, or after the Iteration was deleted. */
+    sourceIterationId: uuid('source_iteration_id').references(() => iterations.id, {
+      onDelete: 'set null',
+    }),
+    targetIterationId: uuid('target_iteration_id').references(() => iterations.id, {
+      onDelete: 'set null',
+    }),
+    /** The Target End Date the Carryover was confirmed with. NULL on a Manual Move. */
+    targetEndDate: date('target_end_date'),
+    actorId: uuid('actor_id'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    storyIdx: index('ix_it_story').on(t.storyId, t.occurredAt),
+    sourceIdx: index('ix_it_source').on(t.sourceIterationId, t.occurredAt),
+    targetIdx: index('ix_it_target').on(t.targetIterationId, t.occurredAt),
+  }),
+);
+
+// ── iteration_transition_tasks ────────────────────────────────────────────
+/**
+ * The per-Task effort snapshot at a CARRYOVER (CO-BR-30). Manual Moves write none (ruling R3).
+ * `actualHoursAtMove` is the cumulative Actual — the attribution boundary Team Capacity reads (D10).
+ */
+export const iterationTransitionTasks = workSchema.table(
+  'iteration_transition_tasks',
+  {
+    id: uuid('id').primaryKey(),
+    workspaceId: uuid('workspace_id').notNull(),
+    transitionId: uuid('transition_id')
+      .notNull()
+      .references(() => iterationTransitions.id, { onDelete: 'cascade' }),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id),
+    state: taskStateEnum('state').notNull(),
+    estimateHoursAtMove: numeric('estimate_hours_at_move', { precision: 8, scale: 2 }),
+    todoHoursAtMove: numeric('todo_hours_at_move', { precision: 8, scale: 2 }),
+    actualHoursAtMove: numeric('actual_hours_at_move', { precision: 8, scale: 2 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    /** LOAD-BEARING: the Team Capacity attribution join. */
+    taskIdx: index('ix_itt_task').on(t.taskId),
+    transitionIdx: index('ix_itt_transition').on(t.transitionId),
   }),
 );

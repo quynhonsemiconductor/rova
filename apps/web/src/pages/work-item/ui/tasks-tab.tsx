@@ -33,6 +33,7 @@ import { EmptyState } from '@/shared/ui/empty-state'
 import { LoadErrorState } from '@/shared/ui/load-error-state'
 import { listResource } from '@/shared/lib/query/resource'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { DateField } from '@/shared/ui/date-field'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
@@ -54,8 +55,20 @@ import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
 
 // TASK-FR-003: columns Rank, ID, Name, State, Owner, Project, Teams, To Do, Actuals, Estimate.
+// Phase 7 CO-02 adds the two system-managed lifecycle dates, read-only.
 type TaskColKey =
-  'rank' | 'id' | 'name' | 'state' | 'owner' | 'project' | 'teams' | 'todo' | 'actuals' | 'estimate'
+  | 'rank'
+  | 'id'
+  | 'name'
+  | 'state'
+  | 'owner'
+  | 'project'
+  | 'teams'
+  | 'startDate'
+  | 'actualEndDate'
+  | 'todo'
+  | 'actuals'
+  | 'estimate'
 
 // Single per-column source of truth for the Tasks tab, driven by the shared
 // useDataTable engine (identical to Projects / Team Status / Quality) so the grid
@@ -69,6 +82,8 @@ const TASK_COLUMNS: ColumnSpec<WorkItem, unknown, TaskColKey>[] = [
   { key: 'owner', label: 'Owner', defaultWidth: 150, minWidth: 120, sortCol: 'owner' },
   { key: 'project', label: 'Project', defaultWidth: 110 },
   { key: 'teams', label: 'Teams', defaultWidth: 120, sortCol: 'teams' },
+  { key: 'startDate', label: 'Start Date', defaultWidth: 108 },
+  { key: 'actualEndDate', label: 'Actual End Date', defaultWidth: 128 },
   { key: 'todo', label: 'To Do', defaultWidth: 72, align: 'right', sortCol: 'todo' },
   { key: 'actuals', label: 'Actuals', defaultWidth: 72, align: 'right', sortCol: 'actuals' },
   { key: 'estimate', label: 'Estimate', defaultWidth: 80, align: 'right', sortCol: 'estimate' },
@@ -455,6 +470,7 @@ function TaskRow({
   selected: boolean
   onToggleSelect: () => void
 }) {
+  const { t } = useTranslation('work-items')
   const update = useUpdateWorkItem(task.id)
   const {
     setNodeRef,
@@ -590,6 +606,24 @@ function TaskRow({
             <span className="text-muted-foreground">{EMPTY_VALUE}</span>
           )
         })()}
+      </div>
+      {/* Start Date / Actual End Date — system-managed (CO-02), the SAME persisted values Task Detail
+          shows (AC5), so the shared read-only `DateField` and the same `Not set` placeholder. */}
+      <div className="flex shrink-0 items-center px-2" style={colStyles.startDate}>
+        <DateField
+          value={task.startDate}
+          readOnly
+          placeholder={t('sidebar.notSet')}
+          ariaLabel={`Task ${task.itemKey} start date`}
+        />
+      </div>
+      <div className="flex shrink-0 items-center px-2" style={colStyles.actualEndDate}>
+        <DateField
+          value={task.actualEndDate}
+          readOnly
+          placeholder={t('sidebar.notSet')}
+          ariaLabel={`Task ${task.itemKey} actual end date`}
+        />
       </div>
       {/* To Do — inline editable */}
       <div className="shrink-0 px-2 text-right" style={colStyles.todo}>

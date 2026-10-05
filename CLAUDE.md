@@ -1056,6 +1056,48 @@ choices they replace):
 5. **Test Case Type is per-PROJECT and admin-editable.** Rally's is a workspace-level customisable
    dropdown; per-project is the BA's model.
 
+## Story Date Tracking and Carryover (Phase 7 CO): one event log, and what it does not bound
+
+Plan: [`docs/PLAN-phase7-story-carryover.md`](docs/PLAN-phase7-story-carryover.md). Migrations 0132
+(lifecycle dates + Target End), 0133 (`iteration_transitions` + `iteration_transition_tasks`), 0134
+(`report:export`).
+
+- **The server decides every Carryover rule; the SPA mirrors only the DATE predicate.**
+  `application/carryover-eligibility.ts` is the one expression of the window, and it backs three
+  callers — `GET /work-items/:id/carryover-options`, the `targetEndDate` PATCH validation and
+  `POST /work-items/:id/carryover`. A PATCH never moves a Story: a date after the current Iteration is
+  `TARGET_END_REQUIRES_CARRYOVER`, and only the confirmed POST moves it.
+- **Carryover events are IMMUTABLE except for one shape.** `trg_iteration_transitions_guard` refuses
+  every UPDATE/DELETE, EXCEPT the FK's own `ON DELETE SET NULL` after an Iteration is deleted —
+  Iterations ARE hard-deleted, and without that action the first Manual Move into a sprint would make
+  it undeletable. "A carryover names source, target and Target End" is therefore checked at INSERT
+  by the trigger, not by a table CHECK (which would re-run on that SET NULL and refuse it).
+- **Do not route Carryover through `updateWorkItem`.** It writes through `workItemRepo.update`
+  precisely so `autoAcceptIterationIfComplete` does NOT run for the source (the Split Q9 precedent);
+  the e2e asserts the source state is unchanged.
+- **Every user Story Iteration change is a Manual Move** (`updateWorkItem` + `bulkAssignIteration`,
+  Stories only). Split's `[Continued]` move and timebox-delete unscheduling write NO transition.
+- **Team Capacity's attribution boundary is now Split ∪ Carryover** (`splitBound`, plan D10). Same
+  window, same "both ends inside the reported set bounds nothing" rule for both kinds.
+- **The Story Detail sidebar STAGES edits** (Save/Cancel bar). A Carryover saves server-side, so the
+  field drops its staged `targetEndDate` on success (`usePendingPatch` treats `undefined` as "unstage").
+
+**Declared divergences / limitations** (product-owner rulings R1–R12 in the plan):
+
+1. **`report:export` is a NEW permission**, contrary to CO-BR-03 "no new permission" (R1/R4).
+   Granted to Workspace Admin and Project Admin, NOT to Editor. The BA's "Read-only Project Admin"
+   does not exist in this access model (only `admin`/`editor`), so there is no third level to exclude.
+2. **A Manual Move is not an Actual attribution boundary** (R3): hours logged after a manual return
+   are not attributed to the returned Iteration.
+3. **Retroactive Actual edits** for work done before a Carryover are attributed to the later
+   Iteration — `tasks.actual_hours` has no time series (the Split §8 Q1c limitation).
+4. **Carryover suppresses `autoAcceptIterationIfComplete`** for the source (Split Q9 precedent).
+5. **Lifecycle dates and Target End Date are Story-only**; Defects get none (D12).
+6. **Carryover uses STRICT team equality** (a team-less Iteration matches only a team-less Story),
+   unlike Split's shared-sprint rule (R7).
+7. **The Export button lives in each report's own controls**, not the Reports `PageHeader` the plan
+   named: the CSV must carry that report's live scope (Iteration, window, Direction).
+
 ## Observability
 
 The implementation lives in `@quynhonsemiconductor/observability` — shared with opshub, so fix it

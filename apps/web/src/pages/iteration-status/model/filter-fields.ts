@@ -50,6 +50,8 @@ export type IterationFilterKey =
   | 'planEstimate'
   | 'taskEstimate'
   | 'toDo'
+  | 'startDate'
+  | 'targetEndDate'
 
 /**
  * Column labels, read from the grid header's own metadata so a filter can never
@@ -140,6 +142,9 @@ export function useIterationFilterFields({
       { key: 'planEstimate', label: label('planEstimate'), kind: 'number' },
       { key: 'taskEstimate', label: label('taskEstimate'), kind: 'number' },
       { key: 'toDo', label: label('toDo'), kind: 'number' },
+      // Phase 7 CO-01 — a TEXT filter over the ISO date, so `2026-10` narrows to a month.
+      { key: 'startDate', label: label('startDate'), kind: 'text' },
+      { key: 'targetEndDate', label: label('targetEndDate'), kind: 'text' },
     ],
     [t, members],
   )

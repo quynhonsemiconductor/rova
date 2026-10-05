@@ -10,7 +10,8 @@
   "types": {
     "burndown": "Iteration Burndown",
     "velocity": "Velocity",
-    "capacity": "Team Capacity"
+    "capacity": "Team Capacity",
+    "carryover": "Carryover"
   },
   "units": {
     "points": "Points",

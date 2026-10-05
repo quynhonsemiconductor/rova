@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
 
 import { RELEASE_TRACKING_MAX_PAGE_SIZE } from '../../../domain/release-tracking';
+import { CARRYOVER_DIRECTION_FILTERS } from '../../../domain/carryover';
 
 /**
  * Every report query carries `projectId` and an OPTIONAL `teamId`, and nothing else about
@@ -57,6 +58,16 @@ export const TeamCapacityQuerySchema = z.object({
   iterationId: z.string().uuid(),
 });
 export class TeamCapacityQueryDto extends createZodDto(TeamCapacityQuerySchema) {}
+
+// ── GET /reports/carryover (Phase 7 CO-10) ───────────────────────────────────
+
+export const CarryoverQuerySchema = z.object({
+  ...scope,
+  iterationId: z.string().uuid(),
+  // Narrows the ROWS only (CO-BR-41) — never a KPI. Default `all`.
+  direction: z.enum(CARRYOVER_DIRECTION_FILTERS).optional(),
+});
+export class CarryoverQueryDto extends createZodDto(CarryoverQuerySchema) {}
 
 // ── GET /reports/release-tracking (+ /burnup) ────────────────────────────────
 

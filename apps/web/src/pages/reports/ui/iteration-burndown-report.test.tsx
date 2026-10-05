@@ -14,6 +14,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
+// The Export button reads the caller's project permissions; its visibility is pinned in
+// carryover-badge.test.tsx, so it is stubbed here rather than consuming this file's GET mocks.
+vi.mock('./report-export-button', () => ({ ReportExportButton: () => null }))
 vi.mock('@/shared/api/http-client', () => ({
   apiClient: { GET: vi.fn(), POST: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() },
 }))
