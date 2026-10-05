@@ -155,8 +155,11 @@ const makeWorkItemRepo = () => ({
   // PR #653 review — Manual Move source from LOCKED rows; Carryover target re-read FOR SHARE.
   // Both default to "unchanged" so a test that wants the race overrides them.
   lockRows: vi.fn(
-    async (ids: string[]): Promise<Array<{ id: string; iterationId: string | null }>> =>
-      ids.map((id) => ({ id, iterationId: 'iter-a' })),
+    async (
+      ids: string[],
+    ): Promise<
+      Array<{ id: string; iterationId: string | null; projectId: string; teamId: string | null }>
+    > => ids.map((id) => ({ id, iterationId: 'iter-a', projectId: 'proj-1', teamId: 'team-a' })),
   ),
   lockIteration: vi.fn().mockResolvedValue(null),
   findWorkspaceTimeZone: vi.fn().mockResolvedValue('UTC'),
@@ -435,15 +438,26 @@ describe('WorkItemsService', () => {
      * directly, so the lock does not inflate `findById` / `findByIds` call counts other tests assert.
      */
     workItemRepo.lockRows.mockImplementation(async (ids: string[]) => {
+      type Scoped = {
+        id?: string;
+        iterationId: string | null;
+        projectId: string;
+        teamId: string | null;
+      };
       const bulk = ((await workItemRepo.findByIds.getMockImplementation()?.(ids, 'ws-1')) ??
-        []) as Array<{ id: string; iterationId: string | null }>;
+        []) as Scoped[];
       return Promise.all(
         ids.map(async (id) => {
           const row =
             bulk.find((b) => b.id === id) ??
             ((await workItemRepo.findById.getMockImplementation()?.(id, 'ws-1')) as
-              { iterationId: string | null } | undefined);
-          return { id, iterationId: row?.iterationId ?? null };
+              Scoped | undefined);
+          return {
+            id,
+            iterationId: row?.iterationId ?? null,
+            projectId: row?.projectId ?? 'proj-1',
+            teamId: row?.teamId ?? null,
+          };
         }),
       );
     });
@@ -3264,7 +3278,12 @@ describe('WorkItemsService', () => {
       workItemRepo.update.mockImplementation(async (id: string) => mockWorkItem({ id }));
       projectsService.generateItemKey.mockResolvedValue('US-7');
       // The row lock reads the Story back INSIDE the transaction; unmoved by default.
-      workItemRepo.lockRow.mockResolvedValue({ id: 'wi-1', iterationId: SOURCE.id });
+      workItemRepo.lockRow.mockResolvedValue({
+        id: 'wi-1',
+        iterationId: SOURCE.id,
+        projectId: 'proj-1',
+        teamId: 'team-a',
+      });
     });
 
     // ── What is written ───────────────────────────────────────────────────────
@@ -3497,7 +3516,12 @@ describe('WorkItemsService', () => {
       // lock, and by the time it acquired it the winner had already moved the Story forward. Without
       // this the e2e minted TWO placeholders — the risk register's "concurrent confirms" item, which
       // the D9 echo alone does not close.
-      workItemRepo.lockRow.mockResolvedValue({ id: 'wi-1', iterationId: TARGET.id });
+      workItemRepo.lockRow.mockResolvedValue({
+        id: 'wi-1',
+        iterationId: TARGET.id,
+        projectId: 'proj-1',
+        teamId: 'team-a',
+      });
       await expect(service.splitWorkItem(mockActor, 'wi-1', input())).rejects.toMatchObject({
         code: 'SPLIT_SOURCE_ITERATION_CHANGED',
       });
@@ -3633,7 +3657,12 @@ describe('WorkItemsService', () => {
       workItemRepo.findById.mockResolvedValue(story());
       workItemRepo.listProjectIterations.mockResolvedValue([A, B, SHARED]);
       workItemRepo.listTasksByParent.mockResolvedValue([]);
-      workItemRepo.lockRow.mockResolvedValue({ id: 'wi-1', iterationId: A.id });
+      workItemRepo.lockRow.mockResolvedValue({
+        id: 'wi-1',
+        iterationId: A.id,
+        projectId: 'proj-1',
+        teamId: 'team-a',
+      });
       workItemRepo.lockIteration.mockImplementation(
         async (id: string) => [A, B, SHARED].find((it) => it.id === id) ?? null,
       );
@@ -3816,6 +3845,20 @@ describe('WorkItemsService', () => {
         expect(transitionRepo.create).not.toHaveBeenCalled();
       });
 
+      it('judges R7 on the LOCKED team, and records it — a concurrent Team change refuses (round 3)', async () => {
+        // Read as Team A before the transaction; another writer moved it to Team B before the lock.
+        workItemRepo.lockRow.mockResolvedValue({
+          id: 'wi-1',
+          iterationId: A.id,
+          projectId: 'proj-1',
+          teamId: 'team-b',
+        });
+        await expect(service.carryOverWorkItem(mockActor, 'wi-1', body)).rejects.toMatchObject({
+          code: 'CARRYOVER_TARGET_INVALID',
+        });
+        expect(transitionRepo.create).not.toHaveBeenCalled();
+      });
+
       it('re-validates the TARGET window under the lock — refused if the date fell out of it', async () => {
         workItemRepo.lockIteration.mockResolvedValue({ ...B, endDate: '2026-06-18' });
         await expect(service.carryOverWorkItem(mockActor, 'wi-1', body)).rejects.toMatchObject({
@@ -3835,7 +3878,12 @@ describe('WorkItemsService', () => {
       });
 
       it('refuses the concurrent loser after the row lock', async () => {
-        workItemRepo.lockRow.mockResolvedValue({ id: 'wi-1', iterationId: 'iter-b' });
+        workItemRepo.lockRow.mockResolvedValue({
+          id: 'wi-1',
+          iterationId: 'iter-b',
+          projectId: 'proj-1',
+          teamId: 'team-a',
+        });
         await expect(service.carryOverWorkItem(mockActor, 'wi-1', body)).rejects.toMatchObject({
           code: 'CARRYOVER_SOURCE_ITERATION_CHANGED',
         });
@@ -3909,12 +3957,30 @@ describe('WorkItemsService', () => {
         expect(workItemRepo.lockRows).not.toHaveBeenCalled();
       });
 
+      it("refuses, and writes no event, when another writer changed the Story's TEAM first (round 3)", async () => {
+        workItemRepo.findIterationScope.mockResolvedValue({
+          projectId: 'proj-1',
+          teamId: 'team-a',
+        });
+        workItemRepo.lockRows.mockResolvedValue([
+          { id: 'wi-1', iterationId: 'iter-a', projectId: 'proj-1', teamId: 'team-b' },
+        ]);
+        await expect(
+          service.updateWorkItem(mockActor, 'wi-1', { iterationId: 'iter-b' }),
+        ).rejects.toMatchObject({
+          code: 'WORK_ITEM_ITERATION_CHANGED',
+        });
+        expect(transitionRepo.createMany).not.toHaveBeenCalled();
+      });
+
       it('refuses, and writes no event, when another writer moved the Story first (PR #653 review)', async () => {
         workItemRepo.findIterationScope.mockResolvedValue({
           projectId: 'proj-1',
           teamId: 'team-a',
         });
-        workItemRepo.lockRows.mockResolvedValue([{ id: 'wi-1', iterationId: 'iter-shared' }]);
+        workItemRepo.lockRows.mockResolvedValue([
+          { id: 'wi-1', iterationId: 'iter-shared', projectId: 'proj-1', teamId: 'team-a' },
+        ]);
         await expect(
           service.updateWorkItem(mockActor, 'wi-1', { iterationId: 'iter-b' }),
         ).rejects.toMatchObject({ code: 'WORK_ITEM_ITERATION_CHANGED' });

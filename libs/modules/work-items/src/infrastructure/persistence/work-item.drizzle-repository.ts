@@ -386,9 +386,19 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     id: string,
     workspaceId: string,
     executor: DbExecutor,
-  ): Promise<{ id: string; iterationId: string | null } | null> {
+  ): Promise<{
+    id: string;
+    iterationId: string | null;
+    projectId: string;
+    teamId: string | null;
+  } | null> {
     const rows = await executor
-      .select({ id: workItems.id, iterationId: workItems.iterationId })
+      .select({
+        id: workItems.id,
+        iterationId: workItems.iterationId,
+        projectId: workItems.projectId,
+        teamId: workItems.teamId,
+      })
       .from(workItems)
       .where(
         and(
@@ -406,10 +416,17 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     ids: string[],
     workspaceId: string,
     executor: DbExecutor,
-  ): Promise<Array<{ id: string; iterationId: string | null }>> {
+  ): Promise<
+    Array<{ id: string; iterationId: string | null; projectId: string; teamId: string | null }>
+  > {
     if (ids.length === 0) return [];
     return executor
-      .select({ id: workItems.id, iterationId: workItems.iterationId })
+      .select({
+        id: workItems.id,
+        iterationId: workItems.iterationId,
+        projectId: workItems.projectId,
+        teamId: workItems.teamId,
+      })
       .from(workItems)
       .where(
         and(

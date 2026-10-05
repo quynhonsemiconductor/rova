@@ -294,7 +294,12 @@ export interface IWorkItemRepository {
     id: string,
     workspaceId: string,
     executor: DbExecutor,
-  ): Promise<{ id: string; iterationId: string | null } | null>;
+  ): Promise<{
+    id: string;
+    iterationId: string | null;
+    projectId: string;
+    teamId: string | null;
+  } | null>;
   /**
    * `SELECT … FOR UPDATE` on several Stories at once, returning each locked row's CURRENT Iteration
    * (PR #653 review). A Manual Move is an immutable event, so its `source_iteration_id` must come from
@@ -305,7 +310,9 @@ export interface IWorkItemRepository {
     ids: string[],
     workspaceId: string,
     executor: DbExecutor,
-  ): Promise<Array<{ id: string; iterationId: string | null }>>;
+  ): Promise<
+    Array<{ id: string; iterationId: string | null; projectId: string; teamId: string | null }>
+  >;
   /**
    * One Iteration, re-read `FOR SHARE` inside the Carryover transaction (PR #653 review): the target's
    * state or window may have changed since the pre-check, and the move must not land in a sprint that

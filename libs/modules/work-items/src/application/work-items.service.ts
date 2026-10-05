@@ -2085,6 +2085,13 @@ export class WorkItemsService {
           'This story has moved to a different iteration since the carryover was opened',
         );
       }
+      /**
+       * Everything the rule and the immutable event read about the STORY comes from the LOCKED row
+       * (PR #653 review, round 3): a concurrent Team change committed between `requireReadable` and
+       * the lock would otherwise pass R7's strict team check on a stale team and be recorded in the
+       * event. Only scope fields are taken; the rest of `story` is display data.
+       */
+      const lockedStory = { ...story, projectId: locked.projectId, teamId: locked.teamId };
 
       /**
        * Re-validate BOTH Iterations under the lock (PR #653 review, rounds 1 and 2). The eligible set
@@ -2100,7 +2107,7 @@ export class WorkItemsService {
       if (
         !lockedSource ||
         !lockedTarget ||
-        !isEligibleIteration(story, lockedTarget, lockedSource) ||
+        !isEligibleIteration(lockedStory, lockedTarget, lockedSource) ||
         !containsDate(lockedTarget, input.targetEndDate) ||
         lockedSource.endDate === null ||
         input.targetEndDate <= lockedSource.endDate
@@ -2125,8 +2132,8 @@ export class WorkItemsService {
         {
           id: transitionId,
           workspaceId: actor.workspaceId,
-          projectId: story.projectId,
-          teamId: story.teamId,
+          projectId: lockedStory.projectId,
+          teamId: lockedStory.teamId,
           storyId: id,
           type: 'carryover',
           sourceIterationId: current.id,
@@ -2197,12 +2204,15 @@ export class WorkItemsService {
       stories[0].workspaceId,
       tx,
     );
-    const current = new Map(locked.map((row) => [row.id, row.iterationId]));
+    const current = new Map(locked.map((row) => [row.id, row]));
     for (const story of stories) {
-      if (!current.has(story.id) || current.get(story.id) !== story.iterationId) {
+      const row = current.get(story.id);
+      // The Iteration AND the Team the event records must be the locked row's (PR #653 review,
+      // round 3): a concurrent Team change would otherwise be written into the immutable log too.
+      if (!row || row.iterationId !== story.iterationId || row.teamId !== story.teamId) {
         throw new PreconditionFailedException(
           'WORK_ITEM_ITERATION_CHANGED',
-          'This story was moved to another iteration by someone else — reload and try again',
+          'This story was changed by someone else since you opened it — reload and try again',
         );
       }
     }
