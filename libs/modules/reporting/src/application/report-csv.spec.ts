@@ -35,4 +35,9 @@ describe('exportFilename', () => {
       'carryover-NextGen-Platform-Sprint-26-1.csv',
     );
   });
+  it('never ends a truncated part on a hyphen', () => {
+    // 59 letters then a space: the hyphen it becomes is char 60, exactly where the cut lands.
+    const name = exportFilename('carryover', `${'a'.repeat(59)} tail`, 'S1');
+    expect(name).toBe(`carryover-${'a'.repeat(59)}-S1.csv`);
+  });
 });

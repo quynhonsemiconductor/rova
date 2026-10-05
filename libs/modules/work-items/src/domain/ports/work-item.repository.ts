@@ -295,6 +295,27 @@ export interface IWorkItemRepository {
     workspaceId: string,
     executor: DbExecutor,
   ): Promise<{ id: string; iterationId: string | null } | null>;
+  /**
+   * `SELECT … FOR UPDATE` on several Stories at once, returning each locked row's CURRENT Iteration
+   * (PR #653 review). A Manual Move is an immutable event, so its `source_iteration_id` must come from
+   * the locked row, not from a read taken before the transaction — otherwise a concurrent move makes
+   * the log record a source the Story never had. Ordered by id so two writers lock in the same order.
+   */
+  lockRows(
+    ids: string[],
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<Array<{ id: string; iterationId: string | null }>>;
+  /**
+   * One Iteration, re-read `FOR SHARE` inside the Carryover transaction (PR #653 review): the target's
+   * state or window may have changed since the pre-check, and the move must not land in a sprint that
+   * has since been accepted. FOR SHARE blocks a concurrent state change until commit.
+   */
+  lockIteration(
+    iterationId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<SplitIterationCandidateRow | null>;
   softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void>;
   /**
    * EVERY live Task of a Story with its state and hours, read on the Carryover's own transaction

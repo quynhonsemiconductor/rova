@@ -1,4 +1,8 @@
-import type { IterationTransitionType, TaskState } from '../../../../../db/schema/enums';
+import type {
+  IterationState,
+  IterationTransitionType,
+  TaskState,
+} from '../../../../../db/schema/enums';
 import type { WorkItem } from './work-item.types';
 
 /**
@@ -62,7 +66,7 @@ export interface CarryoverOptionIteration {
   id: string;
   name: string;
   iterationKey: string | null;
-  state: string;
+  state: IterationState;
   startDate: string;
   endDate: string;
   teamId: string | null;

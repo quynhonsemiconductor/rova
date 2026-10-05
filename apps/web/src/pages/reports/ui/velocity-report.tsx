@@ -100,7 +100,10 @@ export function VelocityReport({
               <option value="10">{t('velocity.windowLast', { count: 10 })}</option>
             </CompactSelect>
           </label>
-          <ReportExportButton request={{ report: 'velocity', projectId, teamId, window }} />
+          <ReportExportButton
+            projectId={projectId}
+            request={{ report: 'velocity', projectId, teamId, window }}
+          />
         </>
       }
       // The three averages were a centred block above the chart; every other summary in the app

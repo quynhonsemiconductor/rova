@@ -154,8 +154,9 @@ export class ReportingService {
          */
         this.repo.findSplitsBySourceIteration(workspaceId, iterationIds, scope),
         this.repo.findSplitsByTargetIteration(workspaceId, iterationIds, scope),
-        // Phase 7 Carryover (CO-08) — the compact badge, over the same fused timebox.
-        this.repo.findCarryoverEvents(workspaceId, args.projectId, scope),
+        // Phase 7 Carryover (CO-08) — the compact badge, over the same fused timebox, reading only the
+        // events that touch it (the badge never needs the rest of the project's history).
+        this.repo.findCarryoverEvents(workspaceId, args.projectId, scope, iterationIds),
       ]);
 
     const timebox = this.toTimebox(selected, participating);
@@ -277,7 +278,7 @@ export class ReportingService {
     const [capacities, taskHours, carryoverEvents] = await Promise.all([
       this.repo.getCapacityRecords(workspaceId, args.projectId, iterationIds, scope),
       this.repo.getScopedTaskHours(workspaceId, args.projectId, iterationIds, scope),
-      this.repo.findCarryoverEvents(workspaceId, args.projectId, scope),
+      this.repo.findCarryoverEvents(workspaceId, args.projectId, scope, iterationIds),
     ]);
 
     const rollup = rollUpTeamCapacity({ capacities, tasks: taskHours });

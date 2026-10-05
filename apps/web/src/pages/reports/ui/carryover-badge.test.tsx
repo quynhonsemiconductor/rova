@@ -46,13 +46,13 @@ describe('ReportExportButton', () => {
 
   it('is shown to a holder of report:export', () => {
     can.mockImplementation((code: string) => code === 'report:export')
-    render(<ReportExportButton request={request} />)
+    render(<ReportExportButton projectId="p1" request={request} />)
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument()
   })
 
   it('is hidden without report:export', () => {
     can.mockReturnValue(false)
-    render(<ReportExportButton request={request} />)
+    render(<ReportExportButton projectId="p1" request={request} />)
     expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull()
   })
 })

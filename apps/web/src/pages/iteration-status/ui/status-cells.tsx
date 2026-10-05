@@ -5,6 +5,7 @@ import { BRAND } from '@/shared/config/brand'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { DateField } from '@/shared/ui/date-field'
+import type { IterationStatusItem } from '@/features/iterations/api'
 
 // ── Cell primitives (Rally-style chips / pills / progress) ──────────────────
 
@@ -14,24 +15,24 @@ import { DateField } from '@/shared/ui/date-field'
  * STORY rows only (SRS §5.3): a Defect carries neither date, and `Not set` on one would claim a date
  * could exist there. Task rows render an empty cell for the column, as for Plan Estimate.
  * Its own cell so `status-row.tsx`, close to the file-size ceiling, takes one line per column.
+ *
+ * NO `ariaLabel` (PR 653 review): the read-only `DateField` renders a plain span and never applied
+ * it, and ARIA prohibits naming a generic element anyway. Like every other cell in this div-based
+ * grid, the column header names it; a real fix is grid roles for the whole row, not one cell.
  */
 export function StoryDateCell({
   type,
   value,
   style,
-  ariaLabel,
 }: {
-  type: string
+  type: IterationStatusItem['type']
   value: string | null | undefined
   style: CSSProperties
-  ariaLabel: string
 }) {
   const { t } = useTranslation('iteration-status')
   return (
     <div style={style} className="flex items-center overflow-hidden px-2">
-      {type === 'story' && (
-        <DateField value={value} readOnly ariaLabel={ariaLabel} placeholder={t('cells.notSet')} />
-      )}
+      {type === 'story' && <DateField value={value} readOnly placeholder={t('cells.notSet')} />}
     </div>
   )
 }

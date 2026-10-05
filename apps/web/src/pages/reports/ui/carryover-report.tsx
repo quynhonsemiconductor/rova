@@ -12,7 +12,11 @@ import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts'
 import { BRAND } from '@/shared/config/brand'
 import { useIterationOptions } from '@/features/iterations/api'
 import { listResource } from '@/shared/lib/query/resource'
-import { useCarryoverReport, type CarryoverDirection } from '@/features/reporting/api'
+import {
+  rowsForDirection,
+  useCarryoverReport,
+  type CarryoverDirection,
+} from '@/features/reporting/api'
 import { iterationsInScope, reportScopeLabel } from '@/features/reporting/scope'
 import { EMPTY_VALUE, NUMERIC_CELL_CLASS, formatDateIso } from '@/shared/lib/utils'
 import {
@@ -72,11 +76,12 @@ export function CarryoverReport({
     projectId,
     teamId,
     iterationId: selectedId ?? undefined,
-    direction,
   })
 
+  // KPIs and trend come from ONE response per Iteration; Direction only narrows the rows below
+  // (CO-BR-41), so switching it can never move a KPI.
   const kpis = data?.kpis
-  const rows = data?.rows ?? []
+  const rows = rowsForDirection(data?.rows ?? [], direction)
   const trend = data?.trend ?? []
 
   return (
@@ -108,6 +113,7 @@ export function CarryoverReport({
             </CompactSelect>
           </label>
           <ReportExportButton
+            projectId={projectId}
             request={
               selectedId
                 ? { report: 'carryover', projectId, teamId, iterationId: selectedId, direction }

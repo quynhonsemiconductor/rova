@@ -68,6 +68,7 @@ import {
 } from './dto/carryover.dto';
 import type { WorkItem } from '../../domain/work-item.types';
 import type { WorkItemDetail } from '../../domain/story-split.types';
+import type { IterationTransition } from '../../domain/iteration-transition.types';
 import { BACKLOG_SORT_FIELDS } from '../../domain/work-item.types';
 import type { ActivityLog } from '@modules/activity';
 import type { TimeLog } from '../../domain/time-log.types';
@@ -134,11 +135,12 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
     devOwnerId: w.devOwnerId,
     defectState: w.defectState,
     fixedInBuild: w.fixedInBuild,
-    // Phase 7 Carryover (0132). `?? null` for the same reason as the owner names: a read path that
-    // projects columns explicitly must not change the response shape.
-    startDate: w.startDate ?? null,
-    actualEndDate: w.actualEndDate ?? null,
-    targetEndDate: w.targetEndDate ?? null,
+    // Phase 7 Carryover (0132). Every Story/Defect read selects the whole row (`select()` /
+    // `getTableColumns`) and both Task projections set these explicitly, so the domain type carries
+    // them as non-optional `string | null` — no `?? null` here to hide a projection that dropped one.
+    startDate: w.startDate,
+    actualEndDate: w.actualEndDate,
+    targetEndDate: w.targetEndDate,
   };
 }
 
@@ -154,6 +156,26 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
  */
 function toWorkItemDetailDto(detail: WorkItemDetail): WorkItemDetailResponseDto {
   return { ...toWorkItemDto(detail.item), splitLink: detail.splitLink };
+}
+
+/**
+ * The Carryover event as the CONTRACT declares it — listed field by field, so the wire shape is the
+ * schema's (no `workspaceId`, which the domain row carries and the client has no use for).
+ */
+function toTransitionDto(t: IterationTransition): CarryOverWorkItemResponseDto['transition'] {
+  return {
+    id: t.id,
+    projectId: t.projectId,
+    teamId: t.teamId,
+    storyId: t.storyId,
+    type: t.type,
+    sourceIterationId: t.sourceIterationId,
+    targetIterationId: t.targetIterationId,
+    targetEndDate: t.targetEndDate,
+    actorId: t.actorId,
+    occurredAt: t.occurredAt,
+    createdAt: t.createdAt,
+  };
 }
 
 function toActivityDto(a: ActivityLog): ActivityResponseDto {
@@ -745,7 +767,10 @@ export class WorkItemsController {
     @Body() dto: CarryOverWorkItemDto,
   ): Promise<CarryOverWorkItemResponseDto> {
     const result = await this.workItemsService.carryOverWorkItem(user, id, dto);
-    return { transition: result.transition, workItem: toWorkItemDto(result.workItem) };
+    return {
+      transition: toTransitionDto(result.transition),
+      workItem: toWorkItemDto(result.workItem),
+    };
   }
 
   // ── Activity (Revision History) ──────────────────────────────────────────────

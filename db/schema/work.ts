@@ -1672,6 +1672,10 @@ export const iterationTransitions = workSchema.table(
     projectId: uuid('project_id').notNull(),
     /** The Story's team AT THE MOVE. NULL = project backlog. */
     teamId: uuid('team_id'),
+    /**
+     * NO `onDelete` — deliberate (0133): history outlives its Story. Stories are soft-deleted on every
+     * product path, so this only stops a raw hard DELETE orphaning an immutable event.
+     */
     storyId: uuid('story_id')
       .notNull()
       .references(() => workItems.id),
@@ -1709,6 +1713,10 @@ export const iterationTransitionTasks = workSchema.table(
     transitionId: uuid('transition_id')
       .notNull()
       .references(() => iterationTransitions.id, { onDelete: 'cascade' }),
+    /**
+     * NO `onDelete` — deliberate (0133): Tasks are soft-deleted on every product path; CASCADE would
+     * be refused by the immutability trigger and SET NULL would erase whose Actual a boundary is.
+     */
     taskId: uuid('task_id')
       .notNull()
       .references(() => tasks.id),

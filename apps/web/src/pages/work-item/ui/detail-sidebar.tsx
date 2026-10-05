@@ -593,11 +593,19 @@ export function DetailSidebar({
                 }}
               />
             </FormField>
-            {/* Story lifecycle dates (CO-01), directly under the Iteration they are read against. */}
-            <StartDateField item={item} />
-            <ActualEndDateField item={item} />
-            {/* Target End Date (CO-03) — Story-only; renders nothing for a Defect. */}
-            <TargetEndDateField item={item} onUpdate={onUpdate} readOnly={disabled} />
+            {/*
+              Story lifecycle dates (CO-01) and Target End Date (CO-03), directly under the Iteration
+              they are read against. This whole block is already `!isTask`; the explicit Story gate
+              makes the scope visible here rather than relying on each field's own `defect` check —
+              a Task shows its dates once, in the Task block above (PR 653 review).
+            */}
+            {item.type === 'story' && (
+              <>
+                <StartDateField item={item} />
+                <ActualEndDateField item={item} />
+                <TargetEndDateField item={item} onUpdate={onUpdate} readOnly={disabled} />
+              </>
+            )}
             {/*
               Release — HIDDEN, not disabled, for a caller who may not assign one.
 

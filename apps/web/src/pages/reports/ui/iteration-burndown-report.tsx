@@ -168,6 +168,7 @@ export function IterationBurndownReport({
           <span className="text-ui-xs font-semibold text-foreground-subtle">{t('iteration')}</span>
           <IterationPicker iterations={iterations} selectedId={selectedId} onSelect={select} />
           <ReportExportButton
+            projectId={projectId}
             request={
               selectedId ? { report: 'burndown', projectId, teamId, iterationId: selectedId } : null
             }
@@ -274,13 +275,13 @@ export function IterationBurndownReport({
         }
         footer={
           <>
-            {/* Phase 7 CO-08 — compact Carryover context; the series and Split markers are untouched. */}
-            <div className="mt-2 flex justify-center">
-              <CarryoverBadge
-                summary={data?.carryover}
-                onOpenReport={() => selectedId && onOpenCarryover?.(selectedId)}
-              />
-            </div>
+            {/* Phase 7 CO-08 — compact Carryover context; the series and Split markers are untouched.
+                The badge owns its hide decision and chrome, so nothing stays behind when it hides. */}
+            <CarryoverBadge
+              summary={data?.carryover}
+              onOpenReport={() => selectedId && onOpenCarryover?.(selectedId)}
+              className="mx-auto mt-2"
+            />
             {notes.length > 0 ? (
               <p className="mt-2 text-center text-ui-xs text-foreground-subtle">
                 {notes.join(' ')}

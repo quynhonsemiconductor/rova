@@ -152,6 +152,8 @@ export function exportFilename(report: string, project: string, scope: string): 
       .replace(/[^\w.-]+/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '')
-      .slice(0, 60) || 'report';
+      .slice(0, 60)
+      // Trim AGAIN after the cut: truncation can land on a hyphen (#653 review).
+      .replace(/-+$/, '') || 'report';
   return `${slug(report)}-${slug(project)}-${slug(scope)}.csv`;
 }

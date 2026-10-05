@@ -27,12 +27,24 @@ interface Timebox {
  * an iteration can be deleted, or the user can switch to a project where that id means
  * nothing, and a stale id would make the report look empty rather than fall back.
  */
+/**
+ * THE one spelling of the persisted last-viewed-iteration key (PR 653 review). The Reports page
+ * writes it to hand the Carryover report the badge's Iteration, and this hook reads it — a key built
+ * by string template in two files is a contract nothing checks.
+ */
+export function lastAccessedIterationKey(projectId: string): string {
+  return `${STORAGE_KEYS.LAST_ACCESSED_ITERATION}:${projectId}`
+}
+
+/** Persist `iterationId` as the project's last-viewed Iteration, read by {@link useSelectedIteration}. */
+export function rememberIteration(projectId: string, iterationId: string): void {
+  localStorage.setItem(lastAccessedIterationKey(projectId), iterationId)
+}
+
 export function useSelectedIteration(projectId: string | undefined, iterations: Timebox[]) {
   const [chosenId, setChosenId] = useState<string | null>(null)
 
-  const persistedId = projectId
-    ? localStorage.getItem(`${STORAGE_KEYS.LAST_ACCESSED_ITERATION}:${projectId}`)
-    : null
+  const persistedId = projectId ? localStorage.getItem(lastAccessedIterationKey(projectId)) : null
 
   const selectedId =
     chosenId && iterations.some((i) => i.id === chosenId)
@@ -43,7 +55,7 @@ export function useSelectedIteration(projectId: string | undefined, iterations: 
 
   function select(id: string) {
     setChosenId(id)
-    if (projectId) localStorage.setItem(`${STORAGE_KEYS.LAST_ACCESSED_ITERATION}:${projectId}`, id)
+    if (projectId) rememberIteration(projectId, id)
   }
 
   return { selectedId, select }

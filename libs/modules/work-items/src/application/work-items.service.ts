@@ -102,7 +102,9 @@ import type { TimeLog } from '../domain/time-log.types';
 import type { Watcher } from '../domain/watcher.types';
 import { diffWorkItem } from './activity-diff';
 import {
+  containsDate,
   eligibleIterations,
+  isEligibleIteration,
   isEnabledDate,
   minDate as carryoverMinDate,
   resolveTargets,
@@ -1961,8 +1963,11 @@ export class WorkItemsService {
    * D7 — validate a `targetEndDate` in a PATCH. The server never MOVES on a PATCH: a date after the
    * current Iteration is refused and must go through the confirmed Carryover.
    *
-   * Evaluated against the Iteration the Story will be in AFTER the patch, so a simultaneous Iteration
-   * change is judged on its destination.
+   * A date may not ride along with an Iteration CHANGE in the same patch (PR #653 review). Judging it
+   * on the destination let "move to a later sprint + a date inside it" through as a Manual Move plus a
+   * plain save — the end state of a Carryover with no snapshot and no Carryover event — while the same
+   * date alone was refused. One rule per end state: move first (a Manual Move), then set the date, or
+   * use the Carryover. Clearing (`null`) is exempt; it never moves anything.
    */
   private async assertTargetEndDate(item: WorkItem, input: UpdateWorkItemInput): Promise<void> {
     if (input.targetEndDate === undefined) return;
@@ -1975,8 +1980,21 @@ export class WorkItemsService {
     // CO-BR-12/28 — clearing is always allowed to an editor, and touches nothing else.
     if (input.targetEndDate === null) return;
 
-    const iterationId = input.iterationId !== undefined ? input.iterationId : item.iterationId;
-    const { current, eligible } = await this.carryoverContext(item, iterationId);
+    if (input.iterationId !== undefined && input.iterationId !== item.iterationId) {
+      throw new PreconditionFailedException(
+        'TARGET_END_WITH_ITERATION_CHANGE',
+        'Save the iteration change first, then set the Target End Date (or confirm a Carryover)',
+      );
+    }
+    if (item.iterationId === null) {
+      // R6 — no window exists, so no date can satisfy the picker; say so rather than "pick another".
+      throw new PreconditionFailedException(
+        'TARGET_END_REQUIRES_ITERATION',
+        'Schedule the story into an iteration before setting a Target End Date',
+      );
+    }
+
+    const { current, eligible } = await this.carryoverContext(item);
     const verdict = current
       ? targetEndVerdict(input.targetEndDate, item, current, eligible)
       : 'invalid';
@@ -2060,6 +2078,24 @@ export class WorkItemsService {
         );
       }
 
+      /**
+       * Re-validate the TARGET under the lock too (PR #653 review). The eligible set above was read
+       * before the transaction; between it and the commit the target may have been accepted or had its
+       * window edited. `FOR SHARE` blocks a concurrent state change until this commits, so the check
+       * and the move see the same row.
+       */
+      const lockedTarget = await this.workItemRepo.lockIteration(target.id, actor.workspaceId, tx);
+      if (
+        !lockedTarget ||
+        !isEligibleIteration(story, lockedTarget, current) ||
+        !containsDate(lockedTarget, input.targetEndDate)
+      ) {
+        throw new PreconditionFailedException(
+          'CARRYOVER_TARGET_INVALID',
+          'Choose a later iteration that contains the Target End Date',
+        );
+      }
+
       // The snapshot is read on the locked transaction, before the move.
       const tasks = await this.workItemRepo.listTaskSnapshots(id, actor.workspaceId, tx);
 
@@ -2133,51 +2169,82 @@ export class WorkItemsService {
   }
 
   /**
-   * D9 — record a MANUAL MOVE for a Story whose Iteration a user changed (ruling R8), inside the
-   * caller's transaction: one `manual_move` transition (no Task snapshot — R3) and one
-   * `work_item.iteration_moved` activity entry. Never touches a Carryover row.
+   * Lock the Stories about to be moved and prove each is still where the caller read it (PR #653
+   * review). A Manual Move is an IMMUTABLE event whose `source_iteration_id` comes from that read, so
+   * it must not be written for a Story another writer (a Carryover confirm, a bulk assign) moved in
+   * between — that would record a source the Story never had, uncorrectably. Call BEFORE the write
+   * that changes `iteration_id`, on the same transaction. One query for the whole batch.
    */
-  private async recordManualMove(
+  private async lockForManualMove(tx: DbExecutor, stories: readonly WorkItem[]): Promise<void> {
+    if (stories.length === 0) return;
+    const locked = await this.workItemRepo.lockRows(
+      stories.map((story) => story.id),
+      stories[0].workspaceId,
+      tx,
+    );
+    const current = new Map(locked.map((row) => [row.id, row.iterationId]));
+    for (const story of stories) {
+      if (!current.has(story.id) || current.get(story.id) !== story.iterationId) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_ITERATION_CHANGED',
+          'This story was moved to another iteration by someone else — reload and try again',
+        );
+      }
+    }
+  }
+
+  /**
+   * D9 — record a MANUAL MOVE for each Story whose Iteration a user changed (ruling R8), inside the
+   * caller's transaction: `manual_move` transitions (no Task snapshot — R3) and one
+   * `work_item.iteration_moved` entry each, as TWO multi-row inserts however many Stories move.
+   * Never touches a Carryover row. The `stories` are the rows {@link lockForManualMove} verified.
+   */
+  private async recordManualMoves(
     tx: DbExecutor,
     actor: JwtPayload,
-    story: WorkItem,
+    stories: readonly WorkItem[],
     targetIterationId: string | null,
     iterationNames: ReadonlyMap<string, string>,
   ): Promise<void> {
-    const transitionId = uuidv7();
-    await this.transitionRepo.create(
-      {
+    if (stories.length === 0) return;
+    const occurredAt = new Date();
+    const moves = stories.map((story) => ({ story, transitionId: uuidv7() }));
+    await this.transitionRepo.createMany(
+      moves.map(({ story, transitionId }) => ({
         id: transitionId,
         workspaceId: story.workspaceId,
         projectId: story.projectId,
         teamId: story.teamId,
         storyId: story.id,
-        type: 'manual_move',
+        type: 'manual_move' as const,
         sourceIterationId: story.iterationId,
         targetIterationId,
         targetEndDate: null,
         actorId: actor.sub,
-        occurredAt: new Date(),
-      },
-      [],
+        occurredAt,
+      })),
       tx,
     );
     const name = (iterationId: string | null) =>
       iterationId === null ? null : (iterationNames.get(iterationId) ?? null);
-    await this.appendActivity(
+    await this.appendMany(
+      moves.map(({ story, transitionId }) =>
+        this.buildActivityInput(
+          story,
+          'work_item',
+          actor.sub,
+          'work_item.iteration_moved',
+          { field: 'iterationId', old: story.iterationId, new: targetIterationId },
+          {
+            transitionId,
+            sourceIterationId: story.iterationId,
+            sourceIterationName: name(story.iterationId),
+            targetIterationId,
+            targetIterationName: name(targetIterationId),
+          },
+        ),
+      ),
       tx,
-      story,
-      'work_item',
-      actor.sub,
-      'work_item.iteration_moved',
-      { field: 'iterationId', old: story.iterationId, new: targetIterationId },
-      {
-        transitionId,
-        sourceIterationId: story.iterationId,
-        sourceIterationName: name(story.iterationId),
-        targetIterationId,
-        targetIterationName: name(targetIterationId),
-      },
     );
   }
 
@@ -2524,6 +2591,9 @@ export class WorkItemsService {
         rerank = { rank: between(maxRank, null) };
       }
 
+      // A Manual Move's source is read from the LOCKED row, before this write changes it.
+      if (storyMove) await this.lockForManualMove(tx, [item]);
+
       const updatedInTx = await this.workItemRepo.update(
         id,
         { ...input, ...rerank, ...clearReasonOnUnblock(input), updatedBy: actor.sub },
@@ -2540,7 +2610,7 @@ export class WorkItemsService {
       );
       await this.appendMany(activityInputs, tx);
       if (storyMove && storyMoveNames) {
-        await this.recordManualMove(tx, actor, item, input.iterationId ?? null, storyMoveNames);
+        await this.recordManualMoves(tx, actor, [item], input.iterationId ?? null, storyMoveNames);
       }
 
       /**
@@ -3354,6 +3424,8 @@ export class WorkItemsService {
       movedStories.length > 0 ? await this.iterationNameMap(projectId, actor.workspaceId) : null;
 
     await this.uow.run(async (tx) => {
+      // Lock + verify BEFORE the write, so each Manual Move's source is the Story's real prior one.
+      await this.lockForManualMove(tx, movedStories);
       await this.workItemRepo.assignIteration(
         items.map((i) => i.id),
         iterationId,
@@ -3362,9 +3434,7 @@ export class WorkItemsService {
         tx,
       );
       if (iterationNames) {
-        for (const story of movedStories) {
-          await this.recordManualMove(tx, actor, story, iterationId, iterationNames);
-        }
+        await this.recordManualMoves(tx, actor, movedStories, iterationId, iterationNames);
       }
       for (const affected of affectedIterations) {
         const flipped = await this.workItemRepo.autoAcceptIterationIfComplete(

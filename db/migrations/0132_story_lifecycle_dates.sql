@@ -60,6 +60,14 @@ $$;--> statement-breakpoint
 -- Task state transitions are logged as `task.state_changed` with the SCHEDULE-state value the caller
 -- sent (`activity-diff.ts` TASK_ACTIONS); the repository projects `accepted`/`release` onto the task's
 -- `completed`, so all three count as "entered Completed".
+--
+-- LOCK WINDOW, accepted deliberately (PR #653 review). Each UPDATE is one statement over the matching
+-- rows, the shape 0087's accepted-date backfill set. Rova is single-tenant with one seeded workspace,
+-- so `workspace_local_date`'s settings lookup resolves the same row every time (planner-cached STABLE
+-- function), and `activity_logs` has no `(entity_type, action)` index — each CTE is one sequential
+-- scan. Measured locally: 200,008 activity rows → the whole function runs in 0.51 s, so the lock
+-- window is sub-second. Batch it by PK range only if a deployment's activity history grows by
+-- orders of magnitude beyond that.
 CREATE OR REPLACE FUNCTION "work"."backfill_lifecycle_dates"()
 RETURNS integer LANGUAGE plpgsql AS $$
 DECLARE

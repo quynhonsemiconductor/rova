@@ -402,6 +402,49 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return rows[0] ?? null;
   }
 
+  async lockRows(
+    ids: string[],
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<Array<{ id: string; iterationId: string | null }>> {
+    if (ids.length === 0) return [];
+    return executor
+      .select({ id: workItems.id, iterationId: workItems.iterationId })
+      .from(workItems)
+      .where(
+        and(
+          inArray(workItems.id, ids),
+          eq(workItems.workspaceId, workspaceId),
+          isNull(workItems.deletedAt),
+        ),
+      )
+      .orderBy(asc(workItems.id))
+      .for('update');
+  }
+
+  async lockIteration(
+    iterationId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<SplitIterationCandidateRow | null> {
+    const rows = await executor
+      .select({
+        id: iterations.id,
+        name: iterations.name,
+        iterationKey: iterations.iterationKey,
+        state: iterations.state,
+        startDate: iterations.startDate,
+        endDate: iterations.endDate,
+        projectId: iterations.projectId,
+        teamId: iterations.teamId,
+      })
+      .from(iterations)
+      .where(and(eq(iterations.id, iterationId), eq(iterations.workspaceId, workspaceId)))
+      .limit(1)
+      .for('share');
+    return rows[0] ?? null;
+  }
+
   /**
    * SU-06 step 9 (§2.4's third statement) — `split_id` ONLY.
    *

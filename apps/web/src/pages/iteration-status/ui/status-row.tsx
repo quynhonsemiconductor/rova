@@ -334,17 +334,11 @@ export function StatusRow({
           />
         </div>
 
-        <StoryDateCell
-          type={item.type}
-          value={item.startDate}
-          style={colStyles.startDate}
-          ariaLabel="Start Date"
-        />
+        <StoryDateCell type={item.type} value={item.startDate} style={colStyles.startDate} />
         <StoryDateCell
           type={item.type}
           value={item.targetEndDate}
           style={colStyles.targetEndDate}
-          ariaLabel="Target End"
         />
 
         {/* Schedule State — Rally-style segmented stepper */}

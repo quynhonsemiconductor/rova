@@ -7,6 +7,7 @@ import {
   buildTrend,
   carryoverRate,
   involving,
+  nextSnapshotIndex,
   summarise,
   type StoredCarryoverEvent,
 } from './carryover';
@@ -98,6 +99,31 @@ describe('buildCarryoverRows', () => {
   });
   it('Direction Out keeps only departures', () => {
     expect(buildCarryoverRows([AB, BC], ['B'], 'out').map((r) => r.transitionId)).toEqual(['e2']);
+  });
+  it('labels a move between two Iterations of the set `in`, and keeps it OUT of the Out tab', () => {
+    // A→B where BOTH are in the reported set (one fused timebox): the set received the Story.
+    const rows = buildCarryoverRows([AB], ['A', 'B'], 'all');
+    expect(rows.map((r) => r.direction)).toEqual(['in']);
+    expect(buildCarryoverRows([AB], ['A', 'B'], 'in')).toHaveLength(1);
+    expect(buildCarryoverRows([AB], ['A', 'B'], 'out')).toHaveLength(0);
+  });
+  it('every row under a Direction tab carries that Direction', () => {
+    for (const direction of ['in', 'out'] as const) {
+      for (const row of buildCarryoverRows([AB, BC], ['A', 'B', 'C'], direction)) {
+        expect(row.direction).toBe(direction);
+      }
+    }
+  });
+});
+
+describe('nextSnapshotIndex', () => {
+  it('gives the same Actual After as the per-row lookup, regardless of input order', () => {
+    const index = nextSnapshotIndex([BC, AB]);
+    expect(actualAfter(AB, [BC, AB], index)).toBe(4);
+    expect(actualAfter(BC, [BC, AB], index)).toBe(3);
+  });
+  it('has no entry for a Task’s last hop', () => {
+    expect(nextSnapshotIndex([AB, BC]).has('e2:t1')).toBe(false);
   });
 });
 

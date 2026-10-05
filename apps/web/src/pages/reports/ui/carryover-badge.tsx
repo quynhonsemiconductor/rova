@@ -10,14 +10,21 @@ import { ArrowRightLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import type { CarryoverSummary } from '@/features/reporting/api'
+import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 
 export function CarryoverBadge({
   summary,
   onOpenReport,
+  className,
 }: {
   summary: CarryoverSummary | null | undefined
   onOpenReport: () => void
+  /**
+   * Placement only (margins / alignment). The badge OWNS the hide decision and its own chrome, so a
+   * caller never wraps it in a box that would stay behind, empty, when it hides (PR 653 review).
+   */
+  className?: string
 }) {
   const { t } = useTranslation('carryover')
   if (!summary || (summary.carryIn === 0 && summary.carryOut === 0)) return null
@@ -26,7 +33,10 @@ export function CarryoverBadge({
     <div
       role="note"
       aria-label={t('badge.label')}
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-border-subtle bg-surface-subtle px-3 py-1.5 text-ui-xs text-foreground"
+      className={cn(
+        'flex w-fit flex-wrap items-center gap-x-3 gap-y-1 rounded border border-border-subtle bg-surface-subtle px-3 py-1.5 text-ui-xs text-foreground',
+        className,
+      )}
     >
       <ArrowRightLeft size={13} className="text-muted-foreground" aria-hidden />
       {summary.carryIn > 0 && (

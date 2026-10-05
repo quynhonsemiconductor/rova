@@ -173,6 +173,8 @@ export interface IReportingRepository {
     workspaceId: string,
     projectId: string,
     scope: TeamScope,
+    /** Bound to events whose source OR target is in this set (the badge paths). Omit for all. */
+    touchingIterationIds?: string[],
   ): Promise<StoredCarryoverEvent[]>;
   /** Every Iteration of the project inside the scope's timeboxes, ordered start date then id. */
   listScopedIterations(

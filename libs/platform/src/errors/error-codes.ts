@@ -135,6 +135,12 @@ export const ErrorCodes = {
   TARGET_END_DATE_INVALID: 'TARGET_END_DATE_INVALID',
   /** The date lies after the current Iteration — it can only be saved by confirming a Carryover. */
   TARGET_END_REQUIRES_CARRYOVER: 'TARGET_END_REQUIRES_CARRYOVER',
+  /** An Unscheduled Story has no window, so no Target End Date can be valid until it is scheduled. */
+  TARGET_END_REQUIRES_ITERATION: 'TARGET_END_REQUIRES_ITERATION',
+  /** A Target End Date may not ride along with an Iteration change in one PATCH. */
+  TARGET_END_WITH_ITERATION_CHANGE: 'TARGET_END_WITH_ITERATION_CHANGE',
+  /** The Story's Iteration changed between the read and the write — retry against fresh data. */
+  WORK_ITEM_ITERATION_CHANGED: 'WORK_ITEM_ITERATION_CHANGED',
   /** Not a Story, or not scheduled — nothing to carry over. */
   CARRYOVER_NOT_ELIGIBLE: 'CARRYOVER_NOT_ELIGIBLE',
   /** The chosen target Iteration is not one the selected Target End Date resolves to. */

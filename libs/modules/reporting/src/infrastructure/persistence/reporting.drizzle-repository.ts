@@ -381,12 +381,19 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     workspaceId: string,
     projectId: string,
     scope: TeamScope,
+    touchingIterationIds?: string[],
   ): Promise<StoredCarryoverEvent[]> {
     if (isEmptyTeamScope(scope)) return [];
+    if (touchingIterationIds && touchingIterationIds.length === 0) return [];
     const story = alias(workItems, 'carryover_story');
     const source = alias(iterations, 'carryover_source');
     const target = alias(iterations, 'carryover_target');
 
+    /**
+     * EVERY joined table carries the workspace, not only the driver (PR #653 review — the same rule
+     * `splitBound` states): `story_id` and the iteration FKs are plain FKs with no composite workspace
+     * constraint, so a row pointing across workspaces would read another workspace's names.
+     */
     const rows = await this.db
       .select({
         transitionId: iterationTransitions.id,
@@ -402,15 +409,43 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         targetIterationName: target.name,
       })
       .from(iterationTransitions)
-      .innerJoin(story, and(eq(story.id, iterationTransitions.storyId), isNull(story.deletedAt)))
-      .leftJoin(source, eq(source.id, iterationTransitions.sourceIterationId))
-      .leftJoin(target, eq(target.id, iterationTransitions.targetIterationId))
+      .innerJoin(
+        story,
+        and(
+          eq(story.id, iterationTransitions.storyId),
+          eq(story.workspaceId, workspaceId),
+          isNull(story.deletedAt),
+        ),
+      )
+      .leftJoin(
+        source,
+        and(
+          eq(source.id, iterationTransitions.sourceIterationId),
+          eq(source.workspaceId, workspaceId),
+        ),
+      )
+      .leftJoin(
+        target,
+        and(
+          eq(target.id, iterationTransitions.targetIterationId),
+          eq(target.workspaceId, workspaceId),
+        ),
+      )
       .where(
         and(
           eq(iterationTransitions.workspaceId, workspaceId),
           eq(iterationTransitions.projectId, projectId),
           eq(iterationTransitions.type, 'carryover'),
           teamMatches(scope, sql`coalesce(${iterationTransitions.teamId}, ${source.teamId})`),
+          /**
+           * The badge paths only need events TOUCHING the timebox (PR #653 review): reading the
+           * whole project history on every Burndown / Team Capacity render was unbounded. The
+           * dedicated report omits this, because Actual After needs the NEXT hop wherever it went.
+           */
+          touchingIterationIds
+            ? sql`(${iterationTransitions.sourceIterationId} in ${inList(touchingIterationIds)}
+                   or ${iterationTransitions.targetIterationId} in ${inList(touchingIterationIds)})`
+            : undefined,
         ),
       )
       .orderBy(asc(iterationTransitions.occurredAt), asc(iterationTransitions.id));
@@ -426,7 +461,14 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         currentActualHours: tasks.actualHours,
       })
       .from(iterationTransitionTasks)
-      .innerJoin(tasks, and(eq(tasks.id, iterationTransitionTasks.taskId), isNull(tasks.deletedAt)))
+      .innerJoin(
+        tasks,
+        and(
+          eq(tasks.id, iterationTransitionTasks.taskId),
+          eq(tasks.workspaceId, workspaceId),
+          isNull(tasks.deletedAt),
+        ),
+      )
       .where(
         and(
           eq(iterationTransitionTasks.workspaceId, workspaceId),
@@ -487,7 +529,10 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     const rows = await this.db
       .select({ id: workItems.id })
       .from(workItems)
-      .leftJoin(iteration, eq(iteration.id, workItems.iterationId))
+      .leftJoin(
+        iteration,
+        and(eq(iteration.id, workItems.iterationId), eq(iteration.workspaceId, workspaceId)),
+      )
       .where(
         and(
           eq(workItems.workspaceId, workspaceId),
@@ -970,6 +1015,9 @@ export class ReportingDrizzleRepository implements IReportingRepository {
      * A Carryover's other end can be NULL (its Iteration was deleted, `ON DELETE SET NULL`); that is
      * "outside the set", hence the `coalesce` to the nil uuid before `not in`. Split ends are NOT NULL.
      */
+    // drizzle's `inArray(col, [])` compiles to `false`; a raw `in ()` is a syntax error. Every caller
+    // already short-circuits on an empty set, and this keeps the helper safe on its own (#653 review).
+    if (iterationIds.length === 0) return sql<string | null>`null`;
     const ids = inList(iterationIds);
     const splitMatched =
       bound === 'arrival' ? storySplits.targetIterationId : storySplits.sourceIterationId;
@@ -984,8 +1032,17 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         ? iterationTransitions.sourceIterationId
         : iterationTransitions.targetIterationId;
     const splitValue = value === 'actual' ? storySplitItems.actualHoursAtSplit : storySplits.teamId;
+    /**
+     * The TEAM half falls back to the SOURCE iteration's team, exactly as `findCarryoverEvents`'
+     * `coalesce(transition.team_id, source.team_id)` does (#653 review): a team-less Story's Carryover
+     * has a NULL `team_id`, and a bare column would drop those Tasks out of every per-team row.
+     */
     const coValue =
-      value === 'actual' ? iterationTransitionTasks.actualHoursAtMove : iterationTransitions.teamId;
+      value === 'actual'
+        ? sql`${iterationTransitionTasks.actualHoursAtMove}`
+        : sql`coalesce(${iterationTransitions.teamId}, (select src.team_id from ${iterations} src
+                where src.id = ${iterationTransitions.sourceIterationId}
+                  and src.workspace_id = ${workspaceId}::uuid))`;
     const direction = bound === 'arrival' ? sql`desc` : sql`asc`;
 
     return sql<string | null>`(select b.value from (

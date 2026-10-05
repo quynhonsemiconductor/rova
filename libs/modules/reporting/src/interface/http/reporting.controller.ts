@@ -4,7 +4,8 @@ import type { FastifyReply } from 'fastify';
 import { ApiCommonErrors } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
-import { AuthPolicy, RequirePermission } from '@modules/access';
+import { AccessService, AuthPolicy, RequirePermission } from '@modules/access';
+import { PERMISSION } from '@shared-kernel';
 import { ReportingService } from '../../application/reporting.service';
 import {
   burndownCsv,
@@ -72,7 +73,21 @@ function sendCsv(
 @Controller('reports')
 @AuthPolicy()
 export class ReportingController {
-  constructor(private readonly reporting: ReportingService) {}
+  constructor(
+    private readonly reporting: ReportingService,
+    private readonly access: AccessService,
+  ) {}
+
+  /**
+   * An export takes the report OFF-PLATFORM, so it requires the screen's own `report:view` as well
+   * as `report:export` (PR #653 review). `@RequirePermission` writes ONE metadata key — a second
+   * decorator OVERRIDES the first rather than adding to it — and calling the JSON handler from an
+   * export handler does not re-run that route's guard. The catalogue co-grants the pair today
+   * (asserted in `permissions.spec.ts`); this keeps the export closed if a later grant splits them.
+   */
+  private assertMayView(user: JwtPayload, projectId: string): Promise<void> {
+    return this.access.assertProjectPermission(user, projectId, PERMISSION.REPORT_VIEW);
+  }
 
   @Get('iteration-burndown')
   @RequirePermission('report:view', { from: 'query', field: 'projectId' })
@@ -162,6 +177,7 @@ export class ReportingController {
     @Query() query: IterationBurndownQueryDto,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<string> {
+    await this.assertMayView(user, query.projectId);
     const report = await this.getIterationBurndown(user, query);
     return sendCsv(
       reply,
@@ -183,6 +199,7 @@ export class ReportingController {
     @Query() query: VelocityQueryDto,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<string> {
+    await this.assertMayView(user, query.projectId);
     const report = await this.getVelocity(user, query);
     return sendCsv(reply, 'velocity', report.context, `last-${report.window}`, velocityCsv(report));
   }
@@ -198,6 +215,7 @@ export class ReportingController {
     @Query() query: TeamCapacityQueryDto,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<string> {
+    await this.assertMayView(user, query.projectId);
     const report = await this.getTeamCapacity(user, query);
     return sendCsv(
       reply,
@@ -219,6 +237,7 @@ export class ReportingController {
     @Query() query: CarryoverQueryDto,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<string> {
+    await this.assertMayView(user, query.projectId);
     const report = await this.getCarryover(user, query);
     return sendCsv(reply, 'carryover', report.context, report.timebox.name, carryoverCsv(report));
   }

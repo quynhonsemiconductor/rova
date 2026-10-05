@@ -9,7 +9,12 @@ const { useCarryoverReport, useIterationOptions } = vi.hoisted(() => ({
   useCarryoverReport: vi.fn(),
   useIterationOptions: vi.fn(),
 }))
-vi.mock('@/features/reporting/api', () => ({ useCarryoverReport }))
+vi.mock('@/features/reporting/api', async (importOriginal) => ({
+  // The real row filter — the component's Direction behaviour is what is under test.
+  rowsForDirection: (await importOriginal<typeof import('@/features/reporting/api')>())
+    .rowsForDirection,
+  useCarryoverReport,
+}))
 vi.mock('@/features/iterations/api', () => ({ useIterationOptions }))
 vi.mock('./report-export-button', () => ({ ReportExportButton: () => null }))
 
@@ -116,5 +121,25 @@ describe('CarryoverReport', () => {
     expect(onDirectionChange).toHaveBeenCalledWith('out')
     expect(screen.getByText('No Carryover events for this Iteration.')).toBeInTheDocument()
     expect(screen.getByText('33.3%')).toBeInTheDocument()
+  })
+
+  it('fetches ONE response per Iteration and narrows rows by Direction locally (PR #653)', () => {
+    useCarryoverReport.mockReturnValue({ data: report([ROW]), isLoading: false, isError: false })
+    const view = (direction: 'all' | 'out') => (
+      <CarryoverReport
+        projectId="p1"
+        teamId={undefined}
+        direction={direction}
+        onDirectionChange={vi.fn()}
+      />
+    )
+    const { rerender } = render(view('all'))
+    expect(screen.getByText('US-9')).toBeInTheDocument()
+    rerender(view('out'))
+    // The row is `in`, so the Out tab hides it — and the KPIs come from the same response.
+    expect(screen.queryByText('US-9')).toBeNull()
+    expect(screen.getByText('33.3%')).toBeInTheDocument()
+    // Direction is never part of the request.
+    for (const [args] of useCarryoverReport.mock.calls) expect(args).not.toHaveProperty('direction')
   })
 })

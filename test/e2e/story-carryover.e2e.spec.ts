@@ -215,6 +215,24 @@ describe('Story Target End Date + Carryover (Phase 7 CO)', () => {
     expect((await storyRow(story.id)).targetEndDate).toBeNull();
   });
 
+  it('refuses a Target End Date riding along with an Iteration change, and on an Unscheduled Story', async () => {
+    const { story } = await makeStory('CO combo');
+    // A date INSIDE the destination — once judged on the destination and saved, now refused.
+    const combo = await patch(story.id, { iterationId: it_.B, targetEndDate: '2030-01-25' });
+    expect(combo.statusCode).toBe(412);
+    expect(combo.body).toContain('TARGET_END_WITH_ITERATION_CHANGE');
+    const row = await storyRow(story.id);
+    expect([row.iterationId, row.targetEndDate]).toEqual([it_.A, null]);
+    expect(await transitionsOf(story.id)).toHaveLength(0);
+
+    const unscheduled = await service.createWorkItem(actor, NXP, 'story', 'CO unscheduled', {
+      teamId: TEAM_ALPHA_ID,
+    });
+    const res = await patch(unscheduled.id, { targetEndDate: '2030-01-15' });
+    expect(res.statusCode).toBe(412);
+    expect(res.body).toContain('TARGET_END_REQUIRES_ITERATION');
+  });
+
   it('refuses a Target End Date on a Defect (BR-01)', async () => {
     const defect = await service.createWorkItem(actor, NXP, 'defect', 'CO defect', {
       teamId: TEAM_ALPHA_ID,
@@ -379,6 +397,15 @@ describe('Story Target End Date + Carryover (Phase 7 CO)', () => {
         sql`update work.iteration_transition_tasks set actual_hours_at_move = 99 where transition_id = ${event.id}`,
       ),
     ).toMatch(/immutable/);
+    // The documented shape is held by the database: a Manual Move records no Target End Date.
+    expect(
+      await refusal(
+        sql`insert into work.iteration_transitions
+              (id, workspace_id, project_id, story_id, type, source_iteration_id, target_end_date)
+            values (gen_random_uuid(), ${WORKSPACE_ID}::uuid, ${NXP}::uuid, ${story.id}::uuid,
+                    'manual_move', ${it_.A}::uuid, '2030-01-25')`,
+      ),
+    ).toMatch(/manual move records no target_end_date/);
   });
 
   it('refuses a Defect, an accepted target and an Editor with no Team in the project', async () => {

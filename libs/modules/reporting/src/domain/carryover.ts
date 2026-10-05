@@ -94,32 +94,51 @@ export function summarise(
  * and before the Task's NEXT Carryover (or until now, when there is none), clamped at 0.
  *
  * `allEvents` is the project's whole Carryover history in scope, so the "next snapshot of the same
- * Task" is found even when that event left an Iteration outside the reported set.
+ * Task" is found even when that event left an Iteration outside the reported set. For many rows build
+ * {@link nextSnapshotIndex} ONCE and pass it in — a per-row re-sort was O(n² log n) (PR #653 review).
  */
 export function actualAfter(
   event: StoredCarryoverEvent,
   allEvents: readonly StoredCarryoverEvent[],
+  index: NextSnapshotIndex = nextSnapshotIndex(allEvents),
 ): number {
-  const later = allEvents.filter((other) => isAfter(other, event)).sort(compareEvents);
   let total = 0;
   for (const task of event.tasks) {
     const base = task.actualHours ?? 0;
-    const next = later
-      .map((other) => other.tasks.find((t) => t.taskId === task.taskId))
-      .find((t) => t !== undefined);
-    const upper = next ? (next.actualHours ?? 0) : task.currentActualHours;
+    const next = index.get(snapshotKey(event.transitionId, task.taskId));
+    const upper = next !== undefined ? next : task.currentActualHours;
     total += Math.max(0, upper - base);
   }
   return roundForDisplay(total);
 }
 
+/** (transitionId, taskId) → the same Task's Actual at its NEXT Carryover, when there is one. */
+export type NextSnapshotIndex = ReadonlyMap<string, number>;
+
+const snapshotKey = (transitionId: string, taskId: string) => `${transitionId}:${taskId}`;
+
+/**
+ * One pass over the history, newest first: link every Task snapshot to the one after it.
+ * O(n log n) for the sort and O(snapshots) after.
+ */
+export function nextSnapshotIndex(allEvents: readonly StoredCarryoverEvent[]): NextSnapshotIndex {
+  const ordered = [...allEvents].sort(compareEvents);
+  const laterActual = new Map<string, number>();
+  const index = new Map<string, number>();
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    const event = ordered[i];
+    for (const task of event.tasks) {
+      const later = laterActual.get(task.taskId);
+      if (later !== undefined) index.set(snapshotKey(event.transitionId, task.taskId), later);
+      laterActual.set(task.taskId, task.actualHours ?? 0);
+    }
+  }
+  return index;
+}
+
 function compareEvents(a: StoredCarryoverEvent, b: StoredCarryoverEvent): number {
   if (a.occurredAt !== b.occurredAt) return a.occurredAt < b.occurredAt ? -1 : 1;
   return a.transitionId < b.transitionId ? -1 : a.transitionId > b.transitionId ? 1 : 0;
-}
-
-function isAfter(other: StoredCarryoverEvent, event: StoredCarryoverEvent): boolean {
-  return compareEvents(other, event) > 0;
 }
 
 /** One row of the Carryover report, in the SRS column order (CO-BR-40). */
@@ -145,7 +164,12 @@ export interface CarryoverRow {
 
 /**
  * The rows, oldest first, filtered by Direction (CO-BR-41 — the filter narrows ROWS only, never a
- * KPI). An event with both ends in the set reads as `in`: the set received the Story.
+ * KPI).
+ *
+ * An event with BOTH ends in the set (a move between two Iterations of one fused timebox) is labelled
+ * `in` — the set received the Story — and the `out` filter EXCLUDES it, so a row's label and the tab
+ * it appears under can never disagree (PR #653 review). The label is computed once and the filter
+ * reads it.
  */
 export function buildCarryoverRows(
   allEvents: readonly StoredCarryoverEvent[],
@@ -153,14 +177,14 @@ export function buildCarryoverRows(
   direction: CarryoverDirectionFilter,
 ): CarryoverRow[] {
   const ids = new Set(iterationIds);
+  const index = nextSnapshotIndex(allEvents);
   return involving(allEvents, iterationIds)
     .sort(compareEvents)
-    .filter((event) =>
-      direction === 'all' ? true : direction === 'in' ? isIn(event, ids) : isOut(event, ids),
-    )
-    .map((event) => ({
+    .map((event) => ({ event, label: rowDirection(event, ids) }))
+    .filter(({ label }) => direction === 'all' || label === direction)
+    .map(({ event, label }) => ({
       transitionId: event.transitionId,
-      direction: isIn(event, ids) ? 'in' : 'out',
+      direction: label,
       storyId: event.storyId,
       storyKey: event.storyKey,
       storyTitle: event.storyTitle,
@@ -174,8 +198,13 @@ export function buildCarryoverRows(
       estimateHours: sum(event.tasks.map((t) => t.estimateHours)),
       todoHours: sum(event.tasks.map((t) => t.todoHours)),
       actualBefore: sum(event.tasks.map((t) => t.actualHours)),
-      actualAfter: actualAfter(event, allEvents),
+      actualAfter: actualAfter(event, allEvents, index),
     }));
+}
+
+/** The one label a row carries: `in` when the set received the Story, else `out`. */
+function rowDirection(event: StoredCarryoverEvent, ids: ReadonlySet<string>): CarryoverDirection {
+  return isIn(event, ids) ? 'in' : 'out';
 }
 
 /**

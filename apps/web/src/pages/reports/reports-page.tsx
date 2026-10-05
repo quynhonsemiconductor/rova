@@ -28,6 +28,7 @@ import { IterationBurndownReport } from './ui/iteration-burndown-report'
 import { TeamCapacityReport } from './ui/team-capacity-report'
 import { VelocityReport } from './ui/velocity-report'
 import type { CarryoverDirection } from '@/features/reporting/api'
+import { rememberIteration } from './model/use-selected-iteration'
 
 // Phase 7 CO-10 adds `carryover` — the dedicated report the Burndown/Capacity badges open.
 const REPORT_TYPES = ['burndown', 'velocity', 'capacity', 'carryover'] as const
@@ -56,12 +57,11 @@ export function ReportsPage() {
   /**
    * The badge's `View report →` (CO-BR-34): the Carryover report on the SAME Iteration. Every
    * iteration report reads its selection through `useSelectedIteration`, which honours the
-   * persisted last-viewed id — so persisting it here is what carries the selection across.
+   * persisted last-viewed id — `rememberIteration` writes it through that hook's own key builder.
+   * Read at the report's MOUNT (the type switch mounts it fresh), so the hand-over cannot be stale.
    */
   function openCarryover(iterationId: string) {
-    if (projectId) {
-      localStorage.setItem(`${STORAGE_KEYS.LAST_ACCESSED_ITERATION}:${projectId}`, iterationId)
-    }
+    if (projectId) rememberIteration(projectId, iterationId)
     changeType('carryover')
   }
 

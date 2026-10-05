@@ -76,7 +76,7 @@ const numericFilter = z
   .optional()
   .transform((v) => (v === undefined || v === '' ? undefined : Number(v).toFixed(2)));
 
-// ── List query ────────────────────────────────────────────────────────────────
+// ── Shared field schemas ──────────────────────────────────────────────────────
 
 /**
  * A calendar date, `YYYY-MM-DD`, that actually exists (`2026-02-30` is refused). Exported for the

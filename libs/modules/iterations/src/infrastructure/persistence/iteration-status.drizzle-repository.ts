@@ -233,13 +233,20 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
     if (filters.toDo !== undefined) {
       conditions.push(sql`${toDo} = ${filters.toDo}::numeric`);
     }
-    // Phase 7 Carryover — substring of the ISO date text; bound parameters only.
+    // Phase 7 Carryover — substring of the ISO date text; bound parameters only. `to_char` PINS the
+    // `YYYY-MM-DD` form: `date::text` follows the session DateStyle, and under `SQL`/`German` a
+    // `2026-10` fragment would silently match nothing.
     if (filters.startDate?.trim()) {
-      conditions.push(ilike(sql`${workItems.startDate}::text`, `%${filters.startDate.trim()}%`));
+      conditions.push(
+        ilike(sql`to_char(${workItems.startDate}, 'YYYY-MM-DD')`, `%${filters.startDate.trim()}%`),
+      );
     }
     if (filters.targetEndDate?.trim()) {
       conditions.push(
-        ilike(sql`${workItems.targetEndDate}::text`, `%${filters.targetEndDate.trim()}%`),
+        ilike(
+          sql`to_char(${workItems.targetEndDate}, 'YYYY-MM-DD')`,
+          `%${filters.targetEndDate.trim()}%`,
+        ),
       );
     }
     // Actual = roll-up of child task actual_hours (parity with To Do / Task Est,

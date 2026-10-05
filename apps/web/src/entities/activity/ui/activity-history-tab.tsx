@@ -57,6 +57,10 @@ export function ActivityHistoryTab({
       ...values,
       source: blank(values.source ?? '', unscheduled),
       target: blank(values.target ?? '', unscheduled),
+      // A Carryover always records its date (the DB guard requires it), but a malformed entry must
+      // read "None" rather than leave a gap in the sentence (PR 653 review). It is a `YYYY-MM-DD`
+      // calendar day — the same text the Target End field shows — not a timestamp to localise.
+      date: blank(values.date ?? '', none),
       old: blank(values.old ?? '', none),
       new: blank(values.new ?? '', none),
     })

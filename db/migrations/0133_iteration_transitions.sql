@@ -30,6 +30,9 @@ CREATE TABLE "work"."iteration_transitions" (
   "project_id" uuid NOT NULL,
   -- The Story's team AT THE MOVE; NULL = project backlog.
   "team_id" uuid,
+  -- NO ACTION, deliberately (PR #653 review): history outlives its Story. Stories are SOFT-deleted
+  -- (`deleted_at`) on every product path, so this never fires in practice; it is the floor that stops
+  -- a raw hard DELETE from orphaning an immutable event. Mirrored in db/schema/work.ts.
   "story_id" uuid NOT NULL REFERENCES "work"."work_items"("id"),
   "type" "iteration_transition_type" NOT NULL,
   -- NULL on a Manual Move to/from Unscheduled.
@@ -53,6 +56,10 @@ CREATE TABLE "work"."iteration_transition_tasks" (
   "id" uuid PRIMARY KEY NOT NULL,
   "workspace_id" uuid NOT NULL,
   "transition_id" uuid NOT NULL REFERENCES "work"."iteration_transitions"("id") ON DELETE CASCADE,
+  -- NO ACTION, deliberately, for the same reason as `story_id`: Tasks are SOFT-deleted on every
+  -- product path (`WorkItemsService.deleteWorkItem` → `softDelete`), so a routine "remove a task"
+  -- never reaches this FK. CASCADE is not an option (the immutability trigger refuses the cascaded
+  -- delete) and SET NULL would erase which Task an Actual boundary belonged to. Mirrored in schema.
   "task_id" uuid NOT NULL REFERENCES "work"."tasks"("id"),
   "state" "work"."task_state" NOT NULL,
   "estimate_hours_at_move" numeric(8, 2),
@@ -78,6 +85,12 @@ BEGIN
     IF NEW."type" = 'carryover' AND (NEW."source_iteration_id" IS NULL
         OR NEW."target_iteration_id" IS NULL OR NEW."target_end_date" IS NULL) THEN
       RAISE EXCEPTION 'a carryover transition needs source, target and target_end_date'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    -- The documented shape, held by the database rather than by the writer (PR #653 review): a
+    -- Manual Move records no forecast, so a stray value cannot be misread as a confirmed one.
+    IF NEW."type" = 'manual_move' AND NEW."target_end_date" IS NOT NULL THEN
+      RAISE EXCEPTION 'a manual move records no target_end_date'
         USING ERRCODE = 'check_violation';
     END IF;
     RETURN NEW;

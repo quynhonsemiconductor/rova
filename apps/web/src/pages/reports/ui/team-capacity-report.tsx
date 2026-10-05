@@ -175,6 +175,7 @@ export function TeamCapacityReport({
           <span className="text-ui-xs font-semibold text-foreground-subtle">{t('iteration')}</span>
           <IterationPicker iterations={iterations} selectedId={selectedId} onSelect={select} />
           <ReportExportButton
+            projectId={projectId}
             request={
               selectedId ? { report: 'capacity', projectId, teamId, iterationId: selectedId } : null
             }
@@ -227,15 +228,12 @@ export function TeamCapacityReport({
         ) : undefined
       }
     >
-      {/* Phase 7 CO-09 — the same compact Carryover badge as Burndown. */}
-      {data?.carryover && (
-        <div className="flex justify-start px-3 py-2">
-          <CarryoverBadge
-            summary={data.carryover}
-            onOpenReport={() => selectedId && onOpenCarryover?.(selectedId)}
-          />
-        </div>
-      )}
+      {/* Phase 7 CO-09 — the same compact Carryover badge as Burndown, owning its own chrome. */}
+      <CarryoverBadge
+        summary={data?.carryover}
+        onOpenReport={() => selectedId && onOpenCarryover?.(selectedId)}
+        className="mx-3 my-2"
+      />
       <DataTableFrame<ColKey>
         header={table.headerProps}
         leading={<div className="w-6 shrink-0" />}

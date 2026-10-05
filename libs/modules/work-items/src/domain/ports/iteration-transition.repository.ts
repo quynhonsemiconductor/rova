@@ -23,4 +23,9 @@ export interface IIterationTransitionRepository {
     tasks: CreateIterationTransitionTaskInput[],
     executor: DbExecutor,
   ): Promise<IterationTransition>;
+  /** Several snapshot-less transitions (Manual Moves) in one multi-row INSERT. */
+  createMany(
+    transitions: CreateIterationTransitionInput[],
+    executor: DbExecutor,
+  ): Promise<IterationTransition[]>;
 }
