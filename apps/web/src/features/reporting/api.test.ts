@@ -1,13 +1,23 @@
 /**
  * Reporting api helpers (PR #653 review): the export filename parser, the Blob error path, the
- * typed per-report export dispatch and the Direction row filter.
+ * typed per-report export dispatch, the Direction row filter, the badge rule, and the request
+ * timeout (its deadline, cleanup, relay and retry rule).
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/shared/api/http-client', () => ({ apiClient: { GET: vi.fn() } }))
 
 import { apiClient } from '@/shared/api/http-client'
-import { downloadReportCsv, filenameFrom, rowsForDirection, type CarryoverRow } from './api'
+import {
+  downloadReportCsv,
+  filenameFrom,
+  hasCarryoverActivity,
+  retryReport,
+  rowsForDirection,
+  withTimeout,
+  type CarryoverRow,
+  type CarryoverSummary,
+} from './api'
 
 const GET = apiClient.GET as unknown as ReturnType<typeof vi.fn>
 
@@ -27,6 +37,84 @@ describe('filenameFrom', () => {
   })
   it('falls back when absent', () => {
     expect(filenameFrom(null, 'f.csv')).toBe('f.csv')
+  })
+  it('falls through to the quoted form on a malformed % escape', () => {
+    expect(filenameFrom(`attachment; filename*=UTF-8''bad%E0%A4; filename="ok.csv"`, 'f.csv')).toBe(
+      'ok.csv',
+    )
+  })
+  it('falls back when the header names no filename', () => {
+    expect(filenameFrom('attachment', 'f.csv')).toBe('f.csv')
+  })
+})
+
+describe('hasCarryoverActivity', () => {
+  const summary = (carryIn: number, carryOut: number) =>
+    ({ carryIn, carryOut, transferredTodoHours: 0 }) as unknown as CarryoverSummary
+  it.each([
+    [null, false],
+    [undefined, false],
+    [summary(0, 0), false],
+    [summary(1, 0), true],
+    [summary(0, 2), true],
+  ])('%o → %s', (input, expected) => {
+    expect(hasCarryoverActivity(input)).toBe(expected)
+  })
+})
+
+describe('withTimeout', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('aborts with a TimeoutError at the deadline', () => {
+    const { signal } = withTimeout()
+    vi.advanceTimersByTime(30_000)
+    expect(signal.aborted).toBe(true)
+    expect((signal.reason as DOMException).name).toBe('TimeoutError')
+  })
+  it('done() clears the timer, so a finished request never aborts later', () => {
+    const { signal, done } = withTimeout()
+    done()
+    vi.advanceTimersByTime(60_000)
+    expect(signal.aborted).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+  it('is born aborted, with the caller’s reason, when the caller’s signal already is', () => {
+    const outer = new AbortController()
+    outer.abort('gone')
+    const { signal } = withTimeout(outer.signal)
+    expect(signal.aborted).toBe(true)
+    expect(signal.reason).toBe('gone')
+    // The already-aborted path cleared the timer too.
+    expect(vi.getTimerCount()).toBe(0)
+  })
+  it('relays a later abort of the caller’s signal with its reason', () => {
+    const outer = new AbortController()
+    const { signal } = withTimeout(outer.signal)
+    outer.abort('cancelled')
+    expect(signal.reason).toBe('cancelled')
+  })
+  it('done() detaches the relay from the caller’s signal', () => {
+    const outer = new AbortController()
+    const remove = vi.spyOn(outer.signal, 'removeEventListener')
+    const { signal, done } = withTimeout(outer.signal)
+    done()
+    expect(remove).toHaveBeenCalledWith('abort', expect.any(Function))
+    outer.abort('late')
+    expect(signal.aborted).toBe(false)
+  })
+})
+
+describe('retryReport', () => {
+  it('never retries a timeout', () => {
+    expect(retryReport(0, new DOMException('t', 'TimeoutError'))).toBe(false)
+  })
+  it('never retries a 4xx', () => {
+    expect(retryReport(0, Object.assign(new Error('x'), { status: 403 }))).toBe(false)
+  })
+  it('retries any other failure once', () => {
+    expect(retryReport(0, new Error('boom'))).toBe(true)
+    expect(retryReport(1, new Error('boom'))).toBe(false)
   })
 })
 

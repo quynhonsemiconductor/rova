@@ -65,9 +65,5 @@
       "title": "Carryover report unavailable",
       "body": "The report could not be loaded. Try again."
     }
-  },
-  "export": {
-    "button": "Export CSV",
-    "error": "Could not export the report"
   }
 }

@@ -4,8 +4,9 @@
 --
 --   work_items.start_date       first entry of a STORY into `in_progress`   (CO-BR-06) — system managed
 --   work_items.actual_end_date  first entry of a STORY into `accepted`      (CO-BR-07) — system managed
---   work_items.target_end_date  the Story editor's forecast                 (CO-BR-12) — user managed,
---                               validated in WorkItemsService (plan D7); no trigger touches it
+--   work_items.target_end_date  the Story editor's forecast                 (CO-BR-12) — user managed
+--                               for Stories, validated in WorkItemsService (plan D7); the §4 trigger
+--                               only CLEARS it on non-Story rows (plan D12), never sets or rewrites it
 --   tasks.start_date            first entry of a TASK into `in_progress`    (CO-BR-08) — system managed
 --   tasks.actual_end_date       first entry of a TASK into `completed`      (CO-BR-09) — system managed
 --
@@ -66,9 +67,11 @@ $$;--> statement-breakpoint
 -- so `workspace_local_date`'s settings lookup resolves the same row every time (planner-cached STABLE
 -- function), and `activity_logs` has no `(entity_type, action)` index — each CTE is one sequential
 -- scan. Measured locally: 200,008 activity rows → the whole function runs in 0.51 s, so the lock
--- window is sub-second. OPS GATE: if `select count(*) from work.activity_logs` exceeds 2,000,000 on
--- a target before this migration runs (10× the measured case), switch to the batched form — loop the
--- four UPDATEs over `id` ranges of 10,000 with a COMMIT between — instead of the single statement.
+-- window is sub-second. OPS GATE, ENFORCED below (PR #653 review, round 3): if `work.activity_logs`
+-- holds more than 2,000,000 rows (10× the measured case) the migration RAISEs before the backfill
+-- instead of running the single statement, and the operator switches to the batched form — loop the
+-- four UPDATEs over `id` ranges of 10,000 with a COMMIT between. A comment nobody re-reads is not a
+-- gate; an exception is.
 --
 -- A ZERO result is legitimate (a fresh deployment has no history), so it is reported, not asserted:
 -- the function RAISEs a NOTICE with the counts, and `story-lifecycle-dates.e2e.spec.ts` pins the
@@ -140,6 +143,16 @@ BEGIN
   RETURN touched;
 END;
 $$;--> statement-breakpoint
+
+-- The OPS GATE above, enforced: refuse the single-statement backfill past 10× the measured case.
+DO $$
+DECLARE n bigint;
+BEGIN
+  SELECT count(*) INTO n FROM "work"."activity_logs";
+  IF n > 2000000 THEN
+    RAISE EXCEPTION 'activity_logs has % rows (> 2,000,000 OPS GATE): run the batched lifecycle backfill instead (see 0132 header)', n;
+  END IF;
+END $$;--> statement-breakpoint
 
 -- Runs BEFORE the triggers exist, exactly as 0087 does, so the backfilled values are the ones kept.
 SELECT "work"."backfill_lifecycle_dates"();--> statement-breakpoint

@@ -27,7 +27,9 @@ export function ReportExportButton({
   /** `null` while the report has nothing to export yet (no Iteration selected). */
   request: ReportExportRequest | null
 }) {
-  const { t } = useTranslation('carryover')
+  // `reports`, not `carryover` (PR 653 review, round 3): the button sits in all four reports, so its
+  // strings belong to the namespace every report already loads.
+  const { t } = useTranslation('reports')
   const { can } = useProjectPermissions(projectId)
   const [busy, setBusy] = useState(false)
   if (!request || !can(PERMISSION.REPORT_EXPORT)) return null

@@ -143,6 +143,13 @@ describe('carryoverRate (R11)', () => {
   it('counts a Story with two events once', () => {
     expect(carryoverRate([AB, BC], ['B'], [])).toBe(100);
   });
+  it('never exceeds 100: a Story carried IN and then manually moved away stays in the denominator', () => {
+    // s9 arrived in B by Carryover, then left by a Manual Move (R3 — not a Carryover event), so it is
+    // neither scheduled in B nor carried out of it. It was in scope, so it counts on both sides.
+    const intoB = event('e9', '2026-06-16T01:00:00.000Z', 'A', 'B', [task(1)], 's9');
+    expect(carryoverRate([intoB], ['B'], [])).toBe(100);
+    expect(carryoverRate([intoB, AB], ['B'], ['s2'])).toBe(66.7);
+  });
 });
 
 describe('buildTrend', () => {

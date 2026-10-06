@@ -57,7 +57,7 @@ import { UNASSIGNED_FILTER, STORY_OPTIONS_LIMIT } from '../../domain/work-item.t
 import { teamRowFilter } from '../../domain/team-read-scope';
 import type { TeamReadScope, ProjectTeamScope } from '../../domain/team-read-scope';
 import { IWorkItemRepository, IterationScope } from '../../domain/ports/work-item.repository';
-import type { SplitIterationCandidateRow } from '../../domain/ports/work-item.repository';
+import type { ProjectIterationRow } from '../../domain/ports/work-item.repository';
 
 /**
  * Canonical projection of a work-item schedule_state (D1) onto the task_state
@@ -323,7 +323,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
   async listProjectIterations(
     projectId: string,
     workspaceId: string,
-  ): Promise<SplitIterationCandidateRow[]> {
+  ): Promise<ProjectIterationRow[]> {
     return this.db
       .select({
         id: iterations.id,
@@ -443,7 +443,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     iterationId: string,
     workspaceId: string,
     executor: DbExecutor,
-  ): Promise<SplitIterationCandidateRow | null> {
+  ): Promise<ProjectIterationRow | null> {
     const rows = await executor
       .select({
         id: iterations.id,
@@ -1526,8 +1526,12 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           defectState: input.defectState as DefectState | null,
         }),
         ...(input.fixedInBuild !== undefined && { fixedInBuild: input.fixedInBuild }),
-        // Phase 7 Carryover (D7). Validated in the service; a Story-only column, and the Task branch
-        // above never reaches here. The two lifecycle dates are deliberately absent (trigger-owned).
+        // Phase 7 Carryover (D7). A Story-only column. Validated in the service, and the Task branch
+        // above never reaches here. A Defect shares this branch, but the layer below this one holds
+        // the contract: `trg_stamp_story_lifecycle_dates` (BEFORE INSERT OR UPDATE, migration 0132)
+        // clears `target_end_date` on every non-Story row whatever the statement set — pinned by the
+        // BE e2e "holds 'Defects carry no Target End Date' in the database too". The two lifecycle
+        // dates are deliberately absent (trigger-owned).
         ...(input.targetEndDate !== undefined && { targetEndDate: input.targetEndDate }),
         updatedAt: new Date(),
       })

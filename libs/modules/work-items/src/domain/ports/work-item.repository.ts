@@ -21,16 +21,19 @@ export interface IterationScope {
 }
 
 /**
- * One row of {@link IWorkItemRepository.listProjectIterations}.
+ * One row of {@link IWorkItemRepository.listProjectIterations} and
+ * {@link IWorkItemRepository.lockIteration}.
  *
- * Structurally the same shape as `SplitTargetCandidate` in `application/split-story.ts` and
- * deliberately declared there as well: the pure helper must not import a persistence port to state
- * what it needs, and the port must not import an application module. TypeScript's structural typing
- * makes the two compatible without either depending on the other, and `getSplitPreview` passes rows
- * straight from one to the other — so a field added here and not there is a compile error at that
- * call site rather than a silent divergence.
+ * Named for what it is — a project Iteration with its window, state and team — not for one caller
+ * (PR #653 review, round 3): Split and Carryover both read it. Structurally the same shape as
+ * `SplitTargetCandidate` in `application/split-story.ts` and `CarryoverIteration` in
+ * `application/carryover-eligibility.ts`, and deliberately declared there as well: the pure helpers
+ * must not import a persistence port to state what they need, and the port must not import an
+ * application module. TypeScript's structural typing makes them compatible without either depending
+ * on the other, and the service passes rows straight from one to the other — so a field added here
+ * and not there is a compile error at that call site rather than a silent divergence.
  */
-export interface SplitIterationCandidateRow {
+export interface ProjectIterationRow {
   id: string;
   name: string;
   iterationKey: string | null;
@@ -59,10 +62,7 @@ export interface IWorkItemRepository {
    * a TOTAL order (query-ordering ratchet: the last key must be unique). A dateless iteration sorts
    * with the NULLs and is refused by the filter, not here.
    */
-  listProjectIterations(
-    projectId: string,
-    workspaceId: string,
-  ): Promise<SplitIterationCandidateRow[]>;
+  listProjectIterations(projectId: string, workspaceId: string): Promise<ProjectIterationRow[]>;
   /**
    * A release's display NAME, for the Split preview's read-only Release line.
    *
@@ -322,7 +322,7 @@ export interface IWorkItemRepository {
     iterationId: string,
     workspaceId: string,
     executor: DbExecutor,
-  ): Promise<SplitIterationCandidateRow | null>;
+  ): Promise<ProjectIterationRow | null>;
   softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void>;
   /**
    * EVERY live Task of a Story with its state and hours, read on the Carryover's own transaction

@@ -108,7 +108,8 @@ describe('TasksTab — lifecycle dates (CO-02)', () => {
     expect(screen.getByText('Actual End Date')).toBeTruthy()
     expect(screen.getByText('2026-09-02')).toBeTruthy()
     expect(screen.getByText('2026-09-05')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Task TA-1 start date' })).toBeNull()
+    // Read-only: no date control is offered in the row (the cell is plain text, named by its header).
+    expect(screen.queryByRole('button', { name: /task ta-1 (start|actual end) date/i })).toBeNull()
   })
 
   it('reads Not set before the Task has entered In-Progress or Completed', () => {

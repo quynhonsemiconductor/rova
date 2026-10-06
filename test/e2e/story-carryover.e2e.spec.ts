@@ -389,6 +389,29 @@ describe('Story Target End Date + Carryover (Phase 7 CO)', () => {
         sql`update work.iteration_transitions set target_end_date = '2030-01-26' where id = ${event.id}`,
       ),
     ).toMatch(/immutable/);
+    // Round 3: the FK's SET NULL nulls ONE reference per statement. Nulling BOTH at once erases the
+    // attribution pair and is not the FK — refused. Nulling one alone (what an Iteration delete does)
+    // is still admitted; that case runs in a rolled-back transaction so the event stays intact.
+    expect(
+      await refusal(
+        sql`update work.iteration_transitions
+               set source_iteration_id = null, target_iteration_id = null
+             where id = ${event.id}`,
+      ),
+    ).toMatch(/immutable/);
+    const ROLLBACK = new Error('rollback');
+    const singleNull = await db
+      .transaction(async (tx) => {
+        const res = await tx.execute(
+          sql`update work.iteration_transitions set source_iteration_id = null
+               where id = ${event.id} returning target_iteration_id`,
+        );
+        expect(res.rows).toEqual([{ target_iteration_id: it_.B }]);
+        throw ROLLBACK;
+      })
+      .catch((e: unknown) => e);
+    expect(singleNull).toBe(ROLLBACK);
+    expect((await transitionsOf(story.id))[0]).toEqual(event);
     expect(
       await refusal(sql`delete from work.iteration_transitions where id = ${event.id}`),
     ).toMatch(/immutable/);

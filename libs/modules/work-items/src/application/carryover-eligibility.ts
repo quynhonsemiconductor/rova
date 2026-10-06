@@ -124,15 +124,21 @@ function compareIterations(a: CarryoverIteration, b: CarryoverIteration): number
 
 /**
  * CO-BR-13/14 — the earliest selectable date: the Story's Start Date when it has one, otherwise the
- * start of the earliest eligible Iteration. `null` when nothing is selectable at all.
+ * start of the earliest DATED eligible Iteration. `null` when nothing is selectable at all.
+ *
+ * Skips dateless entries rather than trusting `eligible[0]` (PR #653 review, round 3):
+ * `compareIterations` sorts a null start FIRST, so a list that did not come through
+ * {@link eligibleIterations} would otherwise disable the whole calendar. A dateless Iteration
+ * contains no day, so skipping it never changes the answer for a filtered list.
  */
 export function minDate(
   story: Pick<CarryoverStory, 'startDate'>,
   eligible: readonly CarryoverIteration[],
 ): string | null {
-  if (eligible.length === 0) return null;
+  const firstDated = eligible.find((iteration) => iteration.startDate !== null);
+  if (!firstDated) return null;
   if (story.startDate !== null) return story.startDate;
-  return eligible[0].startDate;
+  return firstDated.startDate;
 }
 
 /**
@@ -159,16 +165,18 @@ export function isEnabledDate(
  * CO-BR-18/19/20 — the Carryover targets for a date: eligible Iterations other than the current one
  * that contain it, and only when the date is AFTER the current Iteration ends. An empty list for a
  * date inside the current window (that is a plain save, CO-BR-17).
+ *
+ * The current Iteration needs no explicit exclusion (PR #653 review, round 3): past the
+ * `isAfterCurrent` guard the date is later than `current.endDate`, so `containsDate(current, date)`
+ * is false by construction.
  */
 export function resolveTargets(
   date: string,
-  current: Pick<CarryoverIteration, 'id' | 'endDate'>,
+  current: Pick<CarryoverIteration, 'endDate'>,
   eligible: readonly CarryoverIteration[],
 ): CarryoverIteration[] {
   if (!isAfterCurrent(date, current)) return [];
-  return eligible.filter(
-    (iteration) => iteration.id !== current.id && containsDate(iteration, date),
-  );
+  return eligible.filter((iteration) => containsDate(iteration, date));
 }
 
 /** Is the date after the current Iteration's end? A dateless current Iteration has no "after". */

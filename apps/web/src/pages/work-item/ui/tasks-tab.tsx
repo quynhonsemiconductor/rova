@@ -608,22 +608,16 @@ function TaskRow({
         })()}
       </div>
       {/* Start Date / Actual End Date — system-managed (CO-02), the SAME persisted values Task Detail
-          shows (AC5), so the shared read-only `DateField` and the same `Not set` placeholder. */}
+          shows (AC5), so the shared read-only `DateField` and the same `Not set` placeholder. No
+          `ariaLabel`: the read-only `DateField` renders a plain span that never applies one (ARIA
+          prohibits naming a generic element), so a label here was dead text that could not even be
+          translated into effect (PR 653 review, round 3). The column header names the cell, as it
+          does for every other cell in the row. */}
       <div className="flex shrink-0 items-center px-2" style={colStyles.startDate}>
-        <DateField
-          value={task.startDate}
-          readOnly
-          placeholder={t('sidebar.notSet')}
-          ariaLabel={`Task ${task.itemKey} start date`}
-        />
+        <DateField value={task.startDate} readOnly placeholder={t('sidebar.notSet')} />
       </div>
       <div className="flex shrink-0 items-center px-2" style={colStyles.actualEndDate}>
-        <DateField
-          value={task.actualEndDate}
-          readOnly
-          placeholder={t('sidebar.notSet')}
-          ariaLabel={`Task ${task.itemKey} actual end date`}
-        />
+        <DateField value={task.actualEndDate} readOnly placeholder={t('sidebar.notSet')} />
       </div>
       {/* To Do — inline editable */}
       <div className="shrink-0 px-2 text-right" style={colStyles.todo}>

@@ -129,6 +129,11 @@ describe('minDate (CO-BR-13/14)', () => {
   it('is null with nothing eligible', () => {
     expect(minDate({ startDate: '2026-06-05' }, [])).toBeNull();
   });
+  it('skips a dateless entry sorted first instead of disabling the whole calendar', () => {
+    const dateless = it_({ id: 'D', state: 'planning', startDate: null, endDate: null });
+    expect(minDate({ startDate: null }, [dateless, B])).toBe('2026-06-15');
+    expect(minDate({ startDate: null }, [dateless])).toBeNull();
+  });
 });
 
 describe('isEnabledDate (CO-BR-15/16)', () => {

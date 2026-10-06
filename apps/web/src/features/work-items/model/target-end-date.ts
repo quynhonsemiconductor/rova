@@ -16,8 +16,11 @@ type Options = Pick<CarryoverOptions, 'current' | 'eligibleIterations' | 'minDat
 const contains = (it: Pick<CarryoverOptionIteration, 'startDate' | 'endDate'>, date: string) =>
   it.startDate <= date && date <= it.endDate
 
-const afterCurrent = (date: string, options: Options) =>
-  options.current?.endDate != null && date > options.current.endDate
+// `current` is optional AND its `endDate` nullable; both mean "no window", spelled out strictly.
+const afterCurrent = (date: string, options: Options) => {
+  const end = options.current?.endDate
+  return end !== null && end !== undefined && date > end
+}
 
 /** Is this day selectable? Mirrors the server's `isEnabledDate` over the payload. */
 export function isEnabledDate(date: string, options: Options): boolean {

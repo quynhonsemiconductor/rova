@@ -49,9 +49,14 @@ export function Calendar({
   defaultMonth?: string | null
 }) {
   const selected = parse(value)
-  const [month, setMonth] = useState(() =>
-    startOfMonth(selected ?? parse(defaultMonth) ?? new Date()),
-  )
+  /**
+   * The month the reader NAVIGATED to, or `null` until they press prev/next. Until then the shown
+   * month is DERIVED from `value` → `defaultMonth` → today on every render (PR 653 review, round 3):
+   * a `defaultMonth` that arrives after mount (an async payload such as the Carryover options) is
+   * followed instead of being frozen by a `useState` initializer that never re-runs.
+   */
+  const [navigated, setNavigated] = useState<Date | null>(null)
+  const month = navigated ?? startOfMonth(selected ?? parse(defaultMonth) ?? new Date())
   const today = new Date()
 
   const days = eachDayOfInterval({
@@ -68,7 +73,7 @@ export function Calendar({
           <button
             type="button"
             aria-label="Previous month"
-            onClick={() => setMonth((m) => subMonths(m, 1))}
+            onClick={() => setNavigated(subMonths(month, 1))}
             className="rounded p-1 text-muted-foreground hover:bg-surface-hover"
           >
             <ChevronLeft size={16} />
@@ -76,7 +81,7 @@ export function Calendar({
           <button
             type="button"
             aria-label="Next month"
-            onClick={() => setMonth((m) => addMonths(m, 1))}
+            onClick={() => setNavigated(addMonths(month, 1))}
             className="rounded p-1 text-muted-foreground hover:bg-surface-hover"
           >
             <ChevronRight size={16} />

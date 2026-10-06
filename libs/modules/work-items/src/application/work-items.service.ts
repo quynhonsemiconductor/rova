@@ -1869,11 +1869,11 @@ export class WorkItemsService {
    * and the eligible set (plan D5). ONE read shared by the options feed, the PATCH validation and the
    * POST, so the three cannot disagree — the picker/write fault class.
    *
-   * `iterationId` may be passed to evaluate a patch that moves the Story in the same request.
+   * Always judged on the Story's CURRENT Iteration: a PATCH that also moves the Story is refused
+   * before this is reached (`TARGET_END_WITH_ITERATION_CHANGE`), so there is no "destination" case.
    */
   private async carryoverContext(
     story: Pick<WorkItem, 'projectId' | 'teamId' | 'workspaceId' | 'iterationId'>,
-    iterationId: string | null = story.iterationId,
   ): Promise<{
     projectIterations: CarryoverIteration[];
     current: CarryoverIteration | null;
@@ -1883,6 +1883,7 @@ export class WorkItemsService {
       story.projectId,
       story.workspaceId,
     );
+    const { iterationId } = story;
     const current =
       iterationId === null ? null : (projectIterations.find((it) => it.id === iterationId) ?? null);
     const eligible = current ? eligibleIterations(story, projectIterations, current) : [];
@@ -1900,31 +1901,21 @@ export class WorkItemsService {
   async getCarryoverOptions(actor: JwtPayload, id: string): Promise<CarryoverOptions> {
     const item = await this.requireReadable(actor, id);
     const isStory = item.type === 'story';
-    const { current, eligible } = isStory
-      ? await this.carryoverContext(item)
-      : { current: null, eligible: [] as CarryoverIteration[] };
-
-    const canEdit =
-      isStory &&
-      (await this.accessService.hasProjectPermission(
-        actor,
-        item.projectId,
-        PERMISSION.WORK_ITEM_EDIT,
-      ));
-
-    let taskCount = 0;
-    let unfinishedTaskCount = 0;
-    if (isStory) {
-      const tasks = await this.workItemRepo.listTasksByParent(
-        id,
-        actor.workspaceId,
-        await this.teamScopeFor(actor, item.projectId),
-      );
-      taskCount = tasks.length;
-      unfinishedTaskCount = tasks.filter(
-        (task) => !isCompletedScheduleState(task.scheduleState),
-      ).length;
-    }
+    // The three reads are independent (none consumes another's output), so they run concurrently:
+    // picker-open latency is the slowest round trip, not the sum of three (PR #653 review, round 3).
+    const [{ current, eligible }, canEdit, tasks] = isStory
+      ? await Promise.all([
+          this.carryoverContext(item),
+          this.accessService.hasProjectPermission(actor, item.projectId, PERMISSION.WORK_ITEM_EDIT),
+          this.teamScopeFor(actor, item.projectId).then((scope) =>
+            this.workItemRepo.listTasksByParent(id, actor.workspaceId, scope),
+          ),
+        ])
+      : [{ current: null, eligible: [] as CarryoverIteration[] }, false, []];
+    const taskCount = tasks.length;
+    const unfinishedTaskCount = tasks.filter(
+      (task) => !isCompletedScheduleState(task.scheduleState),
+    ).length;
 
     return {
       // R6 — an Unscheduled Story (no `current`) is never editable here; clearing is still allowed

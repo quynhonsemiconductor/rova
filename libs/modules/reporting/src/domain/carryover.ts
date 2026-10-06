@@ -213,7 +213,10 @@ function rowDirection(event: StoredCarryoverEvent, ids: ReadonlySet<string>): Ca
  * CO-BR-38 / ruling R11 — unique affected Story ids over unique Stories in scope, as a percentage.
  *
  * Denominator = Stories scheduled in the set now (Split placeholders already excluded by the
- * repository) ∪ Stories carried OUT of it (they are no longer scheduled there, but were). `0` when
+ * repository) ∪ every Story an involving event touched — carried OUT (no longer scheduled there, but
+ * was) AND carried IN (it was in scope on arrival, even if it later left by a non-Carryover path such
+ * as a Manual Move, which R3 does not record as a Carryover event). The numerator is therefore a
+ * subset of the denominator and the rate can never exceed 100 (PR #653 review, round 3). `0` when
  * the denominator is 0.
  */
 export function carryoverRate(
@@ -221,11 +224,8 @@ export function carryoverRate(
   iterationIds: readonly string[],
   scheduledStoryIds: readonly string[],
 ): number {
-  const ids = new Set(iterationIds);
-  const touched = involving(events, iterationIds);
-  const affected = new Set(touched.map((event) => event.storyId));
-  const carriedOut = touched.filter((event) => isOut(event, ids)).map((event) => event.storyId);
-  const denominator = new Set([...scheduledStoryIds, ...carriedOut]);
+  const affected = new Set(involving(events, iterationIds).map((event) => event.storyId));
+  const denominator = new Set([...scheduledStoryIds, ...affected]);
   if (denominator.size === 0) return 0;
   return roundForDisplay((affected.size / denominator.size) * 100, 1);
 }

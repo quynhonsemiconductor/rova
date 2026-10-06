@@ -57,6 +57,31 @@ describe('isEnabledDate', () => {
     expect(isEnabledDate('2030-01-10', accepted)).toBe(false)
     expect(isEnabledDate('2030-01-22', accepted)).toBe(true)
   })
+  it('disables every day when minDate is null (nothing selectable)', () => {
+    const none = { ...options, minDate: null }
+    for (const day of ['2030-01-07', '2030-01-10', '2030-01-22']) {
+      expect(isEnabledDate(day, none)).toBe(false)
+    }
+  })
+  it('an ELIGIBLE current Iteration escapes R6: its own days stay selectable', () => {
+    // Same payload as the R6 case except `eligible: true` — the escape is that flag alone.
+    expect(
+      isEnabledDate('2030-01-10', { ...options, current: { ...current, eligible: true } }),
+    ).toBe(true)
+  })
+})
+
+describe('resolveSelection — no current window', () => {
+  it('treats every day as a plain save when there is no current Iteration', () => {
+    expect(resolveSelection('2030-01-22', { ...options, current: null })).toEqual({
+      kind: 'inside',
+    })
+  })
+  it('treats every day as a plain save when the current Iteration has no end date', () => {
+    expect(
+      resolveSelection('2030-01-22', { ...options, current: { ...current, endDate: null } }),
+    ).toEqual({ kind: 'inside' })
+  })
 })
 
 describe('resolveSelection', () => {

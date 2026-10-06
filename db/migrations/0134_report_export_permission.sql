@@ -12,6 +12,13 @@
 --
 -- Safe to FORCE rather than merge, and only because the code is new: nobody can have revoked a
 -- permission that did not exist. The `NOT @>` guard keeps it idempotent.
+--
+-- WHY THE SLUG IS ENOUGH (PR #653 review, round 3). R4 excludes a "Read-only Project Admin", but no
+-- such row can exist here: this access model has only the `admin` / `editor` project levels, and the
+-- per-workspace role editor (`updateRolePermissions`) was removed, so a `project_admin` row cannot be
+-- trimmed to read-only. Every `project_admin` row is a FULL admin (CLAUDE.md, Phase 7 divergence 1).
+-- If a read-only planner is ever reintroduced, it needs its own slug — gating this grant on an
+-- unrelated code such as `capacity:manage` would tie export to capacity planning by accident.
 UPDATE access.system_roles
 SET permissions = permissions || '["report:export"]'::jsonb
 WHERE slug IN ('workspace_admin', 'project_admin')

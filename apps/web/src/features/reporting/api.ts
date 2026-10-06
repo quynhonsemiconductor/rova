@@ -298,18 +298,44 @@ const REPORT_TIMEOUT_MS = 30_000
  * Returns `done`, which every caller runs in `finally` (PR 653 review, round 2): a request that
  * completes normally never aborts, so without it each call would leave a 30 s timer and its closure
  * alive. The listener is attached BEFORE the already-aborted check, so that path clears it too.
+ *
+ * `done` also DETACHES the relay from the caller's `signal` (PR 653 review, round 3): TanStack's
+ * query signal can outlive the request, and a listener left on it would keep `controller` reachable
+ * until that signal aborts or is collected.
  */
-function withTimeout(signal?: AbortSignal): { signal: AbortSignal; done: () => void } {
+export function withTimeout(signal?: AbortSignal): { signal: AbortSignal; done: () => void } {
   const controller = new AbortController()
   const timer = setTimeout(
     () => controller.abort(new DOMException('Report request timed out', 'TimeoutError')),
     REPORT_TIMEOUT_MS,
   )
-  const done = () => clearTimeout(timer)
+  const relay = () => controller.abort(signal?.reason)
+  const done = () => {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', relay)
+  }
   controller.signal.addEventListener('abort', done, { once: true })
   if (signal?.aborted) controller.abort(signal.reason)
-  else signal?.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
+  else signal?.addEventListener('abort', relay, { once: true })
   return { signal: controller.signal, done }
+}
+
+/** Is this the {@link withTimeout} deadline firing (as opposed to a server or network error)? */
+function isTimeout(error: unknown): boolean {
+  // By name, not `instanceof Error`: a `DOMException` is not an `Error` in every runtime.
+  return (error as { name?: unknown } | null)?.name === 'TimeoutError'
+}
+
+/**
+ * The report query's retry rule: the app default (one retry, never on a 4xx), EXCEPT that a timeout
+ * is final (PR 653 review, round 3). A 30 s hang already means "give up"; re-running it would keep
+ * the skeleton up for another 30 s before the error state the timeout exists to surface.
+ */
+export function retryReport(failureCount: number, error: unknown): boolean {
+  if (isTimeout(error)) return false
+  const status = (error as { status?: number } | null)?.status
+  if (status && status >= 400 && status < 500) return false
+  return failureCount < 1
 }
 
 /**
@@ -346,6 +372,7 @@ export function useCarryoverReport({
     },
     enabled: !!projectId && !!iterationId,
     staleTime: LIVE,
+    retry: retryReport,
     /**
      * NO `placeholderData` (PR 653 review, round 2). It kept the PREVIOUS Iteration's whole report
      * on screen under the NEW selection's label while the fetch ran, and `data` was never empty so

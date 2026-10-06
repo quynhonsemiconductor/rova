@@ -84,6 +84,19 @@ export function CarryoverReport({
   const rows = rowsForDirection(data?.rows ?? [], direction)
   const trend = data?.trend ?? []
 
+  // The feed failure beats the report failure: with no Iteration list nothing can be selected, so the
+  // report's own error would name the wrong cause. Computed once, outside JSX (no nested ternary).
+  let errorState: React.ReactNode
+  if (iterationFeed.isError) {
+    errorState = (
+      <EmptyState
+        title={t('reports:timeboxFeedError.title')}
+        description={t('reports:timeboxFeedError.body')}
+      />
+    )
+  } else if (isError) {
+    errorState = <EmptyState title={t('report.error.title')} description={t('report.error.body')} />
+  }
   return (
     <ReportSurface
       title={t('report.title')}
@@ -147,16 +160,7 @@ export function CarryoverReport({
         </MetricStrip>
       }
       padBody
-      error={
-        iterationFeed.isError ? (
-          <EmptyState
-            title={t('reports:timeboxFeedError.title')}
-            description={t('reports:timeboxFeedError.body')}
-          />
-        ) : isError ? (
-          <EmptyState title={t('report.error.title')} description={t('report.error.body')} />
-        ) : undefined
-      }
+      error={errorState}
       loading={(isLoading && !data) || iterationFeed.isLoading}
     >
       {selectedId === null ? (

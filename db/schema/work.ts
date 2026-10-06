@@ -185,7 +185,8 @@ export const workItems = workSchema.table(
      * cleared on reopen. Neither belongs to any `Create*`/`Update*` schema — only the trigger writes them.
      *
      * `target_end_date` is the Story editor's forecast (CO-BR-12), validated by the service against
-     * the eligible Iterations (plan D5/D7); no trigger touches it.
+     * the eligible Iterations (plan D5/D7). The trigger never sets or rewrites it on a Story; it only
+     * CLEARS it on every non-Story row (plan D12), so seeds and raw SQL cannot leave one on a Defect.
      */
     startDate: date('start_date'),
     actualEndDate: date('actual_end_date'),

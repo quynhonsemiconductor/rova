@@ -97,10 +97,17 @@ BEGIN
   END IF;
 
   -- The ONE permitted UPDATE: the FK's ON DELETE SET NULL after an Iteration is deleted. Every other
-  -- column must be unchanged, and an iteration reference may only move to NULL.
+  -- column must be unchanged, and EXACTLY ONE iteration reference moves to NULL (PR #653 review,
+  -- round 3): each FK's SET NULL is its own statement and only ever nulls its own column, so an
+  -- UPDATE that nulls BOTH at once (erasing the attribution pair) is not the FK and is refused.
   IF TG_OP = 'UPDATE'
-     AND (NEW."source_iteration_id" IS NOT DISTINCT FROM OLD."source_iteration_id" OR NEW."source_iteration_id" IS NULL)
-     AND (NEW."target_iteration_id" IS NOT DISTINCT FROM OLD."target_iteration_id" OR NEW."target_iteration_id" IS NULL)
+     AND (
+       (NEW."source_iteration_id" IS NULL AND OLD."source_iteration_id" IS NOT NULL
+          AND NEW."target_iteration_id" IS NOT DISTINCT FROM OLD."target_iteration_id")
+       OR
+       (NEW."target_iteration_id" IS NULL AND OLD."target_iteration_id" IS NOT NULL
+          AND NEW."source_iteration_id" IS NOT DISTINCT FROM OLD."source_iteration_id")
+     )
      AND (to_jsonb(NEW) - 'source_iteration_id' - 'target_iteration_id')
          = (to_jsonb(OLD) - 'source_iteration_id' - 'target_iteration_id') THEN
     RETURN NEW;
