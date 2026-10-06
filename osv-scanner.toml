@@ -1,0 +1,16 @@
+# Accepted dependency advisories for the ROOT lockfile (osv-scanner). osv-scanner reads the
+# `osv-scanner.toml` next to each lockfile it scans; `pnpm-lock.yaml` lives here (apps/web is a
+# workspace member of this lockfile, so `apps/web/osv-scanner.toml` never applies to it).
+#
+# Each entry MUST name: why no fix is applied, where the package is reached, and a review date.
+# `ignoreUntil` is short on purpose: past it the scanner blocks again and the entry is re-triaged.
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2026-11-06T00:00:00Z
+reason = """braces <= 3.0.3: stack exhaustion on deeply nested brace patterns (CVSS 8.7). \
+NO FIXED RELEASE EXISTS (3.0.3 is the latest; OSV lists it as last_affected), so there is no \
+version to pin or override to. DEV-ONLY: the sole path is eslint-plugin-boundaries 7.2.0 -> \
+micromatch 4.0.8 -> braces, run by `pnpm lint` over glob patterns committed in eslint.config; \
+nothing reaches it at runtime or in the image, and the attacker-supplied pattern precondition does \
+not exist. Re-triage by ignoreUntil: drop this entry when braces or micromatch ship a fix."""
