@@ -173,6 +173,41 @@ overrides:
   # env) allowing RCE, fixed in 4.9.4 on the 4.x line. DEV-ONLY: @swc/cli (via @nestjs/cli) uses it
   # for parallel compilation. Kept inside 4.x, the major @swc/cli declares.
   "piscina@<4.9.4": ">=4.9.4 <5.0.0"
+  # GHSA-x8mw-p69m-v3mx / GHSA-xjh9-v7x6-24jw (CVSS 7.5 each, DoS via a prototype-named part
+  # header and via an oversized boundary, fixed in 3.2.1) and GHSA-gxm5-99cw-xjw9 (CVSS 5.8, CRLF
+  # injection through the Content-Disposition filename / name, fixed in 3.2.2). RUNTIME and
+  # INTERNET-FACING: @fastify/multipart -> @fastify/busboy parses every attachment upload. Every
+  # @fastify/multipart release (10.1.2 included) still declares `^3.0.0`, so bumping the plugin
+  # alone would not move it; the floor does, kept inside 3.x.
+  "@fastify/busboy@<3.2.2": ">=3.2.2 <4.0.0"
+  # GHSA-p6vx-979v-rg4c (CVSS 9.8, `fromJSON()` thenable assimilation invoking plugin-produced
+  # callables, fixed 1.6.2) and GHSA-jp82-f5mq-hwhp (CVSS 7.5, memory exhaustion via an unchecked
+  # TypedArray length, fixed 1.6.3). Shipped in the SPA bundle via @tanstack/router-core, which
+  # declares `^1.5.4`, so 1.6.x is in-range — the lockfile was resolved before the fix. Kept in 1.x.
+  "seroval@<1.6.3": ">=1.6.3 <2.0.0"
+  # GHSA-ch52-4w7c-c8xp (CVSS 8.7) — a client `max-stale` overrode shared-cache reuse
+  # prohibitions, so another user's Set-Cookie response could be served. Upstream fixed it in 4.3.0
+  # (kornelski/http-cache-semantics#56, closed 2026-10-04); OSV lists it as `last_affected 4.2.0`.
+  # DEV-ONLY: @swc/cli -> bin-wrapper -> got -> cacheable-request, fetching the swc binary at
+  # install time. Kept in 4.x, the major cacheable-request declares.
+  "http-cache-semantics@<4.3.0": ">=4.3.0 <5.0.0"
+  # GHSA-jggr-w7fw-pc2j (CVSS 6.3) — stack exhaustion copying deeply nested values, fixed in
+  # 4.1.0 on the 4.x line. DEV-ONLY: pino-pretty (the local log formatter; never in the image).
+  # PINNED to 4.1.1 (fixed, published 2026-09-02) rather than a floor: the floor resolved 4.1.2,
+  # published 2026-10-05T19:12Z — inside the 24h `minimumReleaseAge` cooldown the nanoid entry
+  # above describes. Same trade as nanoid: raise by hand if the advisory names a later fix.
+  "fast-copy@>=4.0.0 <4.1.0": "4.1.1"
+  # GHSA-68fv-2mgg-jv7q (CVSS 8.7) — event-loop DoS via indexed source-map section offsets, fixed
+  # in 1.2.2. DEV / BUILD-ONLY: postcss, vite, tailwind, jsdom and coverage all read source maps
+  # this repo generates. Every consumer declares `^1.x`; kept in 1.x.
+  "source-map-js@<1.2.2": ">=1.2.2 <2.0.0"
+  # GHSA-qqmp-wf37-98f9 (CVSS 5.8, the DB username on every query span as `db.user`) is NOT pinned
+  # here: the eight instrumentation-* packages are fixed by moving @opentelemetry/
+  # auto-instrumentations-node to ^0.79.0 together with the 0.221 experimental line (package.json),
+  # so the SDK, the exporters and every instrumentation share one @opentelemetry/instrumentation.
+  #
+  # GHSA-vfj7-8cjw-p6xm (braces <= 3.0.3) has NO fixed release; it is accepted, time-boxed, in
+  # `osv-scanner.toml` at the repo root.
 # pnpm 11 wrote this block during its migration and left every value as the literal
 # placeholder "set this to true or false". Unresolved, pnpm treats the decision as unmade,
 # refuses to run those postinstalls, and exits 1 with ERR_PNPM_IGNORED_BUILDS — and because
