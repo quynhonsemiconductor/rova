@@ -33,4 +33,4 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: quynhonsemiconductor/ci/actions/pr-size@feat/pr-size
+      - uses: quynhonsemiconductor/ci/actions/pr-size@v1
