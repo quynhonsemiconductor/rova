@@ -146,9 +146,10 @@ test.describe('leaving a work-item detail', () => {
     await page.goto('/')
     await settle(page)
 
-    // My Work's ID column opens the item detail.
+    // My Work's ID column opens the item detail. A real link since US-120 (so it can also open in a
+    // new tab); a plain click still navigates in place, which is what this journey needs.
     const idCell = page
-      .locator('button')
+      .locator('a[href^="/item/"]')
       .filter({ has: page.locator('span.font-mono') })
       .first()
     await expect(idCell).toBeVisible()
