@@ -122,4 +122,14 @@ describe('emptyListResource', () => {
     expect(r.isError).toBe(false)
     expect(r.error).toBeUndefined()
   })
+
+  it('hands out the same frozen empty array as listResource, so it cannot restart the render loop', () => {
+    // A fresh `[]` per call is the defect listResource just had: a caller building this during
+    // render would change the `rows` reference every render and re-trigger `useRowRerank`'s sync.
+    const a = emptyListResource<number>()
+    const b = emptyListResource<number>()
+    expect(b.rows).toBe(a.rows)
+    expect(a.rows).toBe(listResource<number>({ data: undefined, isLoading: true }).rows)
+    expect(Object.isFrozen(a.rows)).toBe(true)
+  })
 })
