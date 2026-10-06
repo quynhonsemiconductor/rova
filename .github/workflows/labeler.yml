@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   labeler:
-    uses: quynhonsemiconductor/ci/.github/workflows/labeler.yml@fix/pr-size-live-labels
+    uses: quynhonsemiconductor/ci/.github/workflows/labeler.yml@v1
     permissions:
       contents: read
       pull-requests: write
