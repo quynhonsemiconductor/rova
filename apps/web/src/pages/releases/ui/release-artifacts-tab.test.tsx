@@ -185,11 +185,16 @@ describe('ReleaseArtifactsTab', () => {
   it('opens a FEATURE row on the Portfolio surface, not on /item/$itemKey', async () => {
     renderTab()
     // `/item/$itemKey` resolves against `work_items` only, so it would 404 for a Feature. The
-    // discriminator is the row's own `type`: the two type enums are disjoint.
-    fireEvent.click(await screen.findByRole('button', { name: /FE-6/ }))
+    // discriminator is the row's own `type`: the two type enums are disjoint. Links since US-120, so
+    // the href must name the same surface — a Ctrl+click on a Feature must not open `/item/FE-6`.
+    const feature = await screen.findByRole('link', { name: /FE-6/ })
+    expect(feature.getAttribute('href')).toBe('/portfolio/pi-1')
+    fireEvent.click(feature)
     expect(navigate).toHaveBeenCalledWith({ to: '/portfolio/$itemId', params: { itemId: 'pi-1' } })
 
-    fireEvent.click(screen.getByRole('button', { name: /US-1/ }))
+    const story = screen.getByRole('link', { name: /US-1/ })
+    expect(story.getAttribute('href')).toBe('/item/US-1')
+    fireEvent.click(story)
     expect(navigate).toHaveBeenCalledWith({ to: '/item/$itemKey', params: { itemKey: 'US-1' } })
   })
 

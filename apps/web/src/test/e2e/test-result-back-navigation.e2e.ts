@@ -39,7 +39,7 @@ test.describe('Test Result Detail — back navigation', () => {
 
     await page.getByRole('tab', { name: /Test Cases/i }).click()
     await settle(page)
-    await page.getByRole('button', { name: 'TC-1' }).click()
+    await page.getByRole('link', { name: 'TC-1' }).click()
     await settle(page)
     await expect(page).toHaveURL(/\/test-case\/TC-1$/)
 

@@ -45,6 +45,7 @@ import {
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { useReleases } from '@/features/releases/api'
 import { useProjectMembers } from '@/features/teams/api'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -388,7 +389,12 @@ const MILESTONES_COLUMNS: ColumnSpec<Milestone, MilestoneCtx, MilestoneColKey>[]
     sortCol: 'milestoneKey',
     cellClassName: 'flex items-center px-2',
     cell: (m, ctx) => (
-      <IdCell type="milestone" itemKey={m.milestoneKey ?? '--'} onOpen={() => ctx.onOpen(m.id)} />
+      <IdCell
+        type="milestone"
+        itemKey={m.milestoneKey ?? '--'}
+        onOpen={() => ctx.onOpen(m.id)}
+        href={entityDetailPath.milestone(m.id)}
+      />
     ),
   },
   {

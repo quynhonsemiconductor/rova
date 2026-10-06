@@ -39,6 +39,7 @@ import { RowGutter } from '@/shared/ui/row-gutter'
 import { MilestoneSelectCell, TasksProgress } from './status-cells'
 import { useWorkItemFieldCommit } from '../model/use-work-item-field-commit'
 import { NUMERIC_CELL_CLASS } from '@/shared/lib/utils'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 // Single mono stack for numeric cells (digit alignment).
 /**
@@ -302,6 +303,7 @@ export function StatusRow({
                   ? () => void navigate({ to: '/portfolio/$itemId', params: { itemId: featureId } })
                   : undefined
               }
+              href={featureId ? entityDetailPath.portfolioItem(featureId) : undefined}
             />
           ) : (
             <span className="text-foreground-subtle" style={{ fontSize: 12 }}>

@@ -22,6 +22,7 @@ import { RatioMeter } from '@/shared/ui/ratio-meter'
 import { WarningCountBadge } from '@/shared/ui/warning-count-badge'
 import { EMPTY_VALUE, formatDate } from '@/shared/lib/utils'
 import { CellLink } from '@/shared/ui/cell-link'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 export function IssuesPanel({
   row,
@@ -137,6 +138,7 @@ export function IssuesPanel({
               <li key={issue.childId} className="border-t border-border-inner pt-2">
                 <p className="text-ui-sm text-foreground">
                   <CellLink
+                    href={entityDetailPath.workItem(issue.childKey)}
                     onClick={() =>
                       void navigate({ to: '/item/$itemKey', params: { itemKey: issue.childKey } })
                     }

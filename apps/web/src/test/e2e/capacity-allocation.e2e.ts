@@ -165,7 +165,7 @@ test.describe('Capacity allocation', () => {
     // CP-1 by name, not `.first()`: the seed now also carries CP-2, a PUBLISHED plan, and the list
     // is newest-first — so `.first()` opened the read-only one and every draft-only control was
     // missing.
-    await page.getByRole('button', { name: /^CP-1$/ }).click()
+    await page.getByRole('link', { name: /^CP-1$/ }).click()
     await expect(page).toHaveURL(/\/capacity-planning\/[0-9a-f-]{36}/)
     await expect(page.getByText('Team Alpha').first()).toBeVisible()
     await resetPlan(page)
@@ -369,7 +369,7 @@ test.describe('Capacity allocation', () => {
     // CP-1 by name, not `.first()`: the seed now also carries CP-2, a PUBLISHED plan, and the list
     // is newest-first — so `.first()` opened the read-only one and every draft-only control was
     // missing.
-    await page.getByRole('button', { name: /^CP-1$/ }).click()
+    await page.getByRole('link', { name: /^CP-1$/ }).click()
     await planAction(page, /^Unpublish$/)
     const confirm = page.getByRole('dialog')
     await expect(confirm.getByText(/are NOT undone/)).toBeVisible()
@@ -453,13 +453,13 @@ test.describe('Capacity allocation', () => {
 
     // ── Make CP-2 a draft, which is what makes it eligible ───────────────────
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
-    await page.getByRole('button', { name: /^CP-2$/ }).click()
+    await page.getByRole('link', { name: /^CP-2$/ }).click()
     await planAction(page, /^Unpublish$/)
     await page.getByRole('dialog').getByRole('button', { name: 'Unpublish' }).click()
     await expect(page.getByText('Draft')).toBeVisible()
 
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
-    await page.getByRole('button', { name: /^CP-1$/ }).click()
+    await page.getByRole('link', { name: /^CP-1$/ }).click()
 
     const dialog = await openMove()
     await expect(dialog.getByRole('checkbox', { name: /^CP-1$/ })).toHaveCount(0)
@@ -484,9 +484,9 @@ test.describe('Capacity allocation', () => {
 
     // ── On CP-2: the Feature arrived, and the plan is still a draft ──────────
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
-    await page.getByRole('button', { name: /^CP-2$/ }).click()
+    await page.getByRole('link', { name: /^CP-2$/ }).click()
     await page.getByRole('tab', { name: /Features/ }).click()
-    await expect(page.getByRole('button', { name: 'FE-1' }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: 'FE-1' }).first()).toBeVisible()
     await expect(page.getByText('Draft')).toBeVisible()
 
     // ── Cleanup: move it back to CP-1, then restore CP-2's published state ───
@@ -510,9 +510,9 @@ test.describe('Capacity allocation', () => {
 
     // And CP-1 has it back, parked: its team is not on CP-2, so the return trip cannot restore one.
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
-    await page.getByRole('button', { name: /^CP-1$/ }).click()
+    await page.getByRole('link', { name: /^CP-1$/ }).click()
     await page.getByRole('tab', { name: /Features/ }).click()
-    await expect(page.getByRole('button', { name: 'FE-1' }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: 'FE-1' }).first()).toBeVisible()
     await removeFeature(page, 'FE-1')
   })
 })

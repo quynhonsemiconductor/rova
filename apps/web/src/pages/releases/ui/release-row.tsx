@@ -14,6 +14,7 @@ import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { type ColKey } from '../model/columns'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from '../model/release-states'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 // ── Inline editable row ───────────────────────────────────────────────────
 
@@ -138,7 +139,12 @@ export function ReleaseRow({
         className="flex items-center px-2"
         onClick={(e) => e.stopPropagation()}
       >
-        <IdCell type="release" itemKey={release.releaseKey ?? '--'} onOpen={openDetail} />
+        <IdCell
+          type="release"
+          itemKey={release.releaseKey ?? '--'}
+          onOpen={openDetail}
+          href={entityDetailPath.release(release.id)}
+        />
       </div>
 
       {/* Name — inline-editable (the ID cell is the click-to-open link),
