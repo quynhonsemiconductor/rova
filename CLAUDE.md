@@ -1295,6 +1295,13 @@ inconsistent stays in the product.
 
 - Conventional commits, scope required for `feat` and `security` (`feat(auth): …`).
   release-please owns versions and the changelog — never bump by hand.
+- **One pull request per User Story, or per layer.** A plan with several stories ships as several
+  pull requests — stacked when they depend on each other: migrations + domain, then the API, then
+  the UI. #653 put ten stories (4,656 lines of code) in one; no review of it, human or AI, could read
+  it whole, and every AI run covered 12–19 of 75 files. The `PR size` check labels every pull
+  request by lines of code (tests, docs, lockfiles and generated files are not counted) and
+  comments above 1,000; above 2,500 the AI review runs only on opened / reopened / ready for review.
+  A plan doc decides the split up front, not after the branch exists.
 - Errors: throw the domain exceptions from `@platform` (`NotFoundException`,
   `ConflictException`, `PermissionDeniedException`, …) with a stable code the
   frontend can branch on; the global filter maps them to HTTP.
