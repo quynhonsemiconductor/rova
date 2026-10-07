@@ -1,5 +1,7 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import type { WorkItemType } from '@/entities/work-item/model/types'
+import { defaultRecordHref } from '@/entities/work-item/model/record-href'
+import { RecordLink } from '@/shared/ui/record-link'
 
 interface IdCellProps {
   /** Work-item type — drives the leading {@link TypeBadge} glyph. */
@@ -16,6 +18,15 @@ interface IdCellProps {
    * parents' 12px one.
    */
   onOpen?: () => void
+  /**
+   * The record's detail URL (an in-app path from `entityDetailPath`), so Ctrl/Cmd+click,
+   * middle-click and "Open link in new tab" work (US-120). A plain click still calls `onOpen`.
+   *
+   * Defaults to `/item/{itemKey}` for a Story / Task / Defect, whose detail route is addressed by
+   * key. Every other type (portfolio item, timebox, project, plan) is addressed by its own id or
+   * key and MUST pass it — without one the cell falls back to a button that opens in place only.
+   */
+  href?: string
 }
 
 /**
@@ -32,13 +43,39 @@ interface IdCellProps {
 const KEY_CLASS =
   'flex min-h-5 min-w-0 items-center font-mono text-ui-md break-words whitespace-normal'
 
-export function IdCell({ type, itemKey, onOpen }: IdCellProps) {
+// `items-start` + no `overflow-hidden`: the key wraps, so the type glyph must stay
+// on its first line and the control must be allowed to grow.
+const OPEN_CLASS =
+  'group flex min-w-0 cursor-pointer items-start gap-1 border-none bg-transparent p-0 text-left no-underline'
+
+export function IdCell({ type, itemKey, onOpen, href }: IdCellProps) {
   if (onOpen === undefined) {
     return (
       <span className="inline-flex min-w-0 items-start gap-1" title={itemKey}>
         <TypeBadge type={type} />
         <span className={`${KEY_CLASS} text-muted-foreground`}>{itemKey}</span>
       </span>
+    )
+  }
+
+  const content = (
+    <>
+      <TypeBadge type={type} />
+      {/* `min-h-5` (in `KEY_CLASS`) so a one-line key sits CENTRED against the type glyph rather than
+          riding its top edge, which is the same rule the team and owner cells follow. A wrapped key
+          still starts level with the glyph. */}
+      <span className={`${KEY_CLASS} text-primary-light underline-offset-2 group-hover:underline`}>
+        {itemKey}
+      </span>
+    </>
+  )
+
+  const target = href ?? defaultRecordHref(type, itemKey)
+  if (target) {
+    return (
+      <RecordLink href={target} onOpen={onOpen} title={itemKey} className={OPEN_CLASS}>
+        {content}
+      </RecordLink>
     )
   }
 
@@ -50,17 +87,9 @@ export function IdCell({ type, itemKey, onOpen }: IdCellProps) {
         onOpen()
       }}
       title={itemKey}
-      // `items-start` + no `overflow-hidden`: the key wraps, so the type glyph must stay
-      // on its first line and the button must be allowed to grow.
-      className="group flex min-w-0 cursor-pointer items-start gap-1 border-none bg-transparent p-0 text-left"
+      className={OPEN_CLASS}
     >
-      <TypeBadge type={type} />
-      {/* `min-h-5` (in `KEY_CLASS`) so a one-line key sits CENTRED against the type glyph rather than
-          riding its top edge, which is the same rule the team and owner cells follow. A wrapped key
-          still starts level with the glyph. */}
-      <span className={`${KEY_CLASS} text-primary-light underline-offset-2 group-hover:underline`}>
-        {itemKey}
-      </span>
+      {content}
     </button>
   )
 }

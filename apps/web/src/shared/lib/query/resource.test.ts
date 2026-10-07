@@ -18,6 +18,22 @@ import {
 const boom = new Error('boom')
 
 describe('listResource', () => {
+  it('hands out the SAME empty array on every call while there is no data (React 301 on US-120)', () => {
+    // A fresh `[]` per render changed the reference `useRowRerank` re-syncs on during render, so a
+    // Tasks / Test Cases tab mounted before its fetch resolved looped until React threw.
+    const loading = listResource<number>({ data: undefined, isLoading: true })
+    const again = listResource<number>({ data: undefined, isLoading: true })
+    const failed = listResource<number>({ data: undefined, isError: true, error: boom })
+    expect(again.rows).toBe(loading.rows)
+    expect(failed.rows).toBe(loading.rows)
+    // Shared, so it must not be writable by one caller on behalf of all the others.
+    expect(Object.isFrozen(loading.rows)).toBe(true)
+  })
+
+  it('passes a real answer through by reference, including a measured empty one', () => {
+    const data: number[] = []
+    expect(listResource<number>({ data }).rows).toBe(data)
+  })
   it('returns phase "loading" while the request is in flight, and no error', () => {
     const r = listResource<number>({ data: undefined, isLoading: true })
     expect(r.phase).toBe('loading')
@@ -105,5 +121,15 @@ describe('emptyListResource', () => {
     expect(r.phase).toBe('empty')
     expect(r.isError).toBe(false)
     expect(r.error).toBeUndefined()
+  })
+
+  it('hands out the same frozen empty array as listResource, so it cannot restart the render loop', () => {
+    // A fresh `[]` per call is the defect listResource just had: a caller building this during
+    // render would change the `rows` reference every render and re-trigger `useRowRerank`'s sync.
+    const a = emptyListResource<number>()
+    const b = emptyListResource<number>()
+    expect(b.rows).toBe(a.rows)
+    expect(a.rows).toBe(listResource<number>({ data: undefined, isLoading: true }).rows)
+    expect(Object.isFrozen(a.rows)).toBe(true)
   })
 })

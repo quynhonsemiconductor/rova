@@ -79,10 +79,17 @@ interface ResourceBase {
  */
 export interface ListResource<T> extends ResourceBase {
   /**
-   * Mutable `T[]`, not `readonly T[]`, on purpose: the seam has to be CHEAPER than the idiom it
-   * replaces or it gets bypassed, and a `readonly` array forces a spread at every existing helper
-   * that takes `T[]` (`iterationsInScope`, the pickers, `useMemo` filters). The invariant this file
-   * defends is "an error is not an empty answer", not immutability.
+   * `T[]`, not `readonly T[]`, on purpose: the seam has to be CHEAPER than the idiom it replaces or
+   * it gets bypassed, and a `readonly` array forces a spread at every existing helper that takes
+   * `T[]` (`iterationsInScope`, the pickers, `useMemo` filters). The invariant this file defends is
+   * "an error is not an empty answer".
+   *
+   * BUT DO NOT MUTATE IT IN PLACE. Whenever there is no data — loading, error, disabled, or
+   * `emptyListResource()` — `rows` is the shared FROZEN `NO_ROWS` array (see there for why it must
+   * keep one reference), and `rows.sort(…)` / `rows.push(…)` throws a `TypeError`. That only
+   * happens while data is missing, so a fixture that resolves data will not catch it. Copy first:
+   * `[...rows].sort(…)`. When data is present, `rows` IS the query cache's array, which must not be
+   * mutated either.
    */
   readonly rows: T[]
 }
@@ -99,6 +106,21 @@ function pending<T>(q: QueryLike<T>): boolean {
   // missing id does not render a permanent skeleton.
   return q.isLoading ?? q.isPending ?? false
 }
+
+/**
+ * The ONE empty array every list resource without data hands out — `listResource` while a query
+ * has nothing, and `emptyListResource()`.
+ *
+ * `q.data ?? []` minted a fresh array on every render while a query was pending (or failed, or
+ * disabled). Anything keyed on the REFERENCE of `rows` then saw a change on every render — and
+ * `useRowRerank` re-syncs its optimistic copy DURING render when its `items` reference changes, so a
+ * Tasks or Test Cases tab that re-rendered before its fetch resolved set state, re-rendered, got
+ * another new `[]`, and hit React's "Too many re-renders" (minified error 301). Production, 2026-10-05:
+ * opening the Tasks tab on US-120 replaced the page with the error boundary.
+ *
+ * Frozen so a caller that mutates it throws instead of corrupting every other empty resource.
+ */
+const NO_ROWS: readonly never[] = Object.freeze([])
 
 /**
  * Wrap a list query. Pass the query result itself, not `query.data`.
@@ -118,7 +140,7 @@ function pending<T>(q: QueryLike<T>): boolean {
  * optimisable, and `pnpm lint` fails on the one-line form.
  */
 export function listResource<T>(q: QueryLike<T[]>): ListResource<T> {
-  const rows = q.data ?? []
+  const rows = q.data ?? (NO_ROWS as unknown as T[])
   const isError = q.isError === true
   const isLoading = pending(q) && !isError
   return {
@@ -171,5 +193,11 @@ export function firstError(...parts: readonly ResourceBase[]): unknown {
  * server answered.
  */
 export function emptyListResource<T>(): ListResource<T> {
-  return { rows: [], phase: 'empty', isLoading: false, isError: false, error: undefined }
+  return {
+    rows: NO_ROWS as unknown as T[],
+    phase: 'empty',
+    isLoading: false,
+    isError: false,
+    error: undefined,
+  }
 }

@@ -417,7 +417,7 @@ test.describe('Portfolio', () => {
     await login(page)
     await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
     // The ID cell is the link — the row does not navigate and the Name cell edits in place.
-    await page.getByRole('button', { name: 'FE-2', exact: true }).click()
+    await page.getByRole('link', { name: 'FE-2', exact: true }).click()
     await expect(page).toHaveURL(/\/portfolio\/[0-9a-f-]{36}/)
 
     // By accessible NAME: every `RichTextEditor` now labels its editable area with the field

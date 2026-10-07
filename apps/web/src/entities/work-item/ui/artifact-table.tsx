@@ -5,7 +5,9 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import type { ScheduleState } from '@/entities/work-item/model/types'
+import { PORTFOLIO_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { BRAND } from '@/shared/config/brand'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 import type { ListResource } from '@/shared/lib/query/resource'
 import { LoadErrorState } from '@/shared/ui/load-error-state'
 import { OwnerCell } from '@/shared/ui/owner-cell'
@@ -50,7 +52,15 @@ function ArtifactRow({
       </td>
       {/* ID — type glyph + key link (the only nav affordance) */}
       <td className="h-8 px-3">
-        <IdCell type={item.type} itemKey={item.itemKey} onOpen={onOpen} />
+        <IdCell
+          type={item.type}
+          itemKey={item.itemKey}
+          onOpen={onOpen}
+          // A portfolio artifact is addressed by id; a work item gets its key-based default.
+          href={
+            item.type in PORTFOLIO_TYPE_CONFIG ? entityDetailPath.portfolioItem(item.id) : undefined
+          }
+        />
       </td>
       {/* Name */}
       <td className="h-8 px-3">
