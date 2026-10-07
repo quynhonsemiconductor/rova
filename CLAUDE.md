@@ -1056,6 +1056,39 @@ choices they replace):
 5. **Test Case Type is per-PROJECT and admin-editable.** Rally's is a workspace-level customisable
    dropdown; per-project is the BA's model.
 
+## The User Guide is static, gated, and extensionless on Pages
+
+US-119. The BA's bilingual guide lives in `apps/web/public/guide` (VI at the root, EN under `en/`), so
+Vite copies it into `dist/` and Pages serves it at `/guide/` on the SPA origin. The Help icon in the
+top bar is a plain `<a target="_blank">` to it (`widgets/app-shell/help-link.tsx`), edition chosen
+from the FIRST browser language (`model/guide-url.ts`).
+
+- **Static files on Pages are public unless a Function stands in front of them.** The guide carries
+  production screenshots, so `functions/guide/_middleware.ts` runs `_lib/guide-gate.ts` for `/guide/*`
+  ONLY — path-scoped like the `/v1` proxy, so the SPA's own assets never pass through user code. A
+  present `__Host-rova_session` cookie is not trusted: it is checked against `GET /v1/bff/me`, and
+  anything but 200/401/403 (including a timeout) is a 503 — fail closed. The cost is one `/bff/me`
+  call per guide REQUEST, i.e. ~15 per page view (page + CSS + JS + screenshots).
+- **Sign-in comes back to the guide with no SPA code.** The gate 302s to `/login?returnTo=/guide/…`
+  (built from the request's own path, collapsing to `/guide/` otherwise — not an open redirect); the
+  login page forwards `returnTo`, and `BffController.callback` 302s to it server-side after
+  `isSafeReturnTo`. The dev-login form ignores `returnTo`, so locally you land on `/`.
+- **Pages strips `.html`** (`/guide/01-lam-quen.html` → `/guide/01-lam-quen`). `guide.js` identified
+  the page by the raw last path segment, so on Pages it `location.replace`d itself in a loop and the
+  menu never highlighted. Every page comparison there goes through `pageName`/`pageKey` now. None of
+  it reproduces under `file://` or Vite, which is why `src/test/user-guide.script.test.ts` runs the
+  script against the extensionless URLs.
+- **BA edits arrive as PRs to `public/guide`, which is now the source of truth** — it has diverged
+  from the BA's `Mini_Rally_pj/09_User_Guide` copy by the `guide.js` fix. Prettier and ESLint ignore
+  the folder on purpose; `src/test/user-guide.integrity.test.ts` guards it instead (links and
+  screenshots resolve, VI/EN parity, `Version 1.0` header, no external origin, no inline
+  script/style — which is what lets the gate's CSP drop `unsafe-inline`). Bump `guide.js?v=` in every
+  page when the script changes.
+- **Never put a `.md` (or anything but web assets) under `public/`** — it is published verbatim. The
+  BA's `WRITING_BRIEF.md` is internal and is deliberately not copied; the integrity test fails if it is.
+- **Locally the guide is UNGATED** — Vite does not run Pages Functions. Exercise the gate with
+  `pnpm build:web` then `wrangler pages dev apps/web/dist` and `API_ORIGIN` set.
+
 ## Observability
 
 The implementation lives in `@quynhonsemiconductor/observability` — shared with opshub, so fix it
