@@ -143,6 +143,10 @@ export default defineConfig({
         // regex over single-quoted strings, so one apostrophe re-pairs every quote after it and the
         // ratchet fails with a diff full of comment fragments rather than filenames.
         'libs/modules/work-items/src/application/split-story.ts',
+        // Phase 7 Carryover - the eligibility rule and the two reporting modules with unit specs.
+        'libs/modules/work-items/src/application/carryover-eligibility.ts',
+        'libs/modules/reporting/src/domain/carryover.ts',
+        'libs/modules/reporting/src/application/report-csv.ts',
         'libs/modules/work-items/src/domain/iteration-assignable.ts',
         'libs/modules/work-items/src/domain/team-read-scope.ts',
         'libs/modules/workspace/src/application/team.service.ts',

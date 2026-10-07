@@ -15,6 +15,53 @@ export interface ActivityChange {
 export interface ActivityLike {
   action: string
   changes: ActivityChange | null
+  /** Optional: the writer's context, e.g. the Iteration NAMES a Carryover entry carries. */
+  metadata?: Record<string, unknown> | null
+}
+
+/**
+ * Phase 7 Carryover (CO-07) — the three Story-only entries that need their own sentence, as an i18n
+ * key + values for the `carryover` namespace. `null` for every other action, which keeps
+ * {@link describeActivity}.
+ *
+ * Names come from the entry's METADATA, captured at write time (CO-BR-45: ids are the stable
+ * reference, names are display-only), so a renamed or deleted Iteration does not rewrite history.
+ * A missing name (to/from Unscheduled) renders the `unscheduled` label rather than an id.
+ */
+export function carryoverActivityLabel(
+  log: ActivityLike,
+): { key: string; values: Record<string, string> } | null {
+  const meta = log.metadata ?? {}
+  const name = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null)
+  switch (log.action) {
+    case 'work_item.carried_over':
+      return {
+        key: 'carryover:history.carriedOver',
+        values: {
+          source: name(meta.sourceIterationName) ?? '',
+          target: name(meta.targetIterationName) ?? '',
+          date: name(meta.targetEndDate) ?? '',
+        },
+      }
+    case 'work_item.iteration_moved':
+      return {
+        key: 'carryover:history.manualMove',
+        values: {
+          source: name(meta.sourceIterationName) ?? '',
+          target: name(meta.targetIterationName) ?? '',
+        },
+      }
+    case 'work_item.target_end_date_changed':
+      return {
+        key: 'carryover:history.targetEndChanged',
+        values: {
+          old: name(log.changes?.old) ?? '',
+          new: name(log.changes?.new) ?? '',
+        },
+      }
+    default:
+      return null
+  }
 }
 
 /** Convert a camelCase / snake_case / dotted token into a Title-Cased phrase. */
@@ -31,7 +78,7 @@ export function humanizeToken(token: string): string {
  *
  * ONE definition of blank, used by `formatActivityValue` below — and through it by
  * `describeActivity`'s nothing-to-show branch, which compares the two RENDERED sides rather than
- * re-testing blankness itself (review finding, #640). The two predicates used to test the same three
+ * re-testing blankness itself (review finding, PR 640). The two predicates used to test the same three
  * conditions separately, and the sentence's correctness depends on them agreeing: a side counts as
  * "nothing" exactly when it would render "(empty)".
  */
@@ -140,7 +187,7 @@ export function describeActivity(log: ActivityLike): string {
      *   • an edit BEYOND the preview window: change character 400 of a Description and the first 120
      *     are identical on both sides.
      *
-     * Raised as a review finding on #640, which offered the alternative of gating rich-text entries
+     * Raised as a review finding on PR 640, which offered the alternative of gating rich-text entries
      * on `changed(richTextPreview(old), richTextPreview(new))` in the WRITER instead. Rejected, and
      * for a reason the finding could not see from one file: that gate cannot tell the second case
      * from the third, so it would silently drop real edits to any document longer than the preview —

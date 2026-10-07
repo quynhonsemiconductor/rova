@@ -61,8 +61,14 @@ import {
   SplitWorkItemDto,
   SplitWorkItemResponseDto,
 } from './dto/split-work-item.dto';
+import {
+  CarryOverWorkItemDto,
+  CarryOverWorkItemResponseDto,
+  CarryoverOptionsResponseDto,
+} from './dto/carryover.dto';
 import type { WorkItem } from '../../domain/work-item.types';
 import type { WorkItemDetail } from '../../domain/story-split.types';
+import type { IterationTransition } from '../../domain/iteration-transition.types';
 import { BACKLOG_SORT_FIELDS } from '../../domain/work-item.types';
 import type { ActivityLog } from '@modules/activity';
 import type { TimeLog } from '../../domain/time-log.types';
@@ -129,6 +135,12 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
     devOwnerId: w.devOwnerId,
     defectState: w.defectState,
     fixedInBuild: w.fixedInBuild,
+    // Phase 7 Carryover (0132). Every Story/Defect read selects the whole row (`select()` /
+    // `getTableColumns`) and both Task projections set these explicitly, so the domain type carries
+    // them as non-optional `string | null` — no `?? null` here to hide a projection that dropped one.
+    startDate: w.startDate,
+    actualEndDate: w.actualEndDate,
+    targetEndDate: w.targetEndDate,
   };
 }
 
@@ -144,6 +156,26 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
  */
 function toWorkItemDetailDto(detail: WorkItemDetail): WorkItemDetailResponseDto {
   return { ...toWorkItemDto(detail.item), splitLink: detail.splitLink };
+}
+
+/**
+ * The Carryover event as the CONTRACT declares it — listed field by field, so the wire shape is the
+ * schema's (no `workspaceId`, which the domain row carries and the client has no use for).
+ */
+function toTransitionDto(t: IterationTransition): CarryOverWorkItemResponseDto['transition'] {
+  return {
+    id: t.id,
+    projectId: t.projectId,
+    teamId: t.teamId,
+    storyId: t.storyId,
+    type: t.type,
+    sourceIterationId: t.sourceIterationId,
+    targetIterationId: t.targetIterationId,
+    targetEndDate: t.targetEndDate,
+    actorId: t.actorId,
+    occurredAt: t.occurredAt,
+    createdAt: t.createdAt,
+  };
 }
 
 function toActivityDto(a: ActivityLog): ActivityResponseDto {
@@ -695,6 +727,49 @@ export class WorkItemsController {
       split: result.split,
       unfinished: toWorkItemDto(result.unfinished),
       continued: toWorkItemDto(result.continued),
+    };
+  }
+
+  // ── Story Target End Date + Carryover (Phase 7 CO) ───────────────────────────
+
+  /**
+   * The Target End picker's feed (plan D8). `work_item:view`, like `split-preview`: a reader may open
+   * the Story and be shown the field disabled — `editable` carries the edit decision.
+   */
+  @Get(':id/carryover-options')
+  @ApiOperation({
+    summary: 'Target End Date picker window and Carryover targets for a user story',
+  })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: CarryoverOptionsResponseDto })
+  @ApiCommonErrors(401, 403, 404)
+  async getCarryoverOptions(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CarryoverOptionsResponseDto> {
+    return this.workItemsService.getCarryoverOptions(user, id);
+  }
+
+  /**
+   * Commit one same-ID Carryover (plan D6, CO-05). `work_item:edit`; the Team boundary is applied in
+   * the service first thing. 201 because it CREATES an event.
+   */
+  @Post(':id/carryover')
+  @ApiOperation({ summary: 'Carry a user story over to a later iteration (same ID)' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: CarryOverWorkItemResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 412)
+  async carryOverWorkItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CarryOverWorkItemDto,
+  ): Promise<CarryOverWorkItemResponseDto> {
+    const result = await this.workItemsService.carryOverWorkItem(user, id, dto);
+    return {
+      transition: toTransitionDto(result.transition),
+      workItem: toWorkItemDto(result.workItem),
     };
   }
 

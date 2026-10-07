@@ -128,6 +128,26 @@ export const ErrorCodes = {
    */
   SPLIT_ITEM_NOT_IN_STORY: 'SPLIT_ITEM_NOT_IN_STORY',
 
+  // Story Target End Date + Carryover (Phase 7 CO, plan D6/D7)
+  /** Target End Date is a Story-only field (CO-BR-01) — a Defect or Task cannot carry one. */
+  TARGET_END_NOT_SUPPORTED: 'TARGET_END_NOT_SUPPORTED',
+  /** The date is not enabled by the picker rule (before Start Date, or outside every eligible Iteration). */
+  TARGET_END_DATE_INVALID: 'TARGET_END_DATE_INVALID',
+  /** The date lies after the current Iteration — it can only be saved by confirming a Carryover. */
+  TARGET_END_REQUIRES_CARRYOVER: 'TARGET_END_REQUIRES_CARRYOVER',
+  /** An Unscheduled Story has no window, so no Target End Date can be valid until it is scheduled. */
+  TARGET_END_REQUIRES_ITERATION: 'TARGET_END_REQUIRES_ITERATION',
+  /** A Target End Date may not ride along with an Iteration change in one PATCH. */
+  TARGET_END_WITH_ITERATION_CHANGE: 'TARGET_END_WITH_ITERATION_CHANGE',
+  /** The Story's Iteration changed between the read and the write — retry against fresh data. */
+  WORK_ITEM_ITERATION_CHANGED: 'WORK_ITEM_ITERATION_CHANGED',
+  /** Not a Story, or not scheduled — nothing to carry over. */
+  CARRYOVER_NOT_ELIGIBLE: 'CARRYOVER_NOT_ELIGIBLE',
+  /** The chosen target Iteration is not one the selected Target End Date resolves to. */
+  CARRYOVER_TARGET_INVALID: 'CARRYOVER_TARGET_INVALID',
+  /** The Story moved Iteration since the modal rendered — the optimistic echo guard (D6). */
+  CARRYOVER_SOURCE_ITERATION_CHANGED: 'CARRYOVER_SOURCE_ITERATION_CHANGED',
+
   // Milestones
   MILESTONE_NOT_FOUND: 'MILESTONE_NOT_FOUND',
   MILESTONE_INVALID_TRANSITION: 'MILESTONE_INVALID_TRANSITION',

@@ -1,5 +1,5 @@
 import type { CursorPayload, PagedResult, DbExecutor } from '@platform';
-import type { IterationState } from '../../../../../../db/schema/enums';
+import type { IterationState, TaskState } from '../../../../../../db/schema/enums';
 import type {
   WorkItem,
   CreateWorkItemInput,
@@ -21,16 +21,19 @@ export interface IterationScope {
 }
 
 /**
- * One row of {@link IWorkItemRepository.listProjectIterations}.
+ * One row of {@link IWorkItemRepository.listProjectIterations} and
+ * {@link IWorkItemRepository.lockIteration}.
  *
- * Structurally the same shape as `SplitTargetCandidate` in `application/split-story.ts` and
- * deliberately declared there as well: the pure helper must not import a persistence port to state
- * what it needs, and the port must not import an application module. TypeScript's structural typing
- * makes the two compatible without either depending on the other, and `getSplitPreview` passes rows
- * straight from one to the other — so a field added here and not there is a compile error at that
- * call site rather than a silent divergence.
+ * Named for what it is — a project Iteration with its window, state and team — not for one caller
+ * (PR #653 review, round 3): Split and Carryover both read it. Structurally the same shape as
+ * `SplitTargetCandidate` in `application/split-story.ts` and `CarryoverIteration` in
+ * `application/carryover-eligibility.ts`, and deliberately declared there as well: the pure helpers
+ * must not import a persistence port to state what they need, and the port must not import an
+ * application module. TypeScript's structural typing makes them compatible without either depending
+ * on the other, and the service passes rows straight from one to the other — so a field added here
+ * and not there is a compile error at that call site rather than a silent divergence.
  */
-export interface SplitIterationCandidateRow {
+export interface ProjectIterationRow {
   id: string;
   name: string;
   iterationKey: string | null;
@@ -59,10 +62,7 @@ export interface IWorkItemRepository {
    * a TOTAL order (query-ordering ratchet: the last key must be unique). A dateless iteration sorts
    * with the NULLs and is refused by the filter, not here.
    */
-  listProjectIterations(
-    projectId: string,
-    workspaceId: string,
-  ): Promise<SplitIterationCandidateRow[]>;
+  listProjectIterations(projectId: string, workspaceId: string): Promise<ProjectIterationRow[]>;
   /**
    * A release's display NAME, for the Split preview's read-only Release line.
    *
@@ -294,8 +294,58 @@ export interface IWorkItemRepository {
     id: string,
     workspaceId: string,
     executor: DbExecutor,
-  ): Promise<{ id: string; iterationId: string | null } | null>;
+  ): Promise<{
+    id: string;
+    iterationId: string | null;
+    projectId: string;
+    teamId: string | null;
+  } | null>;
+  /**
+   * `SELECT … FOR UPDATE` on several Stories at once, returning each locked row's CURRENT Iteration
+   * (PR #653 review). A Manual Move is an immutable event, so its `source_iteration_id` must come from
+   * the locked row, not from a read taken before the transaction — otherwise a concurrent move makes
+   * the log record a source the Story never had. Ordered by id so two writers lock in the same order.
+   */
+  lockRows(
+    ids: string[],
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<
+    Array<{ id: string; iterationId: string | null; projectId: string; teamId: string | null }>
+  >;
+  /**
+   * One Iteration, re-read `FOR SHARE` inside the Carryover transaction (PR #653 review): the target's
+   * state or window may have changed since the pre-check, and the move must not land in a sprint that
+   * has since been accepted. FOR SHARE blocks a concurrent state change until commit.
+   */
+  lockIteration(
+    iterationId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<ProjectIterationRow | null>;
   softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void>;
+  /**
+   * EVERY live Task of a Story with its state and hours, read on the Carryover's own transaction
+   * (plan D6) — the effort snapshot (CO-BR-30).
+   *
+   * Deliberately NOT team-scoped, unlike {@link listTasksByParent}: every Task follows the Story
+   * (`trg_cascade_iteration_to_tasks`), so every Task needs a snapshot, or Team Capacity would
+   * attribute a later Iteration's Actual to the earlier one for the Tasks the caller could not see.
+   * Ordered by id (query-ordering ratchet). Hours are `numeric` strings, `null` preserved.
+   */
+  listTaskSnapshots(
+    parentId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<
+    Array<{
+      id: string;
+      state: TaskState;
+      estimateHours: string | null;
+      todoHours: string | null;
+      actualHours: string | null;
+    }>
+  >;
   reorderItems(
     items: Array<{ id: string; rank: string }>,
     workspaceId: string,

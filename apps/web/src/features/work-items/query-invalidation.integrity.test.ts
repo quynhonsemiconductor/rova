@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { WORK_ITEM_VIEW_ROOTS, INVALIDATION_MAP } from '@/shared/api/invalidation'
-import { workItemKeys, childDefectsKeys } from '@/features/work-items/api'
+import { workItemKeys, childDefectsKeys, carryoverOptionsKey } from '@/features/work-items/api'
 import { iterationKeys } from '@/features/iterations/api'
 import { teamStatusKeys } from '@/features/team-status/api'
 import { qualityKeys } from '@/features/quality/api'
@@ -47,6 +47,13 @@ describe('INVALIDATION_MAP entity tags cover their feature roots', () => {
     for (const root of WORK_ITEM_VIEW_ROOTS) {
       expect(asStr(INVALIDATION_MAP['work-item'])).toContain(JSON.stringify(root))
     }
+  })
+
+  it('a Carryover’s `work-item` tag reaches the options feed and every report (PR #653)', () => {
+    // `useCarryOverWorkItem` relies on the tag alone, so both reads must sit under its roots.
+    expect(carryoverOptionsKey('wi-1').slice(0, 1)).toEqual([...workItemKeys.all])
+    expect(has('work-item', workItemKeys.all)).toBe(true)
+    expect(has('work-item', reportingKeys.all)).toBe(true)
   })
 
   it('iteration tag includes list, detail, options, status + work-item views', () => {

@@ -245,6 +245,11 @@ export const PERMISSION = {
   // snapshot jobs are internal scheduled work with no HTTP surface, and capacity is
   // still edited through `team_status:edit` on Team Status.
   REPORT_VIEW: 'report:view',
+  // Phase 7 Carryover (rulings R1/R4): CSV export of the four reports. Narrower than report:view
+  // because an export takes the data off-platform: Workspace Admin and Project Admin only, never
+  // Project Member. Declared divergence from CO-BR-03 (no new permission), see CLAUDE.md.
+  // Backfilled by migration 0134.
+  REPORT_EXPORT: 'report:export',
 
   // ── test_case / test_result namespaces (Phase 7) ───────────────────────────
   // Split from `work_item:*` rather than reused, even though a Test Case is delivery
@@ -348,6 +353,7 @@ export const PERMISSION_TIER = {
   // it. A workspace-tier report code would let a grant on one project read another's
   // velocity.
   [PERMISSION.REPORT_VIEW]: 'project',
+  [PERMISSION.REPORT_EXPORT]: 'project',
   // Project tier: a Test Case belongs to a Project (D2 — optionally to one Work Item),
   // same tier as work_item:* beside it.
   [PERMISSION.TEST_CASE_VIEW]: 'project',
@@ -473,6 +479,7 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.CAPACITY_MANAGE,
     PERMISSION.CAPACITY_PUBLISH,
     PERMISSION.REPORT_VIEW,
+    PERMISSION.REPORT_EXPORT,
     PERMISSION.TEST_CASE_VIEW,
     PERMISSION.TEST_CASE_CREATE,
     PERMISSION.TEST_CASE_EDIT,
@@ -521,6 +528,7 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.CAPACITY_MANAGE,
     PERMISSION.CAPACITY_PUBLISH,
     PERMISSION.REPORT_VIEW,
+    PERMISSION.REPORT_EXPORT,
     PERMISSION.TEST_CASE_VIEW,
     PERMISSION.TEST_CASE_CREATE,
     PERMISSION.TEST_CASE_EDIT,

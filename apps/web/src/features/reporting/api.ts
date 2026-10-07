@@ -69,6 +69,12 @@ type ReleaseTrackingQuery = NonNullable<
 export type ReleaseBurnup = Json<'ReportingController_getReleaseBurnup'>
 export type BurnupPoint = ReleaseBurnup['points'][number]
 
+/** Phase 7 Carryover (CO-08 … CO-10). */
+export type CarryoverReport = Json<'ReportingController_getCarryover'>
+export type CarryoverRow = CarryoverReport['rows'][number]
+export type CarryoverDirection = CarryoverReport['direction']
+export type CarryoverSummary = NonNullable<IterationBurndown['carryover']>
+
 /** Team is part of every key: switching the global Team selector must refetch, not reuse. */
 export const reportingKeys = {
   all: ['reports'] as const,
@@ -78,6 +84,9 @@ export const reportingKeys = {
     ['reports', 'velocity', projectId, teamId ?? 'all', window] as const,
   teamCapacity: (projectId: string, teamId: string | undefined, iterationId: string) =>
     ['reports', 'team-capacity', projectId, teamId ?? 'all', iterationId] as const,
+  // Direction is NOT in the key: the SPA fetches `all` once and narrows rows (useCarryoverReport).
+  carryover: (projectId: string, teamId: string | undefined, iterationId: string) =>
+    ['reports', 'carryover', projectId, teamId ?? 'all', iterationId] as const,
   releaseTracking: (
     projectId: string,
     teamId: string | undefined,
@@ -275,4 +284,236 @@ export function useReleaseBurnup({
     // Burnup days are finalised like burndown days: only today's point can still move.
     staleTime: FROZEN,
   })
+}
+
+// ── Carryover (Phase 7 CO-10) ─────────────────────────────────────────────────
+
+/** A request that hangs must surface as a failure, not as a report that never loads (PR 653). */
+const REPORT_TIMEOUT_MS = 30_000
+
+/**
+ * TanStack's own cancellation signal, plus a hard timeout. Combined by hand rather than with
+ * `AbortSignal.any`, which Safari only shipped in 17.4 and jsdom does not implement.
+ *
+ * Returns `done`, which every caller runs in `finally` (PR 653 review, round 2): a request that
+ * completes normally never aborts, so without it each call would leave a 30 s timer and its closure
+ * alive. The listener is attached BEFORE the already-aborted check, so that path clears it too.
+ *
+ * `done` also DETACHES the relay from the caller's `signal` (PR 653 review, round 3): TanStack's
+ * query signal can outlive the request, and a listener left on it would keep `controller` reachable
+ * until that signal aborts or is collected.
+ */
+export function withTimeout(signal?: AbortSignal): { signal: AbortSignal; done: () => void } {
+  const controller = new AbortController()
+  const timer = setTimeout(
+    () => controller.abort(new DOMException('Report request timed out', 'TimeoutError')),
+    REPORT_TIMEOUT_MS,
+  )
+  const relay = () => controller.abort(signal?.reason)
+  const done = () => {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', relay)
+  }
+  controller.signal.addEventListener('abort', done, { once: true })
+  if (signal?.aborted) controller.abort(signal.reason)
+  else signal?.addEventListener('abort', relay, { once: true })
+  return { signal: controller.signal, done }
+}
+
+/** Is this the {@link withTimeout} deadline firing (as opposed to a server or network error)? */
+function isTimeout(error: unknown): boolean {
+  // By name, not `instanceof Error`: a `DOMException` is not an `Error` in every runtime.
+  return (error as { name?: unknown } | null)?.name === 'TimeoutError'
+}
+
+/**
+ * The report query's retry rule: the app default (one retry, never on a 4xx), EXCEPT that a timeout
+ * is final (PR 653 review, round 3). A 30 s hang already means "give up"; re-running it would keep
+ * the skeleton up for another 30 s before the error state the timeout exists to surface.
+ */
+export function retryReport(failureCount: number, error: unknown): boolean {
+  if (isTimeout(error)) return false
+  const status = (error as { status?: number } | null)?.status
+  if (status && status >= 400 && status < 500) return false
+  return failureCount < 1
+}
+
+/**
+ * The Carryover report for one Iteration — ALWAYS fetched with Direction `all` (PR 653 review).
+ *
+ * CO-BR-41 says Direction narrows the ROWS and never a KPI or the trend. Keying the whole response on
+ * Direction made that a promise about the server; fetching once per Iteration and narrowing the rows
+ * here makes it structural — the KPIs and trend on screen are the same object whatever the reader
+ * picks — and it drops a refetch of direction-invariant data on every switch. The rows carry the
+ * server's own `direction` label, so filtering them by it is the server's rule, not a second copy.
+ */
+export function useCarryoverReport({
+  projectId,
+  teamId,
+  iterationId,
+}: Scope & { iterationId: string | undefined }) {
+  return useQuery({
+    queryKey: reportingKeys.carryover(projectId ?? '', teamId, iterationId ?? ''),
+    queryFn: async ({ signal }) => {
+      const timeout = withTimeout(signal)
+      try {
+        const { data, error, response } = await apiClient.GET('/v1/reports/carryover', {
+          params: {
+            query: { projectId: projectId!, teamId, iterationId: iterationId!, direction: 'all' },
+          },
+          signal: timeout.signal,
+        })
+        if (error) throw new Error(apiErrorMessage(error, response.status))
+        if (!data) throw new Error(`Carryover report came back empty (${response.status})`)
+        return data
+      } finally {
+        timeout.done()
+      }
+    },
+    enabled: !!projectId && !!iterationId,
+    staleTime: LIVE,
+    retry: retryReport,
+    /**
+     * NO `placeholderData` (PR 653 review, round 2). It kept the PREVIOUS Iteration's whole report
+     * on screen under the NEW selection's label while the fetch ran, and `data` was never empty so
+     * no loading state covered it. Its only purpose was smoothing Direction switches, which no longer
+     * refetch at all (Direction is not in the key) — so a new Iteration now shows the skeleton.
+     */
+  })
+}
+
+/** The rows a Direction tab shows — by the server's own per-row label. */
+export function rowsForDirection(
+  rows: readonly CarryoverRow[],
+  direction: CarryoverDirection,
+): CarryoverRow[] {
+  return direction === 'all' ? [...rows] : rows.filter((row) => row.direction === direction)
+}
+
+// ── CSV export (Phase 7 rulings R1/R4, plan D11) ──────────────────────────────
+
+/** Which export route serves each report type, and the query it needs. */
+export type ReportExportRequest =
+  | { report: 'burndown'; projectId: string; teamId?: string; iterationId: string }
+  | { report: 'velocity'; projectId: string; teamId?: string; window: VelocityWindow }
+  | { report: 'capacity'; projectId: string; teamId?: string; iterationId: string }
+  | {
+      report: 'carryover'
+      projectId: string
+      teamId?: string
+      iterationId: string
+      direction: CarryoverDirection
+    }
+
+/**
+ * One typed call per export route (PR 653 review): each `apiClient.GET` names a literal path from
+ * the GENERATED `paths`, with a query object checked against that route's own schema. A renamed
+ * route or a drifted parameter is a compile error here, not a 404 when the reader clicks Export.
+ */
+function requestExport(req: ReportExportRequest, signal: AbortSignal) {
+  const opts = { parseAs: 'blob' as const, signal }
+  const teamId = req.teamId
+  switch (req.report) {
+    case 'burndown':
+      return apiClient.GET('/v1/reports/iteration-burndown/export', {
+        ...opts,
+        params: { query: { projectId: req.projectId, teamId, iterationId: req.iterationId } },
+      })
+    case 'velocity':
+      return apiClient.GET('/v1/reports/velocity/export', {
+        ...opts,
+        params: { query: { projectId: req.projectId, teamId, window: req.window } },
+      })
+    case 'capacity':
+      return apiClient.GET('/v1/reports/team-capacity/export', {
+        ...opts,
+        params: { query: { projectId: req.projectId, teamId, iterationId: req.iterationId } },
+      })
+    case 'carryover':
+      return apiClient.GET('/v1/reports/carryover/export', {
+        ...opts,
+        params: {
+          query: {
+            projectId: req.projectId,
+            teamId,
+            iterationId: req.iterationId,
+            direction: req.direction,
+          },
+        },
+      })
+  }
+}
+
+/**
+ * The filename in `Content-Disposition`: RFC 5987 `filename*=UTF-8''…` first (the only form that can
+ * carry a non-ASCII name), then quoted, then bare `filename=`. Falls back when absent or unparseable.
+ */
+export function filenameFrom(header: string | null, fallback: string): string {
+  if (!header) return fallback
+  const extended = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(header)
+  if (extended) {
+    try {
+      return decodeURIComponent(extended[1].trim())
+    } catch {
+      // A malformed escape: fall through to the plain forms.
+    }
+  }
+  const quoted = /filename\s*=\s*"([^"]+)"/.exec(header)
+  if (quoted) return quoted[1]
+  const bare = /filename\s*=\s*([^;\s]+)/.exec(header)
+  return bare?.[1] ?? fallback
+}
+
+/**
+ * With `parseAs: 'blob'` an ERROR body arrives as a Blob too, so it is read and parsed before
+ * `apiErrorMessage` sees it — otherwise a 403/400 would print a generic line instead of the server's
+ * message (PR 653 review).
+ */
+async function exportErrorMessage(error: unknown, status: number): Promise<string> {
+  if (error instanceof Blob) {
+    const text = await error.text()
+    try {
+      return apiErrorMessage(JSON.parse(text), status)
+    } catch {
+      return apiErrorMessage(text ? { message: text } : undefined, status)
+    }
+  }
+  return apiErrorMessage(error, status)
+}
+
+/**
+ * Download one report as CSV through the BFF (same-origin cookie), as a blob. The server applies the
+ * SAME query — and the same `report:view` + `report:export` gate — as the JSON report, so the file
+ * matches the screen.
+ */
+export async function downloadReportCsv(req: ReportExportRequest): Promise<void> {
+  const timeout = withTimeout()
+  let result: Awaited<ReturnType<typeof requestExport>>
+  try {
+    result = await requestExport(req, timeout.signal)
+  } finally {
+    timeout.done()
+  }
+  const { data, error, response } = result
+  if (error || !data) throw new Error(await exportErrorMessage(error, response.status))
+  const name = filenameFrom(response.headers.get('content-disposition'), `${req.report}.csv`)
+  const url = URL.createObjectURL(data as Blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  // Deferred: revoking synchronously after `click()` can abort the download on Safari / iOS.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+/**
+ * Whether the compact Carryover badge has anything to show — the SAME rule `CarryoverBadge` hides
+ * on, exported so a caller that must render NULL when nothing shows (a footer slot) shares it.
+ */
+export function hasCarryoverActivity(
+  summary: CarryoverSummary | null | undefined,
+): summary is CarryoverSummary {
+  return !!summary && (summary.carryIn > 0 || summary.carryOut > 0)
 }

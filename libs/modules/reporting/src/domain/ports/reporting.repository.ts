@@ -1,4 +1,5 @@
 import type { StoredSnapshot, StoredSplitEvent } from '../burndown';
+import type { StoredCarryoverEvent } from '../carryover';
 import type { ReleaseChild, ReleaseFeature, StoredBurnupRow } from '../release-tracking';
 import type { TeamScope } from '../report-scope';
 import type { CapacityRecord, ScopedTaskHours } from '../team-capacity';
@@ -158,6 +159,38 @@ export interface IReportingRepository {
     iterationIds: string[],
     scope: TeamScope,
   ): Promise<StoredSplitEvent[]>;
+
+  // ── Carryover (Phase 7 CO-08 … CO-10) ─────────────────────────────────────
+  /**
+   * Every `carryover` transition in one project and scope, oldest first, with its per-Task snapshot
+   * and each Task's CURRENT Actual. Manual Moves and Split Events are never returned (CO-BR-35).
+   *
+   * Project-wide rather than per-iteration on purpose: the Actual After window needs the NEXT
+   * Carryover of the same Task wherever it went, and the trend needs every Iteration. The team
+   * narrows by `coalesce(transition.team_id, source iteration team)` — the Story's team at the move.
+   */
+  findCarryoverEvents(
+    workspaceId: string,
+    projectId: string,
+    scope: TeamScope,
+    /** Bound to events whose source OR target is in this set (the badge paths). Omit for all. */
+    touchingIterationIds?: string[],
+  ): Promise<StoredCarryoverEvent[]>;
+  /** Every Iteration of the project inside the scope's timeboxes, ordered start date then id. */
+  listScopedIterations(
+    workspaceId: string,
+    projectId: string,
+    scope: TeamScope,
+  ): Promise<IterationRow[]>;
+  /**
+   * Live Stories currently scheduled in these iterations, in scope, EXCLUDING Split placeholders
+   * (`split_id IS NOT NULL`, ruling R11) — the Carryover Rate denominator.
+   */
+  listScheduledStoryIds(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<string[]>;
 
   // ── Velocity ──────────────────────────────────────────────────────────────
   /**

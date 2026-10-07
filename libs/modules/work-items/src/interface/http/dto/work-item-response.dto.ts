@@ -58,6 +58,26 @@ export const WorkItemResponseSchema = z.object({
   devOwnerId: z.string().uuid().nullable(),
   defectState: z.string().nullable(),
   fixedInBuild: z.string().nullable(),
+  /**
+   * Phase 7 Carryover (CO-01/02/03, migration 0132). `YYYY-MM-DD` date strings — `z.string()`, NOT
+   * `.datetime()`, which rejects a bare date.
+   */
+  startDate: z
+    .string()
+    .nullable()
+    .describe(
+      'System-managed: first entry into In-Progress (Story or Task). Read-only; null on a Defect.',
+    ),
+  actualEndDate: z
+    .string()
+    .nullable()
+    .describe(
+      'System-managed: first entry into Accepted (Story) or Completed (Task). Read-only; null on a Defect.',
+    ),
+  targetEndDate: z
+    .string()
+    .nullable()
+    .describe("The Story editor's forecast completion date. Always null on a Task or Defect."),
 });
 
 export class WorkItemResponseDto extends createZodDto(WorkItemResponseSchema) {}

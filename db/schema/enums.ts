@@ -431,6 +431,17 @@ export const storySplitItemKindEnum = pgEnum('story_split_item_kind', [
   'test_case',
 ]);
 
+/**
+ * Phase 7 Carryover (migration 0133) — which kind of user-initiated Story Iteration change an
+ * `iteration_transitions` row records. `carryover` is a confirmed same-ID move with a per-Task
+ * snapshot; `manual_move` is any other user Iteration edit (ruling R8) and carries no snapshot (R3).
+ */
+export const iterationTransitionTypeEnum = pgEnum('iteration_transition_type', [
+  'carryover',
+  'manual_move',
+]);
+export type IterationTransitionType = (typeof iterationTransitionTypeEnum.enumValues)[number];
+
 // ── TypeScript types (derived — never drift from DB) ──────────────────────
 
 export type UserStatus = (typeof userStatusEnum.enumValues)[number];

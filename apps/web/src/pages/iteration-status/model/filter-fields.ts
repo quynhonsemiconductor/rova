@@ -50,6 +50,8 @@ export type IterationFilterKey =
   | 'planEstimate'
   | 'taskEstimate'
   | 'toDo'
+  | 'startDate'
+  | 'targetEndDate'
 
 /**
  * Column labels, read from the grid header's own metadata so a filter can never
@@ -140,10 +142,16 @@ export function useIterationFilterFields({
       { key: 'planEstimate', label: label('planEstimate'), kind: 'number' },
       { key: 'taskEstimate', label: label('taskEstimate'), kind: 'number' },
       { key: 'toDo', label: label('toDo'), kind: 'number' },
+      // Phase 7 CO-01 — a TEXT filter over the ISO date, so `2026-10` narrows to a month.
+      { key: 'startDate', label: label('startDate'), kind: 'text' },
+      { key: 'targetEndDate', label: label('targetEndDate'), kind: 'text' },
     ],
     [t, members],
   )
 }
+
+/** The server's bound on the two date-text filters: one full ISO `YYYY-MM-DD`. */
+export const DATE_FILTER_MAX = 10
 
 /**
  * Applied values as the status query's filter shape. Every control's value is text, and every wire
@@ -153,9 +161,19 @@ export function useIterationFilterFields({
  * `isBlocked` is deliberately NOT converted to a boolean. It used to be, and the server then coerced
  * it back with `z.coerce.boolean()`, where `Boolean('false') === true` — so `false` asked for blocked
  * rows. One representation, carried through.
+ *
+ * `startDate` / `targetEndDate` are capped at {@link DATE_FILTER_MAX} here (PR 653 review, round 3).
+ * The server bounds them at exactly that (`max(10)`, a full `YYYY-MM-DD`), so one stray character or
+ * a pasted timestamp would 400 the WHOLE grid into its error state. Clipping keeps the date part —
+ * `2026-09-01T10:00` filters by `2026-09-01` — and no longer value could ever match a 10-char date.
  */
 export function toIterationStatusQuery(
   applied: FilterValues<IterationFilterKey>,
 ): IterationStatusFilters {
-  return applied as Omit<IterationStatusFilters, 'q'>
+  const query = { ...applied } as Omit<IterationStatusFilters, 'q'>
+  for (const key of ['startDate', 'targetEndDate'] as const) {
+    const value = query[key]
+    if (value !== undefined) query[key] = value.trim().slice(0, DATE_FILTER_MAX)
+  }
+  return query
 }

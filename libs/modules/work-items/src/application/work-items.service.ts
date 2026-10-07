@@ -101,6 +101,25 @@ import type {
 import type { TimeLog } from '../domain/time-log.types';
 import type { Watcher } from '../domain/watcher.types';
 import { diffWorkItem } from './activity-diff';
+import {
+  containsDate,
+  eligibleIterations,
+  isEligibleIteration,
+  isEnabledDate,
+  minDate as carryoverMinDate,
+  resolveTargets,
+  targetEndVerdict,
+  type CarryoverIteration,
+} from './carryover-eligibility';
+import {
+  ITERATION_TRANSITION_REPOSITORY,
+  type IIterationTransitionRepository,
+} from '../domain/ports/iteration-transition.repository';
+import type {
+  CarryOverWorkItemInput,
+  CarryOverWorkItemResult,
+  CarryoverOptions,
+} from '../domain/iteration-transition.types';
 import { EntityAttachmentsService } from '@modules/attachments';
 import type { AttachmentRef, EntityAttachment } from '@modules/attachments';
 // Repo-level deep-imports for F1/F4's Test Case cascade — see the module's own comment for why
@@ -264,6 +283,9 @@ export class WorkItemsService {
     @Inject(TEST_RESULT_REPOSITORY) private readonly testResultRepo: ITestResultRepository,
     // SU-06's Split Event. One writer, inside the Split transaction.
     @Inject(STORY_SPLIT_REPOSITORY) private readonly storySplitRepo: IStorySplitRepository,
+    // Phase 7 Carryover's event log — Carryover and Manual Move (plan D3/D6/D9).
+    @Inject(ITERATION_TRANSITION_REPOSITORY)
+    private readonly transitionRepo: IIterationTransitionRepository,
   ) {}
 
   // ── Activity helpers ────────────────────────────────────────────────────────
@@ -1840,6 +1862,417 @@ export class WorkItemsService {
     return result;
   }
 
+  // ── Story Target End Date + Carryover (Phase 7 CO) ───────────────────────────
+
+  /**
+   * The Story's Iteration picture for the Carryover rules: every project Iteration, the current one,
+   * and the eligible set (plan D5). ONE read shared by the options feed, the PATCH validation and the
+   * POST, so the three cannot disagree — the picker/write fault class.
+   *
+   * Always judged on the Story's CURRENT Iteration: a PATCH that also moves the Story is refused
+   * before this is reached (`TARGET_END_WITH_ITERATION_CHANGE`), so there is no "destination" case.
+   */
+  private async carryoverContext(
+    story: Pick<WorkItem, 'projectId' | 'teamId' | 'workspaceId' | 'iterationId'>,
+  ): Promise<{
+    projectIterations: CarryoverIteration[];
+    current: CarryoverIteration | null;
+    eligible: CarryoverIteration[];
+  }> {
+    const projectIterations = await this.workItemRepo.listProjectIterations(
+      story.projectId,
+      story.workspaceId,
+    );
+    const { iterationId } = story;
+    const current =
+      iterationId === null ? null : (projectIterations.find((it) => it.id === iterationId) ?? null);
+    const eligible = current ? eligibleIterations(story, projectIterations, current) : [];
+    return { projectIterations, current, eligible };
+  }
+
+  /**
+   * `GET /work-items/:id/carryover-options` (plan D8) — everything the Target End picker and the
+   * Carryover modal need. The SERVER decides; the SPA only mirrors the date predicate from this payload
+   * to disable days.
+   *
+   * `requireReadable` first (Editor Team boundary). `editable` is a FIELD rather than a 403, for the
+   * reason `getSplitPreview` gives: a reader may open the Story and see the field disabled.
+   */
+  async getCarryoverOptions(actor: JwtPayload, id: string): Promise<CarryoverOptions> {
+    const item = await this.requireReadable(actor, id);
+    const isStory = item.type === 'story';
+    // The three reads are independent (none consumes another's output), so they run concurrently:
+    // picker-open latency is the slowest round trip, not the sum of three (PR #653 review, round 3).
+    const [{ current, eligible }, canEdit, tasks] = isStory
+      ? await Promise.all([
+          this.carryoverContext(item),
+          this.accessService.hasProjectPermission(actor, item.projectId, PERMISSION.WORK_ITEM_EDIT),
+          this.teamScopeFor(actor, item.projectId).then((scope) =>
+            this.workItemRepo.listTasksByParent(id, actor.workspaceId, scope),
+          ),
+        ])
+      : [{ current: null, eligible: [] as CarryoverIteration[] }, false, []];
+    const taskCount = tasks.length;
+    const unfinishedTaskCount = tasks.filter(
+      (task) => !isCompletedScheduleState(task.scheduleState),
+    ).length;
+
+    return {
+      // R6 — an Unscheduled Story (no `current`) is never editable here; clearing is still allowed
+      // through PATCH, which the SPA offers only when a value exists.
+      editable: canEdit && current !== null && eligible.length > 0,
+      storyStartDate: item.startDate,
+      targetEndDate: item.targetEndDate,
+      current: current
+        ? {
+            id: current.id,
+            name: current.name,
+            iterationKey: current.iterationKey,
+            state: current.state,
+            startDate: current.startDate,
+            endDate: current.endDate,
+            eligible: eligible.some((it) => it.id === current.id),
+          }
+        : null,
+      minDate: carryoverMinDate(item, eligible),
+      eligibleIterations: eligible.map((it) => ({
+        id: it.id,
+        name: it.name,
+        iterationKey: it.iterationKey,
+        state: it.state,
+        // Non-null by construction: `isCurrentOrLater` refuses a dateless Iteration.
+        startDate: it.startDate as string,
+        endDate: it.endDate as string,
+        teamId: it.teamId,
+      })),
+      taskCount,
+      unfinishedTaskCount,
+    };
+  }
+
+  /**
+   * D7 — validate a `targetEndDate` in a PATCH. The server never MOVES on a PATCH: a date after the
+   * current Iteration is refused and must go through the confirmed Carryover.
+   *
+   * A date may not ride along with an Iteration CHANGE in the same patch (PR #653 review). Judging it
+   * on the destination let "move to a later sprint + a date inside it" through as a Manual Move plus a
+   * plain save — the end state of a Carryover with no snapshot and no Carryover event — while the same
+   * date alone was refused. One rule per end state: move first (a Manual Move), then set the date, or
+   * use the Carryover. Clearing (`null`) is exempt; it never moves anything.
+   */
+  private async assertTargetEndDate(item: WorkItem, input: UpdateWorkItemInput): Promise<void> {
+    if (input.targetEndDate === undefined) return;
+    if (item.type !== 'story') {
+      throw new PreconditionFailedException(
+        'TARGET_END_NOT_SUPPORTED',
+        'Only a user story has a Target End Date',
+      );
+    }
+    // CO-BR-12/28 — clearing is always allowed to an editor, and touches nothing else.
+    if (input.targetEndDate === null) return;
+
+    if (input.iterationId !== undefined && input.iterationId !== item.iterationId) {
+      throw new PreconditionFailedException(
+        'TARGET_END_WITH_ITERATION_CHANGE',
+        'Save the iteration change first, then set the Target End Date (or confirm a Carryover)',
+      );
+    }
+    if (item.iterationId === null) {
+      // R6 — no window exists, so no date can satisfy the picker; say so rather than "pick another".
+      throw new PreconditionFailedException(
+        'TARGET_END_REQUIRES_ITERATION',
+        'Schedule the story into an iteration before setting a Target End Date',
+      );
+    }
+
+    const { current, eligible } = await this.carryoverContext(item);
+    if (current && (current.startDate === null || current.endDate === null)) {
+      // A dateless current Iteration admits NO date at all, so "choose another date" would name a
+      // remedy that cannot work (PR 653 review, round 2). Name the real one.
+      throw new PreconditionFailedException(
+        'TARGET_END_DATE_INVALID',
+        'The current iteration has no start or end date — give it dates, or move the story to a dated iteration',
+      );
+    }
+    const verdict = current
+      ? targetEndVerdict(input.targetEndDate, item, current, eligible)
+      : 'invalid';
+    if (verdict === 'invalid') {
+      throw new PreconditionFailedException(
+        'TARGET_END_DATE_INVALID',
+        'Choose a date from the Start Date onward that belongs to the current or a future iteration',
+      );
+    }
+    if (verdict === 'requires_carryover') {
+      throw new PreconditionFailedException(
+        'TARGET_END_REQUIRES_CARRYOVER',
+        'This date is after the current iteration — confirm a Carryover to move the story',
+      );
+    }
+  }
+
+  /**
+   * `POST /work-items/:id/carryover` — the same-ID Carryover in ONE transaction (plan D6, CO-05).
+   *
+   * Everything that can refuse refuses first, outside the transaction; inside it the row lock plus a
+   * re-check of the echoed source Iteration is what makes two concurrent (or retried) confirms produce
+   * one 201, one 412 and exactly ONE event (CO-BR-43) — the Split precedent.
+   *
+   * Writes ONLY `iteration_id`, `target_end_date` and `updated_by` on the Story (CO-BR-24). Tasks follow
+   * by `trg_cascade_iteration_to_tasks` (CO-BR-23). Does NOT call `autoAcceptIterationIfComplete` (a
+   * Carryover must not silently close the source — Split Q9) and does NOT reconcile the Story's state
+   * (it is unchanged). That suppression depends on writing through `workItemRepo.update` rather than
+   * `updateWorkItem`; the e2e asserts the source Iteration's state is unchanged.
+   */
+  @Span('work-items.carryover')
+  async carryOverWorkItem(
+    actor: JwtPayload,
+    id: string,
+    input: CarryOverWorkItemInput,
+  ): Promise<CarryOverWorkItemResult> {
+    const story = await this.requireReadable(actor, id);
+    await this.assertProjectWritable(actor.workspaceId, story.projectId);
+
+    if (story.type !== 'story' || story.iterationId === null) {
+      throw new PreconditionFailedException(
+        'CARRYOVER_NOT_ELIGIBLE',
+        'Only a scheduled user story can be carried over',
+      );
+    }
+    if (story.iterationId !== input.expectedSourceIterationId) {
+      throw new PreconditionFailedException(
+        'CARRYOVER_SOURCE_ITERATION_CHANGED',
+        'This story has moved to a different iteration since the carryover was opened',
+      );
+    }
+
+    const { current, eligible } = await this.carryoverContext(story);
+    if (!current) {
+      throw new PreconditionFailedException(
+        'CARRYOVER_NOT_ELIGIBLE',
+        'Only a scheduled user story can be carried over',
+      );
+    }
+    const target =
+      isEnabledDate(input.targetEndDate, story, current, eligible) &&
+      resolveTargets(input.targetEndDate, current, eligible).find(
+        (candidate) => candidate.id === input.targetIterationId,
+      );
+    if (!target) {
+      throw new PreconditionFailedException(
+        'CARRYOVER_TARGET_INVALID',
+        'Choose a later iteration that contains the Target End Date',
+      );
+    }
+
+    const occurredAt = new Date();
+    const transitionId = uuidv7();
+
+    const result = await this.uow.run(async (tx) => {
+      const locked = await this.workItemRepo.lockRow(id, actor.workspaceId, tx);
+      if (!locked || locked.iterationId !== input.expectedSourceIterationId) {
+        throw new PreconditionFailedException(
+          'CARRYOVER_SOURCE_ITERATION_CHANGED',
+          'This story has moved to a different iteration since the carryover was opened',
+        );
+      }
+      /**
+       * Everything the rule and the immutable event read about the STORY comes from the LOCKED row
+       * (PR #653 review, round 3): a concurrent Team change committed between `requireReadable` and
+       * the lock would otherwise pass R7's strict team check on a stale team and be recorded in the
+       * event. Only scope fields are taken; the rest of `story` is display data.
+       */
+      const lockedStory = { ...story, projectId: locked.projectId, teamId: locked.teamId };
+
+      /**
+       * Re-validate BOTH Iterations under the lock (PR #653 review, rounds 1 and 2). The eligible set
+       * above was read before the transaction; between it and the commit the target may have been
+       * accepted or re-dated, and the SOURCE's window — the "current or later" reference point — may
+       * have moved too. Both are re-read `FOR SHARE` (blocking a concurrent edit until commit) and the
+       * full rule re-runs on the locked rows, so the check, the move and the immutable event all see
+       * the same data.
+       */
+      // Sequential, on the one transaction connection: a deterministic lock order.
+      const lockedSource = await this.workItemRepo.lockIteration(current.id, actor.workspaceId, tx);
+      const lockedTarget = await this.workItemRepo.lockIteration(target.id, actor.workspaceId, tx);
+      if (
+        !lockedSource ||
+        !lockedTarget ||
+        !isEligibleIteration(lockedStory, lockedTarget, lockedSource) ||
+        !containsDate(lockedTarget, input.targetEndDate) ||
+        lockedSource.endDate === null ||
+        input.targetEndDate <= lockedSource.endDate
+      ) {
+        throw new PreconditionFailedException(
+          'CARRYOVER_TARGET_INVALID',
+          'Choose a later iteration that contains the Target End Date',
+        );
+      }
+
+      // The snapshot is read on the locked transaction, before the move.
+      const tasks = await this.workItemRepo.listTaskSnapshots(id, actor.workspaceId, tx);
+
+      const workItem = await this.workItemRepo.update(
+        id,
+        { iterationId: target.id, targetEndDate: input.targetEndDate, updatedBy: actor.sub },
+        actor.workspaceId,
+        tx,
+      );
+
+      const transition = await this.transitionRepo.create(
+        {
+          id: transitionId,
+          workspaceId: actor.workspaceId,
+          projectId: lockedStory.projectId,
+          teamId: lockedStory.teamId,
+          storyId: id,
+          type: 'carryover',
+          sourceIterationId: current.id,
+          targetIterationId: target.id,
+          targetEndDate: input.targetEndDate,
+          actorId: actor.sub,
+          occurredAt,
+        },
+        tasks.map((task) => ({
+          id: uuidv7(),
+          workspaceId: actor.workspaceId,
+          transitionId,
+          taskId: task.id,
+          state: task.state,
+          estimateHoursAtMove: numberOrNull(task.estimateHours),
+          todoHoursAtMove: numberOrNull(task.todoHours),
+          actualHoursAtMove: numberOrNull(task.actualHours),
+        })),
+        tx,
+      );
+
+      // ONE entry, on the Story only (ruling R12). Names in metadata are display-only (CO-BR-45).
+      await this.appendActivity(
+        tx,
+        workItem,
+        'work_item',
+        actor.sub,
+        'work_item.carried_over',
+        { field: 'iterationId', old: current.id, new: target.id },
+        {
+          transitionId,
+          sourceIterationId: current.id,
+          sourceIterationName: current.name,
+          targetIterationId: target.id,
+          targetIterationName: target.name,
+          targetEndDate: input.targetEndDate,
+          previousTargetEndDate: story.targetEndDate,
+        },
+      );
+
+      return { transition, workItem };
+    });
+
+    this.logger.log(
+      {
+        transitionId,
+        storyId: id,
+        sourceIterationId: current.id,
+        targetIterationId: target.id,
+        userId: actor.sub,
+      },
+      'User story carried over',
+    );
+    return result;
+  }
+
+  /**
+   * Lock the Stories about to be moved and prove each is still where the caller read it (PR #653
+   * review). A Manual Move is an IMMUTABLE event whose `source_iteration_id` comes from that read, so
+   * it must not be written for a Story another writer (a Carryover confirm, a bulk assign) moved in
+   * between — that would record a source the Story never had, uncorrectably. Call BEFORE the write
+   * that changes `iteration_id`, on the same transaction. One query for the whole batch.
+   */
+  private async lockForManualMove(tx: DbExecutor, stories: readonly WorkItem[]): Promise<void> {
+    if (stories.length === 0) return;
+    const locked = await this.workItemRepo.lockRows(
+      stories.map((story) => story.id),
+      stories[0].workspaceId,
+      tx,
+    );
+    const current = new Map(locked.map((row) => [row.id, row]));
+    for (const story of stories) {
+      const row = current.get(story.id);
+      // The Iteration AND the Team the event records must be the locked row's (PR #653 review,
+      // round 3): a concurrent Team change would otherwise be written into the immutable log too.
+      if (!row || row.iterationId !== story.iterationId || row.teamId !== story.teamId) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_ITERATION_CHANGED',
+          'This story was changed by someone else since you opened it — reload and try again',
+        );
+      }
+    }
+  }
+
+  /**
+   * D9 — record a MANUAL MOVE for each Story whose Iteration a user changed (ruling R8), inside the
+   * caller's transaction: `manual_move` transitions (no Task snapshot — R3) and one
+   * `work_item.iteration_moved` entry each, as TWO multi-row inserts however many Stories move.
+   * Never touches a Carryover row. The `stories` are the rows {@link lockForManualMove} verified.
+   */
+  private async recordManualMoves(
+    tx: DbExecutor,
+    actor: JwtPayload,
+    stories: readonly WorkItem[],
+    targetIterationId: string | null,
+    iterationNames: ReadonlyMap<string, string>,
+  ): Promise<void> {
+    if (stories.length === 0) return;
+    const occurredAt = new Date();
+    const moves = stories.map((story) => ({ story, transitionId: uuidv7() }));
+    await this.transitionRepo.createMany(
+      moves.map(({ story, transitionId }) => ({
+        id: transitionId,
+        workspaceId: story.workspaceId,
+        projectId: story.projectId,
+        teamId: story.teamId,
+        storyId: story.id,
+        type: 'manual_move' as const,
+        sourceIterationId: story.iterationId,
+        targetIterationId,
+        targetEndDate: null,
+        actorId: actor.sub,
+        occurredAt,
+      })),
+      tx,
+    );
+    const name = (iterationId: string | null) =>
+      iterationId === null ? null : (iterationNames.get(iterationId) ?? null);
+    await this.appendMany(
+      moves.map(({ story, transitionId }) =>
+        this.buildActivityInput(
+          story,
+          'work_item',
+          actor.sub,
+          'work_item.iteration_moved',
+          { field: 'iterationId', old: story.iterationId, new: targetIterationId },
+          {
+            transitionId,
+            sourceIterationId: story.iterationId,
+            sourceIterationName: name(story.iterationId),
+            targetIterationId,
+            targetIterationName: name(targetIterationId),
+          },
+        ),
+      ),
+      tx,
+    );
+  }
+
+  /** Iteration id → name for one project — the display names a Manual Move entry carries. */
+  private async iterationNameMap(
+    projectId: string,
+    workspaceId: string,
+  ): Promise<Map<string, string>> {
+    const rows = await this.workItemRepo.listProjectIterations(projectId, workspaceId);
+    return new Map(rows.map((row) => [row.id, row.name]));
+  }
+
   // ── Activity (Revision History) ──────────────────────────────────────────────
 
   async getActivity(
@@ -1996,6 +2429,9 @@ export class WorkItemsService {
       );
     }
 
+    // Phase 7 Carryover (D7) — Target End Date is Story-only and picker-validated.
+    await this.assertTargetEndDate(item, input);
+
     // Work Item Project and Team must be a valid pair (SRS P1-MANAGE-ORG). All
     // scoped references funnel through the ONE assignment-scope guard, using the
     // team the item WILL have after this patch (input.teamId when changing, else
@@ -2138,6 +2574,22 @@ export class WorkItemsService {
 
     const entries = diffWorkItem(item, input, isTask);
 
+    /**
+     * D9 / ruling R8 — a user-initiated Story Iteration change is a MANUAL MOVE: it gets its own
+     * transition row and a `work_item.iteration_moved` entry INSTEAD of the generic `iterationId`
+     * diff entry. Stories only; a Defect keeps the generic entry.
+     */
+    const storyMove =
+      item.type === 'story' &&
+      input.iterationId !== undefined &&
+      input.iterationId !== item.iterationId;
+    const storyMoveNames = storyMove
+      ? await this.iterationNameMap(item.projectId, actor.workspaceId)
+      : null;
+    const loggedEntries = storyMove
+      ? entries.filter((e) => e.change.field !== 'iterationId')
+      : entries;
+
     const updated = await this.uow.run(async (tx) => {
       // Re-parenting moves the item into a DIFFERENT rank scope, and a rank only
       // orders items within one scope. Carrying the old value across means it
@@ -2155,6 +2607,9 @@ export class WorkItemsService {
         rerank = { rank: between(maxRank, null) };
       }
 
+      // A Manual Move's source is read from the LOCKED row, before this write changes it.
+      if (storyMove) await this.lockForManualMove(tx, [item]);
+
       const updatedInTx = await this.workItemRepo.update(
         id,
         { ...input, ...rerank, ...clearReasonOnUnblock(input), updatedBy: actor.sub },
@@ -2166,10 +2621,13 @@ export class WorkItemsService {
       // Build all diff entries then flush in ONE multi-row INSERT — avoids N
       // sequential round-trips for edits that touch multiple fields at once.
       const entityType = isTask ? ('task' as const) : ('work_item' as const);
-      const activityInputs = entries.map((e) =>
+      const activityInputs = loggedEntries.map((e) =>
         this.buildActivityInput(updated, entityType, actor.sub, e.action, e.change),
       );
       await this.appendMany(activityInputs, tx);
+      if (storyMove && storyMoveNames) {
+        await this.recordManualMoves(tx, actor, [item], input.iterationId ?? null, storyMoveNames);
+      }
 
       /**
        * ── Auto-accept: re-evaluate the RULE, not just the write that used to trigger it ──
@@ -2975,7 +3433,15 @@ export class WorkItemsService {
       ),
     );
 
+    // D9 / ruling R8 — every STORY whose Iteration actually changes records a Manual Move. Defects
+    // keep the current behaviour.
+    const movedStories = items.filter((i) => i.type === 'story' && i.iterationId !== iterationId);
+    const iterationNames =
+      movedStories.length > 0 ? await this.iterationNameMap(projectId, actor.workspaceId) : null;
+
     await this.uow.run(async (tx) => {
+      // Lock + verify BEFORE the write, so each Manual Move's source is the Story's real prior one.
+      await this.lockForManualMove(tx, movedStories);
       await this.workItemRepo.assignIteration(
         items.map((i) => i.id),
         iterationId,
@@ -2983,6 +3449,9 @@ export class WorkItemsService {
         actor.sub,
         tx,
       );
+      if (iterationNames) {
+        await this.recordManualMoves(tx, actor, movedStories, iterationId, iterationNames);
+      }
       for (const affected of affectedIterations) {
         const flipped = await this.workItemRepo.autoAcceptIterationIfComplete(
           affected,

@@ -22,6 +22,7 @@ import notifications from './locales/en/notifications.json'
 import errors from './locales/en/errors.json'
 import testCases from './locales/en/test-cases.json'
 import splitStory from './locales/en/split-story.json'
+import carryover from './locales/en/carryover.json'
 
 export const defaultNS = 'common'
 
@@ -54,6 +55,8 @@ i18n.use(initReactI18next).init({
       // Namespaces are STATIC imports, not auto-discovered: a missing line here is a screen full of
       // raw `split-story.modal.title` keys, which no test catches unless it asserts the copy.
       'split-story': splitStory,
+      // Phase 7 Story Target End Date + Carryover.
+      carryover,
     },
   },
   interpolation: { escapeValue: false },
