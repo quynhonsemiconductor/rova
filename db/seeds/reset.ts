@@ -43,6 +43,12 @@ export const FIXTURE_TABLES = [
   'work.member_capacity',
   'work.attachments',
   'work.time_logs',
+  // Phase 7 Carryover events (0133). Listed EXPLICITLY although `TRUNCATE … CASCADE` from
+  // work_items would reach them through the FK dependency: an unlisted table is a visible bug, not a
+  // silent one. NOTE for a future DELETE-based reset: these FKs are NO ACTION and the immutability
+  // trigger refuses row-level DELETE, so per-table DELETEs cannot clear them — only TRUNCATE can.
+  'work.iteration_transition_tasks',
+  'work.iteration_transitions',
   'work.work_item_watchers',
   'work.work_item_labels',
   'work.work_item_relations',

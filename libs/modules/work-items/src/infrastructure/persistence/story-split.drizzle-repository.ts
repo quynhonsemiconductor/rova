@@ -64,6 +64,8 @@ export class StorySplitDrizzleRepository implements IStorySplitRepository {
         actorId: split.actorId,
       })
       .returning();
+    // Fail HERE, naming the Split, rather than as a bare TypeError in the caller's transaction.
+    if (!row) throw new Error(`story split ${split.id} was not persisted (INSERT returned no row)`);
 
     if (items.length > 0) {
       await executor.insert(storySplitItems).values(

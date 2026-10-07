@@ -34,13 +34,29 @@ function parse(value: string | null | undefined): Date | null {
 export function Calendar({
   value,
   onSelect,
+  isDateDisabled,
+  defaultMonth,
 }: {
   value?: string | null
   /** Fires with the picked day as an ISO date-only string (yyyy-MM-dd). */
   onSelect: (iso: string) => void
+  /**
+   * Optional, additive: a day this returns `true` for is rendered disabled (`disabled` +
+   * `aria-disabled`) and cannot be picked. Receives the day as `yyyy-MM-dd`.
+   */
+  isDateDisabled?: (iso: string) => boolean
+  /** Month to open on when there is no `value` (`yyyy-MM-dd`); never rendered as selected. */
+  defaultMonth?: string | null
 }) {
   const selected = parse(value)
-  const [month, setMonth] = useState(() => startOfMonth(selected ?? new Date()))
+  /**
+   * The month the reader NAVIGATED to, or `null` until they press prev/next. Until then the shown
+   * month is DERIVED from `value` → `defaultMonth` → today on every render (PR 653 review, round 3):
+   * a `defaultMonth` that arrives after mount (an async payload such as the Carryover options) is
+   * followed instead of being frozen by a `useState` initializer that never re-runs.
+   */
+  const [navigated, setNavigated] = useState<Date | null>(null)
+  const month = navigated ?? startOfMonth(selected ?? parse(defaultMonth) ?? new Date())
   const today = new Date()
 
   const days = eachDayOfInterval({
@@ -57,7 +73,7 @@ export function Calendar({
           <button
             type="button"
             aria-label="Previous month"
-            onClick={() => setMonth((m) => subMonths(m, 1))}
+            onClick={() => setNavigated(subMonths(month, 1))}
             className="rounded p-1 text-muted-foreground hover:bg-surface-hover"
           >
             <ChevronLeft size={16} />
@@ -65,7 +81,7 @@ export function Calendar({
           <button
             type="button"
             aria-label="Next month"
-            onClick={() => setMonth((m) => addMonths(m, 1))}
+            onClick={() => setNavigated(addMonths(month, 1))}
             className="rounded p-1 text-muted-foreground hover:bg-surface-hover"
           >
             <ChevronRight size={16} />
@@ -88,17 +104,25 @@ export function Calendar({
           const inMonth = isSameMonth(day, month)
           const isSelected = selected != null && isSameDay(day, selected)
           const isToday = isSameDay(day, today)
+          const iso = format(day, 'yyyy-MM-dd')
+          const disabled = isDateDisabled?.(iso) ?? false
           return (
             <button
               key={day.toISOString()}
               type="button"
-              onClick={() => onSelect(format(day, 'yyyy-MM-dd'))}
+              disabled={disabled}
+              aria-disabled={disabled || undefined}
+              data-date={iso}
+              onClick={() => {
+                if (!disabled) onSelect(iso)
+              }}
               className={cn(
                 'mx-auto flex h-8 w-8 items-center justify-center rounded-full text-ui-sm tabular-nums transition-colors',
                 !inMonth && 'text-foreground-faint',
-                inMonth && !isSelected && 'text-foreground hover:bg-surface-hover',
+                inMonth && !isSelected && !disabled && 'text-foreground hover:bg-surface-hover',
                 isToday && !isSelected && 'font-semibold text-primary',
                 isSelected && 'bg-primary font-semibold text-white',
+                disabled && 'cursor-not-allowed text-foreground-faint line-through opacity-60',
               )}
             >
               {format(day, 'd')}

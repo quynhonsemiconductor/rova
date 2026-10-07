@@ -89,6 +89,12 @@ export interface IterationStatusItem {
   openDefectCount: number;
   /** Milestones directly assigned to this item (Rally "Milestones"). */
   milestones: { id: string; name: string }[];
+  /**
+   * Phase 7 Carryover — `YYYY-MM-DD`. `startDate` is the Story's system-managed first In-Progress
+   * date (CO-01, migration 0132); `targetEndDate` is its forecast (CO-03). Both null on a Defect.
+   */
+  startDate: string | null;
+  targetEndDate: string | null;
 }
 
 export interface IterationStatusFilters {
@@ -118,4 +124,10 @@ export interface IterationStatusFilters {
   taskEstimate?: string;
   /** Exact match on the child-task to-do-hours rollup, fixed(2) string. */
   toDo?: string;
+  /**
+   * Phase 7 Carryover text filters — case-insensitive SUBSTRING on the `YYYY-MM-DD` text, so `2026-10`
+   * narrows to a month, the way the ID and Name filters narrow by fragment.
+   */
+  startDate?: string;
+  targetEndDate?: string;
 }

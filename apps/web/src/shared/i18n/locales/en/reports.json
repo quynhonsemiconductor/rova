@@ -7,10 +7,15 @@
     "body": "The timebox request failed, so no iteration can be selected. This is not a statement about the project - try again."
   },
   "selectProject": "Select a project to see its reports.",
+  "export": {
+    "button": "Export CSV",
+    "error": "Could not export the report"
+  },
   "types": {
     "burndown": "Iteration Burndown",
     "velocity": "Velocity",
-    "capacity": "Team Capacity"
+    "capacity": "Team Capacity",
+    "carryover": "Carryover"
   },
   "units": {
     "points": "Points",

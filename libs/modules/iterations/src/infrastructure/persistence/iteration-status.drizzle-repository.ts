@@ -233,6 +233,22 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
     if (filters.toDo !== undefined) {
       conditions.push(sql`${toDo} = ${filters.toDo}::numeric`);
     }
+    // Phase 7 Carryover — substring of the ISO date text; bound parameters only. `to_char` PINS the
+    // `YYYY-MM-DD` form: `date::text` follows the session DateStyle, and under `SQL`/`German` a
+    // `2026-10` fragment would silently match nothing.
+    if (filters.startDate?.trim()) {
+      conditions.push(
+        ilike(sql`to_char(${workItems.startDate}, 'YYYY-MM-DD')`, `%${filters.startDate.trim()}%`),
+      );
+    }
+    if (filters.targetEndDate?.trim()) {
+      conditions.push(
+        ilike(
+          sql`to_char(${workItems.targetEndDate}, 'YYYY-MM-DD')`,
+          `%${filters.targetEndDate.trim()}%`,
+        ),
+      );
+    }
     // Actual = roll-up of child task actual_hours (parity with To Do / Task Est,
     // which also sum from the child tasks). Actual is a manual per-task input.
     const actual = sql<string>`(
@@ -375,6 +391,8 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         defectCount,
         openDefectCount,
         milestoneList,
+        startDate: workItems.startDate,
+        targetEndDate: workItems.targetEndDate,
       })
       .from(workItems)
       // Not archived: an archived Feature must stop labelling live work rather than
@@ -422,6 +440,8 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       defectCount: Number(r.defectCount ?? 0),
       openDefectCount: Number(r.openDefectCount ?? 0),
       milestones: r.milestoneList ?? [],
+      startDate: r.startDate,
+      targetEndDate: r.targetEndDate,
     }));
 
     return buildPageResult(items, limit, (i) => [i.rank]);

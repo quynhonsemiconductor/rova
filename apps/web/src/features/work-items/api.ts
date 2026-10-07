@@ -12,12 +12,13 @@ import { withCsrfHeader } from '@/shared/api/csrf'
 // here so the three surfaces that use it import from the one work-items API barrel like everything
 // else. Split out only because this file is the SPA's file-length ratchet holder.
 export { useStoryOptions, type StoryOption } from './story-options'
-// Split a User Story (Phase 7 SU) — same reason as above. A blanket re-export, not a named list,
-// because this file sits ~11 lines under the 929 file-length ratchet and a named list of eight
-// symbols does not fit: SU-01 measured 930 and the ratchet refused it. EVERYTHING Split adds to the
-// SPA api layer (SU-06's `useSplitWorkItem` included) belongs in `split-api.ts`, so this line never
-// has to grow again.
+// Feature api modules — ONE blanket re-export line per feature, each module in its own file,
+// because this file sits just under the 929 file-length ratchet: a named list of a feature's
+// symbols does not fit (SU-01 measured 930 and the ratchet refused it). Everything Split adds lives
+// in `split-api.ts`, everything Story Carryover (Phase 7 CO) adds in `carryover-api.ts`, and a new
+// feature adds its own file and one line here rather than growing this module.
 export * from './split-api'
+export * from './carryover-api'
 // The RECORD read's shape (SU-07) — declared, with its reasoning, in `split-api.ts`. Type-only, and
 // from the module this file already re-exports, so there is no cycle.
 import type { WorkItemDetail } from './split-api'

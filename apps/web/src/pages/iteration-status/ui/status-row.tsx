@@ -36,7 +36,7 @@ import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { useTeamOwnerOptions } from '@/features/teams/api'
 import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
-import { MilestoneSelectCell, TasksProgress } from './status-cells'
+import { MilestoneSelectCell, StoryDateCell, TasksProgress } from './status-cells'
 import { useWorkItemFieldCommit } from '../model/use-work-item-field-commit'
 import { NUMERIC_CELL_CLASS } from '@/shared/lib/utils'
 import { entityDetailPath } from '@/shared/lib/entity-link'
@@ -335,6 +335,13 @@ export function StatusRow({
             onChange={(v) => handleIterationChange(v || null)}
           />
         </div>
+
+        <StoryDateCell type={item.type} value={item.startDate} style={colStyles.startDate} />
+        <StoryDateCell
+          type={item.type}
+          value={item.targetEndDate}
+          style={colStyles.targetEndDate}
+        />
 
         {/* Schedule State — Rally-style segmented stepper */}
         <div
@@ -732,6 +739,8 @@ function ChildTaskRow({
       </div>
       <div style={colStyles.feature} className="px-2" />
       <div style={colStyles.iteration} className="px-2" />
+      <div style={colStyles.startDate} className="px-2" />
+      <div style={colStyles.targetEndDate} className="px-2" />
       <div
         style={colStyles.state}
         className="flex items-center px-2"

@@ -343,6 +343,9 @@ export interface IterationStatusFilters {
   planEstimate?: string
   taskEstimate?: string
   toDo?: string
+  /** Phase 7 Carryover — substring of the Story's `YYYY-MM-DD` date (server-side). */
+  startDate?: string
+  targetEndDate?: string
 }
 
 export function useIterationStatus(id: string | undefined, filters: IterationStatusFilters = {}) {

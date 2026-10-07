@@ -49,6 +49,9 @@ export const IterationStatusItemSchema = z.object({
   defectCount: z.number().int(),
   openDefectCount: z.number().int(),
   milestones: z.array(z.object({ id: z.string().uuid(), name: z.string() })),
+  // Phase 7 Carryover (CO-01 / CO-03) — `YYYY-MM-DD`, Story only.
+  startDate: z.string().nullable(),
+  targetEndDate: z.string().nullable(),
 });
 
 export const IterationSummarySchema = z.object({
