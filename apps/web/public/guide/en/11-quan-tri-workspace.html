@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Instructions for managing User, Project, access rights, Team and Audit Log on Rova.">
+  <title>11. Workspace Administration | Rova User Guide</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b4f87'/%3E%3Cpath d='M16 5 25 10v12l-9 5-9-5V10l9-5Z' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../styles.css?v=20260917-06">
+</head>
+<body data-chapter="#chapter-11">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <header class="topbar">
+    <button class="icon-button menu-toggle" type="button" aria-label="Open guide menu" aria-expanded="false" aria-controls="guide-sidebar">
+      <span></span><span></span><span></span>
+    </button>
+    <a class="brand" href="index.html#top" aria-label="Rova User Guide — front page">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="img">
+          <path d="M16 3 27 9v14l-11 6L5 23V9l11-6Z" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="m10 12 6-3 6 3-6 3-6-3Zm0 5 6 3 6-3M10 22l6 3 6-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="brand-copy">
+        <strong>Rova</strong>
+        <span class="brand-subline"><small>User Guide</small><span class="status-pill brand-version">Version 1.0</span></span>
+      </span>
+    </a>
+    <div class="topbar-context" aria-label="Document information">
+      <span>User Guide</span>
+      <label class="language-selector">
+        <span class="sr-only">Select language</span>
+        <select id="guide-language" aria-label="Select language">
+          <option value="vi">Vietnamese</option>
+          <option value="en" selected>English</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <div class="app-shell" id="top">
+    <aside class="sidebar" id="guide-sidebar" aria-label="Guide contents">
+      <div class="sidebar-tools">
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+          <span class="sr-only">Search the contents</span>
+          <input id="guide-search" type="search" placeholder="Search this guide" autocomplete="off">
+        </label>
+      </div>
+
+      <nav class="guide-nav">
+        <p class="nav-label">GET STARTED</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="index.html#gioi-thieu" data-search="introduction begins the table of contents">
+              <span class="nav-number">00</span>
+              <span><strong>Get started</strong><small>Introduction &amp; contents</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-00" aria-label="Open items in Start">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-00">
+            <a href="index.html#truoc-khi-doc" data-search="before starting the target permission scope check"><span>00.1</span>Before you start</a>
+            <a href="index.html#chon-lo-trinh" data-search="select demand role route"><span>00.2</span>Choose a learning path</a>
+            <a href="index.html#phuong-phap-doc" data-search="how to read the tutorial reading method"><span>00.3</span>How to use each chapter</a>
+          </div>
+        </div>
+
+        <p class="nav-label">DAILY WORK</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="01-lam-quen.html#chapter-01" data-search="familiarize yourself with the concept of workspace project team epic feature user story defect task iteration release milestone owner rights">
+              <span class="nav-number">01</span><span><strong>Introduction</strong><small>Workspace, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-01" aria-label="Open items in Getting Started">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-01">
+            <a href="01-lam-quen.html#pham-vi-lam-viec" data-search="workspace project team three scope layers"><span>01.1</span>Three layers of scope</a>
+            <a href="01-lam-quen.html#doi-tuong-cong-viec" data-search="epic feature user story defect task work object"><span>01.2</span>Work item types</a>
+            <a href="01-lam-quen.html#doi-tuong-ke-hoach" data-search="iteration release milestone planning object"><span>01.3</span>Planning object</a>
+            <a href="01-lam-quen.html#quyen-va-trach-nhiem" data-search="owner editor permissions and responsibilities"><span>01.4</span>Rights &amp; responsibilities</a>
+            <a href="01-lam-quen.html#vi-du-xuyen-suot" data-search="simulation example scenario"><span>01.5</span>Scenario walkthrough</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="02-truy-cap-pham-vi.html#chapter-02" data-search="access select scope login home navigation search account information">
+              <span class="nav-number">02</span><span><strong>Access &amp; Scope</strong><small>Login, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-02" aria-label="Opens items in the Access &amp; scope section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-02">
+            <a href="02-truy-cap-pham-vi.html#dang-nhap" data-search="sign in email continue microsoft"><span>02.1</span>Login</a>
+            <a href="02-truy-cap-pham-vi.html#thanh-dieu-huong" data-search="home plan track quality portfolio reports navigation"><span>02.2</span>Navigation bar</a>
+            <a href="02-truy-cap-pham-vi.html#chon-project-team" data-search="workspace project team all teams context selector scope"><span>02.3</span>Select Project &amp; Team</a>
+            <a href="02-truy-cap-pham-vi.html#doc-trang-home" data-search="home my work recent activity project health"><span>02.4</span>Read the Home page</a>
+            <a href="02-truy-cap-pham-vi.html#cong-cu-ca-nhan" data-search="search work items notifications unread profile settings sign out"><span>02.5</span>Personal tools</a>
+            <a href="02-truy-cap-pham-vi.html#xu-ly-truy-cap" data-search="did not see the project team denying access processing"><span>02.6</span>Troubleshoot missing scope</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="03-backlog-cong-viec.html#chapter-03" data-search="backlog user story defect create work item owner team update search">
+              <span class="nav-number">03</span><span><strong>Backlog &amp; Work Items</strong><small>US, DE and Owner</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-03" aria-label="Open items in the Backlog &amp; tasks section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-03">
+            <a href="03-backlog-cong-viec.html#doc-backlog" data-search="read search backlog search filter show fields"><span>03.1</span>Read &amp; find Backlog</a>
+            <a href="03-backlog-cong-viec.html#tao-user-story" data-search="create user story us add new"><span>03.2</span>Create User Story</a>
+            <a href="03-backlog-cong-viec.html#tao-defect" data-search="creates defect log for parent story"><span>03.3</span>Record Defect</a>
+            <a href="03-backlog-cong-viec.html#chon-team-owner" data-search="select team owner no entry membership rights"><span>03.4</span>Select Team &amp; Owner</a>
+            <a href="03-backlog-cong-viec.html#cap-nhat-work-item" data-search="update work item details feature parent story"><span>03.5</span>Update Work Item</a>
+            <a href="03-backlog-cong-viec.html#xu-ly-backlog" data-search="item owner not found to process"><span>03.6</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="04-testing.html#chapter-04" data-search="testing test case test result verdict quality validation">
+              <span class="nav-number">04</span><span><strong>Testing</strong><small>Test Case and Test Result</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-04" aria-label="Open items in the Testing section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-04">
+            <a href="04-testing.html#hieu-luong-testing" data-search="testing flow user story defect test case result"><span>04.1</span>Understand the Testing flow</a>
+            <a href="04-testing.html#mo-test-cases" data-search="open test cases tab list last verdict last run"><span>04.2</span>Open Test Cases</a>
+            <a href="04-testing.html#tao-test-case" data-search="create test case add new type method priority owner assigned"><span>04.3</span>Create Test Case</a>
+            <a href="04-testing.html#hoan-thien-test-case" data-search="description objective preconditions input expected result postconditions"><span>04.4</span>Complete Test Case</a>
+            <a href="04-testing.html#ghi-test-result" data-search="add result build date verdict duration tester notes"><span>04.5</span>Record Test Result</a>
+            <a href="04-testing.html#doc-ket-qua-testing" data-search="last verdict last run results revision history"><span>04.6</span>Read results &amp; history</a>
+            <a href="04-testing.html#quan-ly-test-case-type" data-search="settings project test case types acceptance functional regression"><span>04.7</span>Manage Test Case Type</a>
+            <a href="04-testing.html#xu-ly-testing" data-search="processing not found test case result cannot be saved"><span>04.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="05-lap-ke-hoach.html#chapter-05" data-search="iteration planning timeboxes unscheduled planning committed accepted">
+              <span class="nav-number">05</span><span><strong>Iteration Planning</strong><small>Iteration and scope</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-05" aria-label="Opens items in the Planning section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-05">
+            <a href="05-lap-ke-hoach.html#doc-timeboxes" data-search="read list iteration timeboxes metrics filter"><span>05.1</span>Read the Iteration list</a>
+            <a href="05-lap-ke-hoach.html#tao-iteration" data-search="create iteration add new team start and end date"><span>05.2</span>Create Iteration</a>
+            <a href="05-lap-ke-hoach.html#lap-planned-velocity" data-search="planned velocity points capacity committed accepted planning"><span>05.3</span>Create Planned Velocity</a>
+            <a href="05-lap-ke-hoach.html#gan-cong-viec-iteration" data-search="assign user story defect work item iteration"><span>05.4</span>Add Work Items to Iteration</a>
+            <a href="05-lap-ke-hoach.html#doi-iteration" data-search="change iteration returns unscheduled backlog"><span>05.5</span>Change or return Unscheduled</a>
+            <a href="05-lap-ke-hoach.html#trang-thai-iteration" data-search="status committed planning accepted"><span>05.6</span>Status update</a>
+            <a href="05-lap-ke-hoach.html#xu-ly-iteration" data-search="processing not found iteration failed to save"><span>05.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="06-thuc-hien-cong-viec.html#chapter-06" data-search="task daily task execution status owner actual estimate todo">
+              <span class="nav-number">06</span><span><strong>Work Execution</strong><small>Task, status and time</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-06" aria-label="Open items in the Work Execution section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-06">
+            <a href="06-thuc-hien-cong-viec.html#mo-task-list" data-search="open user story defect tab tasks task list"><span>06.1</span>Open the Task list</a>
+            <a href="06-thuc-hien-cong-viec.html#tao-task-con" data-search="create child task add task name estimate todo actual owner"><span>06.2</span>Create a child Task</a>
+            <a href="06-thuc-hien-cong-viec.html#giao-task" data-search="giao task owner dev owner team member no entry"><span>06.3</span>Assign Task</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-task-state" data-search="task state defined in-progress completed status"><span>06.4</span>Status update</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-gio-task" data-search="estimate to do actual actuals independent hours"><span>06.5</span>Update hours</a>
+            <a href="06-thuc-hien-cong-viec.html#bo-sung-task" data-search="description attachment linked items notes comments revision history"><span>06.6</span>Additional information</a>
+            <a href="06-thuc-hien-cong-viec.html#xu-ly-task" data-search="process does not see task owner status"><span>06.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="07-loi-theo-doi-team.html#chapter-07" data-search="defect quality team status monitors defect quality team progress">
+              <span class="nav-number">07</span><span><strong>Defects &amp; Team Tracking</strong><small>Defect and progress</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-07" aria-label="Open items in the Errors and Team Tracking section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-07">
+            <a href="07-loi-theo-doi-team.html#mo-quality-defect" data-search="quality defects dashboard index list"><span>07.1</span>Open Quality Defects</a>
+            <a href="07-loi-theo-doi-team.html#tao-defect-quality" data-search="add new create defect quality title description severity priority"><span>07.2</span>Create Defect from Quality</a>
+            <a href="07-loi-theo-doi-team.html#phan-loai-defect" data-search="severity priority user story fixed in build classification"><span>07.3</span>Defect Classification</a>
+            <a href="07-loi-theo-doi-team.html#vong-doi-defect" data-search="submitted open fixed closed declined flow state state"><span>07.4</span>Update lifecycle</a>
+            <a href="07-loi-theo-doi-team.html#doc-team-status" data-search="track team status iteration member capacity estimate todo actual"><span>07.5</span>Read Team Status</a>
+            <a href="07-loi-theo-doi-team.html#kiem-tra-rollup" data-search="task parent rollup completed in progress"><span>07.6</span>Check parent progress</a>
+            <a href="07-loi-theo-doi-team.html#xu-ly-chat-luong-team" data-search="does not see defect team status iteration member processing"><span>07.7</span>Troubleshooting</a>
+          </div>
+        </div>
+
+        <p class="nav-label">MANAGEMENT &amp; ADMINISTRATION</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="08-release-milestone.html#chapter-08" data-search="release milestone timebox link artifacts release tracking">
+              <span class="nav-number">08</span><span><strong>Release &amp; Milestone</strong><small>Timebox and link</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-08" aria-label="Open items in the Release and Milestone sections">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-08">
+            <a href="08-release-milestone.html#chon-dung-man-hinh" data-search="plan timeboxes release tracking select screen"><span>08.1</span>Select the correct display</a>
+            <a href="08-release-milestone.html#tao-release" data-search="create release add new planning active accepted"><span>08.2</span>Create Release</a>
+            <a href="08-release-milestone.html#tao-milestone" data-search="creates milestone target status associated releases"><span>08.3</span>Create Milestone</a>
+            <a href="08-release-milestone.html#lien-ket-release-milestone" data-search="release milestone date inferred hand input date"><span>08.4</span>Link &amp; target date</a>
+            <a href="08-release-milestone.html#quan-ly-artifacts" data-search="release milestone artifacts story defect feature epic"><span>08.5</span>Artifacts Management</a>
+            <a href="08-release-milestone.html#doc-release-tracking" data-search="portfolio release tracking burnup points count"><span>08.6</span>Read Release Tracking</a>
+            <a href="08-release-milestone.html#xu-ly-release-milestone" data-search="handle not seeing release milestone artifact burnup"><span>08.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="09-portfolio-capacity.html#chapter-09" data-search="portfolio capacity epic feature allocation publish">
+              <span class="nav-number">09</span><span><strong>Portfolio &amp; Capacity</strong><small>Epic, Feature, allocation</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-09" aria-label="Open the items in the Portfolio and Capacity sections">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-09">
+            <a href="09-portfolio-capacity.html#mo-portfolio-items" data-search="opens portfolio items all teams epic feature"><span>09.1</span>Open Portfolio Items</a>
+            <a href="09-portfolio-capacity.html#phan-biet-epic-feature" data-search="distinguish epic feature hierarchy project team"><span>09.2</span>Distinguishing Epic &amp; Feature</a>
+            <a href="09-portfolio-capacity.html#tao-cap-nhat-portfolio" data-search="create update epic feature owner release state estimate"><span>09.3</span>Create &amp; update Portfolio</a>
+            <a href="09-portfolio-capacity.html#doc-tien-do-portfolio" data-search="percent done estimate count accepted progress"><span>09.4</span>Read Portfolio progress</a>
+            <a href="09-portfolio-capacity.html#tao-capacity-plan" data-search="capacity plan single release points items draft"><span>09.5</span>Create Capacity Plan</a>
+            <a href="09-portfolio-capacity.html#phan-bo-capacity" data-search="team capacity add feature allocate split unassign demand"><span>09.6</span>Capacity allocation</a>
+            <a href="09-portfolio-capacity.html#publish-capacity-plan" data-search="publish without updating fields revert draft published"><span>09.7</span>Publish &amp; Revert</a>
+            <a href="09-portfolio-capacity.html#xu-ly-portfolio-capacity" data-search="handle epic feature plan capacity warning not found"><span>09.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="10-bao-cao.html#chapter-10" data-search="report reports burndown velocity capacity metrics">
+              <span class="nav-number">10</span><span><strong>Reports</strong><small>Read metrics correctly</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-10" aria-label="Open items in the Reports section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-10">
+            <a href="10-bao-cao.html#chon-bao-cao" data-search="select project team scope report type"><span>10.1</span>Select the correct report</a>
+            <a href="10-bao-cao.html#doc-iteration-burndown" data-search="iteration burndown todo ideal accepted points snapshot"><span>10.2</span>Read Iteration Burndown</a>
+            <a href="10-bao-cao.html#doc-velocity" data-search="velocity during after not accepted trend average"><span>10.3</span>Read Velocity</a>
+            <a href="10-bao-cao.html#doc-team-capacity-report" data-search="team capacity hours estimate todo actual member"><span>10.4</span>Read Team Capacity</a>
+            <a href="10-bao-cao.html#hieu-pham-vi-du-lieu" data-search="all teams selected team current frozen history"><span>10.5</span>Understand scope &amp; data</a>
+            <a href="10-bao-cao.html#kiem-tra-du-lieu-thieu" data-search="empty no history no data unavailable zero"><span>10.6</span>Check for missing data</a>
+            <a href="10-bao-cao.html#xu-ly-bao-cao" data-search="handle not seeing report iteration data"><span>10.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="11-quan-tri-workspace.html#chapter-11" data-search="workspace admin admin user project team permission permission audit">
+              <span class="nav-number">11</span><span><strong>Workspace Administration</strong><small>User, permissions, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-11" aria-label="Open items in Workspace Administration">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-11">
+            <a href="11-quan-tri-workspace.html#mo-quan-tri-workspace" data-search="settings opens admin workspace permissions"><span>11.1</span>Open the admin area</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-users" data-search="user management invite member access status"><span>11.2</span>User Management</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-project" data-search="workspaces projects create edit archive restore delete estimation"><span>11.3</span>Project Management</a>
+            <a href="11-quan-tri-workspace.html#phan-quyen-project" data-search="users permissions admin editor all teams add existing user"><span>11.4</span>Assign Project permissions</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-team" data-search="team member lead active deactive workspace admin"><span>11.5</span>Team Management</a>
+            <a href="11-quan-tri-workspace.html#doc-permission-model" data-search="permission model role capability fixed permission"><span>11.6</span>Read Permission Model</a>
+            <a href="11-quan-tri-workspace.html#xem-audit-log" data-search="audit log time actor detail filter"><span>11.7</span>View Audit Log</a>
+            <a href="11-quan-tri-workspace.html#xu-ly-quan-tri" data-search="handle not seeing user project team permissions"><span>11.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="12-viet-backlog-item.html#chapter-12" data-search="agile write backlog item feature user story defect acceptance criteria gherkin">
+              <span class="nav-number">12</span><span><strong>Agile Guideline</strong><small>User Story and Defect</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-12" aria-label="Opens items in the Agile Guideline section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-12">
+            <a href="12-viet-backlog-item.html#viet-user-story" data-search="user story persona goal value business rule acceptance criteria given when then invest"><span>12.1</span>Write User Story</a>
+            <a href="12-viet-backlog-item.html#viet-defect" data-search="defect bug actual expected reproduce severity priority evidence"><span>12.2</span>Write Defect</a>
+          </div>
+        </div>
+      </nav>
+    </aside>
+
+    <button class="sidebar-backdrop" type="button" aria-label="Close menu"></button>
+
+    <main class="main-content" id="main-content">
+      <div class="content-width">
+        <nav class="breadcrumb" aria-label="Path">
+          <a href="index.html#gioi-thieu">Rova User Guide</a>
+          <span aria-hidden="true">/</span>
+          <strong>11. Workspace Administration</strong>
+        </nav>
+
+        <section class="chapter-intro prose-intro" id="chapter-11">
+          <div>
+            <span class="eyebrow">PART 11 · WORKSPACE ADMINISTRATION</span>
+            <h2>Manage the right people, the right Project and the right Team</h2>
+            <p class="lead"><strong>Workspace Admin</strong> manage accounts in Workspace, Project structure, Teams and access rights. When handling, always differentiate <strong>Project permissions</strong> with <strong>Team member</strong>: a change in Team does not automatically grant or revoke Project permissions.</p>
+          </div>
+          <aside class="chapter-summary" aria-label="After this part you will be able to do it">
+            <strong>After this chapter, you will be able to</strong>
+            <ul>
+              <li>Select the correct Settings page for what you need to do.</li>
+              <li>Manage Users, Projects and Teams according to the correct scope.</li>
+              <li>Distinguish between Admin, Editor and Workspace Admin.</li>
+              <li>Read Permission Model and Audit Log.</li>
+              <li>Handle cases where User is not found or permissions are incorrect.</li>
+            </ul>
+          </aside>
+        </section>
+
+        <section class="section-block prose-section" id="mo-quan-tri-workspace">
+          <div class="section-heading"><span class="section-number">11.1</span><div><h2>Open the admin area</h2><p>Administrative functions are located in Settings and are divided according to the correct data type.</p></div></div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Open Settings</strong><p>Select the Settings icon in the upper right corner. Group <strong>Personal</strong> is for personal accounts; group <strong>Workspace</strong> is for general administration.</p></div></li>
+            <li><span>2</span><div><strong>Select the correct page</strong><p>Use <strong>User Management</strong> for account; <strong>Workspaces &amp; Projects</strong> for Project, Team and Project permissions; <strong>Permission Model</strong> to check permissions; <strong>Audit Log</strong> to view history.</p></div></li>
+            <li><span>3</span><div><strong>Check permissions before editing</strong><p>Workspace Admin can change structure. Admin and Editor only see parts that match the assigned Project; Admin buttons can be hidden or read-only.</p></div></li>
+          </ol>
+          <div class="permission-table-wrap"><table class="permission-table">
+            <thead><tr><th>Page</th><th>Use when needed</th></tr></thead>
+            <tbody>
+              <tr><td><strong>User Management</strong></td><td>Find, invite and manage User status in Workspace.</td></tr>
+              <tr><td><strong>Workspaces &amp; Projects</strong></td><td>Create or update Project, Project permissions, Team and Team members.</td></tr>
+              <tr><td><strong>Permission Model</strong></td><td>Look up the capabilities of each role. This is a read-only table.</td></tr>
+              <tr><td><strong>Audit Log</strong></td><td>Contrast who made which changes and when.</td></tr>
+            </tbody>
+          </table></div>
+        </section>
+
+        <section class="section-block prose-section" id="quan-ly-users">
+          <div class="section-heading"><span class="section-number">11.2</span><div><h2>Managing Users in Workspace</h2><p>User must exist and be active in Workspace before being granted Project permissions or added to a Team.</p></div></div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Open User Management</strong><p>Read User, Email, Status and Last Login columns. Use Search users, Filters or Show Fields when the list is long.</p></div></li>
+            <li><span>2</span><div><strong>Invite members when needed</strong><p>Select <strong>Invite member</strong> and enter the correct organizational account. Inviting a User to Workspace does not automatically grant permissions to any Project.</p></div></li>
+            <li><span>3</span><div><strong>Status management</strong><p>Only keep Users in Active state when they still need to use the system. Status changes affect the entire Workspace, so you must check related Projects and Teams before implementing.</p></div></li>
+            <li><span>4</span><div><strong>Open Manage Access</strong><p>Use this button to view or change the User's Project permissions. The same person can be Admin in one Project, Editor in another Project and have no rights in the remaining Project.</p></div></li>
+          </ol>
+          <p><strong>Do not use Team to replace Project permissions.</strong> Users who do not have the appropriate Project permissions will not be valid candidates just because you want to add them to the Team.</p>
+        </section>
+
+        <section class="section-block prose-section" id="quan-ly-project">
+          <div class="section-heading"><span class="section-number">11.3</span><div><h2>Project Management</h2><p>Workspaces &amp; Projects is the only place to manage the Workspace → Project → Team tree.</p></div></div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Select Project from the tree on the left</strong><p>The Projects screen displays the Key, Project name, Status and Team number. Select a Project to open Details, Users &amp; Permissions and Teams.</p></div></li>
+            <li><span>2</span><div><strong>Create Project</strong><p>Select <strong>Create project</strong>. Enter name and Project key; The key uses capital letters and numbers, is 1–10 characters long, does not overlap and does not change after creation.</p></div></li>
+            <li><span>3</span><div><strong>Update Details</strong><p>Check Status, start/end date, Project owner and Description. <strong>Project owner is business information, does not grant Project rights itself.</strong></p></div></li>
+            <li><span>4</span><div><strong>Estimation configuration</strong><p>Preliminary Estimate maps XS–XL to Points; Hours per point is used by Capacity Planning and Reports. Only save positive values ​​that match Project's estimation method.</p></div></li>
+          </ol>
+          <p><strong>Archive</strong> used when Project stops working but needs to keep history; can be restored from the Archive page. <strong>Delete</strong> is used when deletion is allowed and must go through a confirmation step. If the Project still has dependencies, the system may refuse to delete it.</p>
+        </section>
+
+        <section class="section-block prose-section" id="phan-quyen-project">
+          <div class="section-heading"><span class="section-number">11.4</span><div><h2>Assign Project permissions</h2><p>Grant permissions at the Users &amp; Permissions tab of the Project or via Manage Access of the User.</p></div></div>
+          <div class="permission-table-wrap"><table class="permission-table">
+            <thead><tr><th>Role</th><th>Scope</th><th>How to use</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Workspace Admin</strong></td><td>Complete Workspace.</td><td>Displayed with the label Workspace Admin; There is no Access Level change dropdown and no Remove access button.</td></tr>
+              <tr><td><strong>Admin</strong></td><td>One Project · All Teams.</td><td>Managing delivery activities in Project; does not administer the Workspace structure.</td></tr>
+              <tr><td><strong>Editor</strong></td><td>A Project · Team is assigned.</td><td>Requires at least one active Team; Work within the assigned Team scope.</td></tr>
+              <tr><td><strong>Not assigned</strong></td><td>No Project scope.</td><td>Project is hidden from the list and direct link is denied.</td></tr>
+            </tbody>
+          </table></div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Open Users &amp; Permissions</strong><p>The list displays User, Status, Access Level and Action of the currently selected Project.</p></div></li>
+            <li><span>2</span><div><strong>Select Add existing user</strong><p>Select only active Users in Workspace. This function does not create new accounts.</p></div></li>
+            <li><span>3</span><div><strong>Select Access Level</strong><p>Admin always has All Teams. With Editor, select at least one active Team before saving.</p></div></li>
+            <li><span>4</span><div><strong>Check the scope again</strong><p>The new permission takes effect on the next request. If the old screen has not changed, reload and check the context selector.</p></div></li>
+          </ol>
+          <p><strong>Workspace Admin is a system permission.</strong> They appear in the Project list for administrators to recognize, but do not require a separate Admin or Editor license.</p>
+        </section>
+
+        <section class="section-block prose-section" id="quan-ly-team">
+          <div class="section-heading"><span class="section-number">11.5</span><div><h2>Team and member management</h2><p>Each Team belongs to a Project; membership determines who participates in operations in that Team.</p></div></div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Open the Teams tab</strong><p>The list displays Key, Team, Lead, Status, number of Members and Actions.</p></div></li>
+            <li><span>2</span><div><strong>Create or edit a Team</strong><p>Team name is required. The team key is 2–10 characters long, uses capital letters and numbers, cannot be duplicated in the Project and does not change after the first save.</p></div></li>
+            <li><span>3</span><div><strong>Add member</strong><p>Select <strong>Add member</strong>. Candidates must be Active and qualified in Project: Admin, Editor assigned appropriately or Workspace Admin active.</p></div></li>
+            <li><span>4</span><div><strong>Select Team Lead</strong><p>Team Lead must be an Active member of the Team. This role is responsible information within the Team, does not create additional system rights.</p></div></li>
+            <li><span>5</span><div><strong>Deactivate when Team stops working</strong><p>Do not assign new Work Items to inactive Teams. Check the relevant Work Item, Iteration and Owner before changing the status.</p></div></li>
+          </ol>
+          <p><strong>Workspace Admin is not automatically a member of every Team.</strong> They can be added to a Team to be Project Owner, Team Lead or Work Item Owner when qualified. Removing them from the Team only removes active membership, does not revoke Workspace Admin rights.</p>
+        </section>
+
+        <section class="section-block prose-section" id="doc-permission-model">
+          <div class="section-heading"><span class="section-number">11.6</span><div><h2>Read Permission Model</h2><p>Permission Model is a fixed permission lookup table for Workspace Admin, Admin and Editor.</p></div></div>
+          <p>Each line is a group of functions such as Backlog, Timeboxes, Quality, Portfolio, Capacity Planning, Reports or Settings. Values <strong>Full</strong>, <strong>view</strong>, <strong>edit</strong> or mark <strong>--</strong> indicates the operation level of the role.</p>
+          <p><strong>Unable to create custom role or edit permission matrix.</strong> When a user is missing an action, check their role, Project, and Team; Don't look for separate configuration buttons for each small permission.</p>
+          <p>Part <strong>No Access</strong> explains the safe behavior: Ungranted projects are hidden from the list, picker, and navigation; Access using direct URL is denied.</p>
+        </section>
+
+        <section class="section-block prose-section" id="xem-audit-log">
+          <div class="section-heading"><span class="section-number">11.7</span><div><h2>View Audit Log</h2><p>Audit Log is a reference source when you need to know whether a change has occurred or not.</p></div></div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Open Audit Log</strong><p>Each line displays <strong>Time</strong>, <strong>Actor</strong> and <strong>Details</strong>.</p></div></li>
+            <li><span>2</span><div><strong>Filter data</strong><p>Use Filter this page, Filters and Show Fields to narrow the list according to the content being investigated.</p></div></li>
+            <li><span>3</span><div><strong>Read Details</strong><p>Detail describes the type of event, object and content that is easy to understand, for example creating a Project, renaming a Project, adding a Team member or granting Project permissions.</p></div></li>
+            <li><span>4</span><div><strong>Compare scope</strong><p>Compare Actor, time and correct Project/Team before concluding. Audit Log is read-only; Not used to undo changes.</p></div></li>
+          </ol>
+        </section>
+
+        <section class="section-block prose-section" id="xu-ly-quan-tri">
+          <div class="section-heading"><span class="section-number">11.8</span><div><h2>Troubleshooting</h2><p>Check the order of Workspace account → Project permissions → Team membership.</p></div></div>
+          <div class="troubleshoot-list">
+            <article><span>01</span><div><strong>User not found when Add existing user</strong><p>Check that the User is already in the Workspace, is Active and has not been granted Project rights.</p></div></article>
+            <article><span>02</span><div><strong>Editor has no Team to choose from</strong><p>Create or activate a Team first. Editor needs at least one Active Team in the Project.</p></div></article>
+            <article><span>03</span><div><strong>Added to Team but still can't access Project</strong><p>Team membership does not grant Project Access. Go back to Users &amp; Permissions and level Admin or Editor accordingly.</p></div></article>
+            <article><span>05</span><div><strong>Cannot change or delete the Workspace Admin line</strong><p>This is a system permission line, used only for identification. Do not grant additional Admin/Editor to the same Project.</p></div></article>
+            <article><span>06</span><div><strong>Workspace Admin does not appear in Owner</strong><p>Add them as Active members of the currently selected Team. Workspace Admin rights allow creating US/DE but do not make the name appear in the Owner list.</p></div></article>
+            <article><span>07</span><div><strong>Project owner does not have management rights</strong><p>Project owner is metadata. Grant a separate Admin or Editor if that person needs to access the system.</p></div></article>
+            <article><span>08</span><div><strong>Permissions have just been changed but the interface has not been updated</strong><p>Reload the page, check for the next request and select Project/Team again in the context selector.</p></div></article>
+            <article><span>09</span><div><strong>Cannot Archive or Delete Project</strong><p>Read dependency messages and assertion steps. Use Archive when you need to preserve history and Delete only when the data is actually allowed to be deleted.</p></div></article>
+          </div>
+        </section>
+
+        <div class="check-understanding">
+          <strong>Check yourself before moving on to the next section</strong>
+          <ul>
+            <li>Have you distinguished between Project and Team member rights?</li>
+            <li>Do you know that Admin and Editor are different in Team scope?</li>
+            <li>Do you know why Workspace Admin doesn't have a button to change Access Level?</li>
+            <li>Do you know how to use Audit Log to compare changes?</li>
+          </ul>
+        </div>
+
+        <nav class="chapter-pagination" aria-label="Navigate between sections">
+          <a class="chapter-nav-link previous" href="10-bao-cao.html#chapter-10"><span class="chapter-nav-arrow" aria-hidden="true">←</span><span class="chapter-nav-copy"><small>Previous</small><strong>10. Reports</strong></span></a>
+          <a class="chapter-nav-link next" href="12-viet-backlog-item.html#chapter-12"><span class="chapter-nav-copy"><small>Next</small><strong>12. Agile Guideline</strong></span><span class="chapter-nav-arrow" aria-hidden="true">→</span></a>
+        </nav>
+
+        <footer class="guide-footer">
+          <div><strong>Rova User Guide</strong><span>11. Workspace Administration · Version 1.0</span></div>
+          <a href="#top">Back to top ↑</a>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <script src="../guide.js?v=20261007-02"></script>
+</body>
+</html>
