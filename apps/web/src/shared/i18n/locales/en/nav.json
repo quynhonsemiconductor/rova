@@ -9,5 +9,8 @@
   "reports": "Reports",
   "notifications": "Notifications",
   "settings": "Settings",
-  "projects": "Projects"
+  "projects": "Projects",
+  "help": {
+    "openGuide": "Open User Guide (opens in a new tab)"
+  }
 }
