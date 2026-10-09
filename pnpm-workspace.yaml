@@ -15,6 +15,11 @@ overrides:
   # would reintroduce the two-copy type mismatch it exists to prevent.
   fastify: "5.12.5"
   "esbuild@<0.25.0": ">=0.25.0"
+  # GHSA-8r5x-fm3f-whwj (CVSS 9.8), GHSA-p8wg-vrv2-v86f (9.2), GHSA-xw65-4hp5-5hc7 (4.7) —
+  # JavaScript injection in handlebars' compiler, all fixed in 4.7.10. Transitive only, through
+  # @boundaries/elements (eslint-plugin-boundaries) at lint time; nothing here compiles untrusted
+  # templates. Capped below 5.0.0 so the override never crosses a major.
+  "handlebars@<4.7.10": ">=4.7.10 <5.0.0"
   # GHSA-rgw5-rvv9-x895 — HIGH (CVSS 7.5) DoS via unbounded intermediate arrays,
   # vulnerable <5.0.9, fixed 5.0.9. It explicitly BYPASSES the CVE-2026-14257
   # mitigation, which is what the previous pin here was for (GHSA-mh99-v99m-4gvg,
