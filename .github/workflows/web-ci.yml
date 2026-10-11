@@ -76,6 +76,28 @@ jobs:
       - name: Typecheck
         run: pnpm --filter rova-web typecheck
 
+      # The deploy path, without credentials. Web · Deploy publishes with cloudflare/wrangler-action, which
+      # runs `pnpm exec wrangler --version` in apps/web and, if that fails, `pnpm add wrangler@4` AT RUN
+      # TIME. On pnpm 11 that add exits 1 (ERR_PNPM_IGNORED_BUILDS: workerd) and broke the develop deploy
+      # (run 38140929326). wrangler is now an exact devDependency of rova-web, so the action finds it and
+      # installs nothing. This runs the same action, same SHA as the shared web-deploy reusable, on a
+      # command that needs no Cloudflare account (bundling the Pages Functions), then asserts that nothing
+      # was installed into the workspace. If wrangler ever leaves the lockfile, or workerd's build decision
+      # is lost, the step fails here and not on the next push to main.
+      - name: Deploy tooling (wrangler) resolves on pnpm 11
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0  # v4.0.0
+        with:
+          workingDirectory: apps/web
+          packageManager: pnpm
+          command: pages functions build functions --outdir ${{ runner.temp }}/pages-functions
+
+      - name: The tooling step installed nothing, and produced a bundle
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- package.json apps/web/package.json pnpm-lock.yaml pnpm-workspace.yaml
+          test -s "$RUNNER_TEMP/pages-functions/index.js"
+          pnpm --filter rova-web exec wrangler --version
+
   # ─────────────────────────────────────────────────────────────────────────
   # 2. Unit tests (no DB — pure component/hook/util tests)
   # ─────────────────────────────────────────────────────────────────────────
