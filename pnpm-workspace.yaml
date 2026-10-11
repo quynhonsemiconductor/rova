@@ -230,6 +230,12 @@ allowBuilds:
   protobufjs: true
   ssh2: true
   unrs-resolver: true
+  # wrangler (apps/web devDependency, used by `wrangler pages deploy`) depends on workerd. Its postinstall
+  # only verifies/links the platform binary that the optional @cloudflare/workerd-* package already
+  # provides; `pages deploy` bundles with esbuild and never starts workerd. Denied on purpose, and written
+  # down because pnpm 11 exits with ERR_PNPM_IGNORED_BUILDS while the decision is unmade, which broke
+  # Web · Deploy (run 38140929326). Deliberately NOT in `onlyBuiltDependencies` beneath.
+  workerd: false
 onlyBuiltDependencies:
   - '@scarf/scarf'
   - '@swc/core'
