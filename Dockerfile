@@ -22,12 +22,18 @@
 
 ARG NODE_VERSION=24
 ARG ALPINE_VERSION=3.22
-ARG PNPM_VERSION=10.33.2
+# Keep equal to `packageManager` in package.json and to PNPM_VERSION in the workflows.
+ARG PNPM_VERSION=11.28.5
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1 │ deps
 # Install ALL packages (dev + prod) so the builder has everything it needs.
 # The pnpm store is cached via BuildKit so subsequent builds skip downloads.
+#
+# Registry auth: pnpm 11 ignores `${NODE_AUTH_TOKEN}` in the committed project .npmrc, so each install
+# step writes a USER-level npmrc (NPM_CONFIG_USERCONFIG, a fresh mktemp file) holding the same
+# placeholder line. The file never contains the token: pnpm expands it from the NODE_AUTH_TOKEN
+# environment variable, which exists only inside that RUN (read from the BuildKit secret).
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS deps
 ARG PNPM_VERSION
@@ -42,7 +48,10 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     --mount=type=secret,id=node_auth_token \
     export NODE_AUTH_TOKEN="$(cat /run/secrets/node_auth_token 2>/dev/null || true)" && \
     pnpm config set store-dir /root/.local/share/pnpm/store && \
-    HUSKY=0 pnpm install --frozen-lockfile
+    export NPM_CONFIG_USERCONFIG="$(mktemp)" && \
+    printf '%s\n' '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' > "$NPM_CONFIG_USERCONFIG" && \
+    HUSKY=0 pnpm install --frozen-lockfile && \
+    rm -f "$NPM_CONFIG_USERCONFIG"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2 │ prod-deps
@@ -62,7 +71,10 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     --mount=type=secret,id=node_auth_token \
     export NODE_AUTH_TOKEN="$(cat /run/secrets/node_auth_token 2>/dev/null || true)" && \
     pnpm config set store-dir /root/.local/share/pnpm/store && \
-    pnpm install --frozen-lockfile --prod --ignore-scripts
+    export NPM_CONFIG_USERCONFIG="$(mktemp)" && \
+    printf '%s\n' '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' > "$NPM_CONFIG_USERCONFIG" && \
+    pnpm install --frozen-lockfile --prod --ignore-scripts && \
+    rm -f "$NPM_CONFIG_USERCONFIG"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3 │ builder
@@ -73,6 +85,13 @@ FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS builder
 ARG PNPM_VERSION
 
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+
+# pnpm 11 runs an implicit `install` before every script when node_modules does not match the workspace.
+# Here it never does, on purpose: node_modules is copied from `deps` (root package only), while the full
+# source below includes apps/web, whose dependencies this image does not install. The check would try to
+# install the whole workspace for every `pnpm build:*` below, and fail on registry auth (the builder has
+# no token). pnpm 10 did not check; the build needs no install, so say so.
+ENV pnpm_config_verify_deps_before_run=false
 
 WORKDIR /app
 

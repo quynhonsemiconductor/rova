@@ -57,7 +57,7 @@ env:
   # warning — but it does mean a change that drops real coverage by a point turns Tests red
   # rather than drifting. Raise the floors with coverage, never the reverse.
   NODE_VERSION: '24'
-  PNPM_VERSION: '10.33.2'
+  PNPM_VERSION: '11.28.5'
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
