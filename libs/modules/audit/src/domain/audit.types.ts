@@ -32,4 +32,10 @@ export interface CreateAuditLogInput {
   userAgent?: string;
   /** Outbox eventId — used for at-most-once deduplication via ON CONFLICT DO NOTHING. */
   sourceEventId?: string;
+  /**
+   * When the event happened. Omitted for a direct call (the database stamps `now()`). The projection relay passes
+   * the outbox row's `occurred_at`: it writes the audit row after claim, backoff and retries, which can be minutes
+   * (hours, after an outage) later, and the audit trail must say when the thing happened, not when it was projected.
+   */
+  occurredAt?: Date;
 }

@@ -254,10 +254,10 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
 //
 // The suite above proves the producer contract (service → outbox_events) and the read
 // model (audit_logs → AuditService). This block proves the middle: the real
-// AuditProjectionRelay fetchBatch → processRow → markSent/markFailed cycle, its
+// AuditProjectionRelay selectDue → deliver → markSent/markFailed cycle, its
 // idempotency, and that a failed write is RETRIED rather than acked — the property
 // that was missing when this ran over SNS.
-describe('BA flows: audit projection relay — real fetchBatch/processRow/markSent', () => {
+describe('BA flows: audit projection relay — real selectDue/deliver/markSent', () => {
   let relayModule: TestingModule;
   let relay: AuditProjectionRelay;
   let db: DrizzleDB;
@@ -275,7 +275,9 @@ describe('BA flows: audit projection relay — real fetchBatch/processRow/markSe
   });
 
   /** A pending outbox row shaped exactly as AuditProducer writes one. */
-  async function enqueue(overrides: { eventType?: string; aggregateType?: string } = {}) {
+  async function enqueue(
+    overrides: { eventType?: string; aggregateType?: string; occurredAt?: Date } = {},
+  ) {
     const [row] = await db
       .insert(outboxEvents)
       .values({
@@ -285,7 +287,7 @@ describe('BA flows: audit projection relay — real fetchBatch/processRow/markSe
         aggregateId: randomUUID(),
         workspaceId: WORKSPACE_ID,
         payload: { actorId: admin.sub, changes: { before: { status: 'active' } } },
-        occurredAt: new Date(),
+        occurredAt: overrides.occurredAt ?? new Date(),
       })
       .returning();
     return row;
@@ -353,6 +355,17 @@ describe('BA flows: audit projection relay — real fetchBatch/processRow/markSe
     expect(logs[0]?.workspaceId).toBe(WORKSPACE_ID);
     expect(logs[0]?.actorId).toBe(admin.sub);
     expect(logs[0]?.metadata).toMatchObject({ source: 'domain-event' });
+  });
+
+  it('stamps the audit row with when the event HAPPENED, not when it was projected', async () => {
+    // A retried row is minutes (after an outage, hours) late; the audit trail reads occurred_at.
+    const happened = new Date(Date.now() - 3 * 3_600_000);
+    const row = await enqueue({ occurredAt: happened });
+
+    await relayUntilPicked(row.id);
+
+    const [log] = await auditFor(row.id);
+    expect(log?.occurredAt.getTime()).toBe(happened.getTime());
   });
 
   it('is idempotent: reprojecting the same event does not duplicate the audit row', async () => {

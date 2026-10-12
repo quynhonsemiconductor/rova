@@ -28,6 +28,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { AppConfigService } from '../../config/app-config.service';
 import { buildAwsClientConfig } from '../../aws';
+import { RESILIENCE_PRESETS } from '../../resilience/resilience.presets';
+import { ResiliencePreset } from '../../resilience/resilience.types';
 import type { IEmailProvider, EmailPayload, EmailSendResult } from '../email.provider';
 
 @Injectable()
@@ -82,6 +84,15 @@ export class SesEmailProvider implements IEmailProvider {
             },
           },
         }),
+        // Cancels the HTTP request at the same 30 s the EMAIL resilience preset gives one execution. The
+        // preset's timeout only rejects the caller's promise; without the signal the request keeps going and
+        // can still be ACCEPTED by SES after the outbox relay's lease lapsed and another worker re-sent the row
+        // (SES has no idempotency key, so that is a duplicate email).
+        {
+          abortSignal: AbortSignal.timeout(
+            RESILIENCE_PRESETS[ResiliencePreset.EMAIL].timeout?.durationMs ?? 30_000,
+          ),
+        },
       );
       this.logger.log({ to: payload.to, subject: payload.subject, category }, 'Email sent via SES');
 
