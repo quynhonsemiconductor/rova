@@ -254,10 +254,10 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
 //
 // The suite above proves the producer contract (service → outbox_events) and the read
 // model (audit_logs → AuditService). This block proves the middle: the real
-// AuditProjectionRelay fetchBatch → processRow → markSent/markFailed cycle, its
+// AuditProjectionRelay selectDue → deliver → markSent/markFailed cycle, its
 // idempotency, and that a failed write is RETRIED rather than acked — the property
 // that was missing when this ran over SNS.
-describe('BA flows: audit projection relay — real fetchBatch/processRow/markSent', () => {
+describe('BA flows: audit projection relay — real selectDue/deliver/markSent', () => {
   let relayModule: TestingModule;
   let relay: AuditProjectionRelay;
   let db: DrizzleDB;

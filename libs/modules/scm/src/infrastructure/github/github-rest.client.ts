@@ -26,10 +26,14 @@ export interface GhRestCommitFile {
   status: string; // added | modified | removed | renamed | copied | changed
 }
 
+import { githubCallSignal } from './github-http';
+
 export class GithubRestClient {
   constructor(
     private readonly apiBaseUrl: string,
     private readonly token: string,
+    /** Cancels the call in flight when the caller's run budget is spent. Every call also has its own deadline. */
+    private readonly signal?: AbortSignal,
   ) {}
 
   /**
@@ -108,6 +112,7 @@ export class GithubRestClient {
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },
+      signal: githubCallSignal(this.signal),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');

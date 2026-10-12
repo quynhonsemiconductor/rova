@@ -4,6 +4,7 @@ export * from './domain/ports/scm.store';
 export * from './application/scm.service';
 export * from './application/scm-linker.service';
 export * from './application/scm-backfill.service';
+export { GITHUB_CALL_TIMEOUT_MS } from './infrastructure/github/github-http';
 export * from './application/scm-installation.service';
 export * from './application/scm-key-parser';
 export * from './application/github-webhook.parser';

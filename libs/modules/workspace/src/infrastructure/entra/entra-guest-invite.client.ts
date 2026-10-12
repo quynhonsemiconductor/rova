@@ -21,6 +21,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService, ResilienceService, ResiliencePreset } from '@platform';
 
+/**
+ * One execution of the Graph call — the token request AND the invitation — must finish inside this, and the
+ * requests carry an `AbortSignal` for it. It equals `ResiliencePreset.EXTERNAL_API`'s per-execution timeout on
+ * purpose: that timeout rejects the caller's promise but cannot stop a `fetch` already in flight, so without the
+ * signal a POST that outlived it could still land on Graph after the relay's lease had lapsed and another worker
+ * had taken the row. (An invitation is idempotent on Graph's side, but a late request is still a request nobody
+ * is waiting for.)
+ */
+export const GRAPH_CALL_TIMEOUT_MS = 30_000;
+
 /** Refresh a cached app token this long before it actually expires. */
 const TOKEN_REFRESH_BUFFER_MS = 60_000;
 /** Microsoft identity platform authority. Same host the bootstrap seed writes as the authority. */
@@ -156,9 +166,12 @@ export class EntraGuestInviteClient {
     request: GuestInviteRequest,
     credentials: EntraAppCredentials,
   ): Promise<{ kind: 'ok'; outcome: GuestInviteOutcome } | { kind: 'refused'; detail: string }> {
-    const token = await this.getAppToken(credentials);
+    // ONE deadline for the whole execution: the token request and the POST share it.
+    const signal = AbortSignal.timeout(GRAPH_CALL_TIMEOUT_MS);
+    const token = await this.getAppToken(credentials, signal);
 
     const res = await fetch(`${GRAPH_BASE_URL}/invitations`, {
+      signal,
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -246,13 +259,17 @@ export class EntraGuestInviteClient {
    * already gets that call's retry and breaker accounting. Wrapping it separately would count one
    * outage twice.
    */
-  private async getAppToken(credentials: EntraAppCredentials): Promise<string> {
+  private async getAppToken(
+    credentials: EntraAppCredentials,
+    signal: AbortSignal,
+  ): Promise<string> {
     const hit = this.cachedToken;
     if (hit && hit.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) return hit.token;
 
     const { tenantId, clientId, clientSecret } = credentials;
 
     const res = await fetch(`${LOGIN_HOST}/${tenantId}/oauth2/v2.0/token`, {
+      signal,
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
