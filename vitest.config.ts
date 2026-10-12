@@ -121,6 +121,7 @@ export default defineConfig({
         'libs/modules/scm/src/application/scm-installation.service.ts',
         'libs/modules/scm/src/infrastructure/github/github-app-auth.service.ts',
         'libs/modules/scm/src/infrastructure/github/github-http.ts',
+        'libs/modules/scm/src/infrastructure/github/github-rest.client.ts',
         'libs/modules/scm/src/infrastructure/github/github-rest.mapper.ts',
         'libs/modules/team-status/src/application/team-status.service.ts',
         'libs/modules/test-cases/src/application/test-cases.service.ts',
