@@ -99,12 +99,9 @@ jobs:
       services: 'api worker migrator'
       services-json: '["api","worker","migrator"]'
       # ── Graviton (§15) ──────────────────────────────────────────────────────
-      # rova is arm64: every image has an arm64 build and infra pins arm64
-      # Fargate/nodes (confirmed against backend-deploy.yml's image_platforms and
-      # gitops/values/rova). qnsc-kb is the one that must pass linux/amd64 until
-      # §4c splits clamav out — clamav/clamav publishes no arm64 tag. Do not copy
-      # this value to that product.
-      platforms: linux/arm64
+      # The on-prem k3s host is amd64 (Ryzen 9 9950X), and gitops now defaults to amd64, so this caller builds
+      # linux/amd64. (ECS keeps running the arm64 entry of the multi-arch images that backend-deploy.yml builds.)
+      platforms: linux/amd64
       # ── ONE IMAGE PER DOCKERFILE STAGE ────────────────────────────────────────
       # The reusable passes `build-target: <service>`, which this Dockerfile REQUIRES:
       # it has a stage per service (`api`, `worker`, `migrator`), and with no target
