@@ -587,9 +587,17 @@ jobs:
           found=""
           distance=0
           for sha in $(git rev-list --first-parent -n 30 "$BASE_SHA"); do
-            # The branch name goes to jq as an ARGUMENT, never spliced into the filter text.
-            hit="$(gh api -X GET "repos/$REPO/actions/artifacts" -f name="openapi-spec-$sha" -F per_page=5 \
-              | jq -r --arg ref "$BASE_REF" '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == $ref)][0] | .workflow_run.id // empty')"
+            # Only an artifact uploaded by a run on the base branch, in THIS repository (not a fork's run), whose
+            # head commit is the commit it is named after. The branch name and the sha go to jq as ARGUMENTS,
+            # never spliced into the filter text.
+            hit="$(gh api -X GET "repos/$REPO/actions/artifacts" -f name="openapi-spec-$sha" -F per_page=10 \
+              | jq -r --arg ref "$BASE_REF" --arg sha "$sha" '
+                  [.artifacts[]
+                   | select(.expired == false
+                            and .workflow_run.head_branch == $ref
+                            and .workflow_run.head_sha == $sha
+                            and .workflow_run.head_repository_id == .workflow_run.repository_id)][0]
+                  | .workflow_run.id // empty')"
             if [ -n "$hit" ]; then found="$sha"; run_id="$hit"; break; fi
             distance=$((distance + 1))
           done
