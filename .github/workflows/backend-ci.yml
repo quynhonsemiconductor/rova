@@ -448,7 +448,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
-          # Fetch full history so we can compare against the base branch
+          # The base-spec lookup no longer needs history (fetch-openapi-base-spec reads it through the API), so
+          # this is now only a leftover; kept to leave this change at one step.
           fetch-depth: 0
           persist-credentials: false
 
@@ -542,81 +543,20 @@ jobs:
           artifact-name: openapi-spec-${{ github.sha }}
           retention-days: "30"
 
-      # On PRs: fetch the base branch's spec and diff for breaking changes.
+      # On PRs: fetch the base branch's spec, then diff it for breaking changes.
       #
-      # This step used to be `dawidd6/action-download-artifact` with `workflow: ci.yml` and
-      # `continue-on-error: true`. rova has no ci.yml, so every download was a 404 ("Not Found -
-      # list-workflow-runs-for-a-workflow", run 38143249232), the failure was swallowed, the spec
-      # file never existed, and the contract check below SKIPPED with a warning on every pull
-      # request: the OpenAPI gate has never run here.
-      #
-      # What is decided, in order:
-      #   1. The base branch has no successful PUSH run of this workflow (a stacked PR aimed at
-      #      another PR's branch; a brand-new repository): there is no baseline. Say so and skip.
-      #   2. Otherwise the baseline MUST be found, or this step FAILS. Not a skip: a swallowed
-      #      download is how this gate went unnoticed.
-      #   3. Where: the artifact `openapi-spec-<sha>` that the push run on the base branch uploaded for
-      #      the base commit. The run for that exact commit can be missing for ordinary reasons (the
-      #      workflow cancels in-progress runs per ref, so a quick second merge cancels the first
-      #      commit's run; or the run is still going when the PR is opened). Then the nearest
-      #      first-parent ANCESTOR that has one is used, within 30 commits, and the log says which and
-      #      how far back. No artifact within 30 commits fails.
-      #   4. Only artifacts uploaded by a run on the base branch itself count, so a pull request cannot
-      #      plant a spec under a commit's name.
+      # This used to be `dawidd6/action-download-artifact` with `workflow: ci.yml` and `continue-on-error`.
+      # rova has no ci.yml, so every download was a swallowed 404 (run 38143249232) and the check below skipped
+      # on every pull request: the OpenAPI gate had never run here. The shared action skips only when the base
+      # branch has no successful push run of the workflow; otherwise it finds the base commit's spec, or the
+      # nearest first-parent ancestor's (warning, naming it), or FAILS. It accepts only an unexpired artifact of
+      # a successful push run of this workflow file, on the base branch, in this repository, for exactly that
+      # commit. See its README in quynhonsemiconductor/ci.
       - name: Fetch the base spec
         if: github.event_name == 'pull_request'
-        id: base
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          WORKFLOW: backend-ci.yml
-          BASE_REF: ${{ github.base_ref }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          set -euo pipefail
-          mkdir -p base-spec
-
-          successes="$(gh api -X GET "repos/$REPO/actions/workflows/$WORKFLOW/runs" \
-            -f branch="$BASE_REF" -f event=push -f status=success -F per_page=1 --jq .total_count)"
-          if [ "$successes" -eq 0 ]; then
-            echo "::warning title=No baseline::'$BASE_REF' has no successful push run of $WORKFLOW, so there is no base spec to compare with. The contract check will be skipped."
-            printf '### OpenAPI contract: no baseline\n\n%s has no successful push run of %s.\n' "$BASE_REF" "$WORKFLOW" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          found=""
-          distance=0
-          for sha in $(git rev-list --first-parent -n 30 "$BASE_SHA"); do
-            # Only an artifact uploaded by a run on the base branch, in THIS repository (not a fork's run), whose
-            # head commit is the commit it is named after. The branch name and the sha go to jq as ARGUMENTS,
-            # never spliced into the filter text.
-            hit="$(gh api -X GET "repos/$REPO/actions/artifacts" -f name="openapi-spec-$sha" -F per_page=10 \
-              | jq -r --arg ref "$BASE_REF" --arg sha "$sha" '
-                  [.artifacts[]
-                   | select(.expired == false
-                            and .workflow_run.head_branch == $ref
-                            and .workflow_run.head_sha == $sha
-                            and .workflow_run.head_repository_id == .workflow_run.repository_id)][0]
-                  | .workflow_run.id // empty')"
-            if [ -n "$hit" ]; then found="$sha"; run_id="$hit"; break; fi
-            distance=$((distance + 1))
-          done
-
-          if [ -z "$found" ]; then
-            echo "::error title=Base spec missing::'$BASE_REF' has successful runs of $WORKFLOW, yet none of the 30 commits up to ${BASE_SHA:0:7} has a live openapi-spec artifact (30 days of retention). Not skipping: that would turn the contract check off silently. Re-run $WORKFLOW on '$BASE_REF', or rebase."
-            printf '### OpenAPI contract: FAILED, no base spec\n\nNo openapi-spec-<sha> artifact for the 30 newest commits up to %s on %s.\n' "${BASE_SHA:0:7}" "$BASE_REF" >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-
-          gh run download "$run_id" -R "$REPO" -n "openapi-spec-$found" -D base-spec
-          test -s base-spec/openapi.json || { echo "::error title=Base spec missing::artifact openapi-spec-$found has no openapi.json"; exit 1; }
-
-          if [ "$distance" -eq 0 ]; then
-            echo "Base spec: openapi-spec-${found:0:7} (the base commit itself), run $run_id"
-          else
-            echo "::warning title=Base spec is from an older commit::no spec for the base commit ${BASE_SHA:0:7} (its run was cancelled or is still going); using ${found:0:7}, $distance commit(s) earlier, run $run_id."
-            printf '### OpenAPI contract: base spec from %s commit(s) earlier\n\nNo spec for %s; compared against %s (run %s).\n' "$distance" "${BASE_SHA:0:7}" "${found:0:7}" "$run_id" >> "$GITHUB_STEP_SUMMARY"
-          fi
+        uses: quynhonsemiconductor/ci/actions/fetch-openapi-base-spec@v1
+        with:
+          workflow: backend-ci.yml
 
       - name: Breaking change check
         if: github.event_name == 'pull_request'
