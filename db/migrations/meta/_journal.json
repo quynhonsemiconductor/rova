@@ -47,7 +47,7 @@
     {
       "idx": 6,
       "version": "7",
-      "when": 1782052333616,
+      "when": 1782100001000,
       "tag": "0006_enum_columns",
       "breakpoints": true
     },
@@ -138,7 +138,7 @@
     {
       "idx": 19,
       "version": "7",
-      "when": 1782479593580,
+      "when": 1782800001000,
       "tag": "0019_drop_users_tenant_id",
       "breakpoints": true
     },
