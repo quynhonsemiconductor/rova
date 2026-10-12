@@ -10,8 +10,8 @@ variable "cloudflare_api_token" {
   description = <<-EOT
     Cloudflare API token (Zone:DNS:Edit on qnsc.vn). Supplied via
     TF_VAR_cloudflare_api_token in CI. Leave empty to skip Cloudflare provider
-    auth. The zone ID itself is NOT an input here — it's read from qnsc-infra
-    bootstrap via _shared remote state (one source of truth, like kms_key_arn).
+    auth. The zone ID is NOT an input here — it is exported by the _shared stack, from its
+    required, validated `cloudflare_zone_id` variable (CI: vars.CLOUDFLARE_ZONE_ID).
   EOT
 }
 

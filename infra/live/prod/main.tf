@@ -547,4 +547,8 @@ module "stack" {
 
   alarm_emails          = var.alarm_emails
   cloudflare_account_id = var.cloudflare_account_id
+
+  // This environment owns its public DNS (API and web CNAMEs, Pages custom domain). An explicit
+  // switch, never inferred from the zone id; the zone id itself is validated in the stack module.
+  dns_enabled = true
 }
