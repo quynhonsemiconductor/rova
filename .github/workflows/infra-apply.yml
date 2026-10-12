@@ -127,17 +127,40 @@ jobs:
         working-directory: infra/live/_shared
         run: tofu validate
 
-      # TODO(destructive-guard): once quynhonsemiconductor/ci publishes actions/destructive-guard, run it
-      # between a saved `tofu plan -out` and `tofu apply <plan>` here and in apply-develop / apply-prod, so
-      # a plan that deletes or replaces DNS or identity resources is refused unless the PR carries an
-      # explicit label. This workflow applies with -auto-approve and no saved plan today. Tracked with
-      # quynhonsemiconductor/infra#163, which has the same guard as a local composite action.
-      - name: tofu apply
+      # Plan, then apply THAT PLAN. A bare `tofu apply -auto-approve` plans again and applies the result without any
+      # check reading it: on 2026-10-09 a provider lock bump turned nine DNS/edge resources into "replace"
+      # (zone_id -> null) and that is what was applied. Here the plan is printed by a step and saved to a file, and
+      # the next step applies that file, so what the log shows is what runs, and a guard can read the same file.
+      #
+      # Variables are given to the PLAN steps only. A saved plan carries its own variable values: OpenTofu 1.9 (this
+      # workflow's version) ignores a TF_VAR_* in the environment at apply time, and later versions refuse a
+      # different one ("Mismatch between input and plan variable value"). Either way the apply steps deliberately
+      # have no `env`. The plan files hold those values (sensitive ones included): they stay on this runner and are
+      # never uploaded.
+      - name: tofu plan (saved as tfplan)
         working-directory: infra/live/_shared
-        run: tofu apply -input=false -auto-approve
+        run: tofu plan -input=false -out=tfplan
         env:
           # REQUIRED by infra/live/_shared (validated, no default). An organisation variable.
           TF_VAR_cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+
+      # TODO(destructive-guard): enable once quynhonsemiconductor/ci#192 (actions/destructive-guard) is merged
+      # and `v1` has moved. Then, in this job: (1) add `pull-requests: read` to its `permissions` (the guard reads
+      # the labels of the PR being merged); (2) uncomment the step below, between the plan and the apply it guards;
+      # (3) create the label `allow-dns-destroy` in this repository; (4) optionally give `workflow_dispatch` a
+      # boolean input and pass it as `dispatch-allow`. The guard fails the job when the saved plan DELETES or
+      # REPLACES a DNS, edge, mail-identity, certificate or key resource, unless that label is on the PR. It reads
+      # the plan through `tofu show -json` (piped, never written out), so the plan it judges is byte for byte the
+      # plan the next step applies.
+      #
+      # - uses: quynhonsemiconductor/ci/actions/destructive-guard@v1
+      #   with:
+      #     working-directory: infra/live/_shared
+      #     plan-file: tfplan
+
+      - name: tofu apply (the saved plan)
+        working-directory: infra/live/_shared
+        run: tofu apply -input=false tfplan
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Develop — only on a branch push to main (NOT on tag pushes).
@@ -171,29 +194,93 @@ jobs:
         working-directory: infra/live/develop
         run: tofu validate
 
-      - name: tofu apply
+      # Plan, then apply THAT PLAN. A bare `tofu apply -auto-approve` plans again and applies the result without any
+      # check reading it: on 2026-10-09 a provider lock bump turned nine DNS/edge resources into "replace"
+      # (zone_id -> null) and that is what was applied. Here the plan is printed by a step and saved to a file, and
+      # the next step applies that file, so what the log shows is what runs, and a guard can read the same file.
+      #
+      # Variables are given to the PLAN steps only. A saved plan carries its own variable values: OpenTofu 1.9 (this
+      # workflow's version) ignores a TF_VAR_* in the environment at apply time, and later versions refuse a
+      # different one ("Mismatch between input and plan variable value"). Either way the apply steps deliberately
+      # have no `env`. The plan files hold those values (sensitive ones included): they stay on this runner and are
+      # never uploaded.
+      #
+      # The job converges in TWO passes, kept as they were; each pass is now a plan and then an apply of that plan.
+      #   Pass 1: a large rename shifts secret/config ARNs that gate count-based resources, which OpenTofu cannot
+      #   resolve at plan time. Pass 1 excludes those modules to create their dependencies; pass 2 converges. After
+      #   the first converged apply this is a normal single-pass no-op.
+
+      - name: tofu plan, pass 1 (saved as tfplan-pass1)
+        id: pass1
         working-directory: infra/live/develop
-        # Two-pass apply: a large rename shifts secret/config ARNs that gate
-        # count-based resources, which OpenTofu cannot resolve at plan time. Pass 1
-        # excludes those modules to create their dependencies; pass 2 converges.
-        # After the first converged apply this is a normal single-pass no-op.
         run: |
-          set -euo pipefail
-          tofu apply -input=false -auto-approve \
-            -exclude=module.stack.module.api.data.aws_iam_policy_document.execution_secrets \
-            -exclude=module.stack.module.worker.data.aws_iam_policy_document.execution_secrets \
-            -exclude=module.stack.module.firelens_agent_api \
-            -exclude=module.stack.module.firelens_agent_worker || true
-          # -refresh=false on the converge pass: the RDS subnet group carries a
-          # permanent cosmetic name divergence (the instance sits in a same-VPC
-          # group AWS refuses to swap in place, InvalidVPCNetworkStateFault). State
-          # already holds the desired name, so refreshing only re-detects an
-          # unfixable diff and fails the apply. Skipping refresh keeps the apply
-          # convergent; real drift is still caught by the plan job on PRs.
-          tofu apply -refresh=false -input=false -auto-approve
+          set -uo pipefail
+          if tofu plan -input=false -out=tfplan-pass1 \
+               -exclude=module.stack.module.api.data.aws_iam_policy_document.execution_secrets \
+               -exclude=module.stack.module.worker.data.aws_iam_policy_document.execution_secrets \
+               -exclude=module.stack.module.firelens_agent_api \
+               -exclude=module.stack.module.firelens_agent_worker; then
+            echo "planned=true" >> "$GITHUB_OUTPUT"
+          else
+            # Pass 1 used to be `tofu apply ... || true`: a failure was ignored and pass 2 converged anyway.
+            # That is kept, but said out loud, and a pass that did not plan is never applied.
+            echo "planned=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=pass 1::the first (partial) plan failed; pass 2 below plans and applies everything on its own."
+          fi
         env:
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_grafana_alerting_auth: ${{ secrets.GRAFANA_ALERTS_TOKEN }}
+
+      # TODO(destructive-guard): enable once quynhonsemiconductor/ci#192 (actions/destructive-guard) is merged
+      # and `v1` has moved. Then, in this job: (1) add `pull-requests: read` to its `permissions` (the guard reads
+      # the labels of the PR being merged); (2) uncomment the step below, between the plan and the apply it guards;
+      # (3) create the label `allow-dns-destroy` in this repository; (4) optionally give `workflow_dispatch` a
+      # boolean input and pass it as `dispatch-allow`. The guard fails the job when the saved plan DELETES or
+      # REPLACES a DNS, edge, mail-identity, certificate or key resource, unless that label is on the PR. It reads
+      # the plan through `tofu show -json` (piped, never written out), so the plan it judges is byte for byte the
+      # plan the next step applies.
+      # In the two-pass jobs give the step `if: steps.pass1.outputs.planned == 'true'`, like the apply step that follows it.
+      #
+      # - uses: quynhonsemiconductor/ci/actions/destructive-guard@v1
+      #   with:
+      #     working-directory: infra/live/develop
+      #     plan-file: tfplan-pass1
+
+      - name: tofu apply, pass 1 (the saved plan)
+        if: steps.pass1.outputs.planned == 'true'
+        working-directory: infra/live/develop
+        run: |
+          tofu apply -input=false tfplan-pass1 || echo "::warning title=pass 1::the first (partial) apply failed; pass 2 below converges."
+
+      # -refresh=false on the converge pass: the RDS subnet group carries a permanent cosmetic name divergence (the
+      # instance sits in a same-VPC group AWS refuses to swap in place, InvalidVPCNetworkStateFault). State already
+      # holds the desired name, so refreshing only re-detects an unfixable diff and fails the apply. Skipping
+      # refresh keeps the apply convergent; real drift is still caught by the plan job on PRs.
+
+      - name: tofu plan, pass 2 (saved as tfplan)
+        working-directory: infra/live/develop
+        run: tofu plan -refresh=false -input=false -out=tfplan
+        env:
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_grafana_alerting_auth: ${{ secrets.GRAFANA_ALERTS_TOKEN }}
+
+      # TODO(destructive-guard): enable once quynhonsemiconductor/ci#192 (actions/destructive-guard) is merged
+      # and `v1` has moved. Then, in this job: (1) add `pull-requests: read` to its `permissions` (the guard reads
+      # the labels of the PR being merged); (2) uncomment the step below, between the plan and the apply it guards;
+      # (3) create the label `allow-dns-destroy` in this repository; (4) optionally give `workflow_dispatch` a
+      # boolean input and pass it as `dispatch-allow`. The guard fails the job when the saved plan DELETES or
+      # REPLACES a DNS, edge, mail-identity, certificate or key resource, unless that label is on the PR. It reads
+      # the plan through `tofu show -json` (piped, never written out), so the plan it judges is byte for byte the
+      # plan the next step applies.
+      #
+      # - uses: quynhonsemiconductor/ci/actions/destructive-guard@v1
+      #   with:
+      #     working-directory: infra/live/develop
+      #     plan-file: tfplan
+
+      - name: tofu apply, pass 2 (the saved plan)
+        working-directory: infra/live/develop
+        run: tofu apply -input=false tfplan
 
       # Mint a short-lived installation token from the qnsc-automation GitHub App
       # (same app release.yml uses) so we never need a long-lived user PAT.
@@ -275,30 +362,98 @@ jobs:
         working-directory: infra/live/prod
         run: tofu validate
 
-      - name: tofu apply
+      # Plan, then apply THAT PLAN. A bare `tofu apply -auto-approve` plans again and applies the result without any
+      # check reading it: on 2026-10-09 a provider lock bump turned nine DNS/edge resources into "replace"
+      # (zone_id -> null) and that is what was applied. Here the plan is printed by a step and saved to a file, and
+      # the next step applies that file, so what the log shows is what runs, and a guard can read the same file.
+      #
+      # Variables are given to the PLAN steps only. A saved plan carries its own variable values: OpenTofu 1.9 (this
+      # workflow's version) ignores a TF_VAR_* in the environment at apply time, and later versions refuse a
+      # different one ("Mismatch between input and plan variable value"). Either way the apply steps deliberately
+      # have no `env`. The plan files hold those values (sensitive ones included): they stay on this runner and are
+      # never uploaded.
+      #
+      # The job converges in TWO passes, kept as they were; each pass is now a plan and then an apply of that plan.
+      #   Pass 1, identical to develop: the api/worker execution_secrets policy docs and the firelens agents are
+      #   count-dependent on resources that do not exist yet on the FIRST apply under a renamed product
+      #   (rally -> rova), so pass 1 excludes those modules to create their dependencies; pass 2 converges.
+
+      - name: tofu plan, pass 1 (saved as tfplan-pass1)
+        id: pass1
         working-directory: infra/live/prod
-        # Two-pass apply, identical to develop: the api/worker execution_secrets
-        # policy docs and the firelens agents are count-dependent on resources that
-        # do not exist yet on the FIRST apply under a renamed product (rally→rova),
-        # so pass 1 excludes those modules to create their dependencies; pass 2
-        # converges. -refresh=false on the converge pass: the RDS subnet group
-        # carries a same-VPC divergence (rally-prod-db vs rova-prod-db) that AWS
-        # permanently rejects moving; state already holds the desired value, so a
-        # refresh re-detects a move that can never apply. Once the rename settles,
-        # this can go back to a single-pass apply.
         run: |
-          tofu apply -input=false -auto-approve \
-            -exclude=module.stack.module.api.data.aws_iam_policy_document.execution_secrets \
-            -exclude=module.stack.module.worker.data.aws_iam_policy_document.execution_secrets \
-            -exclude=module.stack.module.firelens_agent_api \
-            -exclude=module.stack.module.firelens_agent_worker || true
-          tofu apply -refresh=false -input=false -auto-approve
+          set -uo pipefail
+          if tofu plan -input=false -out=tfplan-pass1 \
+               -exclude=module.stack.module.api.data.aws_iam_policy_document.execution_secrets \
+               -exclude=module.stack.module.worker.data.aws_iam_policy_document.execution_secrets \
+               -exclude=module.stack.module.firelens_agent_api \
+               -exclude=module.stack.module.firelens_agent_worker; then
+            echo "planned=true" >> "$GITHUB_OUTPUT"
+          else
+            # Pass 1 used to be `tofu apply ... || true`: a failure was ignored and pass 2 converged anyway.
+            # That is kept, but said out loud, and a pass that did not plan is never applied.
+            echo "planned=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=pass 1::the first (partial) plan failed; pass 2 below plans and applies everything on its own."
+          fi
         env:
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_grafana_alerting_auth: ${{ secrets.GRAFANA_ALERTS_TOKEN }}
           # Pin the prod image to the exact release tag that triggered this apply
           # (e.g. v1.4.2), so an infra apply never resets the task def to :latest.
           TF_VAR_image_tag:            ${{ github.ref_name }}
+
+      # TODO(destructive-guard): enable once quynhonsemiconductor/ci#192 (actions/destructive-guard) is merged
+      # and `v1` has moved. Then, in this job: (1) add `pull-requests: read` to its `permissions` (the guard reads
+      # the labels of the PR being merged); (2) uncomment the step below, between the plan and the apply it guards;
+      # (3) create the label `allow-dns-destroy` in this repository; (4) optionally give `workflow_dispatch` a
+      # boolean input and pass it as `dispatch-allow`. The guard fails the job when the saved plan DELETES or
+      # REPLACES a DNS, edge, mail-identity, certificate or key resource, unless that label is on the PR. It reads
+      # the plan through `tofu show -json` (piped, never written out), so the plan it judges is byte for byte the
+      # plan the next step applies.
+      # In the two-pass jobs give the step `if: steps.pass1.outputs.planned == 'true'`, like the apply step that follows it.
+      #
+      # - uses: quynhonsemiconductor/ci/actions/destructive-guard@v1
+      #   with:
+      #     working-directory: infra/live/prod
+      #     plan-file: tfplan-pass1
+
+      - name: tofu apply, pass 1 (the saved plan)
+        if: steps.pass1.outputs.planned == 'true'
+        working-directory: infra/live/prod
+        run: |
+          tofu apply -input=false tfplan-pass1 || echo "::warning title=pass 1::the first (partial) apply failed; pass 2 below converges."
+
+      # -refresh=false on the converge pass: the RDS subnet group carries a same-VPC divergence (rally-prod-db vs
+      # rova-prod-db) that AWS permanently rejects moving; state already holds the desired value, so a refresh
+      # re-detects a move that can never apply. Once the rename settles, this can go back to a single-pass apply.
+
+      - name: tofu plan, pass 2 (saved as tfplan)
+        working-directory: infra/live/prod
+        run: tofu plan -refresh=false -input=false -out=tfplan
+        env:
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_grafana_alerting_auth: ${{ secrets.GRAFANA_ALERTS_TOKEN }}
+          # Pin the prod image to the exact release tag that triggered this apply
+          # (e.g. v1.4.2), so an infra apply never resets the task def to :latest.
+          TF_VAR_image_tag:            ${{ github.ref_name }}
+
+      # TODO(destructive-guard): enable once quynhonsemiconductor/ci#192 (actions/destructive-guard) is merged
+      # and `v1` has moved. Then, in this job: (1) add `pull-requests: read` to its `permissions` (the guard reads
+      # the labels of the PR being merged); (2) uncomment the step below, between the plan and the apply it guards;
+      # (3) create the label `allow-dns-destroy` in this repository; (4) optionally give `workflow_dispatch` a
+      # boolean input and pass it as `dispatch-allow`. The guard fails the job when the saved plan DELETES or
+      # REPLACES a DNS, edge, mail-identity, certificate or key resource, unless that label is on the PR. It reads
+      # the plan through `tofu show -json` (piped, never written out), so the plan it judges is byte for byte the
+      # plan the next step applies.
+      #
+      # - uses: quynhonsemiconductor/ci/actions/destructive-guard@v1
+      #   with:
+      #     working-directory: infra/live/prod
+      #     plan-file: tfplan
+
+      - name: tofu apply, pass 2 (the saved plan)
+        working-directory: infra/live/prod
+        run: tofu apply -input=false tfplan
 
       # Mint a short-lived installation token from the qnsc-automation GitHub App so
       # we never need a long-lived user PAT. Requires the app to have
