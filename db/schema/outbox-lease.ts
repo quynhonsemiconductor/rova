@@ -11,8 +11,9 @@
  * killed, which rolled back the whole batch AND its attempt counters, so the row never reached
  * `maxAttempts`, never dead-lettered, and was retried for ever.
  *
- *   seq          claim order. A bigserial, so it is assigned in insert order and is the unique tie-breaker
- *                the ordering ratchet requires.
+ *   seq          claim order. A bigserial, so it is assigned in insert order. Relays order by
+ *                (due time, seq, id): `id` is the total-order tie-breaker test/query-ordering.ratchet.spec.ts
+ *                requires of every ORDER BY, and `seq` makes ties within a due time insert-ordered.
  *   lease_token  who holds the row; NULL when nobody does.
  *   locked_until when the hold lapses; NULL when nobody holds it.
  */

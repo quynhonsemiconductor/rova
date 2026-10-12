@@ -16,7 +16,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import { InjectDrizzle, Span } from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
 import { AbstractOutboxRelay, LEASE_MARGIN_MS } from '@platform/outbox';
@@ -66,6 +66,11 @@ export class ScmBackfillRelayService extends AbstractOutboxRelay<BackfillJobRow,
 
   protected override leaseMsFor(): number {
     return SCM_BACKFILL_LEASE_MS;
+  }
+
+  /** A dead-lettered job has `finished_at`, like one that failed through `markFailed`; the reaper bypasses it. */
+  protected override reapColumns(): Record<string, unknown> {
+    return { finishedAt: sql`now()` };
   }
 
   protected async selectDue(tx: DrizzleTx, limit: number, now: Date): Promise<BackfillJobRow[]> {

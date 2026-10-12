@@ -1,8 +1,9 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { createPrivateKey, type KeyObject } from 'node:crypto';
 import { SignJWT } from 'jose';
-import { AppConfigService } from '@platform';
+import { AppConfigService, RetryAfterError } from '@platform';
 import { githubCallSignal } from './github-http';
+import { rateLimitWaitMs } from './github-rest.client';
 import { SECRET_RESOLVER, type ISecretResolver } from '@quynhonsemiconductor/identity';
 
 /**
@@ -106,9 +107,10 @@ export class GithubAppAuthService {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(
-        `GitHub App request ${method} ${path} failed (${res.status}): ${text.slice(0, 200)}`,
-      );
+      const message = `GitHub App request ${method} ${path} failed (${res.status}): ${text.slice(0, 200)}`;
+      const wait = rateLimitWaitMs(res);
+      if (wait !== undefined) throw new RetryAfterError(message, wait);
+      throw new Error(message);
     }
     return (await res.json()) as T;
   }

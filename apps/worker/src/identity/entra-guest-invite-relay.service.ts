@@ -147,6 +147,15 @@ export class EntraGuestInviteRelayService
     return leaseForResilience(ResiliencePreset.EXTERNAL_API);
   }
 
+  /**
+   * A reaped (abandoned) row is dead-lettered WITHOUT `markFailed`, so it must lose its raw bearer token the same
+   * way a terminal failure does (migration 0124: a row holds a live credential only between enqueue and the Graph
+   * call). Merged into the reaper's UPDATE; without it the token of an abandoned invitation stayed in the table.
+   */
+  protected override reapColumns(): Record<string, unknown> {
+    return { inviteToken: null };
+  }
+
   protected async selectDue(tx: DrizzleTx, limit: number, now: Date): Promise<GuestInviteRow[]> {
     return tx
       .select({

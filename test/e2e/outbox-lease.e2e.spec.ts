@@ -28,8 +28,9 @@ import type { DrizzleDB } from '@platform';
 import type { BackfillCounts, ScmBackfillService } from '@modules/scm';
 import * as schema from '../../db/schema';
 import { ScmBackfillRelayService } from '../../apps/worker/src/scm/scm-backfill-relay.service';
+import { EntraGuestInviteRelayService } from '../../apps/worker/src/identity/entra-guest-invite-relay.service';
 
-const { scmBackfillJobs } = schema;
+const { scmBackfillJobs, guestInviteOutbox } = schema;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const COUNTS: BackfillCounts = { prs: 1, commits: 2, connections: 3, changesets: 4 };
@@ -51,7 +52,31 @@ function makeRelay(
 async function insertJob(extra: Partial<typeof scmBackfillJobs.$inferInsert> = {}) {
   const [row] = await db
     .insert(scmBackfillJobs)
-    .values({ workspaceId: randomUUID(), repositoryId: randomUUID(), ...extra })
+    .values({
+      workspaceId: randomUUID(),
+      repositoryId: randomUUID(),
+      // Due a few seconds ago, by the TEST's clock: the column default is the DATABASE's now(), and a container
+      // whose clock runs ahead of the host's would make the row "not yet due" to a relay that reads Date.now().
+      scheduledAt: new Date(Date.now() - 5_000),
+      ...extra,
+    })
+    .returning();
+  return row;
+}
+
+/** A real invitation row: guest_invite_outbox.invitation_id is a foreign key (fk_gio_invitation). */
+async function insertInvitation() {
+  const [row] = await db
+    .insert(schema.workspaceInvitations)
+    .values({
+      workspaceId: (
+        await observer.query<{ id: string }>('SELECT id FROM workspace.workspaces LIMIT 1')
+      ).rows[0].id,
+      email: 'dana@partner.example',
+      tokenHash: `hash-${randomUUID()}`,
+      invitedBy: randomUUID(),
+      expiresAt: new Date(Date.now() + 86_400_000),
+    })
     .returning();
   return row;
 }
@@ -78,6 +103,11 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await observer.query('DELETE FROM scm.backfill_jobs');
+  await observer.query('DELETE FROM messaging.guest_invite_outbox');
+  // The invitation rows this file inserts (the outbox row cascades from them).
+  await observer.query(
+    "DELETE FROM workspace.workspace_invitations WHERE token_hash LIKE 'hash-%'",
+  );
 });
 
 describe('THE REGRESSION: a slow external call no longer loses the row', () => {
@@ -273,6 +303,57 @@ describe('lease-and-fence relay, against PostgreSQL', () => {
     const row = await load(job.id);
     expect(row.status).toBe('done');
     expect(row.attempts).toBe(1);
+  });
+});
+
+describe('the reaper does what markFailed does for a terminal row, against PostgreSQL', () => {
+  const lapsed = () => ({
+    attempts: 5,
+    leaseToken: '00000000-0000-4000-8000-0000000000aa',
+    lockedUntil: new Date(Date.now() - 60_000),
+  });
+
+  it('a reaped guest invitation LOSES ITS RAW BEARER TOKEN (migration 0124: no terminal row keeps a live credential)', async () => {
+    const invitation = await insertInvitation();
+    const [abandoned] = await db
+      .insert(guestInviteOutbox)
+      .values({
+        invitationId: invitation.id,
+        workspaceId: invitation.workspaceId,
+        email: 'dana@partner.example',
+        inviteToken: 'raw-bearer-token-must-not-survive',
+        ...lapsed(),
+      })
+      .returning();
+    const relay = new EntraGuestInviteRelayService(
+      db,
+      { invite: vi.fn() } as never,
+      { get: () => 'https://rova.example' } as never,
+      { schedule: vi.fn() } as never,
+      { subscribeGuestInviteRelayWake: vi.fn() } as never,
+    );
+
+    await relay.relay();
+
+    const [row] = await db
+      .select()
+      .from(guestInviteOutbox)
+      .where(eq(guestInviteOutbox.id, abandoned.id));
+    expect(row.status).toBe('failed');
+    expect(row.lastError).toMatch(/abandoned/);
+    expect(row.inviteToken, 'a dead-lettered row kept a live bearer credential').toBeNull();
+  });
+
+  it('a reaped backfill job gets finished_at, like one that failed through markFailed', async () => {
+    const abandoned = await insertJob(lapsed());
+    expect(abandoned.finishedAt).toBeNull();
+    const { relay } = makeRelay(() => Promise.resolve(COUNTS));
+
+    await relay.relay();
+
+    const row = await load(abandoned.id);
+    expect(row.status).toBe('failed');
+    expect(row.finishedAt).not.toBeNull();
   });
 });
 

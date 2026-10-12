@@ -19,7 +19,13 @@
  * `GithubAppAuthService` (the precedent for an app-only token cache) uses `fetch` too.
  */
 import { Injectable, Logger } from '@nestjs/common';
-import { AppConfigService, ResilienceService, ResiliencePreset } from '@platform';
+import {
+  AppConfigService,
+  ResilienceService,
+  ResiliencePreset,
+  RetryAfterError,
+  retryAfterMsFrom,
+} from '@platform';
 
 /**
  * One execution of the Graph call — the token request AND the invitation — must finish inside this, and the
@@ -144,6 +150,9 @@ export class EntraGuestInviteClient {
     );
 
     if (result.kind === 'refused') throw new PermanentGuestInviteError(result.detail);
+    // Thrown OUTSIDE `execute`, like a refusal, for the same reason: inside it the resilience layer would retry a
+    // throttled call in milliseconds (and count it against the breaker) instead of honouring the server's wait.
+    if (result.kind === 'throttled') throw new RetryAfterError(result.detail, result.retryAfterMs);
     return result.outcome;
   }
 
@@ -165,7 +174,11 @@ export class EntraGuestInviteClient {
   private async postInvitation(
     request: GuestInviteRequest,
     credentials: EntraAppCredentials,
-  ): Promise<{ kind: 'ok'; outcome: GuestInviteOutcome } | { kind: 'refused'; detail: string }> {
+  ): Promise<
+    | { kind: 'ok'; outcome: GuestInviteOutcome }
+    | { kind: 'refused'; detail: string }
+    | { kind: 'throttled'; detail: string; retryAfterMs: number }
+  > {
     // ONE deadline for the whole execution: the token request and the POST share it.
     const signal = AbortSignal.timeout(GRAPH_CALL_TIMEOUT_MS);
     const token = await this.getAppToken(credentials, signal);
@@ -247,7 +260,14 @@ export class EntraGuestInviteClient {
       return { kind: 'refused', detail };
     }
 
-    // 5xx, 429, 408 — throw so retry + circuit breaker + the outbox's own backoff all apply.
+    // 429 / 503 WITH a Retry-After: Graph told us how long to wait. Hand that to the relay (RetryAfterError, clamped
+    // there) rather than retrying inside the resilience layer, which would hit the same throttle again in ms.
+    if (res.status === 429 || res.status === 503) {
+      const retryAfterMs = retryAfterMsFrom(res.headers);
+      if (retryAfterMs !== undefined) return { kind: 'throttled', detail, retryAfterMs };
+    }
+
+    // 5xx, 429, 408 without a hint — throw so retry + circuit breaker + the outbox's own backoff all apply.
     throw new Error(detail);
   }
 

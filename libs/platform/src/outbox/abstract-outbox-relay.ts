@@ -276,6 +276,18 @@ export abstract class AbstractOutboxRelay<
     return undefined;
   }
 
+  /**
+   * Extra columns the reaper writes onto a row it dead-letters, merged into the same UPDATE.
+   *
+   * A row that fails through `markFailed` is cleaned up by the relay that knows its table (a terminal
+   * `guest_invite_outbox` row has its raw bearer token scrubbed, a terminal backfill job gets `finished_at`). The
+   * reaper dead-letters rows WITHOUT running any of that, so whatever `markFailed` does for a terminal row, the
+   * reaper must do too. Keys are the Drizzle property names of {@link OutboxLeaseTable.table}.
+   */
+  protected reapColumns(): Record<string, unknown> {
+    return {};
+  }
+
   /** The label the dead-letter alarm carries for rows this relay abandons. */
   protected reapLabel(): string {
     return this.queueName;
@@ -309,6 +321,7 @@ export abstract class AbstractOutboxRelay<
         lastError: sql`'abandoned: the lease lapsed with every attempt used (the process died or the call never returned)'`,
         leaseToken: null,
         lockedUntil: null,
+        ...this.reapColumns(),
       })
       .where(
         and(

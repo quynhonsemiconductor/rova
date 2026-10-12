@@ -165,6 +165,9 @@ export class AuditProjectionRelay extends AbstractOutboxRelay<OutboxEventRow> {
       // unique index sees, so a row reprojected after a crash collides with itself
       // and is skipped rather than duplicated.
       sourceEventId: row.id,
+      // When the event HAPPENED, not when this pass projected it: a retried row is minutes (or, after an outage,
+      // hours) late, and the audit trail reads these timestamps.
+      occurredAt: row.occurredAt,
       // actorEmail is deliberately absent. AuditProducer's AuditActor carries only an
       // id, so the value the old consumer read was always undefined; the read model
       // resolves it with `coalesce(audit_logs.actor_email, users.email)` over a

@@ -15,7 +15,7 @@ import {
   GRAPH_CALL_TIMEOUT_MS,
   PermanentGuestInviteError,
 } from './entra-guest-invite.client';
-import { RESILIENCE_PRESETS, ResiliencePreset } from '@platform';
+import { RESILIENCE_PRESETS, ResiliencePreset, RetryAfterError } from '@platform';
 import type { AppConfigService, ResilienceService } from '@platform';
 
 const CONFIG: Record<string, unknown> = {
@@ -85,6 +85,43 @@ describe('EntraGuestInviteClient', () => {
 
     it('is true with the flag on and all three Entra values set', () => {
       expect(client().isConfigured()).toBe(true);
+    });
+  });
+
+  describe('invite — throttling', () => {
+    it("hands a 429 with Retry-After to the relay as a RetryAfterError, with the server's wait", async () => {
+      fetchMock
+        .mockResolvedValueOnce(tokenOk())
+        .mockResolvedValueOnce(
+          new Response('{}', { status: 429, headers: { 'Retry-After': '120' } }),
+        );
+
+      const err: unknown = await client()
+        .invite({ email: 'dana@partner.example' })
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(RetryAfterError);
+      expect((err as RetryAfterError).retryAfterMs).toBe(120_000);
+    });
+
+    it('a 503 with Retry-After is the same; a 503 without one stays an ordinary retryable error', async () => {
+      fetchMock
+        .mockResolvedValueOnce(tokenOk())
+        .mockResolvedValueOnce(
+          new Response('{}', { status: 503, headers: { 'Retry-After': '10' } }),
+        );
+      expect(
+        await client()
+          .invite({ email: 'a@b.example' })
+          .catch((e: unknown) => e),
+      ).toBeInstanceOf(RetryAfterError);
+
+      fetchMock.mockResolvedValueOnce(new Response('{}', { status: 503 }));
+      const plain: unknown = await client()
+        .invite({ email: 'a@b.example' })
+        .catch((e: unknown) => e);
+      expect(plain).toBeInstanceOf(Error);
+      expect(plain).not.toBeInstanceOf(RetryAfterError);
     });
   });
 
