@@ -33,8 +33,8 @@ provider "aws" {
   }
 }
 
-// Reads CLOUDFLARE_API_TOKEN (or TF_VAR_cloudflare_api_token). DNS/Pages resources
-// are skipped when the zone is unset, so the stack applies before Cloudflare exists.
+// Reads CLOUDFLARE_API_TOKEN (or TF_VAR_cloudflare_api_token). DNS/Pages resources exist when
+// `dns_enabled` is true; the zone id comes from the _shared stack and must be valid or the plan fails.
 provider "cloudflare" {
   api_token = var.cloudflare_api_token != "" ? var.cloudflare_api_token : null
 }
@@ -540,4 +540,8 @@ module "stack" {
 
   alarm_emails          = var.alarm_emails
   cloudflare_account_id = var.cloudflare_account_id
+
+  // This environment owns its public DNS (API and web CNAMEs, Pages custom domain). An explicit
+  // switch, never inferred from the zone id; the zone id itself is validated in the stack module.
+  dns_enabled = true
 }

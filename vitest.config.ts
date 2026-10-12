@@ -82,6 +82,7 @@ export default defineConfig({
         'db/database-url.ts',
         'db/pg-iam.ts',
         'db/pg-pool-config.ts',
+        'db/stranded-migrations.ts',
         'libs/shared-kernel/src/health.ts',
         'libs/modules/portfolio/src/domain/portfolio-rollup.ts',
         'libs/modules/portfolio/src/application/portfolio-items.service.ts',
