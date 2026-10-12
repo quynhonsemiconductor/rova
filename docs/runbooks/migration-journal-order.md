@@ -30,7 +30,12 @@ or a **new** shared number (`0028` is the one existing pair).
 
 - **A database that already ran them is untouched.** drizzle compares each `when` with the newest `created_at` in the
   database (about 1.788e12 on a current one), so neither new value is "greater" and nothing is re-applied. The two rows
-  already in `__drizzle_migrations` keep their old `created_at`; nothing reads it back.
+  already in `__drizzle_migrations` keep their old `created_at`. **`db/migrate.ts` does read it back**: its
+  post-migrate check (`assertNoStrandedMigrations`) used to match each journal entry to a row by `created_at = when`, so
+  on every existing database `0006` and `0019` looked stranded and the run printed "NO recorded row ... recreate the
+  database", which is the wrong advice for a database that is fine. It now falls back to the file's **hash** when nothing
+  sits at the entry's `when` (`db/stranded-migrations.ts`, with an existing-database fixture), and says at info
+  "ran under an earlier timestamp ... found by their file's hash". Only an entry found neither way is reported.
 - **A database stuck behind either one now applies it** on the next `db:migrate`.
 - **A database at HEAD that nevertheless skipped one is NOT repaired by the edit** (its newest `created_at` is above the
   new value). That is what the checks below are for.

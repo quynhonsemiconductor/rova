@@ -18,6 +18,7 @@ import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { seed, seedSystemRoles, seedTenantBootstrap } from './seeds/seed';
+import { strandedMigrations } from './stranded-migrations';
 import { resolveDatabaseUrl } from './database-url';
 import { resolveAuthMode, resolveIamUrl, resolveMigrationPoolConfig } from './pg-pool-config';
 
@@ -79,6 +80,11 @@ const db = drizzle(pool);
  * exist?") is exactly what the silent success failed to give anyone. Proving it properly means
  * diffing the live schema against the migrations, which is a different tool and a different change.
  *
+ * A MISSING ROW AT AN ENTRY'S `when` IS NOT YET "STRANDED": the entry's file may be recorded under an EARLIER
+ * `when` (this is what a corrected journal timestamp looks like on a database that ran the file before the
+ * correction — 0006 and 0019). The match falls back to the file's hash, see `db/stranded-migrations.ts`; only an
+ * entry found neither way is reported.
+ *
  * Hashes are compared rather than counted: a count matches by coincidence whenever an abandoned branch
  * row occupies a real one's slot, which is precisely the case that produced the incident and precisely
  * the one a count cannot see. Drizzle hashes the file's raw text.
@@ -96,21 +102,22 @@ async function assertNoStrandedMigrations(folder: string): Promise<void> {
   const recorded = await db.execute<{ created_at: string; hash: string }>(
     sql`select created_at, hash from drizzle.__drizzle_migrations`,
   );
-  // `created_at` is a bigint column, so the driver hands it back as a string.
-  const hashByWhen = new Map(recorded.rows.map((r) => [String(r.created_at), r.hash]));
-
-  const missing: string[] = [];
-  const mismatched: string[] = [];
-  for (const entry of journal.entries) {
-    const file = path.join(folder, `${entry.tag}.sql`);
-    if (!fs.existsSync(file)) continue;
-    const recordedHash = hashByWhen.get(String(entry.when));
-    if (recordedHash === undefined) {
-      missing.push(`${entry.tag} (when=${entry.when})`);
-      continue;
-    }
-    const hash = createHash('sha256').update(fs.readFileSync(file, 'utf8')).digest('hex');
-    if (hash !== recordedHash) mismatched.push(`${entry.tag} (when=${entry.when})`);
+  const { missing, mismatched, recordedUnderOtherTimestamp } = strandedMigrations(
+    journal.entries,
+    recorded.rows,
+    (tag) => {
+      const file = path.join(folder, `${tag}.sql`);
+      if (!fs.existsSync(file)) return undefined;
+      return createHash('sha256').update(fs.readFileSync(file, 'utf8')).digest('hex');
+    },
+  );
+  if (recordedUnderOtherTimestamp.length > 0) {
+    // Not a problem: the file ran, under the `when` it had then. Said once, at info, so the next reader knows why a
+    // journal entry has no row at its own timestamp.
+    console.log(
+      `ℹ️   ${recordedUnderOtherTimestamp.length} migration(s) ran under an earlier timestamp than the journal now ` +
+        `gives them (found by their file's hash): ${recordedUnderOtherTimestamp.join(', ')}.`,
+    );
   }
 
   if (mismatched.length > 0) {
