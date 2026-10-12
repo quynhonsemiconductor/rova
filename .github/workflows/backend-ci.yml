@@ -587,8 +587,9 @@ jobs:
           found=""
           distance=0
           for sha in $(git rev-list --first-parent -n 30 "$BASE_SHA"); do
+            # The branch name goes to jq as an ARGUMENT, never spliced into the filter text.
             hit="$(gh api -X GET "repos/$REPO/actions/artifacts" -f name="openapi-spec-$sha" -F per_page=5 \
-              --jq "[.artifacts[] | select(.expired == false and .workflow_run.head_branch == \"$BASE_REF\")][0] | .workflow_run.id // empty")"
+              | jq -r --arg ref "$BASE_REF" '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == $ref)][0] | .workflow_run.id // empty')"
             if [ -n "$hit" ]; then found="$sha"; run_id="$hit"; break; fi
             distance=$((distance + 1))
           done
