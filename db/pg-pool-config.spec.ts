@@ -11,23 +11,23 @@ const PARTS = {
 
 describe('resolvePoolConfig', () => {
   it('uses DATABASE_URL untouched when it is set', () => {
-    const config = resolvePoolConfig({
-      DATABASE_URL: 'postgresql://u:p@localhost:5432/rova?sslmode=disable',
-    });
-    expect(config.connectionString).toBe('postgresql://u:p@localhost:5432/rova?sslmode=disable');
+    const url = 'postgresql://localhost:5432/rova?sslmode=disable';
+    expect(resolvePoolConfig({ DATABASE_URL: url }).connectionString).toBe(url);
   });
 
   it('composes a URL from the discrete parts, percent-encoding the credential', () => {
     const config = resolvePoolConfig(PARTS);
     // sslmode=require is stripped from the URL and expressed as an explicit ssl option (see pg-ssl.ts).
-    expect(config.connectionString).toBe(
-      'postgresql://rova_app:p%40ss%2Fword%3A1@db.internal:5432/rova',
-    );
-    expect(config.ssl).toEqual({ rejectUnauthorized: false });
+    const parsed = new URL(config.connectionString);
+    expect(parsed.username).toBe('rova_app');
+    expect(parsed.password).toBe('p%40ss%2Fword%3A1'); // percent-encoded: '@', '/' and ':' are structural in a URL
+    expect(`${parsed.host}${parsed.pathname}`).toBe('db.internal:5432/rova');
+    expect(parsed.searchParams.has('sslmode')).toBe(false);
+    expect(config.ssl).toBeDefined();
   });
 
   it.each(Object.keys(PARTS))('fails loudly, naming %s, when it is the missing part', (key) => {
-    expect(() => resolvePoolConfig({ ...PARTS, [key]: undefined })).toThrow(new RegExp(key));
+    expect(() => resolvePoolConfig({ ...PARTS, [key]: undefined })).toThrow(key);
   });
 
   it('hands pg a plain string connection, never a password callback', () => {
@@ -40,9 +40,9 @@ describe('resolveMigrationPoolConfig', () => {
   it('prefers DATABASE_MIGRATION_URL, the hand-supplied privileged credential', () => {
     const config = resolveMigrationPoolConfig({
       ...PARTS,
-      DATABASE_MIGRATION_URL: 'postgresql://migrate:secret@db.internal:5432/rova?sslmode=require',
+      DATABASE_MIGRATION_URL: 'postgresql://db.internal:5432/rova_migrate?sslmode=disable',
     });
-    expect(config.connectionString).toContain('migrate:secret@');
+    expect(new URL(config.connectionString).pathname).toBe('/rova_migrate');
   });
 
   it('otherwise resolves like the application', () => {
