@@ -90,7 +90,7 @@ locals {
     # from it labelled every develop span, metric and log as production.
     { name = "DEPLOYMENT_ENV", value = var.env },
     # Terraform already knows the deployed tag, so `service.version` needs no CI
-    # plumbing. Prod pins a release tag; develop is honestly "latest".
+    # plumbing. Prod pins a release tag; develop carries the baseline placeholder (the deploy replaces the image tag, not this value).
     { name = "SERVICE_VERSION", value = var.image_tag },
     { name = "OTEL_SAMPLING_PROBABILITY", value = tostring(var.observability.sampling_probability) },
   ]
@@ -2250,7 +2250,7 @@ module "migrator" {
 # wired.
 module "web" {
   count  = var.cloudflare_account_id != "" ? 1 : 0
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/pages-web?ref=pages-web-v1.0.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/pages-web?ref=pages-web-v1.0.2"
 
   account_id  = var.cloudflare_account_id
   name        = "${local.name}-web"
