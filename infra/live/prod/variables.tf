@@ -1,7 +1,7 @@
 variable "image_tag" {
   type        = string
-  default     = "latest"
-  description = "Container image tag to deploy for api & worker. CI overrides this with the release sha to pin prod images; defaults to 'latest' for a bare apply."
+  default     = "set-by-the-deploy-never-a-real-tag"
+  description = "Container image tag to deploy for api & worker. CI overrides this with the release tag to pin prod images. The default is an obviously invalid placeholder (NOT `latest`, which does not exist in the immutable repositories and which the module now rejects), so a bare `tofu plan` works but can never be mistaken for a deployable tag."
 }
 
 
