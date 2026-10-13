@@ -11,8 +11,8 @@
  * Reads `OTEL_WORKER_SERVICE_NAME` so the two processes stay distinguishable in the
  * backend even when they share a task definition's environment.
  *
- * Shutdown: call `shutdownOtel()` from the worker's signal handler BEFORE
- * `app.close()`.
+ * Shutdown: `enableGracefulShutdown()` (platform-runtime, called from worker/main.ts) flushes
+ * OpenTelemetry after `app.close()`.
  *
  * NO `httpDurationBoundaries` HERE, unlike `apps/api/src/otel.ts`, and that is a
  * finding rather than an omission. The worker records no inbound HTTP at all: it
@@ -28,9 +28,7 @@
  * this option does not touch; if that histogram's tail becomes interesting it needs
  * its own option in the package rather than this one being widened to match on name.
  */
-import { startOtel, shutdownOtel } from '@quynhonsemiconductor/observability/otel';
-
-export { shutdownOtel };
+import { startOtel } from '@quynhonsemiconductor/observability/otel';
 
 startOtel({
   defaultServiceName: 'rally-worker',

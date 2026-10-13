@@ -12,41 +12,7 @@ export interface paths {
       cookie?: never
     }
     /** Public runtime config for the frontend (no secrets) */
-    get: operations['HealthController_publicConfig']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/healthz': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Liveness probe — returns ok if process is alive */
-    get: operations['HealthController_healthz']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/readyz': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Readiness probe — checks DB and cache connectivity */
-    get: operations['HealthController_readyz']
+    get: operations['PublicConfigController_publicConfig']
     put?: never
     post?: never
     delete?: never
@@ -7009,7 +6975,7 @@ export interface components {
 }
 export type $defs = Record<string, never>
 export interface operations {
-  HealthController_publicConfig: {
+  PublicConfigController_publicConfig: {
     parameters: {
       query?: never
       header?: never
@@ -7028,146 +6994,6 @@ export interface operations {
             workspaceCreationOpen?: boolean
             /** @example true */
             ssoEnabled?: boolean
-          }
-        }
-      }
-    }
-  }
-  HealthController_healthz: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': {
-            /** @example ok */
-            status?: string
-          }
-        }
-      }
-    }
-  }
-  HealthController_readyz: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description The Health Check is successful */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': {
-            /** @example ok */
-            status?: string
-            /**
-             * @example {
-             *       "database": {
-             *         "status": "up"
-             *       }
-             *     }
-             */
-            info?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            } | null
-            /** @example {} */
-            error?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            } | null
-            /**
-             * @example {
-             *       "database": {
-             *         "status": "up"
-             *       }
-             *     }
-             */
-            details?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            }
-          }
-        }
-      }
-      /** @description The Health Check is not successful */
-      503: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': {
-            /** @example error */
-            status?: string
-            /**
-             * @example {
-             *       "database": {
-             *         "status": "up"
-             *       }
-             *     }
-             */
-            info?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            } | null
-            /**
-             * @example {
-             *       "redis": {
-             *         "status": "down",
-             *         "message": "Could not connect"
-             *       }
-             *     }
-             */
-            error?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            } | null
-            /**
-             * @example {
-             *       "database": {
-             *         "status": "up"
-             *       },
-             *       "redis": {
-             *         "status": "down",
-             *         "message": "Could not connect"
-             *       }
-             *     }
-             */
-            details?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            }
           }
         }
       }

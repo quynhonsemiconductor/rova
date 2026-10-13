@@ -1,4 +1,4 @@
-export * from './health.controller';
+export * from './public-config.controller';
 /**
  * These now live in `@quynhonsemiconductor/observability`, re-exported here so the existing
  * `@platform` import sites stay valid — the same reason `context/request-context.ts`

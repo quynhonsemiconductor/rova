@@ -167,6 +167,11 @@ locals {
     # rollback, not a silent downgrade, which is the intent).
     "cookie-secret"       = "Cookie signing secret (distinct from csrf-secret)"
     "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
+    # The key the Cloudflare Pages Function signs the visitor's address with
+    # (`@quynhonsemiconductor/platform-http/edge`) and the API verifies (`clientIp()`). The SAME value as the Pages
+    # project's secret of that name. A container only: it stays empty until the owner puts a value in, and is not
+    # injected into the API task until `edge_client_ip_secret_set` is true (see that variable for why).
+    "edge-client-ip-secret" = "Key the Cloudflare Pages Function signs the visitor address with, verified by the API (min 32 chars; openssl rand -base64 48). Same value as the Pages secret EDGE_CLIENT_IP_SECRET."
     # SCM (GitHub App) — minted in GitHub, pasted by hand (Terraform only scaffolds
     # empty containers). Both stay empty until the App is registered, which keeps the
     # SCM backfill and webhook paths dormant.
@@ -1836,6 +1841,11 @@ module "api" {
     # while empty broke every develop deploy. See the variable.
     { name = "STORAGE_PUBLIC_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-public-access-key-id"] },
     { name = "STORAGE_PUBLIC_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-public-secret-access-key"] },
+    ] : [],
+    var.edge_client_ip_secret_set ? [
+      # The API's alone (the worker serves no visitor). Injected only once populated: the deploy preflight refuses to
+      # deploy when an injected secret holds no value. See the variable.
+      { name = "EDGE_CLIENT_IP_SECRET", secret_arn = module.secrets.secret_arns["edge-client-ip-secret"] },
   ] : [])
 
   environment_vars = concat(local.api_db_env, [
@@ -2250,6 +2260,12 @@ module "web" {
 
   # Pages Function proxy upstream: /v1/* (incl. /v1/bff/*) is forwarded here so
   # the browser only ever sees the SPA origin (same-origin BFF requirement).
+  #
+  # The Function also needs the Pages SECRET `EDGE_CLIENT_IP_SECRET` (the same value as the API's key of that name),
+  # which is NOT set here: this module carries plain variables only. It is set with
+  # `wrangler pages secret put EDGE_CLIENT_IP_SECRET --project-name <project>` or in the dashboard, and the Function
+  # answers 500 naming it rather than forward unsigned (see apps/web/functions/_lib/proxy.ts). The order of the
+  # owner steps is in docs/runbooks/edge-client-ip.md.
   production_env_vars = {
     API_ORIGIN = "https://${var.api_domain}"
   }

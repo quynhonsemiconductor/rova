@@ -1,6 +1,15 @@
 import { createPrivateKey, createPublicKey } from 'node:crypto';
 import { z } from 'zod';
 
+/** An empty string counts as unset (a variable blanked in a task definition or `.env`). */
+const emptyToUndefined = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), schema);
+
+/** A signing key: at least 32 characters once trimmed (the length `platform-http` itself enforces). */
+const edgeSecret = z
+  .string()
+  .refine((v) => v.trim().length >= 32, 'must be at least 32 characters: it is a signing key');
+
 const booleanish = (defaultValue: boolean) =>
   z
     .string()
@@ -26,16 +35,18 @@ export const EnvSchema = z
     // parts rather than storing a URL: the password belongs to the RDS-managed
     // secret that AWS rotates, and any copy of it goes stale silently.
     /**
-     * Which credential mechanism the database connection uses.
-     *
-     * `password` (default) keeps the ECS estate's behaviour exactly: a URL, or the
-     * discrete parts including DATABASE_PASSWORD.
-     *
-     * `iam` is the Kubernetes estate. The product roles are members of `rds_iam` and
-     * have NO password, so there is nothing to put in DATABASE_PASSWORD and a
-     * password-mode connection cannot succeed against them. See db/pg-iam.ts.
+     * REMOVED: `DATABASE_AUTH=iam` (RDS IAM authentication). The on-prem estate runs CloudNativePG with ordinary
+     * role passwords, so the mode had no consumer and was deleted along with `db/pg-iam.ts`. Accepted here only as
+     * unset or `password` (a no-op); `iam` is a boot error that says so, instead of being ignored: a deployment
+     * that still sets it would otherwise start in password mode and fail on its first query.
      */
-    DATABASE_AUTH: z.enum(['password', 'iam']).default('password'),
+    DATABASE_AUTH: z
+      .string()
+      .optional()
+      .refine(
+        (v) => v === undefined || v.trim() === '' || v.trim().toLowerCase() === 'password',
+        'DATABASE_AUTH=iam is no longer supported (RDS IAM authentication was removed). Unset it and supply DATABASE_URL, or DATABASE_HOST, DATABASE_PORT, DATABASE_NAME, DATABASE_USER and DATABASE_PASSWORD.',
+      ),
     DATABASE_URL: z.string().url().optional(),
     DATABASE_HOST: z.string().optional(),
     DATABASE_PORT: z.coerce.number().int().positive().optional(),
@@ -277,6 +288,17 @@ export const EnvSchema = z
      */
     ENTRA_REDIRECT_URI: z.string().url(),
     /**
+     * The key the Cloudflare Pages Function signs the visitor's address with (`@quynhonsemiconductor/platform-http/edge`)
+     * and `clientIp()` verifies. Behind a Pages Function the API's `cf-connecting-ip` is a Cloudflare address shared
+     * by every visitor, so without a verifiable address one `AUTH_LOGIN` bucket (5 attempts per 15 minutes) would be
+     * the whole company's. The SAME value as the Pages project's secret of that name; at least 32 characters once
+     * trimmed. Optional so development and CI (no Pages Function in front) boot: `clientIp()` treats an absent key
+     * as "no signed address" and falls back to `cf-connecting-ip`.
+     */
+    EDGE_CLIENT_IP_SECRET: emptyToUndefined(edgeSecret.optional()),
+    /** The previous key, accepted for verification only while the Pages secret is being rotated. */
+    EDGE_CLIENT_IP_SECRET_PREVIOUS: emptyToUndefined(edgeSecret.optional()),
+    /**
      * Provision an invited external collaborator as a Microsoft Entra B2B GUEST.
      *
      * When true, `WorkspaceService.inviteMember` writes a `messaging.guest_invite_outbox` row in
@@ -348,23 +370,24 @@ export const EnvSchema = z
      * pairing below never ran for any deploy that used a database URL, which is every deploy we
      * have. A refinement block that grows more rules cannot early-return.
      */
-    // Under IAM auth the credential is minted per connection, so DATABASE_PASSWORD is
-    // not merely optional — supplying one is meaningless, because an `rds_iam` role
-    // has no password for it to match. Requiring it here was what made the deployed
-    // IAM path unreachable.
-    const credentialKeys =
-      env.DATABASE_AUTH === 'iam'
-        ? (['DATABASE_HOST', 'DATABASE_PORT', 'DATABASE_NAME', 'DATABASE_USER'] as const)
-        : ([
-            'DATABASE_HOST',
-            'DATABASE_PORT',
-            'DATABASE_NAME',
-            'DATABASE_USER',
-            'DATABASE_PASSWORD',
-          ] as const);
+    // A previous key with no current one is a rotation half done: `clientIp()` refuses to start on it, so say so here.
+    if (env.EDGE_CLIENT_IP_SECRET_PREVIOUS && !env.EDGE_CLIENT_IP_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EDGE_CLIENT_IP_SECRET_PREVIOUS'],
+        message: 'EDGE_CLIENT_IP_SECRET_PREVIOUS is set but EDGE_CLIENT_IP_SECRET is not.',
+      });
+    }
 
-    const missing =
-      env.DATABASE_URL && env.DATABASE_AUTH !== 'iam' ? [] : credentialKeys.filter((k) => !env[k]);
+    const credentialKeys = [
+      'DATABASE_HOST',
+      'DATABASE_PORT',
+      'DATABASE_NAME',
+      'DATABASE_USER',
+      'DATABASE_PASSWORD',
+    ] as const;
+
+    const missing = env.DATABASE_URL ? [] : credentialKeys.filter((k) => !env[k]);
 
     // Half a credential pair is a misconfiguration, not a partial feature: an id
     // without a secret silently falls back to the private-bucket credential, which is
@@ -386,12 +409,8 @@ export const EnvSchema = z
         code: z.ZodIssueCode.custom,
         path: ['DATABASE_URL'],
         message:
-          env.DATABASE_AUTH === 'iam'
-            ? `Database not configured for IAM auth. Set all of DATABASE_HOST, DATABASE_PORT, ` +
-              `DATABASE_NAME, DATABASE_USER. DATABASE_PASSWORD is not used — the role is a member ` +
-              `of rds_iam and has no password. Missing: ${missing.join(', ')}.`
-            : `Database not configured. Set DATABASE_URL, or all of DATABASE_HOST, DATABASE_PORT, ` +
-              `DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD. Missing: ${missing.join(', ')}.`,
+          `Database not configured. Set DATABASE_URL, or all of DATABASE_HOST, DATABASE_PORT, ` +
+          `DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD. Missing: ${missing.join(', ')}.`,
       });
     }
 

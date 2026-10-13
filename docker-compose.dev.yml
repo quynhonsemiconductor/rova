@@ -28,7 +28,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # LocalStack for AWS services (SQS/SNS/S3/Secrets) in dev.
+  # LocalStack for AWS services (S3/Secrets) in dev.
   # Replaces real AWS for local development — no AWS account needed.
   # Production AWS resources live in the rova repo (Terraform).
   localstack:
@@ -45,7 +45,7 @@ services:
     volumes:
       - localstack_data:/var/lib/localstack
       # Init hook: runs automatically when LocalStack is ready.
-      # Creates SNS topic, SQS queues, DLQs, and SNS→SQS subscriptions.
+      # Creates the S3 buckets (there is no SNS topic or SQS queue: see the script's header).
       # Mirrors how db/init/ bootstraps Postgres on first start.
       - ./scripts/localstack:/etc/localstack/init/ready.d:ro
     healthcheck:

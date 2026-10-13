@@ -21,8 +21,10 @@ process (`apps/worker`), not the API.
    - Email relay: check `MAIL_FROM_EMAIL`/SES verification, SES bounce/complaint queue
      depth (see `ses-bounce-queue-*` CloudWatch alarms).
    - Entra guest-invite relay: check Graph API errors (permanent refusals vs transient).
-   - Notification outbox / SNS publish: check `outbox_events` for `status = 'failed'`
-     rows and the `outbox-dead-letter` CloudWatch alarm.
+   - Any outbox relay (email, notification, audit projection, SCM webhook and backfill, guest invite): check
+     its table (`email_outbox`, `notification_outbox`, `outbox_events`, `guest_invite_outbox`,
+     `scm.webhook_inbox`, `scm.backfill_jobs`) for `status = 'failed'` rows, and the `outbox-dead-letter`
+     CloudWatch alarm. A row `abandoned` in `last_error` was dead-lettered because its worker died mid-call.
 5. Check cache (Valkey) health — several worker paths (pub/sub, relay wake signals)
    depend on it; see the `cache-*` CloudWatch alarms.
 
@@ -36,5 +38,5 @@ process (`apps/worker`), not the API.
 ## Escalate if
 
 Failures keep climbing and no single job type/error message dominates, or the
-notification outbox / SNS dead-letter alarm is also firing — that combination means
+outbox dead-letter alarm is also firing — that combination means
 delivery-critical paths (invites, notifications) are backing up, not just one flaky job.

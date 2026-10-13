@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeObject, sanitizeString } from './sanitize.util';
+import { sanitizeObject, sanitizeString } from '@quynhonsemiconductor/platform-http';
+
+/**
+ * This file pins rova's expectations of the XSS stripper. The implementation is no longer rova's: it was a
+ * byte-identical copy shared with opshub (kept in step by a comment), and now lives in
+ * `@quynhonsemiconductor/platform-http`, which has its own tests. These cases stay because they are the
+ * behaviour rova relies on, and a package upgrade that changed one should fail HERE, in the repo that depends on it.
+ */
 
 /**
  * The three cases marked CONVERGENCE are the ones the two copies of this file

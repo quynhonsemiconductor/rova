@@ -21,6 +21,7 @@ import type {} from '@fastify/csrf-protection';
 import '@fastify/cookie';
 import { Auth, AppConfigService, Public, RateLimit, UnauthorizedException } from '@platform';
 import { AuthMetrics } from '@quynhonsemiconductor/observability';
+import { clientIp } from '@quynhonsemiconductor/platform-http';
 import type { JwtPayload } from '@platform';
 import {
   AuthService,
@@ -131,7 +132,7 @@ export class BffController {
     const cookieState = readCookie(req, BFF_STATE_COOKIE);
     let result: { sid: string; returnTo: string };
     try {
-      result = await this.bff.completeLogin({ code, state, cookieState, ip: req.ip });
+      result = await this.bff.completeLogin({ code, state, cookieState, ip: clientIp(req) });
     } catch {
       // Never surface OIDC/internal detail to the browser on the login path — the
       // metric is what tells us login itself is degraded, since the 401 alone
@@ -175,7 +176,7 @@ export class BffController {
     }
     let sid: string;
     try {
-      sid = await this.bff.devLogin(dto.email, req.ip);
+      sid = await this.bff.devLogin(dto.email, clientIp(req));
     } catch (err) {
       this.authMetrics.recordLogin('dev', 'failure');
       throw err;
@@ -226,7 +227,7 @@ export class BffController {
     if (!sid) {
       throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'No active BFF session');
     }
-    const claims = await this.bff.switchWorkspace(sid, dto.workspaceId, req.ip);
+    const claims = await this.bff.switchWorkspace(sid, dto.workspaceId, clientIp(req));
     if (!claims) {
       throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'Session no longer exists');
     }
