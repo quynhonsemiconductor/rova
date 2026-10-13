@@ -107,8 +107,13 @@ as `owner/name`; same backfill-on-add behaviour.
   lists are fetched only for commits that actually reference a key.
 - **Async job**: `POST /v1/scm/repositories/{id}/sync` (and repo creation) inserts a
   row into `scm.backfill_jobs`. The worker's `ScmBackfillRelayService` drains it on a
-  30 s cron (`FOR UPDATE SKIP LOCKED`, exponential-backoff retry), one repo per pass,
-  and records `{prs, commits, connections, changesets}` on the job row.
+  30 s cron, one repo at a time, and records `{prs, commits, connections, changesets}` on
+  the job row. The relay is lease-and-fence: a short claim transaction spends the attempt and
+  stamps a lease, the run happens with **no transaction open**, and a fenced finish writes the
+  result (exponential-backoff retry, dead-letter after five attempts). A run has a hard
+  **8-minute network budget** and each GitHub request a 30 s deadline, both as `AbortSignal`s;
+  the lease is derived from them (`BACKFILL_RUN_BUDGET_MS` + one call + a margin). A run that
+  exhausts the budget fails as an ordinary retryable error.
 
 Idempotency: connections upsert on `(work_item_id, external_id)`, changesets on
 `(work_item_id, revision)`. Re-running a backfill, retrying a failed job, or

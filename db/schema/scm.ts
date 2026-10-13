@@ -38,6 +38,7 @@ import {
   scmInboxStatusEnum,
   scmBackfillStatusEnum,
 } from './enums';
+import { outboxLease } from './outbox-lease';
 
 export const scmSchema = pgSchema('scm');
 
@@ -98,6 +99,7 @@ export const scmWebhookInbox = scmSchema.table(
     scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull().defaultNow(),
     processedAt: timestamp('processed_at', { withTimezone: true }),
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+    ...outboxLease(),
   },
   (t) => ({
     deliveryIdx: uniqueIndex('uq_scm_inbox_delivery').on(t.provider, t.deliveryId),
@@ -185,6 +187,7 @@ export const scmBackfillJobs = scmSchema.table(
     scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull().defaultNow(),
     requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
+    ...outboxLease(),
   },
   (t) => ({
     repoIdx: index('ix_scm_backfill_repository').on(t.repositoryId),
