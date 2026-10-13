@@ -270,8 +270,12 @@ jobs:
       # Every image in the task has an arm64 build — node:alpine for the app,
       # cloudflare/cloudflared and amazon/aws-otel-collector for the sidecars (checked
       # 2026-08-17). qnsc-kb cannot do this: clamav/clamav is amd64-only on every tag.
-      build_runner: ubuntu-24.04-arm
-      image_platforms: linux/arm64
+      #
+      # MULTI-ARCH (2026-10-13): the on-prem k3s host is amd64, so the image is now built for BOTH architectures: linux/amd64 on
+      # ubuntu-24.04 and linux/arm64 on ubuntu-24.04-arm, natively, merged into one manifest by the reusable's `merge` job.
+      # ECS stays on Graviton (cpu_architecture = ARM64 above) and pulls the arm64 entry of the same tag; `build_runner` and
+      # `image_platforms` are ignored while multi_arch is true. Drop this when the product has left ECS.
+      multi_arch: true
 
       # ── Build cache: GHA, not the `registry` default ─────────────────────────
       # The registry backend writes a `:buildcache` tag to ECR with `mode=max` and PULLS
