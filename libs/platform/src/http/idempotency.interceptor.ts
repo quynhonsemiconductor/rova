@@ -11,6 +11,7 @@ import type { FastifyRequest } from 'fastify';
 import { Observable, from, of } from 'rxjs';
 import { switchMap, tap } from 'rxjs/operators';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
+import { clientIp } from '@quynhonsemiconductor/platform-http';
 
 /** TTL for cached idempotent responses (24 hours). */
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
@@ -53,7 +54,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const userId =
       req.user?.sub ??
       createHash('sha256')
-        .update(`${req.ip ?? ''}:${req.headers['user-agent'] ?? ''}`)
+        .update(`${clientIp(req)}:${req.headers['user-agent'] ?? ''}`)
         .digest('hex')
         .slice(0, 16);
     const redisKey = `idem:${userId}:${req.method}:${req.url}:${idempotencyKey}`;

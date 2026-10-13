@@ -20,17 +20,14 @@ import path from 'path';
 import { seed, seedSystemRoles, seedTenantBootstrap } from './seeds/seed';
 import { strandedMigrations } from './stranded-migrations';
 import { resolveDatabaseUrl } from './database-url';
-import { resolveAuthMode, resolveIamUrl, resolveMigrationPoolConfig } from './pg-pool-config';
+import { resolveMigrationPoolConfig } from './pg-pool-config';
 
 // Resolves DATABASE_MIGRATION_URL, else DATABASE_URL, else composes from the
 // DATABASE_* parts (the deployed path — credentials come straight from the
 // RDS-managed secret, never a hand-maintained copy). Throws with a precise
 // message listing what is missing.
-// UNDER DATABASE_AUTH=iam THIS CARRIES NO PASSWORD. `resolveMigrationPoolConfig`
-// returns `password` as a FUNCTION that pg calls per connection, so a migration that
-// outlives a 15-minute token still reconnects successfully. The role is
-// `<product>_migrator`, set by the chart — never the application role, whose 30s
-// statement_timeout would kill the 600s migration this file exists to run.
+// The role is `<product>_migrate`, set by the deployment — never the application role, whose
+// statement_timeout would kill a long migration and whose rights do not include DDL.
 let poolConfig: ReturnType<typeof resolveMigrationPoolConfig>;
 try {
   poolConfig = resolveMigrationPoolConfig();
@@ -41,7 +38,7 @@ try {
 
 const pool = new Pool({ ...poolConfig, max: 1 });
 
-/** The pre-IAM fallback: whatever string the migration connection was built from. */
+/** Whatever string the migration connection was built from. */
 function resolveMigrationUrlFallback(): string {
   return poolConfig.connectionString ?? '';
 }
@@ -152,15 +149,8 @@ async function run() {
     // Seed uses the app connection, not the migration URL (admin role).
     // Falls back to the migration URL when no separate app credential is set.
     // The seed helpers take a connection STRING and build their own pool, so this is
-    // the one place a URL is still required. Under IAM that means minting a token and
-    // embedding it — safe here because seeding is seconds, not hours, and this is
-    // inside the async flow so it can await. See resolveIamUrl's warning about pools.
-    //
-    // Under IAM the migrator cannot mint a token for the APPLICATION role — its IRSA
-    // identity is scoped to its own — so it seeds as itself. That is correct rather
-    // than a compromise: the migrator already holds the DDL rights seeding needs.
-    const seedUrl = await (async () => {
-      if (resolveAuthMode() === 'iam') return resolveIamUrl();
+    // the one place a URL is still required.
+    const seedUrl = (() => {
       try {
         return resolveDatabaseUrl();
       } catch {

@@ -80,7 +80,6 @@ export default defineConfig({
       // three files while 27 had specs.
       include: [
         'db/database-url.ts',
-        'db/pg-iam.ts',
         'db/pg-pool-config.ts',
         'db/stranded-migrations.ts',
         'libs/shared-kernel/src/health.ts',
@@ -102,6 +101,7 @@ export default defineConfig({
         'libs/platform/src/config/env.schema.ts',
         'libs/platform/src/email/email-delivery.service.ts',
         'libs/platform/src/outbox/relay-lease.ts',
+        'libs/platform/src/rate-limit/rate-limit.guard.ts',
         'libs/platform/src/outbox/retry-after.ts',
         'libs/modules/iterations/src/application/iteration-status.service.ts',
         'libs/modules/iterations/src/application/iterations.service.ts',
@@ -166,8 +166,6 @@ export default defineConfig({
         'apps/worker/src/email/bounce-feedback.service.ts',
         'apps/worker/src/identity/entra-guest-invite-relay.service.ts',
         'libs/platform/src/auth/jwt.guard.ts',
-        'libs/platform/src/context/als.middleware.ts',
-        'libs/platform/src/utils/sanitize.util.ts',
         'libs/platform/src/context/request-context.ts',
         'libs/platform/src/http/csrf.ts',
         'libs/modules/access/src/interface/http/route-authz-audit.ts',

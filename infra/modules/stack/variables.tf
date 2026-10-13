@@ -636,6 +636,25 @@ variable "cloudflare_account_id" {
 }
 
 
+variable "edge_client_ip_secret_set" {
+  description = <<-EOT
+    Inject `edge-client-ip-secret` into the API as EDGE_CLIENT_IP_SECRET, so `clientIp()` verifies the address the
+    Cloudflare Pages Function signs. Behind the Function the API's `cf-connecting-ip` is a Cloudflare address shared by
+    every visitor: without the verified address one AUTH_LOGIN bucket (5 attempts per 15 minutes) and one DEFAULT
+    bucket are the whole company's.
+
+    OFF by default, for the same mechanical reason as `storage_public_credentials`: the deploy preflight refuses to
+    deploy when an injected Secrets Manager secret holds no value, so injecting it before it is populated blocks every
+    deploy. The key is declared either way. Order, per environment (docs/runbooks/edge-client-ip.md):
+      1. generate a key (`openssl rand -base64 48`) and set it as the Pages secret EDGE_CLIENT_IP_SECRET;
+      2. put the SAME value into the `edge-client-ip-secret` key of `<product>/<env>/app` (the bundle);
+      3. set this true.
+    While false the API has no key: it ignores the signed headers and uses `cf-connecting-ip`, exactly as before.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "storage_public_credentials" {
   description = <<-EOT
     Inject the PUBLIC-bucket R2 credential into api and worker, so the token that writes

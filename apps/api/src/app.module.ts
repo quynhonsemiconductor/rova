@@ -1,4 +1,4 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfigService } from '@platform/config';
@@ -29,7 +29,6 @@ import { GlobalExceptionFilter, REQUEST_CONTEXT } from '@quynhonsemiconductor/pl
 import { HttpLoggingInterceptor } from '@platform/http/http-logging.interceptor';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
-import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
 
 @Module({
   imports: [
@@ -87,9 +86,4 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
     { provide: APP_PIPE, useClass: ZodValidationPipe },
   ],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer): void {
-    // AsyncLocalStorage middleware — sets correlationId + workspace/user stubs for every request
-    consumer.apply(AsyncLocalStorageMiddleware).forRoutes('*path');
-  }
-}
+export class AppModule {}

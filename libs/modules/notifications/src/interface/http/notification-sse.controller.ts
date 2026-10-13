@@ -61,6 +61,7 @@ import { CurrentUser } from '@modules/identity';
 import { NotificationPubSubService } from '@platform/notifications';
 import { NotificationsService } from '../../application/notifications.service';
 import { SelfScoped } from '@modules/access';
+import { SseConnections } from './sse-connections';
 
 @ApiTags('notifications')
 @Controller('notifications')
@@ -71,6 +72,7 @@ export class NotificationSseController {
   constructor(
     private readonly pubSub: NotificationPubSubService,
     private readonly notificationsService: NotificationsService,
+    private readonly connections: SseConnections,
   ) {}
 
   @Get('stream')
@@ -104,9 +106,16 @@ export class NotificationSseController {
     raw.setHeader('X-Accel-Buffering', 'no');
     raw.flushHeaders();
 
+    // Tracked from the first moment, so a shutdown that begins while this stream is still being set up ends it too.
+    // Forgotten when the response closes. See sse-connections.ts for why a shutdown must end open streams.
+    const forget = this.connections.add(raw);
+    raw.on('close', forget);
+
     // Send the current unread count immediately on connect so the client does
     // not need a separate GET /notifications/unread-count round-trip.
     const unreadCount = await this.notificationsService.getUnreadCount(user);
+    // Ended by a shutdown, or gone, while the count was being read: nothing left to stream to.
+    if (!raw.writable) return;
     writeEvent(raw, 'connected', { unreadCount });
 
     // Replay missed events when the client reconnects with Last-Event-ID.
@@ -129,6 +138,10 @@ export class NotificationSseController {
         });
       }
     }
+
+    // A shutdown can end the stream while the replay was being read. Subscribing now would leak the subscription and
+    // the heartbeat: the `close` listener that frees them is registered at the end of this method.
+    if (!raw.writable) return;
 
     // Subscribe to Valkey pub/sub for this user's notifications.
     // Multiple browser tabs / devices each get their own subscription.
@@ -180,6 +193,12 @@ export class NotificationSseController {
           }
         });
     });
+
+    // Ended while subscribing (same race): release what was just taken, because no `close` event will come.
+    if (!raw.writable) {
+      await unsubscribe().catch(() => undefined);
+      return;
+    }
 
     // Heartbeat every 25s.
     // - Keeps the TCP connection alive through proxies and load balancers.

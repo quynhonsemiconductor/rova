@@ -1,5 +1,5 @@
 import { Global, Module } from '@nestjs/common';
-import { DRIZZLE, DrizzleProvider } from './drizzle.provider';
+import { DATABASE_POOL_TOKEN, DRIZZLE, DrizzleProvider } from './drizzle.provider';
 import { UNIT_OF_WORK, UnitOfWork } from './unit-of-work';
 import { DbPoolMetrics } from '@quynhonsemiconductor/observability';
 
@@ -11,9 +11,15 @@ import { DbPoolMetrics } from '@quynhonsemiconductor/observability';
     DbPoolMetrics,
     DrizzleProvider,
     { provide: DRIZZLE, useFactory: (p: DrizzleProvider) => p.instance, inject: [DrizzleProvider] },
+    // For `enableHealth()`'s built-in database check. See DATABASE_POOL_TOKEN for why it must exist.
+    {
+      provide: DATABASE_POOL_TOKEN,
+      useFactory: (p: DrizzleProvider) => p.poolHandle,
+      inject: [DrizzleProvider],
+    },
     { provide: UNIT_OF_WORK, useClass: UnitOfWork },
     UnitOfWork,
   ],
-  exports: [DRIZZLE, UNIT_OF_WORK, UnitOfWork, DrizzleProvider],
+  exports: [DRIZZLE, DATABASE_POOL_TOKEN, UNIT_OF_WORK, UnitOfWork, DrizzleProvider],
 })
 export class DatabaseModule {}

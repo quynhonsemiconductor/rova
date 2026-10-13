@@ -1,153 +1,34 @@
 /**
- * The pool configuration node-postgres actually receives.
+ * The pool configuration node-postgres receives: a connection string (and TLS), from `DATABASE_URL` or composed
+ * from the discrete `DATABASE_*` parts. See `database-url.ts` for the two ways to supply it and `pg-ssl.ts` for TLS.
  *
- * This exists because IAM authentication and URL-based authentication cannot share a
- * shape. A URL carries its credential INSIDE the string, fixed at the moment it is
- * built; an IAM token must be produced per connection by a callback. `pg` supports
- * both, but not at once — so the choice is made here, in one place, rather than
- * discovered at the call site.
- *
- * ── THE TWO MODES ──────────────────────────────────────────────────────────────
- *
- *   DATABASE_AUTH=password  (default)  Unchanged legacy behaviour: DATABASE_URL, or
- *                                      the discrete parts composed into a URL. Used
- *                                      by local dev, CI, and the ECS estate.
- *
- *   DATABASE_AUTH=iam                  Discrete parts with NO password. The password
- *                                      is a callback that mints an RDS IAM token per
- *                                      connection. Used by the Kubernetes estate.
- *
- * WHY THE DEFAULT IS `password`. The ECS estate is still serving production and its
- * task definitions supply `DATABASE_PASSWORD` from the RDS-managed secret. A default
- * of `iam` would change the behaviour of every running task the moment this ships.
- * The new estate opts IN explicitly, which is also what makes this safe to merge
- * before anything is cut over.
+ * THERE IS NO IAM AUTHENTICATION HERE ANY MORE. This used to carry a second mode (`DATABASE_AUTH=iam`) that minted
+ * an RDS IAM token per connection, for a Kubernetes estate on RDS with IRSA. The on-prem estate runs CloudNativePG,
+ * whose roles have ordinary passwords from a Secret, so the mode had no consumer: it was ~250 lines (a token
+ * signer, a per-connection password callback, a URL-with-token builder) and a dependency on `@aws-sdk/rds-signer`,
+ * all unreachable. If RDS IAM auth is ever wanted again, it is in git history (`db/pg-iam.ts`).
  */
 import { resolveDatabaseUrl, type DatabaseUrlParts } from './database-url';
-import { getIamAuthToken, iamPasswordProvider } from './pg-iam';
 import { pgOptions } from './pg-ssl';
 
-export type DatabaseAuthMode = 'password' | 'iam';
+export type PoolConnectionConfig = ReturnType<typeof pgOptions>;
 
-export interface PoolAuthParts extends DatabaseUrlParts {
-  DATABASE_AUTH?: string;
-  AWS_REGION?: string;
-}
-
-/**
- * A `pg` PoolConfig subset. `password` is deliberately a union: `pg` accepts a
- * function and calls it once per connection, which is the only mechanism that keeps
- * a 15-minute token valid in a process that runs for weeks.
- */
-export interface PoolConnectionConfig {
-  connectionString?: string;
-  host?: string;
-  port?: number;
-  database?: string;
-  user?: string;
-  password?: string | (() => Promise<string>);
-  ssl?: { rejectUnauthorized: false };
-}
-
-function requiredForIam(name: string, value: string | undefined): string {
-  if (!value) {
-    throw new Error(
-      `Database configuration incomplete: ${name} is required when DATABASE_AUTH=iam. ` +
-        'IAM authentication composes the connection from discrete parts and mints the ' +
-        'credential per connection, so DATABASE_HOST, DATABASE_PORT, DATABASE_NAME and ' +
-        'DATABASE_USER must all be set. DATABASE_PASSWORD is NOT used.',
-    );
-  }
-  return value;
-}
-
-export function resolveAuthMode(env: PoolAuthParts = process.env): DatabaseAuthMode {
-  const raw = env.DATABASE_AUTH?.trim().toLowerCase();
-  if (!raw || raw === 'password') return 'password';
-  if (raw === 'iam') return 'iam';
-  throw new Error(`DATABASE_AUTH must be "password" or "iam", received "${env.DATABASE_AUTH}".`);
-}
-
-export function resolvePoolConfig(env: PoolAuthParts = process.env): PoolConnectionConfig {
-  if (resolveAuthMode(env) === 'password') {
-    return pgOptions(resolveDatabaseUrl(env));
-  }
-
-  // A URL carries a password; IAM mode has none. Being handed both means two
-  // conflicting intents, and the one that would silently win is whichever this code
-  // happens to check first. Failing here is the only outcome that cannot surprise.
-  if (env.DATABASE_URL) {
-    throw new Error(
-      'DATABASE_AUTH=iam and DATABASE_URL are mutually exclusive: a URL embeds a static ' +
-        'password, which IAM authentication replaces. Supply the discrete DATABASE_* parts ' +
-        'and leave DATABASE_URL unset.',
-    );
-  }
-
-  const host = requiredForIam('DATABASE_HOST', env.DATABASE_HOST);
-  const port = Number(requiredForIam('DATABASE_PORT', env.DATABASE_PORT?.toString()));
-  const database = requiredForIam('DATABASE_NAME', env.DATABASE_NAME);
-  const user = requiredForIam('DATABASE_USER', env.DATABASE_USER);
-  const region = env.AWS_REGION ?? 'ap-southeast-1';
-
-  return {
-    host,
-    port,
-    database,
-    user,
-    password: iamPasswordProvider({ hostname: host, port, username: user, region }),
-    // NOT OPTIONAL, AND NOT THE SAME DECISION AS pg-ssl's. RDS REJECTS an IAM-token
-    // handshake on an unencrypted connection, so this is a correctness requirement
-    // rather than the hardening choice it is in password mode. `rejectUnauthorized`
-    // stays false for the reason pg-ssl.ts documents: the Alpine base image has no
-    // Amazon RDS CA bundle, so verification fails with SELF_SIGNED_CERT_IN_CHAIN.
-    // Traffic is encrypted either way and never leaves the VPC.
-    ssl: { rejectUnauthorized: false },
-  };
+export function resolvePoolConfig(env: DatabaseUrlParts = process.env): PoolConnectionConfig {
+  return pgOptions(resolveDatabaseUrl(env));
 }
 
 /**
  * The MIGRATION connection.
  *
- * `DATABASE_MIGRATION_URL` still wins when set — that is the escape hatch for a
- * privileged credential supplied by hand. Otherwise this is the ordinary resolution,
- * so the migrator gets IAM auth for free wherever the application does.
+ * `DATABASE_MIGRATION_URL` wins when set: the escape hatch for a privileged credential supplied by hand. Otherwise
+ * this is the ordinary resolution.
  *
- * Note which role that is: the chart sets DATABASE_USER to `<product>_migrator`, never
- * the application role. §5d gives the app `statement_timeout = 30s`, which would kill
- * the 600s migration §4 sets deliberately, and DDL rights have no business on a
- * runtime role.
+ * Note which role that is: the deployed migrator's `DATABASE_USER` is `<product>_migrate`, never the application
+ * role, whose `statement_timeout` would kill a long migration and whose rights do not include DDL.
  */
 export function resolveMigrationPoolConfig(
-  env: PoolAuthParts & { DATABASE_MIGRATION_URL?: string } = process.env,
+  env: DatabaseUrlParts & { DATABASE_MIGRATION_URL?: string } = process.env,
 ): PoolConnectionConfig {
   if (env.DATABASE_MIGRATION_URL) return pgOptions(env.DATABASE_MIGRATION_URL);
   return resolvePoolConfig(env);
-}
-
-/**
- * A connection URL with a freshly minted IAM token as the password.
- *
- * WHY A URL AT ALL, when everything else here avoids one: the seed helpers take a
- * connection STRING and build their own pool. Changing that signature reaches much
- * further than this change should, and a URL is safe for their lifetime — a token
- * lives 15 minutes and seeding is measured in seconds.
- *
- * DO NOT use this for a long-lived pool. The token is fixed at the moment the string
- * is built, so a pool holding it fails once it expires — which is exactly the failure
- * mode `iamPasswordProvider` exists to prevent. This is for short, bounded work.
- *
- * The password is percent-encoded: a SigV4 token is full of characters that are
- * structural in a URL (`/`, `+`, `=`, `&`), and interpolating one raw yields either a
- * parse error or a URL that parses into the wrong host.
- */
-export async function resolveIamUrl(env: PoolAuthParts = process.env): Promise<string> {
-  const host = requiredForIam('DATABASE_HOST', env.DATABASE_HOST);
-  const port = Number(requiredForIam('DATABASE_PORT', env.DATABASE_PORT?.toString()));
-  const database = requiredForIam('DATABASE_NAME', env.DATABASE_NAME);
-  const user = requiredForIam('DATABASE_USER', env.DATABASE_USER);
-  const region = env.AWS_REGION ?? 'ap-southeast-1';
-
-  const token = await getIamAuthToken({ hostname: host, port, username: user, region });
-  return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(token)}@${host}:${port}/${database}?sslmode=require`;
 }

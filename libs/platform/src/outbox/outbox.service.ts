@@ -8,7 +8,8 @@ import { currentTraceparent } from '@quynhonsemiconductor/observability';
 
 /**
  * Outbox writer — inserts domain events into outbox_events in the SAME transaction
- * as the aggregate state change. The outbox relay (worker) polls and publishes to SNS.
+ * as the aggregate state change. `AuditProjectionRelay` (worker) claims each row and projects it into
+ * `audit.audit_logs`; there is no topic or queue (see docs/DIVERGENCE.md).
  *
  * This is the transactional outbox pattern: no dual-write, no lost events.
  */

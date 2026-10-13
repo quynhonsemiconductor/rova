@@ -4,12 +4,13 @@
 // OTel bootstrap, and MUST come from the subpath rather than the package root.
 import '@quynhonsemiconductor/platform-runtime/load-env';
 // OTel must be bootstrapped BEFORE any other imports so auto-instrumentation patches modules
-import { shutdownOtel } from './otel';
+import './otel';
 
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Logger } from 'nestjs-pino';
+import { enableGracefulShutdown } from '@quynhonsemiconductor/platform-runtime';
 import { AppModule } from './app.module';
 import { bootstrapApp } from './bootstrap/app.bootstrap';
 
@@ -32,34 +33,17 @@ async function bootstrap(): Promise<void> {
   const port = parseInt(process.env['PORT'] ?? '3000', 10);
   const host = process.env['HOST'] ?? '0.0.0.0';
 
+  // Leave the Service cleanly on SIGTERM / SIGINT: /readyz answers 503, the server keeps serving for the
+  // endpoint-removal delay (SHUTDOWN_ENDPOINT_DELAY_MS: 5 s in a Kubernetes pod, 0 elsewhere), stops listening and
+  // drains in-flight requests, then app.close() runs the destroy hooks (DB pool, Valkey) and OpenTelemetry is
+  // flushed. Bounded by SHUTDOWN_TIMEOUT_MS (25 s, inside ECS's 30 s stopTimeout and a pod's 30 s grace period).
+  // Replaces this file's own SIGTERM/SIGINT handlers; it must be called before listen().
+  enableGracefulShutdown(app);
+
   await app.listen(port, host);
 
   const logger = app.get(Logger);
   logger.log(`🚀 API listening on ${host}:${port} [${process.env['NODE_ENV']}]`, 'Bootstrap');
-
-  // ── Process signal handlers ────────────────────────────────────────────────
-  // ECS sends SIGTERM on task replacement; Docker Ctrl-C sends SIGINT.
-  // app.close() triggers OnModuleDestroy hooks: DB pool drain, Valkey quit, etc.
-  const shutdown = async (signal: string): Promise<void> => {
-    logger.log(`Received ${signal} — shutting down gracefully…`, 'Bootstrap');
-    try {
-      // Flush and shut down OTEL before NestJS closes (drains pending spans)
-      await shutdownOtel();
-      await app.close();
-      logger.log('Shutdown complete', 'Bootstrap');
-    } catch (err) {
-      logger.error({ msg: 'Error during shutdown', err }, 'Bootstrap');
-    } finally {
-      process.exit(0);
-    }
-  };
-
-  process.on('SIGTERM', () => {
-    void shutdown('SIGTERM');
-  });
-  process.on('SIGINT', () => {
-    void shutdown('SIGINT');
-  });
 
   // Log unhandled rejections without crashing (they surface via normal paths)
   process.on('unhandledRejection', (reason: unknown) => {

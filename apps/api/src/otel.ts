@@ -8,13 +8,10 @@
  * than the package root on purpose: the root barrel reaches Nest and pino, which
  * would then be required *before* instrumentation is installed.
  *
- * Shutdown: call `shutdownOtel()` from the main.ts signal handler BEFORE
- * `app.close()`. Do NOT register a second SIGTERM handler here — main.ts owns the
- * shutdown sequence.
+ * Shutdown: `enableGracefulShutdown()` (platform-runtime, called from main.ts) flushes OpenTelemetry after
+ * `app.close()`. Do NOT register a second SIGTERM handler here.
  */
-import { startOtel, shutdownOtel } from '@quynhonsemiconductor/observability/otel';
-
-export { shutdownOtel };
+import { startOtel } from '@quynhonsemiconductor/observability/otel';
 
 /**
  * Explicit bucket boundaries for `http.server.duration`, in milliseconds.

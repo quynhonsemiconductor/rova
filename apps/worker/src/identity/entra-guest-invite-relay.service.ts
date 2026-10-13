@@ -121,7 +121,7 @@ export class EntraGuestInviteRelayService
    * because consent was revoked, it dead-letters LOUDLY: `DEAD_LETTER_FIELD` is what the CloudWatch
    * alarm matches, and cancel-and-re-invite is the operator's fix. Silence with an alarm beats silence
    * without one. The cost is one indexed partial-index lookup per 10s per worker for a dormant
-   * feature, which is what the other four relays already pay.
+   * feature, which is what the other five relays already pay.
    */
   @Cron('*/10 * * * * *', { name: 'entra-guest-invite-relay' })
   @Span('entra.guestInvite.relay')
