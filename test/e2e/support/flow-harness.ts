@@ -77,7 +77,7 @@ export async function bootRallyApp(): Promise<NestFastifyApplication> {
 
 /**
  * Boot just enough of the real Worker to exercise the notification + email
- * relay's actual fetchBatch/processRow/markSent/markFailed against the seeded
+ * relay's actual selectDue/deliver/markSent/markFailed against the seeded
  * DB — the same code the deployed Worker runs. Deliberately does NOT import
  * ScheduleModule.forRoot() or the full WorkerModule (AuditProjectionRelay,
  * ReportingModule, etc.): the @Cron decorators on relay() then have no

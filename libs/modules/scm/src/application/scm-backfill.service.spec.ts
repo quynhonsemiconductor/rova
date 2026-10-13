@@ -99,9 +99,50 @@ describe('ScmBackfillService', () => {
 
   it('resolves + caches the installation id when the repo has none', async () => {
     await svc.run('repo-1');
-    expect(appAuth.resolveInstallationId).toHaveBeenCalledWith('acme/demo');
+    expect(appAuth.resolveInstallationId).toHaveBeenCalledWith('acme/demo', undefined);
     expect(store.setInstallationId).toHaveBeenCalledWith('repo-1', '99');
-    expect(appAuth.getInstallationToken).toHaveBeenCalledWith('99');
+    expect(appAuth.getInstallationToken).toHaveBeenCalledWith('99', undefined);
+  });
+
+  describe("the run's network budget", () => {
+    it('hands the run signal to the installation lookup, the token request and every GitHub request', async () => {
+      const controller = new AbortController();
+
+      await svc.run('repo-1', { signal: controller.signal });
+
+      expect(appAuth.resolveInstallationId).toHaveBeenCalledWith('acme/demo', controller.signal);
+      expect(appAuth.getInstallationToken).toHaveBeenCalledWith('99', controller.signal);
+      // Each request carries a signal of its own (the 30 s deadline merged with the run's), so it can be
+      // cancelled in flight; without one a stalled socket outlives the relay's lease.
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(0);
+      for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
+        expect(init.signal).toBeInstanceOf(AbortSignal);
+      }
+    });
+
+    it('cancels the request in flight when the budget is spent', async () => {
+      const controller = new AbortController();
+      let seen: AbortSignal | undefined;
+      fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+        seen = init.signal as AbortSignal;
+        controller.abort(); // the budget runs out while this request is in flight
+        return Promise.reject(new DOMException('This operation was aborted', 'AbortError')); // as fetch does
+      });
+
+      await expect(svc.run('repo-1', { signal: controller.signal })).rejects.toThrow();
+      expect(seen?.aborted).toBe(true);
+    });
+
+    it('stops linking once the budget is spent, instead of finishing the batch', async () => {
+      const controller = new AbortController();
+      (linker.linkPullRequest as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+        controller.abort();
+        return 'processed';
+      });
+
+      await expect(svc.run('repo-1', { signal: controller.signal })).rejects.toThrow();
+      expect(linker.linkCommit).not.toHaveBeenCalled();
+    });
   });
 
   it('re-run yields identical counts (link path is idempotent upstream)', async () => {

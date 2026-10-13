@@ -26,10 +26,21 @@ export interface GhRestCommitFile {
   status: string; // added | modified | removed | renamed | copied | changed
 }
 
+import { RetryAfterError, retryAfterMsFrom } from '@platform';
+import { githubCallSignal } from './github-http';
+
+/** The wait GitHub asks for on a 403/429 rate limit (primary or secondary), or undefined when this is not one. */
+export function rateLimitWaitMs(res: Response): number | undefined {
+  if (res.status !== 403 && res.status !== 429) return undefined;
+  return retryAfterMsFrom(res.headers);
+}
+
 export class GithubRestClient {
   constructor(
     private readonly apiBaseUrl: string,
     private readonly token: string,
+    /** Cancels the call in flight when the caller's run budget is spent. Every call also has its own deadline. */
+    private readonly signal?: AbortSignal,
   ) {}
 
   /**
@@ -108,10 +119,15 @@ export class GithubRestClient {
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },
+      signal: githubCallSignal(this.signal),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`GitHub REST GET ${path} failed (${res.status}): ${text.slice(0, 200)}`);
+      const message = `GitHub REST GET ${path} failed (${res.status}): ${text.slice(0, 200)}`;
+      // A rate limit says how long to wait: back the job off for that long, not for the 30 s curve.
+      const wait = rateLimitWaitMs(res);
+      if (wait !== undefined) throw new RetryAfterError(message, wait);
+      throw new Error(message);
     }
     return (await res.json()) as T;
   }

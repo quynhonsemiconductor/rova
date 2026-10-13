@@ -10,7 +10,12 @@
  * every row of a batch.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EntraGuestInviteClient, PermanentGuestInviteError } from './entra-guest-invite.client';
+import {
+  EntraGuestInviteClient,
+  GRAPH_CALL_TIMEOUT_MS,
+  PermanentGuestInviteError,
+} from './entra-guest-invite.client';
+import { RESILIENCE_PRESETS, ResiliencePreset, RetryAfterError } from '@platform';
 import type { AppConfigService, ResilienceService } from '@platform';
 
 const CONFIG: Record<string, unknown> = {
@@ -80,6 +85,69 @@ describe('EntraGuestInviteClient', () => {
 
     it('is true with the flag on and all three Entra values set', () => {
       expect(client().isConfigured()).toBe(true);
+    });
+  });
+
+  describe('invite — throttling', () => {
+    it("hands a 429 with Retry-After to the relay as a RetryAfterError, with the server's wait", async () => {
+      fetchMock
+        .mockResolvedValueOnce(tokenOk())
+        .mockResolvedValueOnce(
+          new Response('{}', { status: 429, headers: { 'Retry-After': '120' } }),
+        );
+
+      const err: unknown = await client()
+        .invite({ email: 'dana@partner.example' })
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(RetryAfterError);
+      expect((err as RetryAfterError).retryAfterMs).toBe(120_000);
+    });
+
+    it('a 503 with Retry-After is the same; a 503 without one stays an ordinary retryable error', async () => {
+      fetchMock
+        .mockResolvedValueOnce(tokenOk())
+        .mockResolvedValueOnce(
+          new Response('{}', { status: 503, headers: { 'Retry-After': '10' } }),
+        );
+      expect(
+        await client()
+          .invite({ email: 'a@b.example' })
+          .catch((e: unknown) => e),
+      ).toBeInstanceOf(RetryAfterError);
+
+      fetchMock.mockResolvedValueOnce(new Response('{}', { status: 503 }));
+      const plain: unknown = await client()
+        .invite({ email: 'a@b.example' })
+        .catch((e: unknown) => e);
+      expect(plain).toBeInstanceOf(Error);
+      expect(plain).not.toBeInstanceOf(RetryAfterError);
+    });
+  });
+
+  describe('invite — one deadline for the whole execution', () => {
+    it('gives the token request and the invitation the SAME live AbortSignal', async () => {
+      // The resilience timeout rejects the caller's promise but cannot stop a fetch already in flight; the
+      // signal does, so a request that outlived the relay's lease is cancelled rather than landing late.
+      fetchMock
+        .mockResolvedValueOnce(tokenOk())
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ invitedUser: { id: 'g1' } }), { status: 201 }),
+        );
+
+      await client().invite({ email: 'dana@partner.example' });
+
+      const tokenSignal = callAt(fetchMock, 0)[1].signal;
+      const graphSignal = callAt(fetchMock, 1)[1].signal;
+      expect(tokenSignal).toBeInstanceOf(AbortSignal);
+      expect(graphSignal).toBe(tokenSignal);
+      expect(tokenSignal?.aborted).toBe(false);
+    });
+
+    it('the deadline equals the resilience preset per-execution timeout, so the two cannot drift apart', () => {
+      expect(GRAPH_CALL_TIMEOUT_MS).toBe(
+        RESILIENCE_PRESETS[ResiliencePreset.EXTERNAL_API].timeout?.durationMs,
+      );
     });
   });
 

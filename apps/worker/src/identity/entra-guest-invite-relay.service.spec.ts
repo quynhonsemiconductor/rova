@@ -108,11 +108,31 @@ function makeConfig(enabled = true): AppConfigService {
   } as unknown as AppConfigService;
 }
 
-/** Subclass that supplies the batch directly, so no database is needed to drive one pass. */
+/**
+ * Subclass that supplies the batch directly and stands in for the lease SQL (claim, renew, fence, reap), which
+ * the base spec and test/e2e/outbox-lease.e2e.spec.ts cover — so no database is needed to drive one pass.
+ */
 class TestRelay extends EntraGuestInviteRelayService {
   batch: Row[] = [];
-  protected override async fetchBatch(): Promise<Row[]> {
-    return this.batch;
+  protected override async selectDue(): Promise<Row[]> {
+    const rows = this.batch;
+    this.batch = []; // a pass keeps claiming until the queue is empty
+    return rows;
+  }
+  protected override reapAbandoned(): Promise<number> {
+    return Promise.resolve(0);
+  }
+  protected override stampLeases(_tx: DrizzleTx, ids: string[]): Promise<Map<string, number>> {
+    return Promise.resolve(new Map(ids.map((id) => [id, 1])));
+  }
+  protected override renewLease(): Promise<Date | null> {
+    return Promise.resolve(new Date(Date.now() + 180_000));
+  }
+  protected override holdsLease(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+  protected override releaseLease(): Promise<void> {
+    return Promise.resolve();
   }
 }
 
@@ -347,10 +367,9 @@ describe('EntraGuestInviteRelayService', () => {
       const outbox = updatesTo(updates, guestInviteOutbox);
       expect(outbox[0]).toMatchObject({
         status: 'failed',
-        attempts: 1,
         lastError: expect.stringContaining('Request_BadRequest'),
       });
-      // A terminal row keeps its scheduled_at — fetchBatch never selects 'failed' again.
+      // A terminal row keeps its scheduled_at — selectDue never selects 'failed' again.
       expect(outbox[0]).not.toHaveProperty('scheduledAt');
     });
 
@@ -381,7 +400,9 @@ describe('EntraGuestInviteRelayService', () => {
       await relay.relay();
 
       const outbox = updatesTo(updates, guestInviteOutbox);
-      expect(outbox[0]).toMatchObject({ status: 'pending', attempts: 1 });
+      expect(outbox[0]).toMatchObject({ status: 'pending' });
+      // `attempts` is spent at CLAIM time, so the failure write does not touch it.
+      expect(outbox[0]).not.toHaveProperty('attempts');
       // A retry, so scheduled_at moves forward by the base class's backoff.
       expect(outbox[0].scheduledAt).toBeInstanceOf(Date);
     });
