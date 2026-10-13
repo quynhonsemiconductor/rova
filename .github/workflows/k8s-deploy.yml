@@ -102,6 +102,9 @@ jobs:
       # The on-prem k3s host is amd64 (Ryzen 9 9950X), and gitops now defaults to amd64, so this caller builds
       # linux/amd64. (ECS keeps running the arm64 entry of the multi-arch images that backend-deploy.yml builds.)
       platforms: linux/amd64
+      # NATIVE x86 runner, REQUIRED with amd64: the reusable's `build_runner` default is the ARM runner (it pairs with its arm64 `platforms`
+      # default), so linux/amd64 on the default would be emulated under QEMU, and a QEMU build of this pnpm + Nest compile fails.
+      build_runner: ubuntu-24.04
       # ── ONE IMAGE PER DOCKERFILE STAGE ────────────────────────────────────────
       # The reusable passes `build-target: <service>`, which this Dockerfile REQUIRES:
       # it has a stage per service (`api`, `worker`, `migrator`), and with no target
