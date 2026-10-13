@@ -5,7 +5,13 @@ import {
   EDGE_TS_HEADER,
   signEdgeClientIp,
 } from '@quynhonsemiconductor/platform-http/edge'
-import { SPA_FORWARD_HEADERS, buildTarget, proxyToApi, type ProxyEnv } from './proxy'
+import {
+  INTEGRATION_FORWARD_HEADERS,
+  SPA_FORWARD_HEADERS,
+  buildTarget,
+  proxyToApi,
+  type ProxyEnv,
+} from './proxy'
 
 const SECRET = 'e'.repeat(40)
 const ENV: ProxyEnv = {
@@ -88,6 +94,40 @@ describe('proxyToApi: what reaches the API', () => {
     expect(sent?.headers.get('x-csrf-token')).toBe('tok')
     expect(sent?.headers.get('idempotency-key')).toBe('k-1')
     await expect(sent?.text()).resolves.toBe('{"a":1}')
+  })
+
+  it('forwards a GitHub webhook delivery with its signature headers and the body byte for byte', async () => {
+    // The SPA host is the webhook URL the setup card shows (`${origin}/v1/scm/webhook/github`). The API verifies
+    // X-Hub-Signature-256 over the RAW body, so the three headers must arrive and the body must not be re-encoded.
+    const body = '{"zen":"Keep it logically awesome.","note":"  spaces\u00e9\n"}'
+    const { sent, response } = await forward(
+      new Request('https://rova-dev.qnsc.vn/v1/scm/webhook/github', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': 'sha256=' + 'a'.repeat(64),
+          'x-github-event': 'pull_request',
+          'x-github-delivery': '72d3162e-cc78-11e3-81ab-4c9367dc0958',
+          'user-agent': 'GitHub-Hookshot/abc',
+          'cf-connecting-ip': '140.82.115.9',
+        },
+        body,
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(sent?.url).toBe('https://rova-api-dev.qnsc.vn/v1/scm/webhook/github')
+    expect(sent?.headers.get('x-hub-signature-256')).toBe('sha256=' + 'a'.repeat(64))
+    expect(sent?.headers.get('x-github-event')).toBe('pull_request')
+    expect(sent?.headers.get('x-github-delivery')).toBe('72d3162e-cc78-11e3-81ab-4c9367dc0958')
+    expect(sent?.headers.get('user-agent')).toBe('GitHub-Hookshot/abc')
+    await expect(sent?.text()).resolves.toBe(body)
+  })
+
+  it('lists exactly the integration headers the API reads from a caller that is not the SPA', () => {
+    expect([...INTEGRATION_FORWARD_HEADERS].sort()).toEqual(
+      ['x-github-delivery', 'x-github-event', 'x-hub-signature-256'].sort(),
+    )
   })
 
   it('lists exactly the SPA headers the shared allow-list lacks', () => {

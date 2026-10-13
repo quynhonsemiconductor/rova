@@ -18,6 +18,23 @@ and counted, never trusted.
 `cf-connecting-ip` → the first `x-forwarded-for` entry → the socket. Opshub does the same (opshub#364); the secret
 names, the Pages variables and the steps below are aligned with it.
 
+## PRODUCTION: set the Pages secret BEFORE "go release"
+
+> **The production Pages secret must exist before the release PR that contains this change is released.** Otherwise the
+> new Function reaches production with no `EDGE_CLIENT_IP_SECRET`, answers **500 to every `/v1/*` request on
+> `rova.qnsc.vn`**, and the production deploy gate fails: its post-deploy check requests `APP_URL/v1/readyz`, and
+> `APP_URL` is the SPA host, so that request goes through the Function. The release then rolls back the API while the
+> broken Function stays published.
+
+```sh
+KEY=$(openssl rand -base64 48)      # production's OWN key: never the develop one
+printf '%s' "$KEY" | wrangler pages secret put EDGE_CLIENT_IP_SECRET --project-name rova-prod-web
+```
+
+Do that, and confirm it is listed (`wrangler pages secret list --project-name rova-prod-web`), before saying "go release".
+The API side for production (the key in the `rova/production/app` bundle and `edge_client_ip_secret_set = true`) follows
+the same steps 3 and 4 below, after the release, in a window of its own.
+
 ## The two secrets, and what happens with each half missing
 
 | State                                                    | Function (Pages)                                                 | API                                                                |

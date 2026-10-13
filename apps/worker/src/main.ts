@@ -19,9 +19,12 @@ async function bootstrap(): Promise<void> {
   const logger = app.get(Logger);
   logger.log('Worker process started', 'Bootstrap');
 
-  // SIGTERM / SIGINT: stop the crons and relays (Nest's beforeApplicationShutdown), release the pool, flush
-  // OpenTelemetry, exit. No HTTP server here, so the readiness flip and the drain are skipped. A relay pass that is
-  // mid-call finishes its row or its lease lapses and another worker takes it (lease-and-fence).
+  // SIGTERM / SIGINT, in Nest's close order: `onModuleDestroy` runs first (the relays unsubscribe their Valkey wake
+  // signals), then `beforeApplicationShutdown` (ScheduleModule stops every cron, so no NEW relay pass starts), then
+  // `onApplicationShutdown` (the pool and cache close), then OpenTelemetry is flushed. There is no HTTP server here,
+  // so the readiness flip and the drain are skipped. Nothing WAITS for a relay pass that is already running: its next
+  // database write fails once the pool is closed, and the row's lease lapses and another worker takes it
+  // (lease-and-fence), so a deploy never strands a row.
   enableGracefulShutdown(app);
 
   process.on('unhandledRejection', (reason: unknown) => {

@@ -9,6 +9,7 @@ import fastifyMultipart from '@fastify/multipart';
 import { AppConfigService } from '@platform/config';
 import { CSRF_HEADER, CSRF_SECRET_COOKIE, requiresCsrfProtection } from '@platform/http/csrf';
 import { enableHealth, registerRequestTiming } from '@quynhonsemiconductor/platform-runtime';
+import { SseConnections, registerSseShutdown } from '@modules/notifications';
 import { assertEdgeClientIpEnv, enableCorrelationId } from '@quynhonsemiconductor/platform-http';
 import { BFF_SESSION_COOKIE } from '@platform/auth';
 
@@ -112,6 +113,11 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // /readyz answers 503 when the database or the cache is down, and always 503 once shutdown has begun (see
   // enableGracefulShutdown in main.ts).
   enableProbes(app);
+
+  // Open notification streams are hijacked replies that never end on their own, so `fastify.close()` (the drain in
+  // enableGracefulShutdown) would wait on every signed-in tab until the 25 s deadline. Their `preClose` hook sends
+  // each one `reconnect` and ends it.
+  registerSseShutdown(fastify, app.get(SseConnections));
 
   fastify.addHook('onRequest', function csrfGate(req, reply, done) {
     if (!requiresCsrfProtection(req)) return done();

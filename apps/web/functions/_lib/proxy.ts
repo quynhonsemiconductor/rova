@@ -44,6 +44,22 @@ export const SPA_FORWARD_HEADERS: readonly string[] = [
   'baggage',
 ]
 
+/**
+ * Headers the API reads from INTEGRATIONS that call the SPA host rather than the API host. The in-app setup card
+ * (`webhook-setup.tsx`) tells admins to register `${origin}/v1/scm/webhook/github`, i.e. this Function, and the GitHub
+ * App's webhook URL may be the same. `ScmWebhookController` verifies `X-Hub-Signature-256` over the raw body and
+ * dispatches on the other two: without them every delivery is a 401. (The Function the old proxy replaced forwarded
+ * everything but a deny-list; an allow-list has to be told about each such header, and
+ * `test/edge-forward-headers.ratchet.spec.ts` fails when the API starts reading one that nobody listed.)
+ *
+ * The body is streamed through untouched, so the HMAC still verifies.
+ */
+export const INTEGRATION_FORWARD_HEADERS: readonly string[] = [
+  'x-hub-signature-256',
+  'x-github-event',
+  'x-github-delivery',
+]
+
 /** The API URL for this request: the API origin, with the incoming path and query as they are. */
 export function buildTarget(requestUrl: string, apiOrigin: string): URL {
   const incoming = new URL(requestUrl)
@@ -76,7 +92,7 @@ export async function proxyToApi(
     {
       secret,
       target: buildTarget(request.url, env.API_ORIGIN),
-      forwardHeaders: SPA_FORWARD_HEADERS,
+      forwardHeaders: [...SPA_FORWARD_HEADERS, ...INTEGRATION_FORWARD_HEADERS],
     },
     fetcher,
   )
