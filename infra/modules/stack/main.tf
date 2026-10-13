@@ -169,8 +169,9 @@ locals {
     "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
     # The key the Cloudflare Pages Function signs the visitor's address with
     # (`@quynhonsemiconductor/platform-http/edge`) and the API verifies (`clientIp()`). The SAME value as the Pages
-    # project's secret of that name. A container only: it stays empty until the owner puts a value in, and is not
-    # injected into the API task until `edge_client_ip_secret_set` is true (see that variable for why).
+    # project's secret of that name. A KEY of the app bundle (both environments bundle their secrets): it is absent until
+    # the owner puts a value in, and is not injected into the API task until `edge_client_ip_secret_set` is true (see
+    # that variable for why).
     "edge-client-ip-secret" = "Key the Cloudflare Pages Function signs the visitor address with, verified by the API (min 32 chars; openssl rand -base64 48). Same value as the Pages secret EDGE_CLIENT_IP_SECRET."
     # SCM (GitHub App) — minted in GitHub, pasted by hand (Terraform only scaffolds
     # empty containers). Both stay empty until the App is registered, which keeps the

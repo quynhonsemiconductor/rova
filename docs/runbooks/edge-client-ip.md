@@ -45,26 +45,26 @@ with nothing to say so. It is also why **step 1 comes before the merge**.
    A Pages secret reaches a Function only on its **next deployment**, which the merge of the adoption PR performs
    (`Web · Deploy`). Do not merge before this step: the new Function would answer 500 for every `/v1/*` request.
 
-2. **Merge the adoption PR.** `Infrastructure · Apply` creates the empty Secrets Manager container
-   `rova/develop/edge-client-ip-secret` (no value, **not** injected into the API: `edge_client_ip_secret_set` is
-   `false`), the API deploys without it, and the Function starts signing. The API ignores the signature for now, so
-   behaviour is unchanged: still `cf-connecting-ip`.
+2. **Merge the adoption PR.** `Infrastructure · Apply` adds the key `edge-client-ip-secret` to the expected keys of the
+   app bundle `rova/develop/app` (develop and production both run with `secrets_use_bundle = true`: the secret is a
+   KEY of that JSON object, not a container of its own). It is **not** injected into the API: `edge_client_ip_secret_set`
+   is `false`. The API deploys without it and ignores the signed headers, so behaviour is unchanged (still
+   `cf-connecting-ip`); the Function starts signing.
 
-3. **Put the same key into the container** (the key is still in `$KEY` from step 1; otherwise generate a new pair and
-   repeat step 1 with it):
+3. **Put the same key into the bundle.** A read-modify-write of the bundle's JSON; the values are piped between
+   processes and never printed, and the key reaches the script through the environment, not argv (so it is not in
+   `ps`). The key is still in `$KEY` from step 1; otherwise generate a new one and repeat step 1 with it.
 
    ```sh
-   printf '%s' "$KEY" | aws secretsmanager put-secret-value \
-     --secret-id rova/develop/edge-client-ip-secret --secret-string file:///dev/stdin \
-     --profile qnsc-admin --region ap-southeast-1
-   aws secretsmanager describe-secret --secret-id rova/develop/edge-client-ip-secret \
-     --query VersionIdsToStages --profile qnsc-admin --region ap-southeast-1      # {"<id>": ["AWSCURRENT"]}
+   export KEY AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1
+   aws secretsmanager get-secret-value --secret-id rova/develop/app --query SecretString --output text \
+     | python3 -c 'import json,os,sys; d=json.load(sys.stdin); d["edge-client-ip-secret"]=os.environ["KEY"]; print(json.dumps(d))' \
+     | aws secretsmanager put-secret-value --secret-id rova/develop/app --secret-string file:///dev/stdin
+   # Verify WITHOUT printing the value: the key exists and has the right length
+   aws secretsmanager get-secret-value --secret-id rova/develop/app --query SecretString --output text \
+     | python3 -c 'import json,sys; v=json.load(sys.stdin)["edge-client-ip-secret"]; print("edge-client-ip-secret:", len(v), "chars")'
    unset KEY
    ```
-
-   (Develop runs with `secrets_use_bundle = true` unless that has changed: if `describe-secret` finds no such secret,
-   the key is a field of the `rova/develop/app` JSON instead — add `edge-client-ip-secret` there, as for the other keys
-   in `docs/runbooks/secrets-bundle-migration.md`.)
 
 4. **Switch the API on:** a one-line PR setting `edge_client_ip_secret_set = true` in `infra/live/develop/main.tf`.
    Its apply registers the task definition with `EDGE_CLIENT_IP_SECRET`; the deploy's preflight refuses to proceed if
@@ -72,8 +72,8 @@ with nothing to say so. It is also why **step 1 comes before the merge**.
 
 5. **Check (below).**
 
-Production: the same, with `--project-name rova-web` (or the production project name) and
-`rova/production/edge-client-ip-secret`, in a window of its own.
+Production: the same, with `--project-name rova-prod-web` and the bundle `rova/production/app`, in a window of its own,
+with its own key.
 
 ## Post-deploy check: the request log's `ip` is the tester's real address
 

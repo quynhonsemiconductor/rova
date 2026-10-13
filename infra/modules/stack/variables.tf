@@ -631,9 +631,9 @@ variable "edge_client_ip_secret_set" {
 
     OFF by default, for the same mechanical reason as `storage_public_credentials`: the deploy preflight refuses to
     deploy when an injected Secrets Manager secret holds no value, so injecting it before it is populated blocks every
-    deploy. The container is created either way. Order, per environment (docs/runbooks/edge-client-ip.md):
+    deploy. The key is declared either way. Order, per environment (docs/runbooks/edge-client-ip.md):
       1. generate a key (`openssl rand -base64 48`) and set it as the Pages secret EDGE_CLIENT_IP_SECRET;
-      2. put the SAME value into `<product>/<env>/edge-client-ip-secret`;
+      2. put the SAME value into the `edge-client-ip-secret` key of `<product>/<env>/app` (the bundle);
       3. set this true.
     While false the API has no key: it ignores the signed headers and uses `cf-connecting-ip`, exactly as before.
   EOT
