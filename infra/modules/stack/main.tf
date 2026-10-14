@@ -1716,7 +1716,7 @@ locals {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.5.0"
 
   cpu_architecture = var.cpu_architecture
   # Same gate as OTEL_ENABLED below: only switches log driver once a real
@@ -1938,6 +1938,12 @@ module "api" {
     module.firelens_agent_api.container_definitions,
   )
 
+  # ECS stops containers in the REVERSE of their dependencies, so the app stops BEFORE the collector and its shutdown "flush telemetry" step (5 s) reaches a
+  # live agent; without this both get SIGTERM at once and the flush times out. Built from the agent module's own output, so it is EMPTY when the agent is
+  # disabled and the name always matches the container that is really in the task (a dependsOn naming an absent container fails task registration).
+  # START, not HEALTHY: the ADOT image has no health check.
+  container_depends_on = [for c in module.otel_agent_api.container_definitions : { container_name = c.name, condition = "START" }]
+
 
   # Multi-IdP broker: the TASK role reads per-connection OIDC client secrets at
   # RUNTIME (resolved from the sso_connections row on demand). The home
@@ -1969,7 +1975,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.5.0"
 
   cpu_architecture = var.cpu_architecture
   use_firelens     = module.firelens_agent_worker.enabled
@@ -2132,6 +2138,12 @@ module "worker" {
     module.otel_agent_worker.container_definitions,
     module.firelens_agent_worker.container_definitions,
   )
+
+  # ECS stops containers in the REVERSE of their dependencies, so the app stops BEFORE the collector and its shutdown "flush telemetry" step (5 s) reaches a
+  # live agent; without this both get SIGTERM at once and the flush times out. Built from the agent module's own output, so it is EMPTY when the agent is
+  # disabled and the name always matches the container that is really in the task (a dependsOn naming an absent container fails task registration).
+  # START, not HEALTHY: the ADOT image has no health check.
+  container_depends_on = [for c in module.otel_agent_worker.container_definitions : { container_name = c.name, condition = "START" }]
 
 
   tags = merge(local.tags, { Service = "worker" })
