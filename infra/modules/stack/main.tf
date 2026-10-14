@@ -2112,6 +2112,10 @@ module "worker" {
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
     { name = "OTEL_SERVICE_NAME", value = "${var.product}-worker" },
+    # The WORKER process reads OTEL_WORKER_SERVICE_NAME (apps/worker/src/otel.ts passes it as serviceNameEnvVar), not OTEL_SERVICE_NAME, so that two
+    # processes sharing an environment stay distinguishable. No task set it, the code default applied, and the default was the pre-rename
+    # 'rally-worker': metrics and traces reported a name the logs (FireLens, 'rova-worker') did not. Same value as OTEL_SERVICE_NAME above.
+    { name = "OTEL_WORKER_SERVICE_NAME", value = "${var.product}-worker" },
     # Gated on the sidecar actually existing, so the app can never export into a
     # void. False until observability.otlp_endpoint is set.
     { name = "OTEL_ENABLED", value = tostring(module.otel_agent_worker.enabled) },

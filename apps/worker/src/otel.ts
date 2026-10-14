@@ -24,16 +24,18 @@
  * option installs a View on the `http.server.duration` instrument specifically, so
  * passing it here would create a metric view for an instrument this process never
  * records — a config line whose only effect is to look like coverage. Outbound calls
- * the worker DOES make (Graph, SES, R2, GitHub) land on `http.client.duration`, which
- * this option does not touch; if that histogram's tail becomes interesting it needs
- * its own option in the package rather than this one being widened to match on name.
+ * the worker DOES make (Graph, SES, R2, GitHub) land on `http.client.request.duration`
+ * (seconds, `server_address`; instrumentation-http 0.221 no longer creates the legacy
+ * `http.client.duration`), which this option does not touch; if that histogram's tail
+ * becomes interesting it needs its own option in the package rather than this one being
+ * widened to match on name.
  */
 import { startOtel } from '@quynhonsemiconductor/observability/otel';
 
 startOtel({
-  // 'rova-worker', not the pre-rename 'rally-worker': the stack sets OTEL_SERVICE_NAME (the api's variable), this process reads
-  // OTEL_WORKER_SERVICE_NAME, which no task sets, so THIS default is the name that is reported. The dashboards' log panels select
-  // service_name=~"rova-api|rova-worker" and so never saw the worker's logs.
+  // The worker task sets OTEL_WORKER_SERVICE_NAME=rova-worker (infra/modules/stack), which is what this process reads. The default is
+  // the fallback for a run without it (local, tests) and is the same name, not the pre-rename 'rally-worker'. Until the task set the variable
+  // the default was the reported name, so metrics and traces said 'rally-worker' while the logs (FireLens) already said 'rova-worker'.
   defaultServiceName: 'rova-worker',
   serviceNameEnvVar: 'OTEL_WORKER_SERVICE_NAME',
 });
