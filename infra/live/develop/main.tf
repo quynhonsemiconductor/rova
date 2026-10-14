@@ -332,7 +332,13 @@ module "stack" {
   # that landed late and woke the environment, because nothing else would put it back down
   # until the next working day. Each pass is a no-op when develop is already down
   # (InvalidDBInstanceState, deliberately not retried).
-  idle_schedule = "cron(0 0,3 * * ? *)"
+  // OFF since 2026-10-14, at the owner's request: develop stays up around the clock for the rest of
+  // October 2026 (the owner decides then whether to turn idling back on). To restore idling, put back
+  // exactly:
+  //   idle_schedule = "cron(0 0,3 * * ? *)"
+  //   wake_schedule = null // OFF since 2026-10-14; see idle_schedule above
+  // (both together; idling without the wake leaves develop down until the next deploy).
+  idle_schedule = null
 
   // 08:00 local, EVERY DAY. This was MON-FRI first, on the argument that a 7-day wake
   // "would pay for two days a week nobody works". Two weekends in, that argument had
@@ -380,7 +386,7 @@ module "stack" {
   //   01:00:09Z  ecs:UpdateService  api    desiredCount=1
   //   01:00:29Z  rds:StartDBInstance
   //   01:00:47Z  ecs:UpdateService  worker desiredCount=1
-  wake_schedule = "cron(0 8 ? * MON-FRI *)"
+  wake_schedule = null // OFF since 2026-10-14; see idle_schedule above
 
   // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
   // credential can be injected. This is a FIX, not hardening: the primary token
