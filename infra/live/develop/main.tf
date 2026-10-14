@@ -389,6 +389,11 @@ module "stack" {
   // with a credential that has no grant on it.
   storage_public_credentials = true
 
+  // Step 4 of docs/runbooks/edge-client-ip.md: `edge-client-ip-secret` is in the app bundle (rova/develop/app) and the
+  // same value is the Pages secret EDGE_CLIENT_IP_SECRET, so the API can verify the visitor address the Pages Function
+  // signs. Develop only: production sets its own key first (runbook, "PRODUCTION").
+  edge_client_ip_secret_set = true
+
   // Step 2 of docs/runbooks/db-role-least-privilege.md: rally/develop/db-*-password
   // are populated, so the migrator can read them and the one-off cutover task can
   // set them on the roles. Inert on its own — the normal migrate entrypoint ignores
