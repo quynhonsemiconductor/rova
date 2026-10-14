@@ -25,7 +25,7 @@ signal that distinguishes "login is broken" from "normal traffic."
 
 1. Overview dashboard, "Login success vs failure rate" panel — confirm the
    shape (a step change at a deploy vs a gradual climb vs a sudden spike).
-2. Logs Explorer / Recent errors, filtered to `rally-api` — the actual OIDC
+2. Logs Explorer / Recent errors, filtered to `rova-api` — the actual OIDC
    exception is logged server-side even though the browser never sees it
    (`completeLogin` catch block logs before re-throwing as the generic 401).
 3. Check the Deploys annotation — did this start right after a deploy?
