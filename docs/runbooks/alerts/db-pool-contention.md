@@ -13,7 +13,7 @@ out. Either the pool is undersized, or something is holding connections too long
 ## First checks
 
 1. Runtime & Dependencies dashboard, "DB client connections: by state, vs pending" —
-   confirm which service (rally-api / rally-worker) is pending, and how many.
+   confirm which service (rova-api / rova-worker) is pending, and how many.
 2. "DB client operation latency (p99, by operation)" on the same dashboard — a spike in
    one operation's latency (commonly a long-running query) is the usual root cause; that
    query is holding a connection for the whole time it runs.

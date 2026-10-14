@@ -13,7 +13,7 @@ process (`apps/worker`), not the API.
 
 1. Overview dashboard, "Worker job success vs failure rate" — confirm the shape (a
    step change at a deploy vs a gradual climb).
-2. Logs Explorer / Recent errors, filtered to `rally-worker` — the actual exception is
+2. Logs Explorer / Recent errors, filtered to `rova-worker` — the actual exception is
    almost always visible here; worker errors are structured the same way API errors are.
 3. Check the Deploys annotation — did this start right after a deploy to the worker?
 4. Check which JOB TYPE is failing (log `context` field). Different jobs have different

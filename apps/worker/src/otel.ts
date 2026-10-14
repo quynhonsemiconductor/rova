@@ -31,6 +31,9 @@
 import { startOtel } from '@quynhonsemiconductor/observability/otel';
 
 startOtel({
-  defaultServiceName: 'rally-worker',
+  // 'rova-worker', not the pre-rename 'rally-worker': the stack sets OTEL_SERVICE_NAME (the api's variable), this process reads
+  // OTEL_WORKER_SERVICE_NAME, which no task sets, so THIS default is the name that is reported. The dashboards' log panels select
+  // service_name=~"rova-api|rova-worker" and so never saw the worker's logs.
+  defaultServiceName: 'rova-worker',
   serviceNameEnvVar: 'OTEL_WORKER_SERVICE_NAME',
 });
