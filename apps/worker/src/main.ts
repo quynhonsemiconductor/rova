@@ -13,8 +13,14 @@ import { enableGracefulShutdown } from '@quynhonsemiconductor/platform-runtime';
 import { WorkerModule } from './worker.module';
 
 async function bootstrap(): Promise<void> {
-  // createApplicationContext: no HTTP driver needed — worker is queue/cron only
-  const app = await NestFactory.createApplicationContext(WorkerModule);
+  // createApplicationContext: no HTTP driver needed — worker is queue/cron only.
+  //
+  // `bufferLogs` + `useLogger`, exactly as the API does. Without them Nest's own default text logger stayed installed: every framework line and every
+  // `new Logger('Shutdown')` line (including platform-runtime's) was written as `[Nest] 7 - ... LOG [Shutdown] ...`, which is not JSON, so the log pipeline
+  // failed to parse 100% of the worker's lines and none of them carried env, version or trace.id. The pino Logger had been built (LoggerModule) but never
+  // INSTALLED. `bufferLogs` holds the early lines until it is, so the bootstrap lines are JSON too.
+  const app = await NestFactory.createApplicationContext(WorkerModule, { bufferLogs: true });
+  app.useLogger(app.get(Logger));
 
   const logger = app.get(Logger);
   logger.log('Worker process started', 'Bootstrap');
@@ -37,4 +43,9 @@ async function bootstrap(): Promise<void> {
   });
 }
 
-void bootstrap();
+bootstrap().catch((error: unknown) => {
+  // With bufferLogs the pino logger may not be installed yet, so this goes to stderr directly.
+  // eslint-disable-next-line no-console
+  console.error('Fatal worker bootstrap error', error);
+  process.exit(1);
+});
