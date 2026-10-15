@@ -541,6 +541,10 @@ module "stack" {
     // Full fidelity: develop volume is trivial, and validating the
     // instrumentation is the reason to enable it here at all.
     sampling_probability = 1.0
+
+    // DIAGNOSTIC, DEVELOP ONLY, TEMPORARY: the collector sidecars also log every metric datapoint to
+    // their CloudWatch stream (the duplicate-timestamp hunt). Revert = delete this line (or false).
+    debug_metrics = true
   }
 
   grafana_alerting_auth = var.grafana_alerting_auth
