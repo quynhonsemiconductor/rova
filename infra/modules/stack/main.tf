@@ -885,6 +885,23 @@ module "alerts" {
       summary     = "More than ${local.slow_request_count_max} HTTP requests took longer than ${local.alert_thresholds.slow_request_bucket_ms}ms in the last 30m in ${var.env} — a COUNT, not a percentile, so unlike http-p99-latency this stays valid at this environment's request volume."
       runbook_url = "${local.runbook_base_url}/http-slow-request-count.md"
     },
+    # An outbox relay whose PASS throws, continuously. A relay claim that throws every pass records no `queue_failures_total`
+    # (that counts ROWS, after the claim), no `outboxDeadLetter` (needs a claimed row) and no `job_*` series (relays are not
+    # timed by JobMetrics), so nothing alerted: opshub's webhook relay failed every pass for two days. AbstractOutboxRelay
+    # counts `outbox_relay_pass_failed_total{relay}` when a pass throws. A relay passes every 5-10 s, so a failure that
+    # persists adds to the counter in every 3-minute window; for 10m makes it "failing continuously" and one transient blip
+    # clears long before. `sum by (relay)`: each failing relay is its own alert instance and names itself; healthy, the
+    # series does not exist and the rule's no-data state is OK. No sample floor: it is not a ratio.
+    {
+      name        = "outbox-relay-failing"
+      promql      = "sum by (relay) (increase(outbox_relay_pass_failed_total{deployment_environment_name=\"${var.env}\"}[3m]))"
+      for         = "10m"
+      op          = "gt"
+      threshold   = 0
+      severity    = "warning"
+      summary     = "Outbox relay {{ $labels.relay }} has failed its pass continuously for 10m in ${var.env} - a claim query or the database connection is failing before any row is reached, so nothing is delivered. The error is in the worker log (`level=error`, the relay's class name)."
+      runbook_url = "${local.runbook_base_url}/outbox-relay-failing.md"
+    },
     {
       name = "worker-job-failure-rate"
       # `or vector(0)` on the numerator — same reasoning as http-5xx-rate and
