@@ -21,6 +21,7 @@ import { seed, seedSystemRoles, seedTenantBootstrap } from './seeds/seed';
 import { strandedMigrations } from './stranded-migrations';
 import { resolveDatabaseUrl } from './database-url';
 import { resolveMigrationPoolConfig } from './pg-pool-config';
+import { log } from './script-log';
 
 // Resolves DATABASE_MIGRATION_URL, else DATABASE_URL, else composes from the
 // DATABASE_* parts (the deployed path — credentials come straight from the
@@ -32,7 +33,7 @@ let poolConfig: ReturnType<typeof resolveMigrationPoolConfig>;
 try {
   poolConfig = resolveMigrationPoolConfig();
 } catch (err) {
-  console.error(`❌  ${(err as Error).message}`);
+  log.error({ err }, (err as Error).message);
   process.exit(1);
 }
 
@@ -111,14 +112,14 @@ async function assertNoStrandedMigrations(folder: string): Promise<void> {
   if (recordedUnderOtherTimestamp.length > 0) {
     // Not a problem: the file ran, under the `when` it had then. Said once, at info, so the next reader knows why a
     // journal entry has no row at its own timestamp.
-    console.log(
+    log.info(
       `ℹ️   ${recordedUnderOtherTimestamp.length} migration(s) ran under an earlier timestamp than the journal now ` +
         `gives them (found by their file's hash): ${recordedUnderOtherTimestamp.join(', ')}.`,
     );
   }
 
   if (mismatched.length > 0) {
-    console.warn(
+    log.warn(
       `⚠️   ${mismatched.length} migration(s) recorded with a DIFFERENT hash than the file on disk: ` +
         `${mismatched.join(', ')}. Either the file was edited after it ran (harmless), or its ` +
         'timestamp slot belongs to another file and this one never ran — check that the objects it ' +
@@ -126,7 +127,7 @@ async function assertNoStrandedMigrations(folder: string): Promise<void> {
     );
   }
   if (missing.length > 0) {
-    console.warn(
+    log.warn(
       `⚠️   ${missing.length} migration(s) in the journal have NO recorded row at their own ` +
         `timestamp: ${missing.join(', ')}. Drizzle applies only entries past the newest recorded ` +
         '`when`, so a non-ascending or duplicated timestamp strands a file while the run still ' +
@@ -138,13 +139,13 @@ async function assertNoStrandedMigrations(folder: string): Promise<void> {
 
 async function run() {
   try {
-    console.log('Running migrations...');
+    log.info('Running migrations...');
     const migrationsFolder = path.join(__dirname, 'migrations');
     await migrate(db, { migrationsFolder });
     // Before the seeds, so a stranded schema change is named ahead of the failure it would otherwise
     // cause against a table that was never created.
     await assertNoStrandedMigrations(migrationsFolder);
-    console.log('✅  Migrations applied');
+    log.info('✅  Migrations applied');
 
     // Seed uses the app connection, not the migration URL (admin role).
     // Falls back to the migration URL when no separate app credential is set.
@@ -162,13 +163,13 @@ async function run() {
     // (JIT SSO provisioning assigns these role slugs). It contains no demo
     // fixtures, so it runs on EVERY deploy in EVERY environment, including real
     // production. Idempotent.
-    console.log('Seeding system role catalogue...');
+    log.info('Seeding system role catalogue...');
     await seedSystemRoles(seedUrl);
 
     // Tenant bootstrap — the primary workspace + Entra SSO connection. Prod-safe
     // config (no demo fixtures): required for real users to JIT-provision and for
     // PLATFORM_ADMIN_EMAILS elevation on first login. Runs in EVERY environment.
-    console.log('Seeding tenant bootstrap (workspace + SSO connection)...');
+    log.info('Seeding tenant bootstrap (workspace + SSO connection)...');
     await seedTenantBootstrap(seedUrl);
 
     /**
@@ -189,18 +190,18 @@ async function run() {
      */
     if (process.env['SEED_ON_DEPLOY'] === 'true') {
       if (process.env['NODE_ENV'] === 'production') {
-        console.warn(
+        log.warn(
           '⚠️  SEED_ON_DEPLOY=true but NODE_ENV=production — demo seed REFUSED. ' +
             'Deployed environments run the role catalogue and tenant bootstrap only; ' +
             'fixtures are for local development (pnpm db:seed:test) and CI.',
         );
       } else {
-        console.log('SEED_ON_DEPLOY=true — running demo seed...');
+        log.info('SEED_ON_DEPLOY=true — running demo seed...');
         await seed(seedUrl);
       }
     }
   } catch (err) {
-    console.error('❌  Migration failed', err);
+    log.error({ err }, 'Migration failed');
     process.exit(1);
   } finally {
     await pool.end();

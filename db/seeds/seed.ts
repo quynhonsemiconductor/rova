@@ -27,6 +27,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { pgOptions } from '../pg-ssl';
+import { log } from '../script-log';
 import * as schema from '../schema';
 import { userRoleAssignments } from '../schema/access';
 import { ADMIN_USER_ID, WORKSPACE_ID } from './constants';
@@ -53,7 +54,7 @@ export async function seedBaseline(connectionUrl?: string): Promise<void> {
   const pool = new Pool({ ...pgOptions(url), max: 1 });
   const db = drizzle(pool, { schema });
   try {
-    console.log('Seeding baseline (roles + workspace + admin)…');
+    log.info('Seeding baseline (roles + workspace + admin)…');
     await seedSystemRolesInto(db);
     await seedTenantBootstrapInto(db);
 
@@ -103,7 +104,7 @@ export async function seedBaseline(connectionUrl?: string): Promise<void> {
         .onConflictDoNothing();
     }
 
-    console.log('✅  Baseline seeded — roles + QNSC workspace + admin. No fixtures.');
+    log.info('✅  Baseline seeded — roles + QNSC workspace + admin. No fixtures.');
   } finally {
     await pool.end();
   }
@@ -127,7 +128,7 @@ if (process.argv[1]?.endsWith('seed.ts') || process.argv[1]?.endsWith('seed.js')
   const withFixtures = process.argv.includes('--fixtures') || process.argv.includes('--test');
   const run = withFixtures ? resetFixtureTables().then(() => seed()) : seedBaseline();
   run.catch((e) => {
-    console.error(e);
+    log.error({ err: e }, 'Seed failed');
     process.exit(1);
   });
 }

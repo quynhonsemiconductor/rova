@@ -40,7 +40,6 @@ export default defineConfig({
       LOG_LEVEL: 'error',
       OTEL_ENABLED: 'false',
       OTEL_SERVICE_NAME: 'rova-api-test',
-      OTEL_WORKER_SERVICE_NAME: 'rally-worker-test',
       APP_BASE_URL: 'http://localhost:5173',
       // Entra BFF OIDC — test-only placeholders. Never used for real auth.
       ENTRA_TENANT_ID: 'test-tenant',
