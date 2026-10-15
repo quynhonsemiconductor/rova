@@ -1,9 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { LoggerModule } from 'nestjs-pino';
-import { AppConfigService } from '@platform/config';
 import { RequestContextService } from '@platform/context/request-context';
-import { createLoggerOptions } from '@quynhonsemiconductor/observability';
 import { PlatformModule } from '@platform';
 import { IdentityModule } from '@modules/identity';
 import { WorkspaceModule } from '@modules/workspace';
@@ -32,21 +29,7 @@ import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
 
 @Module({
   imports: [
-    // Pino structured logging — one shared factory (redaction, trace correlation,
-    // ALS business context) lives in @platform so api and worker cannot drift.
-    LoggerModule.forRootAsync({
-      inject: [AppConfigService],
-      useFactory: (config: AppConfigService) =>
-        createLoggerOptions({
-          serviceName: 'rova-api',
-          nodeEnv: config.get('NODE_ENV'),
-          // The DEPLOYMENT environment (develop / production) for the `env` field; NODE_ENV is production everywhere on purpose.
-          deploymentEnv: config.get('DEPLOYMENT_ENV'),
-          serviceVersion: config.get('SERVICE_VERSION'),
-          level: config.get('LOG_LEVEL'),
-          pretty: config.get('LOG_PRETTY'),
-        }),
-    }),
+    // Logging is NOT wired here: `createHttpApp` (main.ts) registers the shared pino logger around this module.
 
     // Platform (config, db, auth, cache, outbox, observability)
     PlatformModule,

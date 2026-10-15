@@ -1,6 +1,5 @@
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { Logger } from 'nestjs-pino';
 import fastifyCookie from '@fastify/cookie';
 import fastifyCsrf from '@fastify/csrf-protection';
 import fastifyCompress from '@fastify/compress';
@@ -29,10 +28,6 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // and listed in the PR: an id may be 1-128 characters of `[A-Za-z0-9._:-]` (was 8-64 of `[A-Za-z0-9_-]`), and
   // `X-Request-Id` is no longer read as a fallback.
   enableCorrelationId(app);
-
-  // Pino structured logger
-  app.useLogger(app.get(Logger));
-  app.flushLogs();
 
   const config = app.get(AppConfigService);
 

@@ -613,7 +613,7 @@ locals {
   # The explicit bucket boundaries of http_server_duration_milliseconds, in
   # milliseconds — the only `le` values that exist on the series.
   #
-  # MIRRORS apps/api/src/otel.ts. The list is NOT the OpenTelemetry JS defaults any
+  # MIRRORS apps/api/src/main.ts. The list is NOT the OpenTelemetry JS defaults any
   # more: those stop at 10000, and the same change that added this gate widened the
   # view (`httpDurationBoundaries` on startOtel) precisely because the top finite
   # bucket is where a p99 goes to hide. The first fifteen entries are still the SDK
@@ -634,7 +634,7 @@ locals {
   # CHANGING THE SDK'S VIEW INVALIDATES THIS LIST, and this file cannot tell that it
   # happened — terraform_data.slow_request_bucket_is_real checks
   # slow_request_bucket_ms against THIS list, not against what the exporter is
-  # actually sending, so a boundary edited in apps/api/src/otel.ts and not here makes
+  # actually sending, so a boundary edited in apps/api/src/main.ts and not here makes
   # the precondition assert against a set nobody exports. Both lists move together or
   # neither moves. The check runs the safe way round (it can only reject a value the
   # exporter might in fact have), but a rejected legal boundary is still a plan that
@@ -729,7 +729,7 @@ locals {
 #     at the time, so histogram_quantile clamped there. All it meant is "at least
 #     one request exceeded 10s, upper bound unknown". The same change that added
 #     this gate widened the view out to 180000 (local.http_duration_boundaries_ms
-#     above, mirroring apps/api/src/otel.ts), so a repeat of that page now reports
+#     above, mirroring apps/api/src/main.ts), so a repeat of that page now reports
 #     a bucket that distinguishes 12s from a full retry budget — but the clamp is
 #     a property of the top bucket, not of 10000, and it still applies there.
 #   * With production's measured load — "4, 1, 0, 1 requests a day", documented in
@@ -2140,7 +2140,8 @@ module "worker" {
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
     { name = "OTEL_SERVICE_NAME", value = "${var.product}-worker" },
-    # The worker process reads OTEL_WORKER_SERVICE_NAME (apps/worker/src/otel.ts passes it as serviceNameEnvVar), not OTEL_SERVICE_NAME, so that two
+    # NO LONGER READ by the app: createWorkerApp takes the service name from OTEL_SERVICE_NAME (set above to the same value), so this entry is dead
+    # and can be dropped in a later infra change. It used to be what apps/worker/src/otel.ts read (as serviceNameEnvVar), not OTEL_SERVICE_NAME, so that two
     # processes sharing an environment stay distinguishable. It is set here, to the same value as OTEL_SERVICE_NAME above, so the name reported by
     # metrics and traces matches the logs (FireLens labels them 'rova-worker'). History, not current behaviour: before this was set, the code default
     # applied and was the pre-rename name 'rally-worker'.

@@ -18,6 +18,7 @@ try {
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { pgOptions } from '../pg-ssl';
+import { log } from '../script-log';
 import { inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 import { ssoConnections, ssoConnectionDomains } from '../schema/identity';
@@ -152,7 +153,7 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
 
   const entraTid = process.env['ENTRA_TENANT_ID'];
   if (!entraTid) {
-    console.log(
+    log.info(
       `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ` +
         `+ ${CANONICAL_TIER_SLUGS.length} editable tier roles ensured ` +
         `(no ENTRA_TENANT_ID \u2014 SSO connection skipped, dev-login only)`,
@@ -300,7 +301,7 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
       set: { workspaceId: WORKSPACE_ID, updatedAt: new Date(), ...sharedFields },
     });
 
-  console.log(
+  log.info(
     `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ` +
       `+ ${CANONICAL_TIER_SLUGS.length} editable tier roles + 2 Entra SSO connections ` +
       `reconciled (tid ${entraTid}, domains: ${ssoAllowedDomains.join(', ') || 'any'}, ` +
