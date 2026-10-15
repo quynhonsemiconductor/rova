@@ -9,6 +9,19 @@
  * test/e2e/outbox-lease.e2e.spec.ts; here those steps are replaced so the LOOP is tested in isolation.
  */
 import { describe, expect, it, vi } from 'vitest';
+
+// The counter is created when the module loads, so the mock must be in place before the import below.
+const { passFailedAdd } = vi.hoisted(() => ({ passFailedAdd: vi.fn() }));
+vi.mock('@opentelemetry/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@opentelemetry/api')>();
+  return {
+    ...actual,
+    metrics: {
+      ...actual.metrics,
+      getMeter: () => ({ createCounter: () => ({ add: passFailedAdd }) }),
+    },
+  };
+});
 import {
   AbstractOutboxRelay,
   DEAD_LETTER_FIELD,
@@ -101,8 +114,12 @@ class TestRelay extends AbstractOutboxRelay<TestRow, string> {
   /** More batches for the same pass: each claim takes the next one. */
   queuedBatches: TestRow[][] = [];
 
+  /** The claim query itself fails (a SQL error, a dropped connection). */
+  selectThrows: Error | null = null;
+
   protected selectDue(): Promise<TestRow[]> {
     this.claims += 1;
+    if (this.selectThrows) return Promise.reject(this.selectThrows);
     const rows = this.due;
     this.due = this.queuedBatches.shift() ?? [];
     for (const r of this.due) this.byId.set(r.id, r);
@@ -642,5 +659,33 @@ describe('DEAD_LETTER_FIELD', () => {
       `No Terraform under infra/ filters on ${DEAD_LETTER_FIELD}; a relay can exhaust its ` +
         `retries and lose work with nothing alarming, even though the app emits the field.`,
     ).not.toEqual([]);
+  });
+});
+
+describe('outbox_relay_pass_failed_total', () => {
+  function setup() {
+    passFailedAdd.mockClear();
+    const { db, state } = makeFakeDb();
+    return new TestRelay(db, state);
+  }
+
+  it('counts a pass whose CLAIM throws, labelled with the relay, and still rejects', async () => {
+    // A claim that threw on every pass left no metric (no row was reached for queue.failures) and no alarm.
+    const relay = setup();
+    relay.selectThrows = new Error('FOR UPDATE must specify unqualified relation names');
+
+    await expect(relay.relay()).rejects.toThrow('unqualified relation names');
+
+    expect(passFailedAdd).toHaveBeenCalledTimes(1);
+    expect(passFailedAdd).toHaveBeenCalledWith(1, { relay: 'TestRelay' });
+  });
+
+  it('does not count a clean pass, nor a row that fails to deliver (that is queue.failures)', async () => {
+    const relay = setup();
+    relay.load([{ id: 'a', attempts: 0, deliver: 'fail' }]);
+
+    await relay.relay();
+
+    expect(passFailedAdd).not.toHaveBeenCalled();
   });
 });
