@@ -454,7 +454,7 @@ module "tunnel_api" {
 }
 
 module "otel_agent_api" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.1.0"
 
   product       = var.product
   env           = var.env
@@ -464,6 +464,7 @@ module "otel_agent_api" {
   token_secret_arn = try(module.secrets.secret_arns["observability-token"], "")
   log_group        = local.api_log_group
   region           = var.region
+  debug_metrics    = var.observability.debug_metrics
 
   cpu              = local.otel_api_cpu
   memory           = local.otel_api_memory
@@ -471,7 +472,7 @@ module "otel_agent_api" {
 }
 
 module "otel_agent_worker" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.1.0"
 
   product       = var.product
   env           = var.env
@@ -481,6 +482,7 @@ module "otel_agent_worker" {
   token_secret_arn = try(module.secrets.secret_arns["observability-token"], "")
   log_group        = local.worker_log_group
   region           = var.region
+  debug_metrics    = var.observability.debug_metrics
 
   cpu              = local.otel_worker_cpu
   memory           = local.otel_worker_memory
