@@ -466,11 +466,11 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
 // The suite above proves the producer contract (API → notification_outbox)
 // and the read model (in_app_notifications → NotificationsService). This
 // block proves the middle: the real NotificationRelayService/EmailRelayService
-// fetchBatch → processRow → markSent/markFailed cycle, preference suppression
+// selectDue → deliver → markSent/markFailed cycle, preference suppression
 // at delivery time, the notification→email cascade, and retry/backoff on a
 // forced failure — none of which the producer-only suite above can reach
 // (the "P4.1 notifications" suite header explicitly scoped this out).
-describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFailed', () => {
+describe('BA flows: Worker relay — real selectDue/deliver/markSent/markFailed', () => {
   let workerModule: TestingModule;
   let notificationRelay: NotificationRelayService;
   let emailRelay: EmailRelayService;

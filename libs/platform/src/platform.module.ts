@@ -1,7 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
-import { TerminusModule } from '@nestjs/terminus';
 import { APP_GUARD } from '@nestjs/core';
 import { AppConfigModule } from './config/config.module';
 import { AppConfigService } from './config/app-config.service';
@@ -34,7 +33,7 @@ import { ResendEmailProvider } from './email/providers/resend.provider';
 import { NotificationSchedulerService } from './notifications/notification-scheduler.service';
 import { NotificationPubSubService } from './notifications/notification-pubsub.service';
 import { ExclusiveJob } from '@quynhonsemiconductor/platform-runtime';
-import { HealthController } from './observability/health.controller';
+import { PublicConfigController } from './observability/public-config.controller';
 import { Algorithm } from 'jsonwebtoken';
 import { IdempotencyInterceptor } from './http/idempotency.interceptor';
 import { HttpLoggingInterceptor } from './http/http-logging.interceptor';
@@ -78,10 +77,9 @@ import { StorageService } from './storage/storage.service';
       }),
     }),
 
-    TerminusModule,
     ResilienceModule,
   ],
-  controllers: [HealthController],
+  controllers: [PublicConfigController],
   providers: [
     ExclusiveJob,
     RequestContextService,

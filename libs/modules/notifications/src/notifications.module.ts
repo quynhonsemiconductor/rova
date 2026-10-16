@@ -4,6 +4,7 @@ import { NotificationsService } from './application/notifications.service';
 import { NotificationPreferencesService } from './application/notification-preferences.service';
 import { NotificationsController } from './interface/http/notifications.controller';
 import { NotificationSseController } from './interface/http/notification-sse.controller';
+import { SseConnections } from './interface/http/sse-connections';
 import { NotificationPreferencesController } from './interface/http/notification-preferences.controller';
 import { NotificationDrizzleRepository } from './infrastructure/persistence/notification.drizzle-repository';
 import { NotificationPreferenceDrizzleRepository } from './infrastructure/persistence/notification-preference.drizzle-repository';
@@ -23,12 +24,13 @@ import { NOTIFICATION_PREFERENCE_REPOSITORY } from './domain/ports/notification-
   providers: [
     NotificationsService,
     NotificationPreferencesService,
+    SseConnections,
     { provide: NOTIFICATION_REPOSITORY, useClass: NotificationDrizzleRepository },
     {
       provide: NOTIFICATION_PREFERENCE_REPOSITORY,
       useClass: NotificationPreferenceDrizzleRepository,
     },
   ],
-  exports: [NotificationsService, NotificationPreferencesService],
+  exports: [NotificationsService, NotificationPreferencesService, SseConnections],
 })
 export class NotificationsModule {}

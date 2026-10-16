@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { createHash } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
+import { clientIp } from '@quynhonsemiconductor/platform-http';
 import { RateLimitedException } from '../errors/exceptions';
 import {
   RATE_LIMIT_METADATA_KEY,
@@ -24,7 +25,7 @@ import { failOpenLog, SecurityMetrics } from '@quynhonsemiconductor/observabilit
  * Key strategy
  * ────────────
  * Pre-auth (login, public routes): keyed by client IP.
- *   key = "{tier}:ip:{req.ip}"
+ *   key = "{tier}:ip:{clientIp(req)}"
  *
  * Post-auth (protected routes where Passport has populated req.user):
  * keyed by authenticated user ID — fairer for enterprise users behind NAT
@@ -80,6 +81,13 @@ export class RateLimitGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<FastifyRequest & { user?: { sub?: string } }>();
     const reply = context.switchToHttp().getResponse<FastifyReply>();
 
+    // The CLIENT's address, by `clientIp()` and never `req.ip`: behind the Cloudflare Tunnel `req.ip` is cloudflared's
+    // own address, so every visitor shared ONE bucket (and AUTH_LOGIN's 5 attempts per 15 minutes were the whole
+    // company's). `clientIp()` returns the verified signed edge address when EDGE_CLIENT_IP_SECRET is set, else
+    // `cf-connecting-ip`, else the first X-Forwarded-For entry, else the socket. One answer per request, so the
+    // access log and idempotency agree with it.
+    const ip = clientIp(req);
+
     // ── Build tracking key ───────────────────────────────────────────────────
     let identifier: string;
     if (tierConfig.keyBy === 'refreshToken') {
@@ -90,11 +98,11 @@ export class RateLimitGuard implements CanActivate {
       ];
       identifier = rawCookie
         ? `session:${createHash('sha256').update(rawCookie).digest('hex').slice(0, 32)}`
-        : `ip:${req.ip}`;
+        : `ip:${ip}`;
     } else {
       // Prefer authenticated user ID so corporate NAT users aren't penalised for
       // each other. Fall back to IP for unauthenticated endpoints.
-      identifier = req.user?.sub ? `uid:${req.user.sub}` : `ip:${req.ip}`;
+      identifier = req.user?.sub ? `uid:${req.user.sub}` : `ip:${ip}`;
     }
     const key = `${tier}:${identifier}`;
 
@@ -115,7 +123,7 @@ export class RateLimitGuard implements CanActivate {
       // logs — tagged so the CloudWatch alarm in infra/live/* fires, because
       // "allowing every request" is invisible otherwise.
       this.logger.error(
-        failOpenLog('rate_limit', { err, key, tier, ip: req.ip, userId: req.user?.sub }),
+        failOpenLog('rate_limit', { err, key, tier, ip, userId: req.user?.sub }),
         'Rate limit backend unavailable; allowing request',
       );
       this.securityMetrics.recordFailOpen('rate_limit');
@@ -134,7 +142,7 @@ export class RateLimitGuard implements CanActivate {
       const retryAfter = Math.max(resetAt - Math.floor(Date.now() / 1000), 1);
       setHeader('Retry-After', retryAfter);
 
-      this.logger.warn({ key, tier, ip: req.ip, userId: req.user?.sub }, 'Rate limit exceeded');
+      this.logger.warn({ key, tier, ip, userId: req.user?.sub }, 'Rate limit exceeded');
 
       throw new RateLimitedException(`Rate limit exceeded (${tier}). Retry after ${retryAfter}s.`);
     }

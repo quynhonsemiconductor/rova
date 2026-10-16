@@ -18,29 +18,28 @@ import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { seed, seedSystemRoles, seedTenantBootstrap } from './seeds/seed';
+import { strandedMigrations } from './stranded-migrations';
 import { resolveDatabaseUrl } from './database-url';
-import { resolveAuthMode, resolveIamUrl, resolveMigrationPoolConfig } from './pg-pool-config';
+import { resolveMigrationPoolConfig } from './pg-pool-config';
+import { log } from './script-log';
 
 // Resolves DATABASE_MIGRATION_URL, else DATABASE_URL, else composes from the
 // DATABASE_* parts (the deployed path — credentials come straight from the
 // RDS-managed secret, never a hand-maintained copy). Throws with a precise
 // message listing what is missing.
-// UNDER DATABASE_AUTH=iam THIS CARRIES NO PASSWORD. `resolveMigrationPoolConfig`
-// returns `password` as a FUNCTION that pg calls per connection, so a migration that
-// outlives a 15-minute token still reconnects successfully. The role is
-// `<product>_migrator`, set by the chart — never the application role, whose 30s
-// statement_timeout would kill the 600s migration this file exists to run.
+// The role is `<product>_migrate`, set by the deployment — never the application role, whose
+// statement_timeout would kill a long migration and whose rights do not include DDL.
 let poolConfig: ReturnType<typeof resolveMigrationPoolConfig>;
 try {
   poolConfig = resolveMigrationPoolConfig();
 } catch (err) {
-  console.error(`❌  ${(err as Error).message}`);
+  log.error({ err }, (err as Error).message);
   process.exit(1);
 }
 
 const pool = new Pool({ ...poolConfig, max: 1 });
 
-/** The pre-IAM fallback: whatever string the migration connection was built from. */
+/** Whatever string the migration connection was built from. */
 function resolveMigrationUrlFallback(): string {
   return poolConfig.connectionString ?? '';
 }
@@ -79,6 +78,11 @@ const db = drizzle(pool);
  * exist?") is exactly what the silent success failed to give anyone. Proving it properly means
  * diffing the live schema against the migrations, which is a different tool and a different change.
  *
+ * A MISSING ROW AT AN ENTRY'S `when` IS NOT YET "STRANDED": the entry's file may be recorded under an EARLIER
+ * `when` (this is what a corrected journal timestamp looks like on a database that ran the file before the
+ * correction — 0006 and 0019). The match falls back to the file's hash, see `db/stranded-migrations.ts`; only an
+ * entry found neither way is reported.
+ *
  * Hashes are compared rather than counted: a count matches by coincidence whenever an abandoned branch
  * row occupies a real one's slot, which is precisely the case that produced the incident and precisely
  * the one a count cannot see. Drizzle hashes the file's raw text.
@@ -96,25 +100,26 @@ async function assertNoStrandedMigrations(folder: string): Promise<void> {
   const recorded = await db.execute<{ created_at: string; hash: string }>(
     sql`select created_at, hash from drizzle.__drizzle_migrations`,
   );
-  // `created_at` is a bigint column, so the driver hands it back as a string.
-  const hashByWhen = new Map(recorded.rows.map((r) => [String(r.created_at), r.hash]));
-
-  const missing: string[] = [];
-  const mismatched: string[] = [];
-  for (const entry of journal.entries) {
-    const file = path.join(folder, `${entry.tag}.sql`);
-    if (!fs.existsSync(file)) continue;
-    const recordedHash = hashByWhen.get(String(entry.when));
-    if (recordedHash === undefined) {
-      missing.push(`${entry.tag} (when=${entry.when})`);
-      continue;
-    }
-    const hash = createHash('sha256').update(fs.readFileSync(file, 'utf8')).digest('hex');
-    if (hash !== recordedHash) mismatched.push(`${entry.tag} (when=${entry.when})`);
+  const { missing, mismatched, recordedUnderOtherTimestamp } = strandedMigrations(
+    journal.entries,
+    recorded.rows,
+    (tag) => {
+      const file = path.join(folder, `${tag}.sql`);
+      if (!fs.existsSync(file)) return undefined;
+      return createHash('sha256').update(fs.readFileSync(file, 'utf8')).digest('hex');
+    },
+  );
+  if (recordedUnderOtherTimestamp.length > 0) {
+    // Not a problem: the file ran, under the `when` it had then. Said once, at info, so the next reader knows why a
+    // journal entry has no row at its own timestamp.
+    log.info(
+      `ℹ️   ${recordedUnderOtherTimestamp.length} migration(s) ran under an earlier timestamp than the journal now ` +
+        `gives them (found by their file's hash): ${recordedUnderOtherTimestamp.join(', ')}.`,
+    );
   }
 
   if (mismatched.length > 0) {
-    console.warn(
+    log.warn(
       `⚠️   ${mismatched.length} migration(s) recorded with a DIFFERENT hash than the file on disk: ` +
         `${mismatched.join(', ')}. Either the file was edited after it ran (harmless), or its ` +
         'timestamp slot belongs to another file and this one never ran — check that the objects it ' +
@@ -122,7 +127,7 @@ async function assertNoStrandedMigrations(folder: string): Promise<void> {
     );
   }
   if (missing.length > 0) {
-    console.warn(
+    log.warn(
       `⚠️   ${missing.length} migration(s) in the journal have NO recorded row at their own ` +
         `timestamp: ${missing.join(', ')}. Drizzle applies only entries past the newest recorded ` +
         '`when`, so a non-ascending or duplicated timestamp strands a file while the run still ' +
@@ -134,26 +139,19 @@ async function assertNoStrandedMigrations(folder: string): Promise<void> {
 
 async function run() {
   try {
-    console.log('Running migrations...');
+    log.info('Running migrations...');
     const migrationsFolder = path.join(__dirname, 'migrations');
     await migrate(db, { migrationsFolder });
     // Before the seeds, so a stranded schema change is named ahead of the failure it would otherwise
     // cause against a table that was never created.
     await assertNoStrandedMigrations(migrationsFolder);
-    console.log('✅  Migrations applied');
+    log.info('✅  Migrations applied');
 
     // Seed uses the app connection, not the migration URL (admin role).
     // Falls back to the migration URL when no separate app credential is set.
     // The seed helpers take a connection STRING and build their own pool, so this is
-    // the one place a URL is still required. Under IAM that means minting a token and
-    // embedding it — safe here because seeding is seconds, not hours, and this is
-    // inside the async flow so it can await. See resolveIamUrl's warning about pools.
-    //
-    // Under IAM the migrator cannot mint a token for the APPLICATION role — its IRSA
-    // identity is scoped to its own — so it seeds as itself. That is correct rather
-    // than a compromise: the migrator already holds the DDL rights seeding needs.
-    const seedUrl = await (async () => {
-      if (resolveAuthMode() === 'iam') return resolveIamUrl();
+    // the one place a URL is still required.
+    const seedUrl = (() => {
       try {
         return resolveDatabaseUrl();
       } catch {
@@ -165,13 +163,13 @@ async function run() {
     // (JIT SSO provisioning assigns these role slugs). It contains no demo
     // fixtures, so it runs on EVERY deploy in EVERY environment, including real
     // production. Idempotent.
-    console.log('Seeding system role catalogue...');
+    log.info('Seeding system role catalogue...');
     await seedSystemRoles(seedUrl);
 
     // Tenant bootstrap — the primary workspace + Entra SSO connection. Prod-safe
     // config (no demo fixtures): required for real users to JIT-provision and for
     // PLATFORM_ADMIN_EMAILS elevation on first login. Runs in EVERY environment.
-    console.log('Seeding tenant bootstrap (workspace + SSO connection)...');
+    log.info('Seeding tenant bootstrap (workspace + SSO connection)...');
     await seedTenantBootstrap(seedUrl);
 
     /**
@@ -192,18 +190,18 @@ async function run() {
      */
     if (process.env['SEED_ON_DEPLOY'] === 'true') {
       if (process.env['NODE_ENV'] === 'production') {
-        console.warn(
+        log.warn(
           '⚠️  SEED_ON_DEPLOY=true but NODE_ENV=production — demo seed REFUSED. ' +
             'Deployed environments run the role catalogue and tenant bootstrap only; ' +
             'fixtures are for local development (pnpm db:seed:test) and CI.',
         );
       } else {
-        console.log('SEED_ON_DEPLOY=true — running demo seed...');
+        log.info('SEED_ON_DEPLOY=true — running demo seed...');
         await seed(seedUrl);
       }
     }
   } catch (err) {
-    console.error('❌  Migration failed', err);
+    log.error({ err }, 'Migration failed');
     process.exit(1);
   } finally {
     await pool.end();

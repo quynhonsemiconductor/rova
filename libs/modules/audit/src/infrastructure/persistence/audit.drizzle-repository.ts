@@ -28,6 +28,8 @@ export class AuditDrizzleRepository implements IAuditRepository {
         ipAddress: input.ipAddress,
         userAgent: input.userAgent,
         sourceEventId: input.sourceEventId,
+        // undefined -> the column default, now()
+        occurredAt: input.occurredAt,
       })
       // When sourceEventId is non-null and already exists, silently skip the insert.
       // When null (direct service calls), no conflict occurs (NULL != NULL in PG).

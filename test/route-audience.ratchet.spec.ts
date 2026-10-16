@@ -634,7 +634,7 @@ const MIN_PROJECT_TIER_ROUTES_COVERED = 139;
  * inventory is held by the exhaustiveness assertions below, which name what changed.
  */
 const MIN_ROUTES_FOUND = 200;
-/** `git ls-files 'libs/**\/*.controller.ts' 'apps/**\/*.controller.ts'` minus HealthController. */
+/** `git ls-files 'libs/**\/*.controller.ts' 'apps/**\/*.controller.ts'` minus PublicConfigController (the one public route; it carries no permission). */
 const CONTROLLER_COUNT = 26;
 
 interface DiscoveredRoute {

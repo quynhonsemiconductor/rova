@@ -2,7 +2,10 @@ import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } fr
 import type { FastifyRequest } from 'fastify';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
-import { DomainException as SharedDomainException } from '@quynhonsemiconductor/platform-http';
+import {
+  DomainException as SharedDomainException,
+  clientIp,
+} from '@quynhonsemiconductor/platform-http';
 import {
   HttpMetrics,
   IGNORED_REQUEST_PATHS,
@@ -162,11 +165,9 @@ export class HttpLoggingInterceptor implements NestInterceptor {
     const albWait = albWaitMs(arrival, albAt);
     const bodyWaitMs = arrival !== undefined ? startTime - arrival : undefined;
 
-    const ip =
-      (req.headers['x-real-ip'] as string) ||
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-      req.ip ||
-      'unknown';
+    // `clientIp()`: the signed edge address, else `cf-connecting-ip`, else the socket. Never `x-real-ip`, which
+    // any caller can set, and never `req.ip` alone, which behind the Tunnel is cloudflared's address.
+    const ip = clientIp(req);
 
     return next.handle().pipe(
       tap({

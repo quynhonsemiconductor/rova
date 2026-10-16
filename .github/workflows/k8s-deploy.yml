@@ -29,24 +29,36 @@
 # =============================================================================
 name: Backend · K8s Deploy
 
+# ── DISABLED (2026-10-12) ─────────────────────────────────────────────────────────────────────────────
+# This workflow does not run on push any more. Its `push` trigger is kept below, commented out, to be
+# restored. Why: it built three arm64 images on every merge to main and failed on every one of them since
+# 2026-10-07 at `deploy-dev` ("Input required and not supplied: token": the GITOPS_DEV_TOKEN secret does not
+# exist), and the cluster it deploys to is not built yet. ECS (backend-deploy.yml) is the live path.
+#
+# It is ALSO disabled in the repository's Actions settings (state `disabled_manually`), which survives edits to
+# this file. To bring it back, both must be undone, after the workflow points at the on-prem cluster and the
+# GITOPS_DEV_TOKEN secret exists (ONPREM-SERVER-SETUP-RUNBOOK §13, step 7):
+#   1. restore the `push:` block below (delete the leading `# ` of the commented lines);
+#   2. `gh workflow enable k8s-deploy.yml --repo quynhonsemiconductor/rova`.
+# Until then only the manual `workflow_dispatch` below can start it.
 on:
-  push:
-    branches: [main]
-    # Same develop-path filter as backend-deploy.yml: skip when a merge touches
-    # ONLY paths this service does not ship (docs and the web app). paths-ignore
-    # fires only if EVERY changed file matches, so a shared change still deploys
-    # and under-deploy is impossible. Kept in lockstep with backend-deploy.yml on
-    # purpose — during the migration (§17b) the two paths must deploy the SAME set
-    # of merges, or dev on one platform silently drifts from the other.
-    #
-    # No `tags:` trigger here, unlike backend-deploy.yml: on the Kubernetes path a
-    # release tag is handled by k8s-promote.yml, not by rebuilding here (§11 — the
-    # promoted image is the exact bytes that soaked in dev, never a fresh build).
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - '.claude/**'
-      - 'apps/web/**'
+  # push:
+  #   branches: [main]
+  #   # Same develop-path filter as backend-deploy.yml: skip when a merge touches
+  #   # ONLY paths this service does not ship (docs and the web app). paths-ignore
+  #   # fires only if EVERY changed file matches, so a shared change still deploys
+  #   # and under-deploy is impossible. Kept in lockstep with backend-deploy.yml on
+  #   # purpose — during the migration (§17b) the two paths must deploy the SAME set
+  #   # of merges, or dev on one platform silently drifts from the other.
+  #   #
+  #   # No `tags:` trigger here, unlike backend-deploy.yml: on the Kubernetes path a
+  #   # release tag is handled by k8s-promote.yml, not by rebuilding here (§11 — the
+  #   # promoted image is the exact bytes that soaked in dev, never a fresh build).
+  #   paths-ignore:
+  #     - '**/*.md'
+  #     - 'docs/**'
+  #     - '.claude/**'
+  #     - 'apps/web/**'
 
   # Manual redeploy of whatever main currently holds — develop only. Mirrors
   # backend-deploy.yml: a merged fix can otherwise become undeployable when its
@@ -87,12 +99,12 @@ jobs:
       services: 'api worker migrator'
       services-json: '["api","worker","migrator"]'
       # ── Graviton (§15) ──────────────────────────────────────────────────────
-      # rova is arm64: every image has an arm64 build and infra pins arm64
-      # Fargate/nodes (confirmed against backend-deploy.yml's image_platforms and
-      # gitops/values/rova). qnsc-kb is the one that must pass linux/amd64 until
-      # §4c splits clamav out — clamav/clamav publishes no arm64 tag. Do not copy
-      # this value to that product.
-      platforms: linux/arm64
+      # The on-prem k3s host is amd64 (Ryzen 9 9950X), and gitops now defaults to amd64, so this caller builds
+      # linux/amd64. (ECS keeps running the arm64 entry of the multi-arch images that backend-deploy.yml builds.)
+      platforms: linux/amd64
+      # NATIVE x86 runner, REQUIRED with amd64: the reusable's `build_runner` default is the ARM runner (it pairs with its arm64 `platforms`
+      # default), so linux/amd64 on the default would be emulated under QEMU, and a QEMU build of this pnpm + Nest compile fails.
+      build_runner: ubuntu-24.04
       # ── ONE IMAGE PER DOCKERFILE STAGE ────────────────────────────────────────
       # The reusable passes `build-target: <service>`, which this Dockerfile REQUIRES:
       # it has a stage per service (`api`, `worker`, `migrator`), and with no target

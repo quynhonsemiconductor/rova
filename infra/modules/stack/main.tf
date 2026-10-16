@@ -25,9 +25,15 @@ locals {
   # is a 502 with nothing in the app's own logs to explain it.
   api_container_port = 3000
 
-  kms_key_arn        = data.terraform_remote_state.shared.outputs.kms_key_arn
-  cloudflare_zone_id = try(data.terraform_remote_state.shared.outputs.cloudflare_zone_id, "")
-  cloudflare_ipv4    = data.terraform_remote_state.shared.outputs.cloudflare_ipv4
+  kms_key_arn     = data.terraform_remote_state.shared.outputs.kms_key_arn
+  cloudflare_ipv4 = data.terraform_remote_state.shared.outputs.cloudflare_ipv4
+
+  # The zone id is read ONLY when DNS is switched on, and then WITHOUT a fallback: if the shared stack
+  # lacks the output this fails the plan, and `terraform_data.dns_zone_id_is_valid` fails it again if the
+  # value is not a zone id. The old `try(..., "")` turned a missing/empty id into "DNS is off", and the
+  # modules below turned that into "destroy the records" (opshub develop, 2026-10-12). Whether DNS exists
+  # is decided by `var.dns_enabled`, never inferred from this value.
+  cloudflare_zone_id = var.dns_enabled ? data.terraform_remote_state.shared.outputs.cloudflare_zone_id : ""
 
   # `rediss://`, never `redis://`: the cache module enables transit encryption
   # unconditionally, so a plaintext scheme would simply fail to connect.
@@ -84,7 +90,7 @@ locals {
     # from it labelled every develop span, metric and log as production.
     { name = "DEPLOYMENT_ENV", value = var.env },
     # Terraform already knows the deployed tag, so `service.version` needs no CI
-    # plumbing. Prod pins a release tag; develop is honestly "latest".
+    # plumbing. Prod pins a release tag; develop carries the baseline placeholder (the deploy replaces the image tag, not this value).
     { name = "SERVICE_VERSION", value = var.image_tag },
     { name = "OTEL_SAMPLING_PROBABILITY", value = tostring(var.observability.sampling_probability) },
   ]
@@ -161,6 +167,12 @@ locals {
     # rollback, not a silent downgrade, which is the intent).
     "cookie-secret"       = "Cookie signing secret (distinct from csrf-secret)"
     "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
+    # The key the Cloudflare Pages Function signs the visitor's address with
+    # (`@quynhonsemiconductor/platform-http/edge`) and the API verifies (`clientIp()`). The SAME value as the Pages
+    # project's secret of that name. A KEY of the app bundle (both environments bundle their secrets): it is absent until
+    # the owner puts a value in, and is not injected into the API task until `edge_client_ip_secret_set` is true (see
+    # that variable for why).
+    "edge-client-ip-secret" = "Key the Cloudflare Pages Function signs the visitor address with, verified by the API (min 32 chars; openssl rand -base64 48). Same value as the Pages secret EDGE_CLIENT_IP_SECRET."
     # SCM (GitHub App) — minted in GitHub, pasted by hand (Terraform only scaffolds
     # empty containers). Both stay empty until the App is registered, which keeps the
     # SCM backfill and webhook paths dormant.
@@ -442,7 +454,7 @@ module "tunnel_api" {
 }
 
 module "otel_agent_api" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.1.0"
 
   product       = var.product
   env           = var.env
@@ -452,6 +464,7 @@ module "otel_agent_api" {
   token_secret_arn = try(module.secrets.secret_arns["observability-token"], "")
   log_group        = local.api_log_group
   region           = var.region
+  debug_metrics    = var.observability.debug_metrics
 
   cpu              = local.otel_api_cpu
   memory           = local.otel_api_memory
@@ -459,7 +472,7 @@ module "otel_agent_api" {
 }
 
 module "otel_agent_worker" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.1.0"
 
   product       = var.product
   env           = var.env
@@ -469,6 +482,7 @@ module "otel_agent_worker" {
   token_secret_arn = try(module.secrets.secret_arns["observability-token"], "")
   log_group        = local.worker_log_group
   region           = var.region
+  debug_metrics    = var.observability.debug_metrics
 
   cpu              = local.otel_worker_cpu
   memory           = local.otel_worker_memory
@@ -599,7 +613,7 @@ locals {
   # The explicit bucket boundaries of http_server_duration_milliseconds, in
   # milliseconds — the only `le` values that exist on the series.
   #
-  # MIRRORS apps/api/src/otel.ts. The list is NOT the OpenTelemetry JS defaults any
+  # MIRRORS apps/api/src/main.ts. The list is NOT the OpenTelemetry JS defaults any
   # more: those stop at 10000, and the same change that added this gate widened the
   # view (`httpDurationBoundaries` on startOtel) precisely because the top finite
   # bucket is where a p99 goes to hide. The first fifteen entries are still the SDK
@@ -620,7 +634,7 @@ locals {
   # CHANGING THE SDK'S VIEW INVALIDATES THIS LIST, and this file cannot tell that it
   # happened — terraform_data.slow_request_bucket_is_real checks
   # slow_request_bucket_ms against THIS list, not against what the exporter is
-  # actually sending, so a boundary edited in apps/api/src/otel.ts and not here makes
+  # actually sending, so a boundary edited in apps/api/src/main.ts and not here makes
   # the precondition assert against a set nobody exports. Both lists move together or
   # neither moves. The check runs the safe way round (it can only reject a value the
   # exporter might in fact have), but a rejected legal boundary is still a plan that
@@ -715,7 +729,7 @@ locals {
 #     at the time, so histogram_quantile clamped there. All it meant is "at least
 #     one request exceeded 10s, upper bound unknown". The same change that added
 #     this gate widened the view out to 180000 (local.http_duration_boundaries_ms
-#     above, mirroring apps/api/src/otel.ts), so a repeat of that page now reports
+#     above, mirroring apps/api/src/main.ts), so a repeat of that page now reports
 #     a bucket that distinguishes 12s from a full retry budget — but the clamp is
 #     a property of the top bucket, not of 10000, and it still applies there.
 #   * With production's measured load — "4, 1, 0, 1 requests a day", documented in
@@ -872,6 +886,23 @@ module "alerts" {
       severity    = "warning"
       summary     = "More than ${local.slow_request_count_max} HTTP requests took longer than ${local.alert_thresholds.slow_request_bucket_ms}ms in the last 30m in ${var.env} — a COUNT, not a percentile, so unlike http-p99-latency this stays valid at this environment's request volume."
       runbook_url = "${local.runbook_base_url}/http-slow-request-count.md"
+    },
+    # An outbox relay whose PASS throws, continuously. A relay claim that throws every pass records no `queue_failures_total`
+    # (that counts ROWS, after the claim), no `outboxDeadLetter` (needs a claimed row) and no `job_*` series (relays are not
+    # timed by JobMetrics), so nothing alerted: opshub's webhook relay failed every pass for two days. AbstractOutboxRelay
+    # counts `outbox_relay_pass_failed_total{relay}` when a pass throws. A relay passes every 5-10 s, so a failure that
+    # persists adds to the counter in every 3-minute window; for 10m makes it "failing continuously" and one transient blip
+    # clears long before. `sum by (relay)`: each failing relay is its own alert instance and names itself; healthy, the
+    # series does not exist and the rule's no-data state is OK. No sample floor: it is not a ratio.
+    {
+      name        = "outbox-relay-failing"
+      promql      = "sum by (relay) (increase(outbox_relay_pass_failed_total{deployment_environment_name=\"${var.env}\"}[3m]))"
+      for         = "10m"
+      op          = "gt"
+      threshold   = 0
+      severity    = "warning"
+      summary     = "Outbox relay {{ $labels.relay }} has failed its pass continuously for 10m in ${var.env} - a claim query or the database connection is failing before any row is reached, so nothing is delivered. The error is in the worker log (`level=error`, the relay's class name)."
+      runbook_url = "${local.runbook_base_url}/outbox-relay-failing.md"
     },
     {
       name = "worker-job-failure-rate"
@@ -1473,7 +1504,7 @@ resource "grafana_dashboard" "runtime" {
       },
       {
         id         = 3
-        title      = "Outbound HTTP client calls: rate + p99 latency"
+        title      = "Outbound HTTP client calls: rate by server"
         type       = "timeseries"
         gridPos    = { h = 8, w = 12, x = 0, y = 8 }
         datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
@@ -1481,8 +1512,11 @@ resource "grafana_dashboard" "runtime" {
         # our own error rate — this is what SCM/Entra/email-provider calls
         # look like from the inside.
         targets = [{
-          expr         = "sum(rate(http_client_duration_milliseconds_count{deployment_environment_name=\"${var.env}\"}[5m])) by (net_peer_name)"
-          legendFormat = "{{net_peer_name}}"
+          # http_client_request_duration_seconds_count: the ONLY outbound-HTTP series @opentelemetry/instrumentation-http 0.221 emits (stable
+          # semconv, seconds, labelled server_address). This panel read the legacy http_client_duration_milliseconds_count / net_peer_name,
+          # which 0.221 no longer creates, so it had been EMPTY since the upgrade.
+          expr         = "sum(rate(http_client_request_duration_seconds_count{deployment_environment_name=\"${var.env}\"}[5m])) by (server_address)"
+          legendFormat = "{{server_address}}"
           refId        = "A"
         }]
       },
@@ -1701,7 +1735,7 @@ locals {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.5.0"
 
   cpu_architecture = var.cpu_architecture
   # Same gate as OTEL_ENABLED below: only switches log driver once a real
@@ -1830,6 +1864,11 @@ module "api" {
     # while empty broke every develop deploy. See the variable.
     { name = "STORAGE_PUBLIC_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-public-access-key-id"] },
     { name = "STORAGE_PUBLIC_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-public-secret-access-key"] },
+    ] : [],
+    var.edge_client_ip_secret_set ? [
+      # The API's alone (the worker serves no visitor). Injected only once populated: the deploy preflight refuses to
+      # deploy when an injected secret holds no value. See the variable.
+      { name = "EDGE_CLIENT_IP_SECRET", secret_arn = module.secrets.secret_arns["edge-client-ip-secret"] },
   ] : [])
 
   environment_vars = concat(local.api_db_env, [
@@ -1918,6 +1957,12 @@ module "api" {
     module.firelens_agent_api.container_definitions,
   )
 
+  # ECS stops containers in the REVERSE of their dependencies, so the app stops BEFORE the collector and its shutdown "flush telemetry" step (5 s) reaches a
+  # live agent; without this both get SIGTERM at once and the flush times out. Built from the agent module's own output, so it is EMPTY when the agent is
+  # disabled and the name always matches the container that is really in the task (a dependsOn naming an absent container fails task registration).
+  # START, not HEALTHY: the ADOT image has no health check.
+  container_depends_on = [for c in module.otel_agent_api.container_definitions : { container_name = c.name, condition = "START" }]
+
 
   # Multi-IdP broker: the TASK role reads per-connection OIDC client secrets at
   # RUNTIME (resolved from the sso_connections row on demand). The home
@@ -1949,7 +1994,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.5.0"
 
   cpu_architecture = var.cpu_architecture
   use_firelens     = module.firelens_agent_worker.enabled
@@ -2095,6 +2140,12 @@ module "worker" {
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
     { name = "OTEL_SERVICE_NAME", value = "${var.product}-worker" },
+    # NO LONGER READ by the app: createWorkerApp takes the service name from OTEL_SERVICE_NAME (set above to the same value), so this entry is dead
+    # and can be dropped in a later infra change. It used to be what apps/worker/src/otel.ts read (as serviceNameEnvVar), not OTEL_SERVICE_NAME, so that two
+    # processes sharing an environment stay distinguishable. It is set here, to the same value as OTEL_SERVICE_NAME above, so the name reported by
+    # metrics and traces matches the logs (FireLens labels them 'rova-worker'). History, not current behaviour: before this was set, the code default
+    # applied and was the pre-rename name 'rally-worker'.
+    { name = "OTEL_WORKER_SERVICE_NAME", value = "${var.product}-worker" },
     # Gated on the sidecar actually existing, so the app can never export into a
     # void. False until observability.otlp_endpoint is set.
     { name = "OTEL_ENABLED", value = tostring(module.otel_agent_worker.enabled) },
@@ -2107,6 +2158,12 @@ module "worker" {
     module.otel_agent_worker.container_definitions,
     module.firelens_agent_worker.container_definitions,
   )
+
+  # ECS stops containers in the REVERSE of their dependencies, so the app stops BEFORE the collector and its shutdown "flush telemetry" step (5 s) reaches a
+  # live agent; without this both get SIGTERM at once and the flush times out. Built from the agent module's own output, so it is EMPTY when the agent is
+  # disabled and the name always matches the container that is really in the task (a dependsOn naming an absent container fails task registration).
+  # START, not HEALTHY: the ADOT image has no health check.
+  container_depends_on = [for c in module.otel_agent_worker.container_definitions : { container_name = c.name, condition = "START" }]
 
 
   tags = merge(local.tags, { Service = "worker" })
@@ -2233,19 +2290,52 @@ module "migrator" {
 # wired.
 module "web" {
   count  = var.cloudflare_account_id != "" ? 1 : 0
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/pages-web?ref=pages-web-v1.0.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/pages-web?ref=pages-web-v1.0.2"
 
   account_id  = var.cloudflare_account_id
   name        = "${local.name}-web"
   zone_id     = local.cloudflare_zone_id
-  domain      = local.cloudflare_zone_id != "" ? var.app_domain : ""
-  record_name = local.cloudflare_zone_id != "" ? var.web_record : ""
+  domain      = var.dns_enabled ? var.app_domain : ""
+  record_name = var.dns_enabled ? var.web_record : ""
   comment     = "${local.name} web SPA → Cloudflare Pages (managed by ${var.product}-infra ${var.env})"
 
   # Pages Function proxy upstream: /v1/* (incl. /v1/bff/*) is forwarded here so
   # the browser only ever sees the SPA origin (same-origin BFF requirement).
+  #
+  # The Function also needs the Pages SECRET `EDGE_CLIENT_IP_SECRET` (the same value as the API's key of that name),
+  # which is NOT set here: this module carries plain variables only. It is set with
+  # `wrangler pages secret put EDGE_CLIENT_IP_SECRET --project-name <project>` or in the dashboard, and the Function
+  # answers 500 naming it rather than forward unsigned (see apps/web/functions/_lib/proxy.ts). The order of the
+  # owner steps is in docs/runbooks/edge-client-ip.md.
   production_env_vars = {
     API_ORIGIN = "https://${var.api_domain}"
+  }
+}
+
+# ── Guard: when DNS is on, the zone id must be a zone id ──────────────────────
+# A resource precondition, not a variable validation (the value is read from remote state, which a
+# validation block cannot see) and not a `check` block (a failed check is a warning and the plan still
+# exits 0). `input` is bound to the value so it re-evaluates on every plan.
+#
+# PROTECTION AGAINST DESTROY. `lifecycle { prevent_destroy }` on the API CNAME, the web CNAME and the
+# Pages domain is NOT set here, deliberately: those resources live inside tf-modules (`dns-record`,
+# `pages-web`), and `prevent_destroy` must be a literal on the resource itself, so it can only be set
+# there — for every consumer. That would also make `dns_enabled = false` and any environment teardown
+# (which those modules document as removing the records, so none is left to collide on a rebuild)
+# impossible without editing the module. What stops THIS class of incident is the cause: DNS is decided
+# by an explicit boolean, never by the zone value, and an invalid zone id fails the plan. The
+# plan-level backstop is the destructive-guard (see .github/workflows/infra-apply.yml, TODO).
+resource "terraform_data" "dns_zone_id_is_valid" {
+  input = {
+    dns_enabled = var.dns_enabled
+    zone_id     = local.cloudflare_zone_id
+  }
+
+  lifecycle {
+    precondition {
+      condition     = !var.dns_enabled || can(regex("^[0-9a-f]{32}$", local.cloudflare_zone_id))
+      error_message = "dns_enabled is true but the shared stack's cloudflare_zone_id is not a 32-hex zone id (empty or missing). Refusing to plan: with it, the API and web DNS records and the Pages domain would be destroyed. Re-apply infra/live/_shared with TF_VAR_cloudflare_zone_id set (CI: vars.CLOUDFLARE_ZONE_ID)."
+    }
   }
 }
 
@@ -2259,7 +2349,7 @@ module "web" {
 module "dns_api" {
   source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/dns-record?ref=dns-record-v1.1.0"
 
-  enabled = local.cloudflare_zone_id != ""
+  enabled = var.dns_enabled
   zone_id = local.cloudflare_zone_id
   name    = var.api_record
   type    = "CNAME"

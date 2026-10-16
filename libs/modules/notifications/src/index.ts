@@ -1,4 +1,5 @@
 export * from './notifications.module';
+export * from './interface/http/sse-connections';
 export * from './application/notifications.service';
 export * from './application/notification-preferences.service';
 export * from './domain/notification.types';

@@ -77,9 +77,23 @@ variable "storage_state_key" {
 // ── Application ─────────────────────────────────────────────────────────────────
 
 variable "image_tag" {
-  description = "Container image tag for api/worker/migrator. `latest` is acceptable in develop; production should pin a release tag."
+  description = <<-EOT
+    Container image tag for the BASELINE task definitions (api, worker, migrator). Required: no default.
+
+    NEVER `latest`: the ECR repositories are IMMUTABLE and the deploy pushes `sha-<commit>` / `v*` tags only, so `latest` does not
+    exist, and a task definition that references it cannot start (`CannotPullContainerError`). That is the bug that took qnsc-kb's
+    worker down in 2026-10: a Terraform-registered baseline pointing at a tag that was never pushed (qnsc-kb-backend#201).
+
+    Develop passes an obviously invalid placeholder, because the deploy rewrites the tag in the product container before it registers
+    the revision it rolls out, and the services ignore Terraform's task_definition (`ignore_changes`), so the baseline is never pulled.
+    Production pins the release tag that triggered the apply.
+  EOT
   type        = string
-  default     = "latest"
+
+  validation {
+    condition     = var.image_tag != "latest" && var.image_tag != ""
+    error_message = "image_tag must not be \"latest\" or empty: that tag does not exist in the immutable ECR repositories. Use the release tag, or in develop the placeholder \"set-by-the-deploy-never-a-real-tag\"."
+  }
 }
 
 variable "cache" {
@@ -464,10 +478,17 @@ variable "observability" {
     there); lower in production for cost. Be aware that anything below 1.0 drops
     most ERROR traces too — keeping all errors needs tail sampling, which needs a
     gateway that sees whole traces, not a per-task sidecar.
+
+    `debug_metrics` is a TEMPORARY DIAGNOSTIC for DEVELOP ONLY (the tf-modules observability-agent
+    `debug_metrics`): the collector sidecars also log every metric datapoint, with its timestamp, to
+    their CloudWatch stream, to find which writer emits duplicate-timestamp samples. It costs
+    CloudWatch ingestion (~5 GB/day) and logs application data. Default false; never set it in
+    production; turn it off by deleting the line in live/develop (runbook: quynhonsemiconductor/ci docs/runbooks/otel-duplicate-timestamps.md).
   EOT
   type = object({
     otlp_endpoint        = optional(string, "")
     sampling_probability = optional(number, 1.0)
+    debug_metrics        = optional(bool, false)
   })
   default = {}
 }
@@ -604,12 +625,42 @@ variable "alarm_emails" {
   default     = []
 }
 
+variable "dns_enabled" {
+  description = <<-EOT
+    Whether this environment owns its public DNS: the API CNAME, the web CNAME and the Pages custom
+    domain. REQUIRED, no default, so every environment states it. Set it to false only to decommission
+    DNS on purpose: it is the one switch that removes the records, and it is never inferred from the
+    zone id (an empty id used to mean "off", which silently destroyed the records). When true, the
+    shared stack must export a valid 32-hex `cloudflare_zone_id` or the plan fails.
+  EOT
+  type        = bool
+}
+
 variable "cloudflare_account_id" {
   description = "Cloudflare account that owns the Pages project."
   type        = string
   default     = ""
 }
 
+
+variable "edge_client_ip_secret_set" {
+  description = <<-EOT
+    Inject `edge-client-ip-secret` into the API as EDGE_CLIENT_IP_SECRET, so `clientIp()` verifies the address the
+    Cloudflare Pages Function signs. Behind the Function the API's `cf-connecting-ip` is a Cloudflare address shared by
+    every visitor: without the verified address one AUTH_LOGIN bucket (5 attempts per 15 minutes) and one DEFAULT
+    bucket are the whole company's.
+
+    OFF by default, for the same mechanical reason as `storage_public_credentials`: the deploy preflight refuses to
+    deploy when an injected Secrets Manager secret holds no value, so injecting it before it is populated blocks every
+    deploy. The key is declared either way. Order, per environment (docs/runbooks/edge-client-ip.md):
+      1. generate a key (`openssl rand -base64 48`) and set it as the Pages secret EDGE_CLIENT_IP_SECRET;
+      2. put the SAME value into the `edge-client-ip-secret` key of `<product>/<env>/app` (the bundle);
+      3. set this true.
+    While false the API has no key: it ignores the signed headers and uses `cf-connecting-ip`, exactly as before.
+  EOT
+  type        = bool
+  default     = false
+}
 
 variable "storage_public_credentials" {
   description = <<-EOT

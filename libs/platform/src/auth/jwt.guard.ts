@@ -10,6 +10,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RequestContextService } from '../context/request-context';
 
 import { failOpenLog, SecurityMetrics } from '@quynhonsemiconductor/observability';
+import { clientIp, type ClientIpRequest } from '@quynhonsemiconductor/platform-http';
 import { AuthTokenCache } from '@quynhonsemiconductor/identity';
 import {
   BFF_SESSION_COOKIE,
@@ -66,6 +67,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       headers: Record<string, string | string[] | undefined>;
       cookies?: Record<string, string | undefined>;
       ip: string;
+      socket?: { remoteAddress?: string };
+      method?: string;
+      url?: string;
       user?: JwtPayload;
       bffSid?: string;
       apiTokenId?: string;
@@ -112,10 +116,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
    * the request context so downstream code is path-agnostic.
    */
   private async authenticateFromSession(
-    req: { ip: string; user?: JwtPayload; bffSid?: string },
+    req: ClientIpRequest & { user?: JwtPayload; bffSid?: string },
     sid: string,
   ): Promise<boolean> {
-    const claims = await this.bffResolver!.resolve(sid, req.ip);
+    const claims = await this.bffResolver!.resolve(sid, clientIp(req));
     if (!claims) {
       throw new UnauthorizedException('Invalid or expired session');
     }
@@ -138,10 +142,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
    * offboarding write and the token rows being revoked.
    */
   private async authenticateFromApiToken(
-    req: { ip: string; user?: JwtPayload; apiTokenId?: string },
+    req: ClientIpRequest & { user?: JwtPayload; apiTokenId?: string },
     rawToken: string,
   ): Promise<boolean> {
-    const principal = await this.apiTokenResolver!.resolve(rawToken, req.ip);
+    const principal = await this.apiTokenResolver!.resolve(rawToken, clientIp(req));
     if (!principal) {
       throw new UnauthorizedException('Invalid, expired or revoked API token');
     }

@@ -1,9 +1,6 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { LoggerModule } from 'nestjs-pino';
-import { AppConfigService } from '@platform/config';
 import { RequestContextService } from '@platform/context/request-context';
-import { createLoggerOptions } from '@quynhonsemiconductor/observability';
 import { PlatformModule } from '@platform';
 import { IdentityModule } from '@modules/identity';
 import { WorkspaceModule } from '@modules/workspace';
@@ -29,23 +26,10 @@ import { GlobalExceptionFilter, REQUEST_CONTEXT } from '@quynhonsemiconductor/pl
 import { HttpLoggingInterceptor } from '@platform/http/http-logging.interceptor';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
-import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
 
 @Module({
   imports: [
-    // Pino structured logging — one shared factory (redaction, trace correlation,
-    // ALS business context) lives in @platform so api and worker cannot drift.
-    LoggerModule.forRootAsync({
-      inject: [AppConfigService],
-      useFactory: (config: AppConfigService) =>
-        createLoggerOptions({
-          serviceName: 'rova-api',
-          nodeEnv: config.get('NODE_ENV'),
-          serviceVersion: config.get('SERVICE_VERSION'),
-          level: config.get('LOG_LEVEL'),
-          pretty: config.get('LOG_PRETTY'),
-        }),
-    }),
+    // Logging is NOT wired here: `createHttpApp` (main.ts) registers the shared pino logger around this module.
 
     // Platform (config, db, auth, cache, outbox, observability)
     PlatformModule,
@@ -87,9 +71,4 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
     { provide: APP_PIPE, useClass: ZodValidationPipe },
   ],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer): void {
-    // AsyncLocalStorage middleware — sets correlationId + workspace/user stubs for every request
-    consumer.apply(AsyncLocalStorageMiddleware).forRoutes('*path');
-  }
-}
+export class AppModule {}

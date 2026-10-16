@@ -1,143 +1,99 @@
 /**
- * Same-origin reverse proxy used by the Cloudflare Pages Function that fronts
- * the rally SPA. It forwards `/v1/*` (which includes the BFF auth routes
- * `/v1/bff/*`) from the SPA origin (`rally-dev.qnsc.vn`) to the API origin
- * (`rally-api-dev.qnsc.vn`), so the browser sees a single origin. That is what
- * lets the BFF issue a `__Host-rova_session` cookie with `SameSite=Strict` and
- * drop CORS entirely.
+ * Same-origin reverse proxy used by the Cloudflare Pages Function that fronts the rova SPA. It forwards `/v1/*`
+ * (which includes the BFF auth routes `/v1/bff/*`) from the SPA origin (`rova-dev.qnsc.vn`) to the API origin
+ * (`rova-api-dev.qnsc.vn`), so the browser sees a single origin. That is what lets the BFF issue a
+ * `__Host-rova_session` cookie with `SameSite=Strict` and drop CORS entirely.
  *
- * The logic here is pure and framework-agnostic (only web-standard `Request` /
- * `Response` / `Headers` / `URL`), so it is unit-testable under the web app's
- * vitest and portable to a standalone Worker if we ever move off Pages.
+ * The forwarding itself is `@quynhonsemiconductor/platform-http/edge`'s `forwardToOrigin`, shared by every product
+ * (opshub's proxy is the same call), and this file is only rova's configuration of it. What it does that the
+ * hand-written proxy this replaces did not:
  *
- * Requires the Pages project to expose `API_ORIGIN`, e.g.
- * `https://rally-api-dev.qnsc.vn`. The SPA always talks to the API through this
- * same-origin proxy (the BFF flow depends on it).
+ *  - it SIGNS the visitor's address (`cf-connecting-ip`) with `EDGE_CLIENT_IP_SECRET`, covering the address, a
+ *    timestamp, the method and the path. Behind a Pages Function the API's own `cf-connecting-ip` is a Cloudflare
+ *    address shared by every visitor, and `x-forwarded-for` set by a Function is just a header: the old proxy set it
+ *    from `cf-connecting-ip`, which is the Cloudflare address, so every visitor shared one rate-limit bucket. The API
+ *    verifies the signature in `clientIp()`;
+ *  - it forwards an ALLOW-LIST of headers (never `x-forwarded-for`, `x-real-ip`, `cf-*` or a visitor's own
+ *    `x-qnsc-edge-*`), instead of a deny-list of the spoofable ones that missed whatever was not on it;
+ *  - it does NOT follow redirects, and hands the API's response back as it is, every `Set-Cookie` included.
+ *
+ * It no longer sets `x-forwarded-proto` / `x-forwarded-host`. The API does not read them (its cookies are
+ * `Secure` by construction, not by protocol sniffing) and Cloudflare's edge sets `X-Forwarded-Proto` itself on the
+ * subrequest.
+ *
+ * Requires the Pages project to expose two variables: `API_ORIGIN` (e.g. `https://rova-api-dev.qnsc.vn`) and
+ * `EDGE_CLIENT_IP_SECRET` (a Pages SECRET: the same value as the API's, at least 32 characters). A Function missing
+ * either answers 500 naming it: a proxy that quietly forwards unsigned puts every visitor in one bucket.
  */
+import { EDGE_SECRET_MIN_LENGTH, forwardToOrigin } from '@quynhonsemiconductor/platform-http/edge'
 
-/** Hop-by-hop headers that must never cross a proxy boundary (RFC 7230 §6.1). */
-const HOP_BY_HOP_HEADERS: ReadonlySet<string> = new Set([
-  'connection',
-  'keep-alive',
-  'proxy-authenticate',
-  'proxy-authorization',
-  'te',
-  'trailer',
-  'transfer-encoding',
-  'upgrade',
-])
-
-/** Methods that never carry a request body. */
-const BODILESS_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD'])
+export interface ProxyEnv {
+  API_ORIGIN?: string
+  EDGE_CLIENT_IP_SECRET?: string
+}
 
 /**
- * Client-supplied forwarding/trust headers that must be stripped before we set
- * our own from the trusted Cloudflare edge. Forwarding an inbound value would
- * let a caller spoof their apparent IP for the API's rate-limit/audit/geo logic.
+ * Request headers the SPA sends that the shared allow-list does not name: the CSRF token (without it every write is
+ * a 403), the SSE reconnect position (`Last-Event-ID`, for the notification stream) and its cache hint, and W3C
+ * baggage. Same four as opshub.
  */
-const CLIENT_SPOOFABLE_HEADERS: ReadonlySet<string> = new Set([
-  'x-forwarded-for',
-  'x-real-ip',
-  'forwarded',
-])
+export const SPA_FORWARD_HEADERS: readonly string[] = [
+  'x-csrf-token',
+  'last-event-id',
+  'cache-control',
+  'baggage',
+]
 
-/** Rebuild the target URL: keep the incoming path + query, swap in the API origin. */
-export function buildUpstreamUrl(requestUrl: string, apiOrigin: string): string {
+/**
+ * Headers the API reads from INTEGRATIONS that call the SPA host rather than the API host. The in-app setup card
+ * (`webhook-setup.tsx`) tells admins to register `${origin}/v1/scm/webhook/github`, i.e. this Function, and the GitHub
+ * App's webhook URL may be the same. `ScmWebhookController` verifies `X-Hub-Signature-256` over the raw body and
+ * dispatches on the other two: without them every delivery is a 401. (The Function the old proxy replaced forwarded
+ * everything but a deny-list; an allow-list has to be told about each such header, and
+ * `test/edge-forward-headers.ratchet.spec.ts` fails when the API starts reading one that nobody listed.)
+ *
+ * The body is streamed through untouched, so the HMAC still verifies.
+ */
+export const INTEGRATION_FORWARD_HEADERS: readonly string[] = [
+  'x-hub-signature-256',
+  'x-github-event',
+  'x-github-delivery',
+]
+
+/** The API URL for this request: the API origin, with the incoming path and query as they are. */
+export function buildTarget(requestUrl: string, apiOrigin: string): URL {
   const incoming = new URL(requestUrl)
-  const upstream = new URL(apiOrigin)
-  upstream.pathname = incoming.pathname
-  upstream.search = incoming.search
-  return upstream.toString()
+  const target = new URL(apiOrigin)
+  target.pathname = incoming.pathname
+  target.search = incoming.search
+  return target
 }
 
 /**
- * Build the request forwarded to the API origin: same method/body, headers with
- * hop-by-hop + `host` stripped, and `X-Forwarded-*` set from the Cloudflare edge
- * so the API's cookie logic (which reads `x-forwarded-proto` and the client IP)
- * behaves as if the request arrived directly.
- */
-export function buildProxyRequest(request: Request, apiOrigin: string): Request {
-  const url = buildUpstreamUrl(request.url, apiOrigin)
-  const headers = new Headers(request.headers)
-  for (const header of HOP_BY_HOP_HEADERS) headers.delete(header)
-  headers.delete('host')
-
-  // Drop any client-supplied forwarding/trust headers before setting our own.
-  // The Worker sits directly behind Cloudflare, so `cf-connecting-ip` is the
-  // single authoritative client IP; preserving an inbound X-Forwarded-For would
-  // let a caller spoof their apparent IP for the API's rate-limit/audit/geo
-  // decisions (the API trusts these headers via Fastify `trustProxy`).
-  for (const header of CLIENT_SPOOFABLE_HEADERS) headers.delete(header)
-
-  const clientIp = request.headers.get('cf-connecting-ip')
-  if (clientIp) headers.set('x-forwarded-for', clientIp)
-  headers.set('x-forwarded-proto', 'https')
-  headers.set('x-forwarded-host', new URL(request.url).host)
-
-  const init: RequestInit & { duplex?: 'half' } = {
-    method: request.method,
-    headers,
-    redirect: 'manual',
-  }
-  if (!BODILESS_METHODS.has(request.method.toUpperCase())) {
-    init.body = request.body
-    init.duplex = 'half' // required when streaming a body (undici/Workers)
-  }
-  return new Request(url, init)
-}
-
-/**
- * Copy the upstream response back to the client, preserving status and every
- * `Set-Cookie` header individually (a naive `new Headers(res.headers)` collapses
- * multiple cookies into one comma-joined value and corrupts them).
- *
- * NOTE for anyone tempted to simplify this back to `new Headers(upstream.headers)`:
- * the unit suite will stay green if you do, because undici (Node) preserves the
- * set-cookie list through the Headers constructor. The Cloudflare Workers runtime this
- * actually runs on historically does not, and a corrupted `__Host-` session cookie is a
- * silent login failure. That difference is only observable under `wrangler pages dev`.
- */
-export function buildClientResponse(upstream: Response): Response {
-  const headers = new Headers()
-
-  // Collected during the same pass, and used ONLY if `getSetCookie` turns out to be
-  // unavailable. The previous version paired the skip below with `?? []`, so on a runtime
-  // without `getSetCookie` every Set-Cookie header was skipped and then nothing was
-  // appended — the cookies vanished. That is the worst shape this bug can take: the API
-  // returns 200, the proxy returns 200, and the browser simply never receives the session
-  // cookie, so a successful login presents as an immediate silent logout.
-  const fallbackSetCookie: string[] = []
-
-  upstream.headers.forEach((value, key) => {
-    if (key.toLowerCase() === 'set-cookie') {
-      fallbackSetCookie.push(value)
-      return
-    }
-    headers.set(key, value)
-  })
-
-  const setCookies = upstream.headers.getSetCookie?.() ?? fallbackSetCookie
-  for (const cookie of setCookies) headers.append('set-cookie', cookie)
-
-  return new Response(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers,
-  })
-}
-
-/**
- * Proxy a request to the API origin. `fetchImpl` is injectable for testing;
- * production passes the platform `fetch`.
+ * Proxy a request to the API origin. `fetcher` is injectable for testing; production uses the platform `fetch`.
  */
 export async function proxyToApi(
   request: Request,
-  apiOrigin: string | undefined,
-  fetchImpl: typeof fetch = fetch,
+  env: ProxyEnv,
+  fetcher: (request: Request) => Promise<Response> = (r) => fetch(r),
 ): Promise<Response> {
-  if (!apiOrigin) {
+  if (!env.API_ORIGIN) {
     return new Response('Proxy misconfigured: API_ORIGIN is not set', { status: 500 })
   }
-  const upstream = await fetchImpl(buildProxyRequest(request, apiOrigin))
-  return buildClientResponse(upstream)
+  const secret = env.EDGE_CLIENT_IP_SECRET?.trim() ?? ''
+  if (secret.length < EDGE_SECRET_MIN_LENGTH) {
+    return new Response(
+      `Proxy misconfigured: EDGE_CLIENT_IP_SECRET is not set (at least ${EDGE_SECRET_MIN_LENGTH} characters)`,
+      { status: 500 },
+    )
+  }
+  return forwardToOrigin(
+    request,
+    {
+      secret,
+      target: buildTarget(request.url, env.API_ORIGIN),
+      forwardHeaders: [...SPA_FORWARD_HEADERS, ...INTEGRATION_FORWARD_HEADERS],
+    },
+    fetcher,
+  )
 }

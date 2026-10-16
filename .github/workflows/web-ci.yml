@@ -30,8 +30,24 @@ on:
     types: [opened, synchronize, reopened]
 
 concurrency:
-  group: ci-web-${{ github.ref }}
-  cancel-in-progress: true
+  # A PUSH TO MAIN IS NEVER CANCELLED, and that takes a group of its own per commit. The group used to be
+  # `ci-web-${{ github.ref }}` with cancel-in-progress, so two commits landing on main close together shared
+  # `ci-web-refs/heads/main` and the second CANCELLED the first's run. The first commit's deploy then failed its
+  # "wait for Web · CI on this commit" gate: a green commit that could not deploy ("Canceling since a higher
+  # priority waiting request for ci-web-refs/heads/main exists").
+  #
+  # `cancel-in-progress: false` alone would NOT have fixed it: GitHub keeps ONE pending run per group and cancels
+  # every other pending one, so a third push still killed the second's run. Only a distinct group per commit
+  # keeps them all.
+  #
+  #   pull_request -> one group per PR, cancel in progress (a newer push to the PR supersedes the older run:
+  #                   unchanged behaviour; refs/pull/N/merge was already per PR)
+  #   push (main)  -> one group per COMMIT, never cancelled
+  #   anything else (schedule, dispatch) -> its own run id, so it can neither cancel nor be cancelled by a push
+  #
+  # `pr-title.yml` deliberately has its own group and is unaffected.
+  group: ci-web-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'push' && format('main-{0}', github.sha) || format('{0}-{1}', github.event_name, github.run_id)) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -47,7 +63,7 @@ env:
   # Measured here too before bumping: statements 84.50 / branches 77.48 / functions 83.22 /
   # lines 88.32 against floors of 60, so the web suite has ample headroom on 24.
   NODE_VERSION: '24'
-  PNPM_VERSION: '10.33.2'
+  PNPM_VERSION: '11.28.5'
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
@@ -75,6 +91,28 @@ jobs:
 
       - name: Typecheck
         run: pnpm --filter rova-web typecheck
+
+      # The deploy path, without credentials. Web · Deploy publishes with cloudflare/wrangler-action, which
+      # runs `pnpm exec wrangler --version` in apps/web and, if that fails, `pnpm add wrangler@4` AT RUN
+      # TIME. On pnpm 11 that add exits 1 (ERR_PNPM_IGNORED_BUILDS: workerd) and broke the develop deploy
+      # (run 38140929326). wrangler is now an exact devDependency of rova-web, so the action finds it and
+      # installs nothing. This runs the same action, same SHA as the shared web-deploy reusable, on a
+      # command that needs no Cloudflare account (bundling the Pages Functions), then asserts that nothing
+      # was installed into the workspace. If wrangler ever leaves the lockfile, or workerd's build decision
+      # is lost, the step fails here and not on the next push to main.
+      - name: Deploy tooling (wrangler) resolves on pnpm 11
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0  # v4.0.0
+        with:
+          workingDirectory: apps/web
+          packageManager: pnpm
+          command: pages functions build functions --outdir ${{ runner.temp }}/pages-functions
+
+      - name: The tooling step installed nothing, and produced a bundle
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- package.json apps/web/package.json pnpm-lock.yaml pnpm-workspace.yaml
+          test -s "$RUNNER_TEMP/pages-functions/index.js"
+          pnpm --filter rova-web exec wrangler --version
 
   # ─────────────────────────────────────────────────────────────────────────
   # 2. Unit tests (no DB — pure component/hook/util tests)

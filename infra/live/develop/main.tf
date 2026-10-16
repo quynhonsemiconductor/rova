@@ -33,8 +33,8 @@ provider "aws" {
   }
 }
 
-// Reads CLOUDFLARE_API_TOKEN (or TF_VAR_cloudflare_api_token). DNS/Pages resources
-// are skipped when the zone is unset, so the stack applies before Cloudflare exists.
+// Reads CLOUDFLARE_API_TOKEN (or TF_VAR_cloudflare_api_token). DNS/Pages resources exist when
+// `dns_enabled` is true; the zone id comes from the _shared stack and must be valid or the plan fails.
 provider "cloudflare" {
   api_token = var.cloudflare_api_token != "" ? var.cloudflare_api_token : null
 }
@@ -91,8 +91,13 @@ module "stack" {
   runtime_state_key = "platform/runtime-dev/terraform.tfstate"
   storage_state_key = "platform/storage-dev/terraform.tfstate"
 
-  // Develop tracks the newest image; production pins a release tag.
-  image_tag = "latest"
+  // A PLACEHOLDER, on purpose. `latest` never exists: the ECR repositories are IMMUTABLE and the deploy pushes
+  // `sha-<commit>` tags only. Terraform registers the BASELINE task definition; the deploy derives each rollout from the
+  // family's latest revision and replaces the tag in the product container (api / worker / migrator). The services have
+  // `ignore_changes = [task_definition]`, so an apply never moves a running service onto this baseline. The value only has to
+  // be one that can never be mistaken for a real tag; the module rejects `latest` and empty (2026-10: qnsc-kb's worker went
+  // down on a baseline tag that was never pushed).
+  image_tag = "set-by-the-deploy-never-a-real-tag"
 
   // NO demo data in ANY deployed environment — develop mirrors production.
   //
@@ -327,7 +332,13 @@ module "stack" {
   # that landed late and woke the environment, because nothing else would put it back down
   # until the next working day. Each pass is a no-op when develop is already down
   # (InvalidDBInstanceState, deliberately not retried).
-  idle_schedule = "cron(0 0,3 * * ? *)"
+  // OFF since 2026-10-14, at the owner's request: develop stays up around the clock for the rest of
+  // October 2026 (the owner decides then whether to turn idling back on). To restore idling, put back
+  // exactly:
+  //   idle_schedule = "cron(0 0,3 * * ? *)"
+  //   wake_schedule = null // OFF since 2026-10-14; see idle_schedule above
+  // (both together; idling without the wake leaves develop down until the next deploy).
+  idle_schedule = null
 
   // 08:00 local, EVERY DAY. This was MON-FRI first, on the argument that a 7-day wake
   // "would pay for two days a week nobody works". Two weekends in, that argument had
@@ -375,7 +386,7 @@ module "stack" {
   //   01:00:09Z  ecs:UpdateService  api    desiredCount=1
   //   01:00:29Z  rds:StartDBInstance
   //   01:00:47Z  ecs:UpdateService  worker desiredCount=1
-  wake_schedule = "cron(0 8 ? * MON-FRI *)"
+  wake_schedule = null // OFF since 2026-10-14; see idle_schedule above
 
   // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
   // credential can be injected. This is a FIX, not hardening: the primary token
@@ -383,6 +394,11 @@ module "stack" {
   // this was false every avatar and workspace-logo write went to the public bucket
   // with a credential that has no grant on it.
   storage_public_credentials = true
+
+  // Step 4 of docs/runbooks/edge-client-ip.md: `edge-client-ip-secret` is in the app bundle (rova/develop/app) and the
+  // same value is the Pages secret EDGE_CLIENT_IP_SECRET, so the API can verify the visitor address the Pages Function
+  // signs. Develop only: production sets its own key first (runbook, "PRODUCTION").
+  edge_client_ip_secret_set = true
 
   // Step 2 of docs/runbooks/db-role-least-privilege.md: rally/develop/db-*-password
   // are populated, so the migrator can read them and the one-off cutover task can
@@ -525,6 +541,7 @@ module "stack" {
     // Full fidelity: develop volume is trivial, and validating the
     // instrumentation is the reason to enable it here at all.
     sampling_probability = 1.0
+
   }
 
   grafana_alerting_auth = var.grafana_alerting_auth
@@ -540,4 +557,8 @@ module "stack" {
 
   alarm_emails          = var.alarm_emails
   cloudflare_account_id = var.cloudflare_account_id
+
+  // This environment owns its public DNS (API and web CNAMEs, Pages custom domain). An explicit
+  // switch, never inferred from the zone id; the zone id itself is validated in the stack module.
+  dns_enabled = true
 }

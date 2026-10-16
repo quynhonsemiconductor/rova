@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
 import { importSPKI, jwtVerify } from 'jose';
+import { RetryAfterError } from '@platform';
 import { GithubAppAuthService } from './github-app-auth.service';
 
 // A throwaway RSA keypair so we can sign + verify a real App JWT.
@@ -74,5 +75,33 @@ describe('GithubAppAuthService', () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 404, text: async () => 'Not Found' });
     const svc = new GithubAppAuthService(makeConfig());
     await expect(svc.resolveInstallationId('acme/missing')).rejects.toThrow(/failed \(404\)/);
+  });
+
+  describe('rate limits', () => {
+    const limited = (status: number, headers: Record<string, string>) =>
+      ({
+        ok: false,
+        status,
+        headers: new Headers(headers),
+        text: async () => 'rate limited',
+      }) as Response;
+
+    it("a secondary rate limit (403 + Retry-After) becomes a RetryAfterError with the server's wait", async () => {
+      fetchMock.mockResolvedValueOnce(limited(403, { 'retry-after': '90' }));
+      const err: unknown = await new GithubAppAuthService(makeConfig())
+        .resolveInstallationId('acme/demo')
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(RetryAfterError);
+      expect((err as RetryAfterError).retryAfterMs).toBe(90_000);
+    });
+
+    it('a plain 403 (a permission, not a rate limit) stays an ordinary error', async () => {
+      fetchMock.mockResolvedValueOnce(limited(403, {}));
+      const err: unknown = await new GithubAppAuthService(makeConfig())
+        .resolveInstallationId('acme/demo')
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err).not.toBeInstanceOf(RetryAfterError);
+    });
   });
 });

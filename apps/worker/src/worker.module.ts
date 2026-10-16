@@ -1,8 +1,5 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
-import { LoggerModule } from 'nestjs-pino';
-import { createLoggerOptions } from '@quynhonsemiconductor/observability';
-import { AppConfigService } from '@platform/config';
 import { PlatformModule } from '@platform';
 import { AuditModule } from '@modules/audit';
 import { NotificationsModule } from '@modules/notifications';
@@ -27,20 +24,7 @@ import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
  */
 @Module({
   imports: [
-    // Same shared factory as the API. The worker's own copy of this block had
-    // drifted and was missing the `redact` list entirely, so a logged SDK error
-    // could have written credentials to CloudWatch.
-    LoggerModule.forRootAsync({
-      inject: [AppConfigService],
-      useFactory: (config: AppConfigService) =>
-        createLoggerOptions({
-          serviceName: 'rova-worker',
-          nodeEnv: config.get('NODE_ENV'),
-          serviceVersion: config.get('SERVICE_VERSION'),
-          level: config.get('LOG_LEVEL'),
-          pretty: config.get('LOG_PRETTY'),
-        }),
-    }),
+    // Logging is NOT wired here: `createWorkerApp` (main.ts) registers the shared pino logger around this module.
     ScheduleModule.forRoot(),
     PlatformModule,
 
