@@ -1,0 +1,93 @@
+/**
+ * ExclusiveJob, ticked for real: the worker's own module, its own CacheService, a real Valkey.
+ *
+ * Every cron that goes through ExclusiveJob (`report-snapshot`, `daily-cleanup`) calls `CacheService.tryLock`. platform-runtime 0.2.0 needs it
+ * from platform-cache 3.2.0; this product resolved 3.1.x, where it does not exist, and every tick failed in develop with "this.cache.tryLock is not
+ * a function" while every test passed: the unit tests mock ExclusiveJob, so nothing ran a tick against the cache the worker actually has.
+ *
+ * Asserts the behaviour a pod relies on: the job runs, the lock is released afterwards (the next tick runs), and while one pod holds it
+ * another pod's tick is skipped rather than run twice.
+ */
+import 'reflect-metadata';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { CacheService } from '@quynhonsemiconductor/platform-cache';
+import { ExclusiveJob } from '@quynhonsemiconductor/platform-runtime';
+import { prepareWorkerApp } from '@quynhonsemiconductor/platform-runtime/bootstrap';
+import type { INestApplicationContext } from '@nestjs/common';
+
+let app: INestApplicationContext;
+let exclusive: ExclusiveJob;
+let cache: CacheService;
+
+beforeAll(async () => {
+  app = await prepareWorkerApp({
+    module: () => import('../../apps/worker/src/worker.module').then((m) => m.WorkerModule),
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      DEPLOYMENT_ENV: 'develop',
+      OTEL_SERVICE_NAME: 'rova-worker',
+      LOG_LEVEL: 'fatal',
+      LOG_PRETTY: 'false',
+    },
+  });
+  exclusive = app.get(ExclusiveJob, { strict: false });
+  cache = app.get(CacheService, { strict: false });
+}, 60_000);
+
+afterAll(async () => {
+  await app?.close();
+});
+
+const name = (): string => `e2e-exclusive-${Math.random().toString(36).slice(2)}`;
+
+describe('ExclusiveJob against the worker’s real cache', () => {
+  it('the cache is a real Valkey and has tryLock', () => {
+    expect(cache.isAvailable, 'no Valkey: the lock path would not be exercised').toBe(true);
+    expect(typeof cache.tryLock).toBe('function');
+  });
+
+  it('runs the job, releases the lock, and runs again on the next tick', async () => {
+    const job = name();
+    const runs: number[] = [];
+    await exclusive.run(job, 5_000, async () => void runs.push(1));
+    await exclusive.run(job, 5_000, async () => void runs.push(2));
+    expect(runs).toEqual([1, 2]);
+  });
+
+  it('skips the tick of ANOTHER pod while one holds the lock (never runs it twice)', async () => {
+    const job = name();
+    // A second ExclusiveJob over the same cache stands in for a second pod: the in-process `running` guard is per instance.
+    const otherPod = new ExclusiveJob(cache, undefined);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    const first = exclusive.run(job, 10_000, async () => {
+      started();
+      await held;
+    });
+    await running;
+
+    let ranOnOtherPod = false;
+    await otherPod.run(job, 10_000, async () => void (ranOnOtherPod = true));
+    expect(ranOnOtherPod, 'two pods ran the same exclusive job at once').toBe(false);
+
+    release();
+    await first;
+    await otherPod.run(job, 10_000, async () => void (ranOnOtherPod = true));
+    expect(ranOnOtherPod, 'the lock was not released when the first run finished').toBe(true);
+  });
+
+  it('propagates a failing job (so the failure metric counts it) and still releases the lock', async () => {
+    const job = name();
+    await expect(
+      exclusive.run(job, 5_000, async () => {
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+    let ran = false;
+    await exclusive.run(job, 5_000, async () => void (ran = true));
+    expect(ran).toBe(true);
+  });
+});
