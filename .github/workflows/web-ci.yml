@@ -307,6 +307,10 @@ jobs:
           echo "API failed to start"; cat /tmp/api.log; exit 1
         env:
           PORT: '3000'
+          # The spec is served only when Swagger is explicitly enabled (it no longer piggybacks on NODE_ENV); the
+          # `codegen:check` step below reads it from this API. It only widens the API's own CSP header, which the
+          # SPA (served by Vite) and the E2E flows do not depend on.
+          SWAGGER_ENABLED: 'true'
 
       # The SPA's API client is generated from the API's OpenAPI spec and COMMITTED, so it can silently fall behind a DTO change, or be
       # hand-edited, with nothing to notice: `tsc` can pass against stale build info and a route the client has never heard of only fails
