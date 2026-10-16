@@ -12,6 +12,8 @@ import 'reflect-metadata';
 import { describe, it } from 'vitest';
 import { prepareHttpApp, prepareWorkerApp } from '@quynhonsemiconductor/platform-runtime/bootstrap';
 import { runLoggingConformance } from '@quynhonsemiconductor/observability/testing';
+import { apiAppOptions } from '../../apps/api/src/app-options';
+import { workerAppOptions } from '../../apps/worker/src/worker-options';
 
 const ENV = {
   ...process.env,
@@ -27,15 +29,11 @@ describe('logging conformance (real modules, shared bootstrap)', () => {
     await runLoggingConformance({
       expected: { service: 'rova-api', env: 'develop', version: 'sha-conformance' },
       boot: async (logStream) => {
+        // The SAME options object main.ts starts the process with; only the environment and the log sink are the test's.
         const app = await prepareHttpApp({
-          module: () => import('../../apps/api/src/app.module').then((m) => m.AppModule),
+          ...apiAppOptions,
           env: { ...ENV, OTEL_SERVICE_NAME: 'rova-api' },
           logStream,
-          http: { rawBody: true },
-          configure: async (a) => {
-            const { bootstrapApp } = await import('../../apps/api/src/bootstrap/app.bootstrap');
-            await bootstrapApp(a);
-          },
         });
         await app.init();
         await app.getHttpAdapter().getInstance().ready();
@@ -54,9 +52,11 @@ describe('logging conformance (real modules, shared bootstrap)', () => {
     await runLoggingConformance({
       expected: { service: 'rova-worker', env: 'develop', version: 'sha-conformance' },
       boot: async (logStream) => ({
+        // The SAME options object main.ts starts the process with. The environment is the local one that caused the bug this guards: `.env`
+        // names the API for the whole checkout, and the worker must still say `rova-worker`.
         app: await prepareWorkerApp({
-          module: () => import('../../apps/worker/src/worker.module').then((m) => m.WorkerModule),
-          env: { ...ENV, OTEL_SERVICE_NAME: 'rova-worker' },
+          ...workerAppOptions,
+          env: { ...ENV, OTEL_SERVICE_NAME: 'rova-api', OTEL_WORKER_SERVICE_NAME: 'rova-worker' },
           logStream,
         }),
       }),
