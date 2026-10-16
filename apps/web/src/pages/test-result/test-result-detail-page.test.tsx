@@ -118,6 +118,14 @@ describe('TestResultDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Verdict' })).toBeInTheDocument()
   })
 
+  it('US-97 TC-35: the header leads with the "Test Result" badge (SRS §9.1)', () => {
+    canPermission.mockReturnValue(false)
+    testResult.mockReturnValue({ data: result(), isLoading: false, isError: false })
+    render(<TestResultDetailPage />)
+
+    expect(screen.getByText('Test Result')).toBeInTheDocument()
+  })
+
   it('BR13: Test Case and Work Product render as read-only display, never a picker', () => {
     canPermission.mockReturnValue(true)
     testResult.mockReturnValue({ data: result(), isLoading: false, isError: false })

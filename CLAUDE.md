@@ -1023,6 +1023,12 @@ history.
   owner; `CollaborationService.assertCommentableEntity` REFUSES both new kinds explicitly (the SRS
   names no comment thread on either) — asserted in `collaboration.service.spec.ts`, or the widened
   enum would have silently become a feature nobody designed.
+- **Revision History stores ids and is READ through one projection** (`test-activity-enrichment.ts`,
+  `TestCasesService.enrichActivity`), which adds `subjectKey`, `oldName`/`newName` and `testerName`
+  to `metadata` — so the contract does not change and rows written before it existed read as names
+  too. A Result's history starts at `test_result.created` (the record AS RECORDED), anchored to its
+  Test Case. Both tabs opt into `ActivityHistoryTab`'s `actionLayout` (Time / Actor / Action /
+  Details, the mockup's shape); every other entity keeps the Revision / Description grid.
 - **`Not Run` / `Not run yet` is a SECOND declared exception to `EMPTY_VALUE`** (BR10), alongside
   Capacity's `Dependencies` `0`. A Test Case with no Result renders these words, never `--` and
   never `0` — `lastVerdict`/`lastRun` being `null` is a fact (no Result exists yet), not an absent

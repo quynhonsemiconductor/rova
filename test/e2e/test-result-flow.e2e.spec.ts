@@ -343,8 +343,36 @@ describe('test result routes (e2e)', () => {
 
       const activityRes = await get(`/test-results/${result.id}/activity`);
       expect(activityRes.statusCode, activityRes.body).toBe(200);
-      const activity = JSON.parse(activityRes.body).data as Array<{ action: string }>;
+      const activity = JSON.parse(activityRes.body).data as Array<{
+        action: string;
+        metadata: Record<string, unknown> | null;
+      }>;
       expect(activity.some((a) => a.action === 'test_result.updated')).toBe(true);
+
+      // US-97 TC-37: the history STARTS with the Result as recorded, and names the Tester rather
+      // than carrying only their id. Every row is keyed by the Result's own TR- key (TC-25).
+      const created = activity.find((a) => a.action === 'test_result.created');
+      expect(created, activityRes.body).toBeDefined();
+      expect(created?.metadata).toMatchObject({
+        subjectKey: result.testResultKey,
+        build: result.build,
+        verdict: result.verdict,
+        runDate: result.runDate,
+        testerId: ADMIN_USER_ID,
+      });
+      expect(typeof created?.metadata?.testerName).toBe('string');
+      expect(created?.metadata?.testerName).not.toBe(ADMIN_USER_ID);
+      expect(activity.every((a) => a.metadata?.subjectKey === result.testResultKey)).toBe(true);
+
+      // The Test Case's own history carries the run too, keyed by the RESULT, not the Test Case.
+      const caseActivityRes = await get(`/test-cases/${result.testCaseId}/activity`);
+      expect(caseActivityRes.statusCode, caseActivityRes.body).toBe(200);
+      const caseActivity = JSON.parse(caseActivityRes.body).data as typeof activity;
+      const run = caseActivity.find(
+        (a) =>
+          a.action === 'test_result.created' && a.metadata?.subjectKey === result.testResultKey,
+      );
+      expect(run, caseActivityRes.body).toBeDefined();
     });
 
     it('404s the activity route for an unreadable Test Result id', async () => {
