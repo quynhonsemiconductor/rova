@@ -82,7 +82,7 @@ describe('TestResultsService', () => {
     update: ReturnType<typeof vi.fn>;
     softDelete: ReturnType<typeof vi.fn>;
   };
-  let testCases: { getById: ReturnType<typeof vi.fn> };
+  let testCases: { getById: ReturnType<typeof vi.fn>; enrichActivity: ReturnType<typeof vi.fn> };
   let projects: { assertAssignable: ReturnType<typeof vi.fn> };
   let activity: {
     log: ReturnType<typeof vi.fn>;
@@ -110,7 +110,10 @@ describe('TestResultsService', () => {
       update: vi.fn().mockResolvedValue(TEST_RESULT),
       softDelete: vi.fn().mockResolvedValue(undefined),
     };
-    testCases = { getById: vi.fn().mockResolvedValue(TEST_CASE) };
+    testCases = {
+      getById: vi.fn().mockResolvedValue(TEST_CASE),
+      enrichActivity: vi.fn().mockImplementation((logs: unknown[]) => Promise.resolve(logs)),
+    };
     projects = { assertAssignable: vi.fn().mockResolvedValue(undefined) };
     activity = {
       log: vi.fn().mockResolvedValue(undefined),
@@ -191,6 +194,26 @@ describe('TestResultsService', () => {
       await service.create(actor, 'tc-1', COMMAND);
 
       expect(testCases.getById).toHaveBeenCalledWith(actor, 'tc-1');
+    });
+
+    // US-97 TC-37: the Result's history must START with its creation, carrying what was recorded.
+    it('logs test_result.created, anchored to its Test Case, with the record as recorded', async () => {
+      await service.create(actor, 'tc-1', COMMAND);
+
+      expect(activity.build).toHaveBeenCalledWith(
+        expect.objectContaining({ entityType: 'test_result', entityId: 'tr-1', contextId: 'tc-1' }),
+        'user-1',
+        'test_result.created',
+        null,
+        {
+          testResultKey: 'TR-1',
+          build: 'build-1',
+          verdict: 'pass',
+          runDate: '2026-09-01',
+          testerId: 'user-1',
+        },
+      );
+      expect(activity.logSafe).toHaveBeenCalledWith([expect.anything()]);
     });
 
     it('BR13: snapshots workItemId from the JUST-LOADED Test Case, verbatim', async () => {
@@ -364,6 +387,12 @@ describe('TestResultsService', () => {
 
       expect(testCases.getById).toHaveBeenCalledWith(actor, 'tc-1');
       expect(activity.listFor).toHaveBeenCalledWith('tr-1', 'ws-1', 1, 50);
+    });
+
+    it('reads its rows through the Test Case projection (keys + person names)', async () => {
+      await service.getActivity(actor, 'tr-1', { limit: 50, offset: 0 });
+
+      expect(testCases.enrichActivity).toHaveBeenCalledWith([], 'ws-1', null);
     });
   });
 
