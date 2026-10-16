@@ -11,6 +11,7 @@ import { formatDateTime } from '@/shared/lib/utils'
 import { CAPACITY_STATUS_STYLE } from '@/features/capacity-planning/status-colors'
 import { useUpdateCapacityPlan, type CapacityPlan } from '@/features/capacity-planning/api'
 import type { PlanColKey } from '../model/columns'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 /**
  * One row of the Capacity Planning list, matching Rally's own: `ID`, `Name`, `Release`, `Status`,
@@ -73,7 +74,12 @@ export function CapacityPlanRow({
       <div style={colStyleFor('id', { flexShrink: 0 })} className="flex items-center px-2">
         {/* `CP-<n>`, minted per project. `—` when a pre-0076 row somehow escaped the backfill:
             the row still has to render, and a blank cell would look like a layout bug. */}
-        <IdCell type="capacityPlan" itemKey={plan.planKey ?? '--'} onOpen={open} />
+        <IdCell
+          type="capacityPlan"
+          itemKey={plan.planKey ?? '--'}
+          onOpen={open}
+          href={entityDetailPath.capacityPlan(plan.id)}
+        />
       </div>
 
       {/* Name — inline-editable, exactly as the Timeboxes, Releases and Iteration Status grids

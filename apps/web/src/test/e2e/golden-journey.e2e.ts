@@ -135,7 +135,7 @@ test.describe('Golden journey', () => {
     // ── 7. Open the seeded Release detail (shared DetailLayout chrome) ────────
     await page.goto('/releases')
     await settle(page)
-    await page.getByRole('button', { name: 'RE-1' }).click()
+    await page.getByRole('link', { name: 'RE-1' }).click()
     await settle(page)
     // Shared DetailLayout / DetailTabBar exposes an accessible tablist.
     await expect(page.getByRole('tablist')).toBeVisible({ timeout: 15_000 })

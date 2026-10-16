@@ -36,6 +36,19 @@ describe('iterationStatusTotals', () => {
   it('is zero for an empty scope, and says so with a count of zero', () => {
     expect(iterationStatusTotals([])).toEqual({ planEst: 0, taskEst: 0, toDoSum: 0, count: 0 })
   })
+
+  it('rounds every total to one decimal place, so float noise never reaches the label', () => {
+    // 0.1 + 0.2 is 0.30000000000000004 in IEEE-754; Production printed `43.200000000000001 Hours`.
+    const totals = iterationStatusTotals([
+      { planEstimate: 0.1, toDo: 0.1, actual: 7.1 },
+      { planEstimate: 0.2, toDo: 0.2, actual: 35.8 },
+      { planEstimate: 7.26, toDo: 0.04 },
+    ])
+
+    expect(totals.planEst).toBe(7.6)
+    expect(totals.taskEst).toBe(43.2)
+    expect(totals.toDoSum).toBe(0.3)
+  })
 })
 
 describe('sortStatusRows', () => {

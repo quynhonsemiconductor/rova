@@ -166,10 +166,16 @@ describe('Milestone ArtifactsTab', () => {
 
   it('opens a Feature row on the Portfolio surface, not on /item/$itemKey', async () => {
     renderTab()
-    fireEvent.click(await screen.findByRole('button', { name: /FE-6/ }))
+    // Links since US-120, so the href must name the SAME surface the click navigates to — or a
+    // Ctrl+click on a Feature would open `/item/FE-6` in the new tab and 404.
+    const feature = await screen.findByRole('link', { name: /FE-6/ })
+    expect(feature.getAttribute('href')).toBe('/portfolio/pi-1')
+    fireEvent.click(feature)
     expect(navigate).toHaveBeenCalledWith({ to: '/portfolio/$itemId', params: { itemId: 'pi-1' } })
 
-    fireEvent.click(screen.getByRole('button', { name: /US-9/ }))
+    const story = screen.getByRole('link', { name: /US-9/ })
+    expect(story.getAttribute('href')).toBe('/item/US-9')
+    fireEvent.click(story)
     expect(navigate).toHaveBeenCalledWith({ to: '/item/$itemKey', params: { itemKey: 'US-9' } })
   })
 

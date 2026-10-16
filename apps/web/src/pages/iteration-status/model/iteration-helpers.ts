@@ -50,7 +50,28 @@ export function iterationStatusTotals(rows: readonly TotalsRow[]): {
     taskEst += (row.toDo ?? 0) + (row.actual ?? 0)
     toDoSum += row.toDo ?? 0
   }
-  return { planEst, taskEst, toDoSum, count: rows.length }
+  return {
+    planEst: roundToTenth(planEst),
+    taskEst: roundToTenth(taskEst),
+    toDoSum: roundToTenth(toDoSum),
+    count: rows.length,
+  }
+}
+
+/**
+ * One decimal place — a PRODUCT decision, not an inferred display precision.
+ *
+ * Requested for Production on 2026-10-05 ("round those decimals to the first place") after the
+ * float sums printed `43.200000000000001 Hours` and the label overflowed into the next column. Inputs
+ * can carry hundredths (`story_points` is `numeric(6,2)`), so `14.52` deliberately shows as `14.5`
+ * here — the Totals row is a summary, and the per-row cells still show each item's exact value.
+ *
+ * Rounded on the NUMBER because the label interpolates it raw (`"{{value}} Points"`) and
+ * `TableFooterTotals` is its only consumer. Anything needing the exact sum must not read these
+ * totals; compute it from the rows.
+ */
+function roundToTenth(n: number): number {
+  return Math.round(n * 10) / 10
 }
 
 /** A row's sortable fields, in the shape the comparator reads. */

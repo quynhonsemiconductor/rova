@@ -1,5 +1,7 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { defaultRecordHref } from '@/entities/work-item/model/record-href'
 import type { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
+import { RecordLink } from '@/shared/ui/record-link'
 
 interface WorkItemRefCellProps {
   /**
@@ -21,6 +23,12 @@ interface WorkItemRefCellProps {
    * on Access Denied is worse than a label, because it is offered as the way forward.
    */
   onOpen?: () => void
+  /**
+   * Detail URL for Ctrl/Cmd+click, middle-click and "Open link in new tab" (US-120). Defaults to
+   * `/item/{itemKey}` for a Story / Task / Defect; a portfolio reference (Feature) is addressed by
+   * id and must pass its own. Without one the reference opens in place only.
+   */
+  href?: string
   /**
    * Visual treatment:
    * - `inline` (default) — bare glyph + text for use inside grid cells.
@@ -46,6 +54,7 @@ export function WorkItemRefCell({
   itemKey,
   title,
   onOpen,
+  href,
   variant = 'inline',
 }: WorkItemRefCellProps) {
   const label = title ? `${itemKey}: ${title}` : itemKey
@@ -53,6 +62,7 @@ export function WorkItemRefCell({
     e.stopPropagation()
     onOpen?.()
   }
+  const target = href ?? defaultRecordHref(type, itemKey)
 
   if (!onOpen) {
     return (
@@ -71,44 +81,50 @@ export function WorkItemRefCell({
   }
 
   if (variant === 'pill') {
-    return (
-      <button
-        type="button"
-        onClick={open}
-        title={label}
-        // `text-ui-sm`, matching the read-only rendering above and every other editable cell: this
-        // trigger was 12px, so opening the same value for edit made it grow.
-        className="flex w-full cursor-pointer items-center gap-1.5 truncate rounded border border-input px-2.5 py-1.5 text-ui-sm text-primary-light hover:bg-slate-50"
-      >
+    // `text-ui-sm`, matching the read-only rendering above and every other editable cell: this
+    // trigger was 12px, so opening the same value for edit made it grow.
+    const pillClass =
+      'flex w-full cursor-pointer items-center gap-1.5 truncate rounded border border-input px-2.5 py-1.5 text-ui-sm text-primary-light no-underline hover:bg-slate-50'
+    const pillContent = (
+      <>
         <TypeBadge type={type} size={16} />
         <span className="truncate">{label}</span>
+      </>
+    )
+    return target ? (
+      <RecordLink href={target} onOpen={onOpen} title={label} className={pillClass}>
+        {pillContent}
+      </RecordLink>
+    ) : (
+      <button type="button" onClick={open} title={label} className={pillClass}>
+        {pillContent}
       </button>
     )
   }
 
-  return (
-    <button
-      type="button"
-      onClick={open}
-      title={label}
-      // `items-start` + wrapping label: the reference carries a work-item TITLE, which is
-      // free text of unbounded length, and every grid that shows it uses `min-h-*` rows
-      // that can grow. `items-start` keeps the type glyph on the first line instead of
-      // floating to the vertical middle of a two-line title.
-      className="inline-flex max-w-full cursor-pointer items-start gap-1.5 border-none bg-transparent p-0"
-      onMouseOver={(e) => {
-        e.currentTarget.style.textDecoration = 'underline'
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.textDecoration = 'none'
-      }}
-    >
+  // `items-start` + wrapping label: the reference carries a work-item TITLE, which is
+  // free text of unbounded length, and every grid that shows it uses `min-h-*` rows
+  // that can grow. `items-start` keeps the type glyph on the first line instead of
+  // floating to the vertical middle of a two-line title.
+  const inlineClass =
+    'group inline-flex max-w-full cursor-pointer items-start gap-1.5 border-none bg-transparent p-0 no-underline'
+  const inlineContent = (
+    <>
       <TypeBadge type={type} size={16} />
       {/* `min-h-5` so a one-line reference centres against its type glyph instead of riding its top
           edge — the same rule the team, owner and ID cells follow. */}
-      <span className="flex min-h-5 min-w-0 items-center text-ui-sm break-words whitespace-normal text-primary-light">
+      <span className="flex min-h-5 min-w-0 items-center text-ui-sm break-words whitespace-normal text-primary-light underline-offset-2 group-hover:underline">
         {label}
       </span>
+    </>
+  )
+  return target ? (
+    <RecordLink href={target} onOpen={onOpen} title={label} className={inlineClass}>
+      {inlineContent}
+    </RecordLink>
+  ) : (
+    <button type="button" onClick={open} title={label} className={inlineClass}>
+      {inlineContent}
     </button>
   )
 }

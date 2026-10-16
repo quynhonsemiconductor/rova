@@ -11,6 +11,8 @@ interface FeatureCellProps {
    * Portfolio detail — §3.2:85 hides it from an Editor — so the cell renders as text.
    */
   onOpen?: () => void
+  /** `/portfolio/{featureId}` — the Feature's detail URL, for opening it in a new tab (US-120). */
+  href?: string
 }
 
 /**
@@ -18,13 +20,14 @@ interface FeatureCellProps {
  * wrapper over the shared {@link WorkItemRefCell} so the Feature column renders
  * identically on Backlog, Iteration Status, and any future board.
  */
-export function FeatureCell({ featureKey, featureTitle, onOpen }: FeatureCellProps) {
+export function FeatureCell({ featureKey, featureTitle, onOpen, href }: FeatureCellProps) {
   return (
     <WorkItemRefCell
       type={PortfolioItemType.Feature}
       itemKey={featureKey}
       title={featureTitle}
       onOpen={onOpen}
+      href={href}
     />
   )
 }

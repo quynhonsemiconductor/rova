@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/shared/lib/utils'
+import { RecordLink } from '@/shared/ui/record-link'
 
 /**
  * CellLink — the shared link affordance for table/list cells whose text opens a
@@ -8,15 +9,20 @@ import { cn } from '@/shared/lib/utils'
  * underline) and so grids stay link-only: the row itself never navigates, only
  * this link does. Stops propagation so it works inside rows that still carry
  * other handlers.
+ *
+ * Pass `href` (the record's detail path) so the link also opens in a new tab on
+ * Ctrl/Cmd+click or middle-click (US-120).
  */
 export function CellLink({
   onClick,
+  href,
   title,
   className,
   wrap = false,
   children,
 }: {
   onClick: () => void
+  href?: string
   title?: string
   className?: string
   /** When true the text wraps across lines (`break-words`) instead of the
@@ -24,6 +30,20 @@ export function CellLink({
   wrap?: boolean
   children: ReactNode
 }) {
+  const classes = cn(
+    'block text-left text-primary-light underline-offset-2 hover:underline',
+    wrap ? 'break-words whitespace-normal' : 'truncate',
+    className,
+  )
+
+  if (href) {
+    return (
+      <RecordLink href={href} onOpen={onClick} title={title} className={classes}>
+        {children}
+      </RecordLink>
+    )
+  }
+
   return (
     <button
       type="button"
@@ -32,11 +52,7 @@ export function CellLink({
         e.stopPropagation()
         onClick()
       }}
-      className={cn(
-        'block text-left text-primary-light underline-offset-2 hover:underline',
-        wrap ? 'break-words whitespace-normal' : 'truncate',
-        className,
-      )}
+      className={classes}
     >
       {children}
     </button>

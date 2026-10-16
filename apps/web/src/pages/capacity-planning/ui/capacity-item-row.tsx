@@ -15,6 +15,7 @@ import { useCapacityWarningText } from '@/features/capacity-planning/warning-lab
 import { EstimateTierIcon } from './estimate-tier-badge'
 import { CapacityItemActions } from './capacity-item-actions'
 import { type ItemColKey } from '../model/columns'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 /**
  * One Feature on Rally's Items tab.
@@ -159,6 +160,7 @@ export function CapacityItemRow({
           itemKey={item.itemKey}
           type="feature"
           onOpen={() => onOpenFeature(item.portfolioItemId)}
+          href={entityDetailPath.portfolioItem(item.portfolioItemId)}
         />
       </div>
 

@@ -144,7 +144,7 @@ test.describe('Role conformance — per-project Editor', () => {
     await login(page, EDITOR, { seedContext: false })
     await page.goto('/iteration-status', { waitUntil: 'domcontentloaded' })
 
-    const firstId = page.getByRole('button', { name: /^(US|DE)-\d+$/ }).first()
+    const firstId = page.getByRole('link', { name: /^(US|DE)-\d+$/ }).first()
     await firstId.click()
     await expect(page).toHaveURL(/\/item\//)
     await expect(page.getByRole('alert').filter({ hasText: /access/i })).toBeHidden()
@@ -166,7 +166,7 @@ test.describe('Role conformance — per-project Editor', () => {
     await login(page, EDITOR, { seedContext: false })
     await page.goto('/iteration-status', { waitUntil: 'domcontentloaded' })
     await page
-      .getByRole('button', { name: /^(US|DE)-\d+$/ })
+      .getByRole('link', { name: /^(US|DE)-\d+$/ })
       .first()
       .click()
     await expect(page).toHaveURL(/\/item\//)
