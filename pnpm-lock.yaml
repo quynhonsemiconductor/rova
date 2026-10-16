@@ -131,7 +131,7 @@ importers:
         specifier: ^3.2.0
         version: 3.2.0(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(ioredis@5.11.1(supports-color@10.2.2))
       '@quynhonsemiconductor/platform-http':
-        specifier: 4.3.0
+        specifier: ^4.3.0
         version: 4.3.0(8dd0f83152c0cd18ee8be31940ebbe34)
       '@quynhonsemiconductor/platform-runtime':
         specifier: ^0.3.0
@@ -309,7 +309,7 @@ importers:
         specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.81.0(react@19.2.7))
       '@quynhonsemiconductor/platform-http':
-        specifier: 4.3.0
+        specifier: ^4.3.0
         version: 4.3.0(b3134901e6efa78d1b748a79553f0198)
       '@tanstack/react-query':
         specifier: ^5.101.0
