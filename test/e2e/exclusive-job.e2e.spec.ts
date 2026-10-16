@@ -15,19 +15,20 @@ import { ExclusiveJob } from '@quynhonsemiconductor/platform-runtime';
 import { prepareWorkerApp } from '@quynhonsemiconductor/platform-runtime/bootstrap';
 import type { INestApplicationContext } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
+import { workerAppOptions } from '../../apps/worker/src/worker-options';
 
 let app: INestApplicationContext;
 let exclusive: ExclusiveJob;
 let cache: CacheService;
 
 beforeAll(async () => {
+  // The SAME options object main.ts starts the process with; only the environment is this spec's (a quiet log).
   app = await prepareWorkerApp({
-    module: () => import('../../apps/worker/src/worker.module').then((m) => m.WorkerModule),
+    ...workerAppOptions,
     env: {
       ...process.env,
       NODE_ENV: 'production',
       DEPLOYMENT_ENV: 'develop',
-      OTEL_SERVICE_NAME: 'rova-worker',
       LOG_LEVEL: 'fatal',
       LOG_PRETTY: 'false',
     },
