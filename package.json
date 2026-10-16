@@ -78,7 +78,7 @@
     "@quynhonsemiconductor/identity": "^7.1.0",
     "@quynhonsemiconductor/observability": "^0.6.0",
     "@quynhonsemiconductor/platform-cache": "^3.2.0",
-    "@quynhonsemiconductor/platform-http": "4.3.0",
+    "@quynhonsemiconductor/platform-http": "^4.3.0",
     "@quynhonsemiconductor/platform-runtime": "^0.3.0",
     "cockatiel": "^4.0.0",
     "dompurify": "^3.4.13",
