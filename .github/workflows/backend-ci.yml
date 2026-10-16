@@ -395,6 +395,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [quality, test]
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read        # the build secret authenticates pnpm against GitHub Packages
+      security-events: write # Trivy SARIF upload (no-op on the free plan, lights up after GHAS)
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
@@ -410,12 +414,21 @@ jobs:
           context: .
           target: api
           push: false
+          load: true            # the image Trivy scans below; a second build in the security workflow is gone
+          tags: rova-api:scan
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
           # BuildKit secret consumed by the deps/prod-deps stages to auth
           # pnpm against GitHub Packages for @quynhonsemiconductor/* (never baked into a layer).
           secrets: |
             node_auth_token=${{ secrets.GITHUB_TOKEN }}
+
+      # CRITICAL blocks this job, hence `Backend CI required`; HIGH is reported. This used to be its own job in the security
+      # workflow that rebuilt the same image from scratch.
+      - name: Container CVE scan (Trivy)
+        uses: quynhonsemiconductor/ci/actions/scan-image@v1
+        with:
+          image-ref: rova-api:scan
 
       - name: Build migrator image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7
