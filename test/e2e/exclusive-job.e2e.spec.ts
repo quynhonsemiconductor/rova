@@ -33,6 +33,10 @@ beforeAll(async () => {
   });
   exclusive = app.get(ExclusiveJob, { strict: false });
   cache = app.get(CacheService, { strict: false });
+  // The cache connects in the background (onModuleInit does not wait for `ready`); a tick a few seconds after boot sees it connected.
+  for (let waited = 0; !cache.isAvailable && waited < 10_000; waited += 100) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }, 60_000);
 
 afterAll(async () => {
