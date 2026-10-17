@@ -10,8 +10,8 @@
 # re-runs are safe.
 #
 #   S3 buckets (mirrors the Cloudflare R2 buckets in platform/storage-*):
-#     rally-attachments    — PRIVATE. Every permission-gated upload.
-#     rally-public-assets  — PUBLIC. Avatars / logos only.
+#     rova-attachments    — PRIVATE. Every permission-gated upload.
+#     rova-public-assets  — PUBLIC. Avatars / logos only.
 #
 #   Without these, attachment upload could not be exercised locally at all,
 #   which is how a frontend/backend contract mismatch went unnoticed.
@@ -32,8 +32,8 @@
 set -euo pipefail
 
 REGION="ap-southeast-1"
-PRIVATE_BUCKET="rally-attachments"
-PUBLIC_BUCKET="rally-public-assets"
+PRIVATE_BUCKET="rova-attachments"
+PUBLIC_BUCKET="rova-public-assets"
 # Vite dev server origin — the SPA PUTs directly to the bucket from here.
 WEB_ORIGIN="http://localhost:5173"
 

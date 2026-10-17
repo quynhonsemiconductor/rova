@@ -222,13 +222,6 @@ locals {
     # Terraform: grant LOGIN and set the value FIRST, flip the flag second, or the
     # task boots and dies on 28P01. Full sequence in
     # docs/runbooks/db-role-least-privilege.md.
-    # Cloudflare Tunnel connector token, consumed by the cloudflared sidecar as
-    # TUNNEL_TOKEN. Created out of band with the tunnel itself (a tunnel and its token
-    # are one object in Cloudflare — Terraform does not mint this), then pasted into the
-    # bundle. Present in `secret_names` so `secret_arns["tunnel-token"]` resolves and so
-    # the key shows up in the bundle's generated description; the IAM grant is the whole
-    # bundle either way.
-    "tunnel-token"       = "Cloudflare Tunnel connector token (cloudflared TUNNEL_TOKEN)"
     "db-app-password"    = "Password for the rova_app Postgres role (api) — set with the LOGIN grant"
     "db-worker-password" = "Password for the rova_worker Postgres role (worker) — set with the LOGIN grant"
   })
@@ -410,10 +403,10 @@ module "tunnel" {
 # Terraform writing a single key of it would clobber the rest. Separate secrets keep the
 # two ownership models apart — this one is Terraform's, the bundle stays the operator's.
 #
-# MIGRATION NOTE: the bundle's existing `tunnel-token` key is left in place and simply
-# stops being referenced. Nothing deletes it, so a rollback is a one-line revert, and the
-# api task keeps serving from its current task definition until the next deploy moves it
-# onto this ARN.
+# MIGRATION NOTE: the bundle used to carry a `tunnel-token` key, pasted in by hand. Nothing
+# has referenced it since the sidecar moved onto this ARN, and it is no longer declared in
+# `secret_names`. The key may still sit in each environment's live bundle JSON; Terraform
+# does not manage the JSON, so removing it is an owner step (see the PR that dropped it).
 resource "aws_secretsmanager_secret" "tunnel_token" {
   count = var.tunnel_enabled && var.cloudflare_account_id != "" ? 1 : 0
 

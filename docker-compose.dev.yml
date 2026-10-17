@@ -49,7 +49,15 @@ services:
       # Mirrors how db/init/ bootstraps Postgres on first start.
       - ./scripts/localstack:/etc/localstack/init/ready.d:ro
     healthcheck:
-      test: ['CMD', 'awslocal', 's3api', 'list-buckets']
+      # Healthy means the init hook has RUN: both buckets exist. `docker compose up --wait` therefore returns when
+      # uploads can work, and the API never races a bucket that is still being created. Keep the names in step with
+      # S3_ATTACHMENTS_BUCKET / S3_PUBLIC_ASSETS_BUCKET in .env.example and PRIVATE_BUCKET / PUBLIC_BUCKET in
+      # scripts/localstack/01-bootstrap.sh (test/env-example.spec.ts checks all three).
+      test:
+        [
+          'CMD-SHELL',
+          'awslocal s3api head-bucket --bucket rova-attachments && awslocal s3api head-bucket --bucket rova-public-assets',
+        ]
       interval: 10s
       timeout: 5s
       retries: 10

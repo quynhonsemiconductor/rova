@@ -164,9 +164,10 @@ module "stack" {
   // Setting this also sets `attach_alb = false` on the api service — a tunnel-served
   // task must not simultaneously be an ALB target.
   //
-  // Requires `tunnel-token` in rally/develop/app, which holds the connector token for
-  // the `rally-develop` tunnel (created out of band 2026-08-02; a tunnel and its token
-  // are one Cloudflare object, so Terraform does not mint it).
+  // Needs `cloudflare_account_id`: the stack creates the tunnel and its connector token itself
+  // (`aws_secretsmanager_secret.tunnel_token`, `<product>/<env>/tunnel-token-tf`), so nothing is
+  // pasted into the bundle. The tunnel was first created out of band on 2026-08-02 and its token
+  // lived in the bundle's `tunnel-token` key until the stack took over.
   //
   // DEVELOP FIRST, deliberately: this is the environment where the tunnel path gets
   // proven — SSE held open past the heartbeat interval, Entra SSO end to end, and an

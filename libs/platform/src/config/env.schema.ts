@@ -142,7 +142,6 @@ export const EnvSchema = z
 
     // AWS
     AWS_REGION: z.string().default('ap-southeast-1'),
-    AWS_ACCOUNT_ID: z.string().optional(),
     /**
      * Custom AWS service endpoint. Set ONLY in local dev / CI to target an
      * emulator such as LocalStack (e.g. http://localhost:4566). Leave UNSET in

@@ -22,8 +22,16 @@ const securityHeadersPlugin: Plugin = {
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), securityHeadersPlugin],
+  // The repo-root `.env` serves the SPA too: Vite exposes ONLY `VITE_`-prefixed variables to the browser, so the API's
+  // secrets in that file never reach it, and `cp .env.example .env` is the whole setup (VITE_DEV_LOGIN lives there).
+  envDir: path.resolve(__dirname, '../..'),
   server: {
     host: '0.0.0.0',
+    // 5173 is the origin the rest of the stack is wired to (.env.example CORS_ORIGINS, APP_BASE_URL and
+    // ENTRA_REDIRECT_URI, LocalStack's bucket CORS, Playwright's baseURL). strictPort: if another dev server holds it,
+    // FAIL instead of silently moving to 5174, where the sign-in redirect and the upload bucket's CORS no longer match.
+    port: 5173,
+    strictPort: true,
     allowedHosts: ['.trycloudflare.com'],
     proxy: {
       '/v1': {
