@@ -222,6 +222,13 @@ variable "mail_graph_sender" {
     condition     = var.mail_graph_sender == "" || can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.mail_graph_sender))
     error_message = "mail_graph_sender must be a single bare email address (no display name)."
   }
+
+  # A non-prod environment never sends from the prod mailbox, and production never from the dev one. Each is scoped to its own Service app in
+  # Exchange; this stops the wrong address being typed into the wrong environment's live/main.tf.
+  validation {
+    condition     = var.mail_graph_sender == "" || lower(trimspace(var.mail_graph_sender)) == (var.env == "production" ? "noreply-${var.product}@qnsc.vn" : "noreply-${var.product}-dev@qnsc.vn")
+    error_message = "mail_graph_sender must be noreply-rova@qnsc.vn in production and noreply-rova-dev@qnsc.vn in every other environment (a non-prod environment never sends from the prod mailbox)."
+  }
 }
 
 variable "mail_graph_client_id" {
@@ -247,7 +254,8 @@ variable "mail_graph_certificate_set" {
     OFF by default, for the same mechanical reason as `edge_client_ip_secret_set`: the deploy preflight refuses to deploy when an
     injected Secrets Manager secret holds no value. Order, per environment (docs/runbooks/mail-graph.md):
       1. generate a key and certificate with openssl, upload the public certificate to the Entra app;
-      2. put the PEM (key + certificate, base64) into the `mail-graph-certificate` key of `<product>/<env>/app` (the bundle);
+      2. put the PEM (the private key, then the certificate; raw or base64) into the standalone secret `<product>/<env>/mail-graph-certificate`
+         (NOT the app bundle: the API's task role reads the bundle, and must not be able to read this);
       3. set this true, together with email_provider = "graph".
   EOT
   type        = bool

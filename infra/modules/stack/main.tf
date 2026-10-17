@@ -173,9 +173,6 @@ locals {
     # the owner puts a value in, and is not injected into the API task until `edge_client_ip_secret_set` is true (see
     # that variable for why).
     "edge-client-ip-secret" = "Key the Cloudflare Pages Function signs the visitor address with, verified by the API (min 32 chars; openssl rand -base64 48). Same value as the Pages secret EDGE_CLIENT_IP_SECRET."
-    # The Entra app's certificate for Graph mail: a PEM with the private key AND the certificate (base64, one line). A KEY of the app bundle,
-    # absent until the owner puts a value in, and injected into the WORKER only once `mail_graph_certificate_set` is true.
-    "mail-graph-certificate" = "PEM (private key + certificate, base64) the worker signs its Microsoft Graph token request with, to send mail"
     # SCM (GitHub App) — minted in GitHub, pasted by hand (Terraform only scaffolds
     # empty containers). Both stay empty until the App is registered, which keeps the
     # SCM backfill and webhook paths dormant.
@@ -398,6 +395,24 @@ module "tunnel" {
   service  = "http://localhost:${local.api_container_port}"
 
   config_src = "" // NOT omittable: the module defaults it to "cloudflare". See above.
+}
+
+# The Graph mail credential: ONE PEM holding the private key then the certificate, of the "Rova <Env> Service" Entra app. A STANDALONE secret and not a
+# key of the app bundle on purpose: `task_secret_arns` gives the whole bundle to the task role of BOTH services, so a bundled key would be readable by
+# the API process. This one is referenced only from the worker's `secrets` (the execution role injects it at start) and is in no task role.
+# Terraform creates the empty container; the owner puts the value (docs/runbooks/mail-graph.md), and `mail_graph_certificate_set` injects it only after.
+resource "aws_secretsmanager_secret" "mail_graph_certificate" {
+  name                    = "${var.product}/${var.env}/mail-graph-certificate"
+  description             = "Graph mail credential: PEM holding the private key and certificate of the Service app. No client secret exists for that app. Injected into the worker only."
+  kms_key_id              = local.kms_key_arn
+  recovery_window_in_days = var.secrets_recovery_window_days
+
+  tags = local.tags
+}
+
+locals {
+  # The worker's execution role must be able to read it to inject it; nothing else is granted.
+  worker_mail_secret_iam_arns = var.mail_graph_certificate_set ? [aws_secretsmanager_secret.mail_graph_certificate.arn] : []
 }
 
 # The connector token, in its own secret rather than as a key in the bundle.
@@ -2072,7 +2087,7 @@ module "worker" {
   # `secret_iam_arns`, NOT `secret_arns` — same reason as the api execution role above:
   # a bundled `secret_arns` yields valueFrom references that are invalid as IAM resources
   # and fail silently at apply time, surfacing only as a boot failure.
-  secret_arns = concat(local.secret_iam_arns, [module.rds.master_secret_arn], module.firelens_agent_worker.secret_arns)
+  secret_arns = concat(local.secret_iam_arns, [module.rds.master_secret_arn], module.firelens_agent_worker.secret_arns, local.worker_mail_secret_iam_arns)
   kms_key_arn = local.kms_key_arn
   secrets = concat(local.worker_db_secrets, [
     # DB credentials come from local.worker_db_secrets above: the RDS-managed
@@ -2093,8 +2108,9 @@ module "worker" {
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
     ], var.mail_graph_certificate_set ? [
-    # The Graph mail certificate: the WORKER's alone (it relays the outbox; the api never sends), injected only once populated.
-    { name = "MAIL_GRAPH_CERTIFICATE", secret_arn = module.secrets.secret_arns["mail-graph-certificate"] },
+    # The Graph mail certificate: the WORKER's alone (it relays the outbox; the api never sends), injected only once populated. A STANDALONE secret,
+    # not a key of the app bundle: the bundle is readable by the API's task role, and the API must not be able to read a credential that can send mail.
+    { name = "MAIL_GRAPH_CERTIFICATE", secret_arn = aws_secretsmanager_secret.mail_graph_certificate.arn },
     ] : [], var.storage_public_credentials ? [
     # Public-bucket-scoped pair, injected only once populated. NOT unconditional: the
     # deploy preflight blocks on an injected secret that holds no value, so wiring these
@@ -2732,6 +2748,43 @@ resource "aws_cloudwatch_metric_alarm" "outbox_dead_letter" {
   # A metric filter emits no data points when nothing matches, which is the
   # healthy state — treat that as OK rather than INSUFFICIENT_DATA noise.
   treat_missing_data = "notBreaching"
+
+  alarm_actions = [module.observability.alarm_topic_arn]
+  ok_actions    = [module.observability.alarm_topic_arn]
+}
+
+# ── The Graph mail sender is refused (403/404 on sendMail) ──────────────────────
+# Not a dead-letter: the email relay DEFERS every row for 15 minutes without spending its attempts, so `outbox-dead-letter` stays silent while no
+# email leaves. Causes: the Exchange role assignment is missing or still propagating (up to ~2 hours), or the mailbox is missing / not REST-enabled
+# (docs/runbooks/mail-graph.md). The field is SENDER_BLOCKED_FIELD in libs/platform/src/email/providers/graph.provider.ts. The provider logs it
+# once per block, i.e. every ~15 minutes while the cause stands, so the alarm looks back over four 5-minute periods and stays in ALARM until
+# the blocks stop.
+resource "aws_cloudwatch_log_metric_filter" "email_sender_blocked" {
+  name           = "${local.name}-email-sender-blocked"
+  log_group_name = module.worker.log_group_name
+  pattern        = "{ $.senderBlocked = \"*\" }"
+
+  metric_transformation {
+    name          = "EmailSenderBlocked"
+    namespace     = "${var.product}/${var.env}"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "email_sender_blocked" {
+  alarm_name        = "${local.name}-email-sender-blocked"
+  alarm_description = "Microsoft Graph refused the shared mailbox (403/404 on sendMail): no email is leaving, and nothing is dead-lettered. Exchange role missing or still propagating, or the mailbox is missing. docs/runbooks/mail-graph.md, \"When Graph refuses, or does not answer\"."
+
+  namespace           = "${var.product}/${var.env}"
+  metric_name         = "EmailSenderBlocked"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 4
+  datapoints_to_alarm = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
 
   alarm_actions = [module.observability.alarm_topic_arn]
   ok_actions    = [module.observability.alarm_topic_arn]
