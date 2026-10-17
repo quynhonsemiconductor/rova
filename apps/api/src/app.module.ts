@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { PlatformModule } from '@platform';
-import { IdentityModule } from '@modules/identity';
+import { PlatformModule, RateLimitModule } from '@platform';
+import { AuthModule } from '@modules/identity';
 import { WorkspaceModule } from '@modules/workspace';
 import { AccessModule } from '@modules/access';
 import { ProjectsModule } from '@modules/projects';
@@ -33,8 +33,15 @@ import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
     // Platform (config, db, auth, cache, outbox, observability)
     PlatformModule,
 
+    // GLOBAL GUARD ORDER IS MODULE ORDER, and it is load-bearing. ApiTokenGuard (api tokens) authenticates `Bearer rly_...` and
+    // tells identity's SessionGuard to stand aside, so ApiTokensModule comes BEFORE AuthModule (SessionGuard: sessions, the
+    // ban check, the principal); RateLimitModule comes AFTER both so the limiter keys by the user they wrote. Pinned by
+    // test/e2e/api-tokens.e2e.spec.ts and test/e2e/rate-limit-keying.e2e.spec.ts.
+    ApiTokensModule,
+    AuthModule,
+    RateLimitModule,
+
     // Bounded contexts
-    IdentityModule,
     WorkspaceModule,
     AccessModule,
     ProjectsModule,
@@ -52,7 +59,6 @@ import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
     CapacityModule,
     QualityModule,
     ScmModule,
-    ApiTokensModule,
     TestCasesModule,
   ],
   providers: [

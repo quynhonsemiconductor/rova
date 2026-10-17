@@ -42,7 +42,7 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .pnpmfile.cjs ./
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     --mount=type=secret,id=node_auth_token \
@@ -65,7 +65,7 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .pnpmfile.cjs ./
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     --mount=type=secret,id=node_auth_token \
@@ -218,6 +218,9 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 # Raw SQL migrations go into dist/db/migrations — matches __dirname in compiled migrate.js.
 COPY --from=builder /app/dist/db ./dist/db
 COPY --from=builder /app/db/migrations ./dist/db/migrations
+# The identity v8 backfill/rollback SQL sits next to the compiled runner (run.js reads it from __dirname). Run at the
+# cutover with: node dist/db/identity-v8/cli.js backfill --tenant-id ... --staff-domains ... (docs/runbooks/identity-v8-cutover.md)
+COPY --from=builder /app/db/identity-v8/*.sql ./dist/db/identity-v8/
 COPY --from=builder /app/package.json ./
 
 RUN addgroup --system --gid 1001 nodejs \

@@ -10,7 +10,7 @@ import { CSRF_HEADER, CSRF_SECRET_COOKIE, requiresCsrfProtection } from '@platfo
 import { enableHealth, registerRequestTiming } from '@quynhonsemiconductor/platform-runtime';
 import { SseConnections, registerSseShutdown } from '@modules/notifications';
 import { assertEdgeClientIpEnv, enableCorrelationId } from '@quynhonsemiconductor/platform-http';
-import { BFF_SESSION_COOKIE } from '@platform/auth';
+import { SESSION_COOKIE } from '@platform/auth';
 
 /**
  * `/livez`, `/readyz` and the legacy `/v1/healthz`, `/v1/readyz`, as raw Fastify routes (`enableHealth`). Built in:
@@ -69,7 +69,7 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
 
   // ── CSRF (double-submit, session-bound) ─────────────────────────────────────
   // The secret lives in a signed `__Host-` cookie; the token is handed to the SPA
-  // by GET /v1/bff/me and echoed back in the X-CSRF-Token header. `userInfo` binds
+  // by GET /v1/auth/me and echoed back in the X-CSRF-Token header. `userInfo` binds
   // each token to the session id that requested it (HMAC'd with CSRF_SECRET), so a
   // token lifted from one session is useless in another.
   //
@@ -86,7 +86,7 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
       const header = req.headers[CSRF_HEADER];
       return Array.isArray(header) ? header[0] : header;
     },
-    getUserInfo: (req) => req.cookies?.[BFF_SESSION_COOKIE] ?? '',
+    getUserInfo: (req) => req.cookies?.[SESSION_COOKIE] ?? '',
     csrfOpts: { hmacKey: config.get('CSRF_SECRET'), userInfo: true },
   });
 
@@ -157,7 +157,15 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
       .setTitle('Rally API')
       .setDescription('Rally SaaS — project management platform API')
       .setVersion('1.0')
-      .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'access-token')
+      .addCookieAuth(
+        SESSION_COOKIE,
+        { type: 'apiKey', in: 'cookie', name: SESSION_COOKIE },
+        'session',
+      )
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', bearerFormat: 'rly_<secret>' },
+        'access-token',
+      )
       .addTag('auth', 'Authentication & session management')
       .addTag('workspaces', 'Workspace management')
       .addTag('projects', 'Project management')

@@ -8,8 +8,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ApiBearerAuth } from '@nestjs/swagger';
-import { JwtAuthGuard, PermissionDeniedException } from '@platform';
+import { ApiBearerAuth, ApiCookieAuth } from '@nestjs/swagger';
+import { SessionAuthGuard, PermissionDeniedException } from '@platform';
 import type { JwtPayload } from '@platform';
 import {
   permissionGrants,
@@ -130,7 +130,7 @@ export class PolicyGuard implements CanActivate {
       if (declared) return true;
 
       // Nothing declared. This used to `return true`, so a handler nobody decorated was allowed
-      // to every authenticated caller — JwtAuthGuard proved WHO, and nothing checked WHETHER.
+      // to every authenticated caller — SessionAuthGuard proved WHO, and nothing checked WHETHER.
       this.logger.error(
         { controller: context.getClass().name, handler: context.getHandler().name },
         'Route declares no authorization (@RequirePermission / @SelfScoped / ' +
@@ -147,7 +147,7 @@ export class PolicyGuard implements CanActivate {
     }>();
     const user = request.user;
     if (!user) {
-      this.logger.error('PolicyGuard ran before JwtAuthGuard — check guard order');
+      this.logger.error('PolicyGuard ran before SessionAuthGuard — check guard order');
       throw this.deny();
     }
 
@@ -218,10 +218,14 @@ export class PolicyGuard implements CanActivate {
 
 /**
  * Class decorator for controllers using the unified `@RequirePermission`.
- * Bundles JwtAuthGuard → PolicyGuard in ONE @UseGuards (guaranteed order).
+ * Bundles SessionAuthGuard → PolicyGuard in ONE @UseGuards (guaranteed order).
  */
 export const AuthPolicy = () =>
-  applyDecorators(UseGuards(JwtAuthGuard, PolicyGuard), ApiBearerAuth('access-token'));
+  applyDecorators(
+    UseGuards(SessionAuthGuard, PolicyGuard),
+    ApiCookieAuth('session'),
+    ApiBearerAuth('access-token'),
+  );
 
 /**
  * Authenticated, and the subject IS the caller — so there is nothing to authorize beyond
@@ -235,6 +239,7 @@ export const AuthPolicy = () =>
 export const SelfScoped = (reason: string) =>
   applyDecorators(
     SetMetadata(AUTHZ_MODE_KEY, { mode: 'self-scoped', reason } satisfies AuthzMode),
+    ApiCookieAuth('session'),
     ApiBearerAuth('access-token'),
   );
 
@@ -255,6 +260,7 @@ export const SelfScoped = (reason: string) =>
 export const AuthorizedInService = (reason: string, pinnedBy: string) =>
   applyDecorators(
     SetMetadata(AUTHZ_MODE_KEY, { mode: 'in-service', reason, pinnedBy } satisfies AuthzMode),
+    ApiCookieAuth('session'),
     ApiBearerAuth('access-token'),
   );
 
@@ -268,6 +274,7 @@ export const AuthorizedInService = (reason: string, pinnedBy: string) =>
 export const SharedRead = (reason: string) =>
   applyDecorators(
     SetMetadata(AUTHZ_MODE_KEY, { mode: 'shared-read', reason } satisfies AuthzMode),
+    ApiCookieAuth('session'),
     ApiBearerAuth('access-token'),
   );
 
@@ -281,6 +288,7 @@ export const SharedRead = (reason: string) =>
 export const AuthzGap = (reason: string) =>
   applyDecorators(
     SetMetadata(AUTHZ_MODE_KEY, { mode: 'gap', reason } satisfies AuthzMode),
+    ApiCookieAuth('session'),
     ApiBearerAuth('access-token'),
   );
 

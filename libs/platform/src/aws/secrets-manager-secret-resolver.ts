@@ -1,7 +1,15 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
-import { AppConfigService, buildAwsClientConfig } from '@platform';
-import type { ISecretResolver } from '@quynhonsemiconductor/identity';
+import { AppConfigService } from '../config/app-config.service';
+import { buildAwsClientConfig } from './aws-client.config';
+
+/** DI token for the secret resolver (the GitHub App private key is read through it). */
+export const SECRET_RESOLVER = Symbol('SECRET_RESOLVER');
+
+/** Resolves a secret reference to its value. */
+export interface ISecretResolver {
+  get(ref: string): Promise<string>;
+}
 
 /**
  * A ref in ECS `valueFrom` form: "<secret arn>:<json key>:<version stage>:<version id>",
@@ -64,15 +72,14 @@ function extractKey(secretString: string, secretId: string, jsonKey: string): st
 }
 
 /**
- * Resolves per-connection OIDC client secrets from AWS Secrets Manager — the
+ * Resolves secrets (the GitHub App private key) from AWS Secrets Manager — the
  * infra's paved path for sensitive values (CMK-encrypted; created empty in IaC,
  * value set out-of-band). Secrets live under `rova/${env}/sso/*`. Fetched at
  * use by the ECS task role (runtime), in-memory TTL-cached.
  *
  * Accepts BOTH forms the secrets module's `secret_arns` output emits: a plain ARN when
  * secrets are standalone, and "<bundle arn>:<key>::" when they are bundled into one JSON
- * secret. Call sites store whichever they were given — the seed writes it into
- * `sso_connections.client_secret_ref` — so this resolver is what makes the two infra
+ * secret. Call sites store whichever they were given, so this resolver is what makes the two infra
  * postures interchangeable, which is the promise that output's docs already make.
  */
 @Injectable()

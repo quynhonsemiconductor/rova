@@ -1,7 +1,6 @@
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createPrivateKey } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { EnvSchema } from '@platform/config/env.schema';
 
@@ -64,13 +63,14 @@ describe('.env.example boots the API and the worker', () => {
     expect(result.success, JSON.stringify(result.success ? '' : result.error.issues)).toBe(true);
   });
 
-  it('carries a signing key the schema can actually use, and derives the public half', () => {
+  it('carries the secret identity signs its cookies with, and no JWT key', () => {
     const result = EnvSchema.safeParse(env);
     expect(result.success).toBe(true);
-    const key = Buffer.from(env['JWT_PRIVATE_KEY'] ?? '', 'base64').toString('utf8');
-    expect(createPrivateKey(key).asymmetricKeyDetails?.namedCurve).toBe('prime256v1');
-    // An empty JWT_PUBLIC_KEY is rejected by the schema (it is derived when unset), so the file must not carry one.
-    expect(Object.keys(env)).not.toContain('JWT_PUBLIC_KEY');
+    expect(env['BETTER_AUTH_SECRET']?.length).toBeGreaterThanOrEqual(32);
+    expect(Object.keys(env).filter((k) => k.startsWith('JWT_') || k.startsWith('BFF_'))).toEqual(
+      [],
+    );
+    expect(Object.keys(env)).not.toContain('ENTRA_REDIRECT_URI');
   });
 
   it('names only variables the code knows (a typo here would be silently ignored)', () => {
@@ -86,7 +86,6 @@ describe('.env.example boots the API and the worker', () => {
       'OTEL_WORKER_SERVICE_NAME',
       'BOOTSTRAP_WORKSPACE_NAME',
       'BOOTSTRAP_WORKSPACE_SLUG',
-      'SSO_ALLOWED_EMAIL_DOMAINS',
       'VITE_DEV_LOGIN',
       'VITE_APP_ENV',
       'SHUTDOWN_TIMEOUT_MS',
@@ -150,7 +149,6 @@ describe('.env.example agrees with the dev tooling', () => {
     expect(vite).toContain('strictPort: true');
     expect(env['CORS_ORIGINS']).toBe(origin);
     expect(env['APP_BASE_URL']).toBe(origin);
-    expect(env['ENTRA_REDIRECT_URI']).toBe(`${origin}/v1/bff/callback`);
     expect(bootstrap).toContain(`WEB_ORIGIN="${origin}"`);
     expect(read('apps/web/playwright.config.ts')).toContain(origin);
   });
@@ -181,21 +179,12 @@ describe('.env.example signs a developer in with no further setup', () => {
 });
 
 describe('.env.example holds no real secret and no foreign sender', () => {
-  it.each(['COOKIE_SECRET', 'CSRF_SECRET', 'ENTRA_CLIENT_SECRET'])(
+  it.each(['COOKIE_SECRET', 'CSRF_SECRET', 'BETTER_AUTH_SECRET', 'ENTRA_CLIENT_SECRET'])(
     '%s is an obvious local placeholder',
     (key) => {
       expect(env[key]).toMatch(/^local-dev-only-/);
     },
   );
-
-  it('the signing key is the public throwaway pair vitest.config.ts commits, and no other', () => {
-    const pem = Buffer.from(env['JWT_PRIVATE_KEY'] ?? '', 'base64')
-      .toString('utf8')
-      .trim();
-    const body = pem.split('\n').slice(1, -1).join('\n').replace(/\\n/g, '\n');
-    expect(read('vitest.config.ts').replace(/\\n/g, '\n')).toContain(body.split('\n')[0]);
-    expect(read('.gitleaks.toml')).toContain(body.split('\n')[0]);
-  });
 
   it.each([
     'EDGE_CLIENT_IP_SECRET',
