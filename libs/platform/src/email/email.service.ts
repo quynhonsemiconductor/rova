@@ -24,6 +24,7 @@ import type { IEmailProvider, EmailSendResult } from './email.provider';
 import { renderEmailTemplate } from './templates';
 import type { EmailTemplateName, EmailTemplateVars } from './templates';
 import { ResilienceService, ResiliencePreset } from '../resilience';
+import { NonRetryableError } from '../outbox/abstract-outbox-relay';
 import { AppConfigService } from '../config/app-config.service';
 import { resolveFromEmail, buildFromAddress } from './providers/shared';
 
@@ -85,19 +86,37 @@ export class EmailService {
       { to, template, subject: rendered.subject, category: rendered.category },
       'Dispatching email',
     );
-    return this.resilience.execute(
+    /*
+     * A PERMANENT failure (the provider said 400/403/404/413: the mailbox, the app or the message is wrong) must not go through the retry and the
+     * circuit breaker below: it would be retried five times in a row, then three of them would OPEN the breaker, and every later email,
+     * including ones that would have worked, would fail with "circuit open". It is carried out of the resilience wrapper as a value and thrown
+     * after it, so the relay sees a `NonRetryableError`, dead-letters the row at once, and the `outboxDeadLetter` alarm fires.
+     */
+    const result = await this.resilience.execute(
       'email.provider.send',
-      () =>
-        this.provider.send({
-          to,
-          from: this.from,
-          subject: rendered.subject,
-          html: rendered.html,
-          text: rendered.text,
-          category: rendered.category,
-          idempotencyKey: key,
-        }),
+      async (): Promise<
+        { sent: EmailSendResult; permanent?: undefined } | { permanent: NonRetryableError }
+      > => {
+        try {
+          return {
+            sent: await this.provider.send({
+              to,
+              from: this.from,
+              subject: rendered.subject,
+              html: rendered.html,
+              text: rendered.text,
+              category: rendered.category,
+              idempotencyKey: key,
+            }),
+          };
+        } catch (error) {
+          if (error instanceof NonRetryableError) return { permanent: error };
+          throw error;
+        }
+      },
       ResiliencePreset.EMAIL,
     );
+    if (result.permanent) throw result.permanent;
+    return result.sent;
   }
 }

@@ -274,7 +274,12 @@ describe('EnvSchema — EDGE_CLIENT_IP_SECRET', () => {
 });
 
 describe('EnvSchema — EMAIL_PROVIDER=graph (Microsoft 365 mail)', () => {
-  const graph = { EMAIL_PROVIDER: 'graph', MAIL_GRAPH_SENDER: 'noreply-rova@qnsc.vn' };
+  const SERVICE_APP = '33333333-3333-4333-8333-333333333333';
+  const graph = {
+    EMAIL_PROVIDER: 'graph',
+    MAIL_GRAPH_SENDER: 'noreply-rova-dev@qnsc.vn',
+    MAIL_GRAPH_CLIENT_ID: SERVICE_APP,
+  };
 
   it('needs the mailbox it sends as, and no MAIL_FROM_EMAIL (Graph sends as the mailbox)', () => {
     const missing = EnvSchema.safeParse(env({ EMAIL_PROVIDER: 'graph' }));
@@ -283,6 +288,17 @@ describe('EnvSchema — EMAIL_PROVIDER=graph (Microsoft 365 mail)', () => {
       !missing.success && missing.error.issues.some((i) => i.path[0] === 'MAIL_GRAPH_SENDER'),
     ).toBe(true);
     expect(EnvSchema.safeParse(env(graph)).success).toBe(true);
+  });
+
+  it('needs the Service app (not the sign-in app) that holds the Exchange role, and it must be an application id', () => {
+    const missing = EnvSchema.safeParse(env({ ...graph, MAIL_GRAPH_CLIENT_ID: '' }));
+    expect(missing.success).toBe(false);
+    expect(
+      !missing.success && missing.error.issues.some((i) => i.path[0] === 'MAIL_GRAPH_CLIENT_ID'),
+    ).toBe(true);
+    expect(EnvSchema.safeParse(env({ ...graph, MAIL_GRAPH_CLIENT_ID: 'not-a-uuid' })).success).toBe(
+      false,
+    );
   });
 
   it('refuses a sender that is not an address', () => {

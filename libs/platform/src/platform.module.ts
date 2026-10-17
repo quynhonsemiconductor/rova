@@ -116,7 +116,7 @@ import { StorageService } from './storage/storage.service';
           return new GraphEmailProvider({
             sender: config.get('MAIL_GRAPH_SENDER') ?? '',
             tenantId: config.get('ENTRA_TENANT_ID'),
-            clientId: config.get('ENTRA_CLIENT_ID'),
+            clientId: config.get('MAIL_GRAPH_CLIENT_ID'),
             certificate: config.get('MAIL_GRAPH_CERTIFICATE'),
             federatedTokenFile: config.get('MAIL_GRAPH_FEDERATED_TOKEN_FILE'),
             nodeEnv: config.get('NODE_ENV'),

@@ -216,8 +216,9 @@ export const EnvSchema = z
     // ── Email ──────────────────────────────────────────────────────────────────
     /**
      * Which email transport to use. Defaults to 'dev' (logs to stdout).
-     * 'graph' sends through Microsoft 365 (Graph sendMail) from the product's shared mailbox: needs MAIL_GRAPH_SENDER, and in the WORKER the
-     * Entra app (ENTRA_CLIENT_ID) plus MAIL_GRAPH_CERTIFICATE. See docs/runbooks/mail-graph.md.
+     * 'graph' sends through Microsoft 365 (Graph sendMail) from the environment's shared mailbox: needs MAIL_GRAPH_SENDER and
+     * MAIL_GRAPH_CLIENT_ID (the "Rova <Env> Service" app, NOT the sign-in app), and in the WORKER its certificate MAIL_GRAPH_CERTIFICATE.
+     * See docs/runbooks/mail-graph.md.
      * 'ses' and 'resend' are the transports it replaces and stay only until the cut-over is done.
      * 'ses' requires MAIL_FROM_EMAIL + IAM role with ses:SendEmail.
      * 'resend' requires RESEND_API_KEY + a verified domain in the Resend dashboard.
@@ -229,8 +230,14 @@ export const EnvSchema = z
      */
     MAIL_GRAPH_SENDER: emptyToUndefined(z.string().email().optional()),
     /**
-     * Credential for the 'graph' provider, ECS (now): a PEM holding the private key AND the certificate of the Entra app (ENTRA_CLIENT_ID), raw or
-     * base64, from the app bundle. READ BY THE WORKER ONLY (the API never sends; its task is not given this).
+     * The "Rova <Env> Service" Entra app: certificate only, worker only, no client secret. NOT `ENTRA_CLIENT_ID`, the sign-in app (delegated,
+     * client secret, API): a compromised API process must not hold a credential that can send mail. The Exchange RBAC role "Application
+     * Mail.Send" is assigned to THIS app, scoped to this environment's mailbox. A public identifier.
+     */
+    MAIL_GRAPH_CLIENT_ID: emptyToUndefined(z.string().uuid().optional()),
+    /**
+     * Credential for the 'graph' provider, ECS (now): a PEM holding the private key AND the certificate of the Service app (MAIL_GRAPH_CLIENT_ID),
+     * raw or base64, from the app bundle. READ BY THE WORKER ONLY (the API never sends; its task is not given this).
      */
     MAIL_GRAPH_CERTIFICATE: emptyToUndefined(z.string().min(1).optional()),
     /**
@@ -451,7 +458,17 @@ export const EnvSchema = z
         path: ['MAIL_GRAPH_SENDER'],
         message:
           'MAIL_GRAPH_SENDER is required when EMAIL_PROVIDER is "graph": it is the shared mailbox Graph sends as ' +
-          '(noreply-rova@qnsc.vn), and the Exchange role assignment names exactly that mailbox.',
+          '(noreply-rova@qnsc.vn in production, noreply-rova-dev@qnsc.vn in develop), and the Exchange role ' +
+          'assignment names exactly that mailbox.',
+      });
+    }
+    if (env.EMAIL_PROVIDER === 'graph' && !env.MAIL_GRAPH_CLIENT_ID) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAIL_GRAPH_CLIENT_ID'],
+        message:
+          'MAIL_GRAPH_CLIENT_ID is required when EMAIL_PROVIDER is "graph": the "Rova <Env> Service" app that holds the ' +
+          'Exchange "Application Mail.Send" role for the mailbox (not the sign-in app, ENTRA_CLIENT_ID).',
       });
     }
     if (env.EMAIL_PROVIDER !== 'dev' && env.EMAIL_PROVIDER !== 'graph' && !env.MAIL_FROM_EMAIL) {
