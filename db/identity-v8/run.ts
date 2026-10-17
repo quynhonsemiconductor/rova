@@ -20,6 +20,11 @@ export interface BackfillOptions {
   staffDomains: string[];
   /** Persist. Default false: do everything, check everything, then roll back. */
   commit?: boolean;
+  /**
+   * With `commit`, REQUIRED and must equal the database the connection is on. A write to the wrong database is the one mistake a
+   * dry run cannot catch, so the operator has to say which one they mean.
+   */
+  database?: string | undefined;
 }
 
 export type BackfillSummary = Record<string, number>;
@@ -39,7 +44,18 @@ export async function runBackfill(
   if (domains.some((d) => !/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(d))) {
     throw new Error('identity v8 backfill: a staff domain is not a domain name');
   }
-  await client.query('BEGIN');
+  if (options.commit) {
+    const actual = (
+      (await client.query('select current_database() as d')) as { rows: Array<{ d: string }> }
+    ).rows[0].d;
+    if (options.database !== actual) {
+      throw new Error(
+        `identity v8 backfill: --commit needs --database ${actual} (the database this connection is on); got ${options.database ?? 'nothing'}`,
+      );
+    }
+  }
+  // One snapshot for the preflight, the writes and the assertions: a v7 write landing between them must not be seen by some and not others.
+  await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
   try {
     await client.query(
       "SELECT set_config('rova.v8_tenant_id', $1, true), set_config('rova.v8_staff_domains', $2, true)",

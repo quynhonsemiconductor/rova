@@ -7,7 +7,7 @@ Nothing here changes what rova does today: no code reads or writes the v8 tables
 
 ## What is in the database now
 
-Migration `0136_identity_v8_tables` adds four tables to the `identity` schema, next to the v7 ones. No v7 table is touched.
+Migration `0136_identity_v8_tables` adds four tables to the `identity` schema, next to the v7 ones, and two house indexes beyond `auth generate`'s output: `account (provider_id, account_id)` (Better Auth looks an account up by it on every Microsoft sign-in) and a partial `session (context_id)` for `clearContext*`. No v7 table is touched.
 
 | Table                   | What it is                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------- |
@@ -84,7 +84,11 @@ pnpm db:identity-v8:backfill --tenant-id "$ENTRA_TENANT_ID" --staff-domains qnsc
 pnpm db:identity-v8:backfill --tenant-id "$ENTRA_TENANT_ID" --staff-domains qnsc.vn --commit
 ```
 
-It uses the migration role (`DATABASE_MIGRATION_URL`). It is **idempotent**: re-run it at the cutover to pick up users that v7 created since the last run.
+It uses the migration role (`DATABASE_MIGRATION_URL`). `--commit` also needs `--database <name>` equal to the database the connection is on: a write to the wrong database is the one mistake a dry run cannot catch. One transaction, `REPEATABLE READ`.
+
+It is **idempotent and re-runnable**: re-run it at the cutover to pick up what v7 did since the last run. A re-run INSERTs new users, UPDATEs the name, avatar and ban of existing ones to match v7, and bans (never deletes) a v8 user whose profile was soft-deleted since. It never touches `email_verified` of a user that already exists in v8. It writes no session: revoke a banned user's sessions through the product.
+
+**Deployed image.** The migrator image does not copy `db/identity-v8/*.sql` today, so the cutover PR must add that `COPY` (or the operator runs the SQL with `psql`, setting `rova.v8_tenant_id` / `rova.v8_staff_domains` first). Not done here: nothing runs it yet.
 
 ## Undoing it
 

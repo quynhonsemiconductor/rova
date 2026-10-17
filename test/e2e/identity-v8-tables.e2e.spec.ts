@@ -303,7 +303,7 @@ describe('migration 0136: the v8 tables', () => {
 
   it('fresh database: up, down, up', async () => {
     const name = await createDatabase();
-    await migrateDatabase(name);
+    await migrateDatabase(name, TAG); // up TO 0136: a later migration (0137...) must not change what this proves
     await withPool(name, async (pool) => {
       // UP: the four tables, session.context_id, the keys and indexes.
       expect(await v8TablesPresent(pool)).toEqual([
@@ -331,6 +331,8 @@ describe('migration 0136: the v8 tables', () => {
         'session_userId_idx',
         'account_userId_idx',
         'verification_identifier_idx',
+        'account_provider_account_idx',
+        'session_context_id_idx',
       ]) {
         expect(indexes).toContain(expected);
       }
@@ -364,7 +366,7 @@ describe('migration 0136: the v8 tables', () => {
     });
 
     // UP AGAIN: `db:migrate` applies it again, because the rollback forgot it.
-    await migrateDatabase(name);
+    await migrateDatabase(name, TAG);
     await withPool(name, async (pool) => {
       expect(await v8TablesPresent(pool)).toEqual([
         'identity.account',
@@ -378,7 +380,7 @@ describe('migration 0136: the v8 tables', () => {
 
   it('the rollback refuses to drop rows unless it is told to, and says why', async () => {
     const name = await createDatabase();
-    await migrateDatabase(name);
+    await migrateDatabase(name, TAG);
     await withPool(name, async (pool) => {
       await pool.query(
         `insert into identity."user" (id, name, email) values ($1, 'x', 'x@qnsc.vn')`,
@@ -395,6 +397,23 @@ describe('migration 0136: the v8 tables', () => {
     });
   });
 
+  it('the rollback refuses once a LATER migration is recorded: forgetting 0136 would not make drizzle apply it again', async () => {
+    const name = await createDatabase();
+    await migrateDatabase(name, TAG);
+    await withPool(name, async (pool) => {
+      // What a 0137 would leave behind: a row newer than 0136's.
+      await pool.query(
+        `insert into drizzle.__drizzle_migrations (hash, created_at) values ('later', $1)`,
+        [journalWhen(TAG) + 1],
+      );
+      await expect(
+        withClient(name, (client) => runRollback(client, { allowDataLoss: true })),
+      ).rejects.toThrow(/newer than 0136 is recorded.*Roll forward/s);
+      expect(await v8TablesPresent(pool)).toHaveLength(4);
+      expect(await migrationRecorded(pool, journalWhen(TAG))).toBe(true);
+    });
+  });
+
   it('a database that already has rova’s schema AND v7 data: applying 0136 changes none of it', async () => {
     const name = await createDatabase();
     await migrateDatabase(name, '0135_outbox_lease_and_fence'); // exactly what production has today
@@ -405,7 +424,7 @@ describe('migration 0136: the v8 tables', () => {
     });
     expect(Object.keys(before).length).toBeGreaterThan(50); // the whole schema, not a handful of tables
 
-    await migrateDatabase(name); // applies 0136 only
+    await migrateDatabase(name, TAG); // applies 0136 only
     await withPool(name, async (pool) => {
       expect(await v8TablesPresent(pool)).toHaveLength(4);
       const after = await fingerprint(pool);
@@ -425,11 +444,11 @@ describe('the backfill, on a seeded copy with guests and vendors', () => {
     return name;
   }
   const backfill = (name: string, over: Partial<BackfillOptions> = {}) =>
-    withClient(name, (client) => runBackfill(client, { ...OPTS, ...over }));
+    withClient(name, (client) => runBackfill(client, { ...OPTS, database: name, ...over }));
 
   beforeAll(async () => {
     template = await createDatabase();
-    await migrateDatabase(template);
+    await migrateDatabase(template, TAG);
     await withPool(template, seedV7);
   }, 120_000);
 
@@ -531,6 +550,69 @@ describe('the backfill, on a seeded copy with guests and vendors', () => {
     });
   });
 
+  it('a re-run carries what v7 changed since: a rename, a new avatar, a suspension, and a user deleted in v7 is banned in v8', async () => {
+    const name = await seededCopy();
+    await backfill(name);
+    await withPool(name, async (pool) => {
+      await pool.query(
+        `update identity.users set display_name = 'Alice Renamed', avatar_url = null where id = $1`,
+        [U.alice],
+      );
+      await pool.query(`update identity.users set status = 'suspended' where id = $1`, [U.vendor2]);
+      await pool.query(`update identity.users set deleted_at = now() where id = $1`, [U.frank]);
+
+      const summary = await backfill(name);
+      expect(summary['v7 live users']).toBe(6);
+      const users = Object.fromEntries(
+        (await table(pool, 'identity."user"')).map((r) => [String(r['id']), r]),
+      );
+      expect(users[U.alice]).toMatchObject({ name: 'Alice Renamed', image: null, banned: false });
+      expect(users[U.vendor2]).toMatchObject({
+        banned: true,
+        ban_reason: 'migrated from v7: suspended',
+      });
+      expect(users[U.frank]).toMatchObject({
+        banned: true,
+        ban_reason: 'migrated from v7: deleted',
+      }); // kept, but cannot sign in
+      // and a third run is a no-op
+      const before = await table(pool, 'identity."user"');
+      await backfill(name);
+      expect(await table(pool, 'identity."user"')).toEqual(before);
+    });
+  });
+
+  it('a soft-deleted user with a live v7 session and no Entra identity does not block it', async () => {
+    const name = await seededCopy(async (pool) => {
+      const ghost = '00000000-0000-7000-8000-0000000000d1';
+      await pool.query(
+        `insert into identity.users (id, email, display_name, deleted_at) values ($1, 'ghost@qnsc.vn', 'Ghost', now())`,
+        [ghost],
+      );
+      await pool.query(
+        `insert into identity.auth_sessions (id, workspace_id, user_id, token_hash, family_id, expires_at)
+         values (gen_random_uuid(), $1, $2, 'ghost', gen_random_uuid(), now() + interval '1 day')`,
+        [WS, ghost],
+      );
+    });
+    expect((await backfill(name))['v8 users']).toBe(7);
+  });
+
+  it('--commit needs the database to be named, and named correctly', async () => {
+    const name = await seededCopy();
+    await expect(backfill(name, { database: undefined })).rejects.toThrow(
+      /--commit needs --database/,
+    );
+    await expect(backfill(name, { database: 'some_other_db' })).rejects.toThrow(
+      /--commit needs --database/,
+    );
+    await withPool(name, async (pool) =>
+      expect(await v8Counts(pool)).toEqual({ user: 0, account: 0, session: 0 }),
+    );
+    // a dry run never needs it
+    await expect(backfill(name, { commit: false, database: undefined })).resolves.toBeTruthy();
+  });
+
   it('after v8 sign-ins have started (v8 sessions exist), a re-run still agrees with v7', async () => {
     const name = await seededCopy();
     await backfill(name);
@@ -597,6 +679,15 @@ describe('the backfill, on a seeded copy with guests and vendors', () => {
       async (pool) => {
         await pool.query(
           `insert into identity.users (id, email, display_name, status) values (gen_random_uuid(), 'outsider@elsewhere.example', 'Out', 'invited')`,
+        );
+      },
+      /no Entra identity and an address outside the staff domains/,
+    );
+    refuses(
+      'an address that merely CONTAINS a staff domain before another @ is not a staff address',
+      async (pool) => {
+        await pool.query(
+          `insert into identity.users (id, email, display_name, status) values (gen_random_uuid(), 'x@qnsc.vn@evil.example', 'Tricky', 'invited')`,
         );
       },
       /no Entra identity and an address outside the staff domains/,

@@ -32,7 +32,7 @@
  *   identity.auth_sessions    -> (not migrated)        everyone signs in once
  *   workspace_members         -> session.context_id    set at sign-in by identity's `initial`
  */
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { boolean, index, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { identitySchema } from './identity';
 
@@ -74,7 +74,13 @@ export const session = identitySchema.table(
     // identity 8.4: the active context (rova: the workspace)
     contextId: uuid('context_id'),
   },
-  (table) => [index('session_userId_idx').on(table.userId)],
+  (table) => [
+    index('session_userId_idx').on(table.userId),
+    // identity's clearContext* look sessions up by context_id; partial, most sessions have none.
+    index('session_context_id_idx')
+      .on(table.contextId)
+      .where(sql`context_id IS NOT NULL`),
+  ],
 );
 
 export const account = identitySchema.table(
@@ -98,7 +104,11 @@ export const account = identitySchema.table(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
-  (table) => [index('account_userId_idx').on(table.userId)],
+  (table) => [
+    index('account_userId_idx').on(table.userId),
+    // Better Auth looks an account up by (provider_id, account_id) on every Microsoft sign-in.
+    index('account_provider_account_idx').on(table.providerId, table.accountId),
+  ],
 );
 
 export const verification = identitySchema.table(

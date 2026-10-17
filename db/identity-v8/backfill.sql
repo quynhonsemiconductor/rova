@@ -7,9 +7,9 @@
 --     pnpm db:identity-v8:backfill --tenant-id <ENTRA_TENANT_ID> --staff-domains qnsc.vn            # DRY RUN: does all of it, then ROLLS BACK
 --     pnpm db:identity-v8:backfill --tenant-id <ENTRA_TENANT_ID> --staff-domains qnsc.vn --commit
 --
--- ONE TRANSACTION: preflight (RAISES), inserts, assertions (RAISE). Any failure rolls everything back. IDEMPOTENT: the
--- inserts skip what is already there, so it can be re-run at cutover to pick up users that v7 created since the last
--- run. It reads v7 and writes only identity."user" and identity.account; no v7 row is changed.
+-- ONE TRANSACTION (REPEATABLE READ): preflight (RAISES), inserts, assertions (RAISE). Any failure rolls everything back.
+-- IDEMPOTENT: the inserts skip what is already there and UPDATE what v7 changed (name, avatar, ban), a user deleted in v7 since
+-- is banned in v8, so it can be re-run at cutover to pick up users that v7 created or changed since the last run. It reads v7 and writes only identity."user" and identity.account; no v7 row is changed.
 --
 -- THE MAPPING (docs/runbooks/identity-v8-data-model.md):
 --   identity.users (deleted_at IS NULL)        -> identity."user"   same id; lower(email); display_name -> name; avatar_url -> image;
@@ -34,6 +34,9 @@
 -- A guest is a user with an Entra identity whose address is off the staff domains; the preflight therefore also rejects a
 -- user with NO Entra identity and an address off the staff domains (a pre-invited outsider: with a v8 user and no
 -- account, their first sign-in would be refused; with no v8 user it creates one).
+--
+-- THE DOMAIN OF AN ADDRESS is the part after the LAST '@' (substring ... from '@([^@]+)$'). split_part(email, '@', 2) would read
+-- 'a@qnsc.vn@evil.example' as a staff address. The staff domains arrive lower-cased and exact (the runner lower-cases them).
 --
 -- INPUTS, set by the runner as transaction-local settings:
 --   rova.v8_tenant_id      the home Entra tenant (ENTRA_TENANT_ID): the one `directory` connection allowed
@@ -89,7 +92,7 @@ BEGIN
   FROM identity.users u
   WHERE u.deleted_at IS NULL
     AND NOT EXISTS (SELECT 1 FROM identity.sso_identities s WHERE s.user_id = u.id AND s.provider = 'entra')
-    AND split_part(lower(u.email), '@', 2) <> ALL (domains);
+    AND substring(lower(u.email) from '@([^@]+)$') <> ALL (domains);
   IF n > 0 THEN
     RAISE EXCEPTION 'identity v8 backfill: % live user(s) have no Entra identity and an address outside the staff domains (user ids: %). A v8 user without the account would be refused on first sign-in; decide per user (remove them, or let their first sign-in create them).', n, ids;
   END IF;
@@ -103,7 +106,9 @@ BEGIN
 
   -- A v7 session owner must be an SSO user: nothing else can sign in v8.
   SELECT count(*), string_agg(o.user_id::text, ' ') INTO n, ids FROM (
-    SELECT DISTINCT user_id FROM identity.auth_sessions WHERE NOT is_revoked AND expires_at > now()) o
+    SELECT DISTINCT a.user_id FROM identity.auth_sessions a
+    JOIN identity.users u ON u.id = a.user_id AND u.deleted_at IS NULL     -- a soft-deleted user's old session is nobody's problem
+    WHERE NOT a.is_revoked AND a.expires_at > now()) o
   WHERE NOT EXISTS (SELECT 1 FROM identity.sso_identities s WHERE s.user_id = o.user_id AND s.provider = 'entra');
   IF n > 0 THEN
     RAISE EXCEPTION 'identity v8 backfill: % owner(s) of a live v7 session have no Entra identity (user ids: %): a dev-login session, or data that should not exist in a deployed environment', n, ids;
@@ -135,7 +140,7 @@ SELECT u.id,
        lower(u.email),
        (u.email_verified
          OR EXISTS (SELECT 1 FROM identity.sso_identities s WHERE s.user_id = u.id AND s.provider = 'entra')
-         OR split_part(lower(u.email), '@', 2) = ANY (string_to_array(lower(current_setting('rova.v8_staff_domains')), ','))),
+         OR substring(lower(u.email) from '@([^@]+)$') = ANY (string_to_array(lower(current_setting('rova.v8_staff_domains')), ','))),
        u.avatar_url,
        u.status IN ('inactive', 'suspended'),
        CASE WHEN u.status IN ('inactive', 'suspended') THEN 'migrated from v7: ' || u.status::text END,
@@ -143,7 +148,26 @@ SELECT u.id,
        now()
 FROM identity.users u
 WHERE u.deleted_at IS NULL
-ON CONFLICT DO NOTHING;
+-- A re-run carries what v7 changed since the last run: a rename, a new avatar, a suspension. Guarded on the address matching
+-- (a clash was refused above), and a no-op when nothing differs. email_verified is NOT touched: once a user exists in v8 it is
+-- identity's.
+ON CONFLICT (id) DO UPDATE
+  SET name = EXCLUDED.name,
+      image = EXCLUDED.image,
+      banned = EXCLUDED.banned,
+      ban_reason = EXCLUDED.ban_reason,
+      updated_at = now()
+  WHERE identity."user".email = EXCLUDED.email
+    AND (identity."user".name, identity."user".image, identity."user".banned, identity."user".ban_reason)
+        IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.image, EXCLUDED.banned, EXCLUDED.ban_reason);
+
+-- A user soft-deleted in v7 since the last run keeps its v8 row (it may hold accounts and sessions) but can no longer sign in.
+-- Revoke its sessions through the product (revokeUserSessions): this script writes no session.
+UPDATE identity."user" v
+SET banned = TRUE, ban_reason = 'migrated from v7: deleted', updated_at = now()
+FROM identity.users u
+WHERE u.id = v.id AND u.deleted_at IS NOT NULL
+  AND (v.banned IS NOT TRUE OR v.ban_reason IS DISTINCT FROM 'migrated from v7: deleted');
 
 -- ── 3. The Microsoft account of every Entra identity (guests and vendors included) ─────────────────────────────
 INSERT INTO identity.account (id, account_id, provider_id, user_id, created_at, updated_at)
@@ -165,12 +189,12 @@ BEGIN
     SELECT id, email FROM identity."user") d;
   IF n > 0 THEN RAISE EXCEPTION 'identity v8 backfill assertion failed: % live v7 user(s) have no v8 user with the same id and address', n; END IF;
 
-  -- ... and every v8 user is a live profile (a v8 user the profile table does not know would be a login with no person).
-  SELECT count(*) INTO n FROM (
-    SELECT id, email FROM identity."user"
-    EXCEPT
-    SELECT id, lower(email) FROM identity.users WHERE deleted_at IS NULL) d;
-  IF n > 0 THEN RAISE EXCEPTION 'identity v8 backfill assertion failed: % v8 user(s) are not a live profile in identity.users', n; END IF;
+  -- ... and every v8 user is a live profile, or the profile of a user deleted in v7 since (then banned): a v8 user the profile
+  -- table does not know would be a login with no person.
+  SELECT count(*) INTO n FROM identity."user" v
+  WHERE NOT EXISTS (SELECT 1 FROM identity.users u WHERE u.id = v.id AND u.deleted_at IS NULL)
+    AND NOT (EXISTS (SELECT 1 FROM identity.users d WHERE d.id = v.id AND d.deleted_at IS NOT NULL) AND v.banned IS TRUE);
+  IF n > 0 THEN RAISE EXCEPTION 'identity v8 backfill assertion failed: % v8 user(s) are not a live profile in identity.users (and not a banned, soft-deleted one)', n; END IF;
 
   -- Every Entra identity of a live user is a Microsoft account of that user, with the same oid.
   SELECT count(*) INTO n FROM (
@@ -192,7 +216,10 @@ BEGIN
   IF n > 0 THEN RAISE EXCEPTION 'identity v8 backfill assertion failed: % v8 user(s) hold more than one Microsoft account', n; END IF;
 
   -- Every owner of a live v7 session: exactly one v8 user and exactly one Microsoft account.
-  SELECT count(*) INTO n FROM (SELECT DISTINCT user_id FROM identity.auth_sessions WHERE NOT is_revoked AND expires_at > now()) o
+  SELECT count(*) INTO n FROM (
+    SELECT DISTINCT a.user_id FROM identity.auth_sessions a
+    JOIN identity.users u ON u.id = a.user_id AND u.deleted_at IS NULL
+    WHERE NOT a.is_revoked AND a.expires_at > now()) o
   WHERE (SELECT count(*) FROM identity."user" v WHERE v.id = o.user_id) <> 1
      OR (SELECT count(*) FROM identity.account a WHERE a.user_id = o.user_id AND a.provider_id = 'microsoft') <> 1;
   IF n > 0 THEN RAISE EXCEPTION 'identity v8 backfill assertion failed: % owner(s) of a live v7 session do not have exactly one v8 user and one Microsoft account', n; END IF;

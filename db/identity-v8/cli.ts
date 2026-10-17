@@ -1,5 +1,5 @@
 /**
- * pnpm db:identity-v8:backfill  --tenant-id <ENTRA_TENANT_ID> --staff-domains qnsc.vn [--commit]
+ * pnpm db:identity-v8:backfill  --tenant-id <ENTRA_TENANT_ID> --staff-domains qnsc.vn [--commit --database <name>]
  * pnpm db:identity-v8:rollback  [--allow-data-loss]
  *
  * See backfill.sql and rollback.sql. Neither runs as part of `pnpm db:migrate`.
@@ -42,7 +42,12 @@ async function main(): Promise<void> {
     const tenantId = option('tenant-id') ?? process.env['ENTRA_TENANT_ID'] ?? '';
     const staffDomains = (option('staff-domains') ?? '').split(',');
     const commit = flag('commit');
-    const summary = await runBackfill(client, { tenantId, staffDomains, commit });
+    const summary = await runBackfill(client, {
+      tenantId,
+      staffDomains,
+      commit,
+      database: option('database'),
+    });
     for (const [what, n] of Object.entries(summary))
       process.stdout.write(`${String(n).padStart(8)}  ${what}\n`);
     log.info(

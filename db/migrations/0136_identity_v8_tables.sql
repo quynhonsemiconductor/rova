@@ -89,6 +89,12 @@ CREATE INDEX "account_userId_idx" ON "identity"."account" USING btree ("user_id"
 --> statement-breakpoint
 CREATE INDEX "verification_identifier_idx" ON "identity"."verification" USING btree ("identifier");
 --> statement-breakpoint
+-- House additions, not in `auth generate`'s output. Better Auth looks an account up by (provider_id, account_id) on EVERY Microsoft sign-in and
+-- creates no index for it; identity's clearContext* look sessions up by context_id (partial: most sessions have none).
+CREATE INDEX "account_provider_account_idx" ON "identity"."account" USING btree ("provider_id","account_id");
+--> statement-breakpoint
+CREATE INDEX "session_context_id_idx" ON "identity"."session" USING btree ("context_id") WHERE "context_id" IS NOT NULL;
+--> statement-breakpoint
 COMMENT ON TABLE "identity"."user" IS 'identity v8 (Better Auth) login identity. UNUSED until the cutover. identity.users stays the profile table; the two share ids, one-to-one, no FK (migration 0136).';
 --> statement-breakpoint
 COMMENT ON COLUMN "identity"."session"."context_id" IS 'identity 8.4: the active workspace of the session. Written only by identity (context/set); not a foreign key.';
