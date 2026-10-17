@@ -7,6 +7,9 @@
 
 export const EMAIL_PROVIDER = Symbol('EMAIL_PROVIDER');
 
+/** The hardest a single provider send may take; equal to the EMAIL resilience preset's timeout. The relay's lease is sized from it. */
+export const EMAIL_SEND_TIMEOUT_MS = 30_000;
+
 /**
  * Email category controls which RFC-compliance headers are added by the
  * transport layer:
@@ -64,6 +67,15 @@ export interface EmailSendResult {
   messageId: string | null;
 }
 
+/** What the caller can hand a send besides the message. */
+export interface EmailSendOptions {
+  /**
+   * Aborted when the caller's deadline passes. A provider that can cancel (Graph) cancels the request, its in-place retries and any wait; one
+   * that cannot ignores it.
+   */
+  signal?: AbortSignal;
+}
+
 export interface IEmailProvider {
-  send(payload: EmailPayload): Promise<EmailSendResult>;
+  send(payload: EmailPayload, options?: EmailSendOptions): Promise<EmailSendResult>;
 }

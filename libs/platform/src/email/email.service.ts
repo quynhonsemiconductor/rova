@@ -19,12 +19,11 @@
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { EMAIL_PROVIDER } from './email.provider';
+import { EMAIL_PROVIDER, EMAIL_SEND_TIMEOUT_MS } from './email.provider';
 import type { IEmailProvider, EmailSendResult } from './email.provider';
 import { renderEmailTemplate } from './templates';
 import type { EmailTemplateName, EmailTemplateVars } from './templates';
 import { ResilienceService, ResiliencePreset } from '../resilience';
-import { NonRetryableError } from '../outbox/abstract-outbox-relay';
 import { AppConfigService } from '../config/app-config.service';
 import { resolveFromEmail, buildFromAddress } from './providers/shared';
 
@@ -52,6 +51,14 @@ export class EmailService {
   }
 
   /**
+   * Fails now if the configured transport cannot work (the Graph provider names the missing variable). The worker calls this when its relay
+   * starts, so a bad deploy stops there instead of dead-lettering the first invitation. A provider with nothing to check passes.
+   */
+  assertReady(): void {
+    (this.provider as { assertReady?: () => void }).assertReady?.();
+  }
+
+  /**
    * Render `template` with `vars` and send via the registered IEmailProvider.
    *
    * The provider call is wrapped with ResiliencePreset.EMAIL:
@@ -66,14 +73,6 @@ export class EmailService {
    * Returns the provider's message id (see EmailSendResult) so the relay can persist it
    * at acceptance — that id is the feedback loop's only exact match key.
    */
-  /**
-   * Fails now if the configured transport cannot work (the Graph provider names the missing variable). The worker calls this when its relay
-   * starts, so a bad deploy stops there instead of dead-lettering the first invitation. A provider with nothing to check passes.
-   */
-  assertReady(): void {
-    (this.provider as { assertReady?: () => void }).assertReady?.();
-  }
-
   async sendTemplate<K extends EmailTemplateName>(
     to: string,
     template: K,
@@ -86,37 +85,57 @@ export class EmailService {
       { to, template, subject: rendered.subject, category: rendered.category },
       'Dispatching email',
     );
+    const payload = {
+      to,
+      from: this.from,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      category: rendered.category,
+      idempotencyKey: key,
+    };
+
     /*
-     * A PERMANENT failure (the provider said 400/403/404/413: the mailbox, the app or the message is wrong) must not go through the retry and the
-     * circuit breaker below: it would be retried five times in a row, then three of them would OPEN the breaker, and every later email,
-     * including ones that would have worked, would fail with "circuit open". It is carried out of the resilience wrapper as a value and thrown
-     * after it, so the relay sees a `NonRetryableError`, dead-letters the row at once, and the `outboxDeadLetter` alarm fires.
+     * A provider that OWNS ITS RETRIES (Graph) is not put behind the resilience wrapper. The wrapper retries every error five times and counts
+     * every error toward its breaker, which is wrong for Graph on three counts: a permanent refusal (400/413) would be retried and then OPEN the
+     * breaker for good mail; a 429 would be re-sent with the transport's own retries stacked underneath (18 calls for one row); and the wrapper
+     * cannot tell the provider its attempt timed out, so a request could still be accepted after the relay had retried the row. The relay
+     * already has the retry (attempts and backoff) and the dead-letter, and the transport honours Retry-After; what the provider needs from here is
+     * a hard deadline, handed to it as a signal. The result: a permanent failure is a NonRetryableError at once, a 429 is a RetryAfterError, and a
+     * refused sender is a DeferError, all straight to the relay.
      */
-    const result = await this.resilience.execute(
+    if (ownsItsRetries(this.provider)) {
+      return withDeadline(
+        (signal) => this.provider.send(payload, { signal }),
+        EMAIL_SEND_TIMEOUT_MS,
+      );
+    }
+
+    return this.resilience.execute(
       'email.provider.send',
-      async (): Promise<
-        { sent: EmailSendResult; permanent?: undefined } | { permanent: NonRetryableError }
-      > => {
-        try {
-          return {
-            sent: await this.provider.send({
-              to,
-              from: this.from,
-              subject: rendered.subject,
-              html: rendered.html,
-              text: rendered.text,
-              category: rendered.category,
-              idempotencyKey: key,
-            }),
-          };
-        } catch (error) {
-          if (error instanceof NonRetryableError) return { permanent: error };
-          throw error;
-        }
-      },
+      () => this.provider.send(payload),
       ResiliencePreset.EMAIL,
     );
-    if (result.permanent) throw result.permanent;
-    return result.sent;
   }
+}
+
+/** True for a provider that retries and classifies failures itself (see {@link EmailService.sendTemplate}). */
+function ownsItsRetries(provider: IEmailProvider): boolean {
+  return (provider as { ownsRetries?: boolean }).ownsRetries === true;
+}
+
+/**
+ * Runs `work` with a hard deadline: at `ms` the SIGNAL passed to it is aborted (the request, its in-place retries and any wait stop, so nothing
+ * is accepted after the relay has retried the row), and the returned promise rejects even if the provider ignores the signal.
+ */
+function withDeadline<T>(work: (signal: AbortSignal) => Promise<T>, ms: number): Promise<T> {
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Email provider did not answer within ${Math.round(ms / 1000)} s`));
+    }, ms);
+  });
+  return Promise.race([work(controller.signal), deadline]).finally(() => clearTimeout(timer));
 }
