@@ -20,11 +20,14 @@ const securityHeadersPlugin: Plugin = {
 }
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode, command }) => ({
   plugins: [react(), tailwindcss(), securityHeadersPlugin],
-  // The repo-root `.env` serves the SPA too: Vite exposes ONLY `VITE_`-prefixed variables to the browser, so the API's
-  // secrets in that file never reach it, and `cp .env.example .env` is the whole setup (VITE_DEV_LOGIN lives there).
-  envDir: path.resolve(__dirname, '../..'),
+  // The repo-root `.env` serves the SPA too, BUT ONLY FOR THE DEV SERVER (`vite`, mode `development`): Vite exposes only
+  // `VITE_`-prefixed variables to the browser, so the API's secrets in that file never reach it, and `cp .env.example
+  // .env` is the whole setup (VITE_DEV_LOGIN lives there). A `vite build` (any mode) and the unit tests keep the default
+  // `envDir` (apps/web), so a laptop's root `.env` can never bake `VITE_DEV_LOGIN=true` into a bundle that is then deployed.
+  envDir:
+    command === 'serve' && mode === 'development' ? path.resolve(__dirname, '../..') : undefined,
   server: {
     host: '0.0.0.0',
     // 5173 is the origin the rest of the stack is wired to (.env.example CORS_ORIGINS, APP_BASE_URL and

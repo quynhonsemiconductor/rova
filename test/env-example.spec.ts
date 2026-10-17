@@ -156,7 +156,11 @@ describe('.env.example agrees with the dev tooling', () => {
   });
 
   it('lets the SPA read the root .env, where the dev login switch lives', () => {
-    expect(vite).toMatch(/envDir:\s*path\.resolve\(__dirname, '\.\.\/\.\.'\)/);
+    // ...but ONLY for the dev server: a build or a unit run must not read a laptop's root .env (VITE_DEV_LOGIN=true would be
+    // baked into a bundle that could be deployed).
+    expect(vite).toMatch(
+      /envDir:\s*command === 'serve' && mode === 'development'\s*\?\s*path\.resolve\(__dirname, '\.\.\/\.\.'\)\s*:\s*undefined/,
+    );
     expect(env['VITE_DEV_LOGIN']).toBe('true');
   });
 });
