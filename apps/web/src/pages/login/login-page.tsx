@@ -1,5 +1,6 @@
 import { BRAND } from '@/shared/config/brand'
 import { useState } from 'react'
+import { signInErrorFrom } from './sign-in-error'
 import { useTranslation } from 'react-i18next'
 import { Layers, ShieldCheck, Check, AlertCircle } from 'lucide-react'
 import { ENV } from '@/shared/config/env'
@@ -49,80 +50,88 @@ export function LoginPage() {
    * by accident, which is the half a test cannot cover.
    */
   const [devEmail, setDevEmail] = useState('dev@qnsc.dev')
+  const signInError = signInErrorFrom(window.location.search)
   const [devLoading, setDevLoading] = useState(false)
   const [devError, setDevError] = useState<string | null>(null)
 
-  // ── SSO handler (one-click home shortcut) ───────────────────────────
-  // Broker-native: POST /bff/login/sso starts the home connection directly (no
-  // email typed) and returns its IdP authorize URL; the browser redirects there
-  // and returns with a session cookie set — no in-browser tokens.
+  /**
+   * Start the Microsoft sign-in (identity 8, Better Auth): `POST /api/auth/sign-in/social` runs the Authorization-Code +
+   * PKCE flow SERVER-side and answers the Microsoft authorize URL; the browser is handed to Microsoft and comes back to
+   * `/api/auth/callback/microsoft`, which creates the session and sets the opaque cookie before redirecting to
+   * `callbackURL`. No token reaches the SPA. `/api/auth/*` is same-origin with the SPA like `/v1/*` (the Vite proxy
+   * locally, a Pages Function deployed): a requirement, not a preference, because the cookie is set on the response the
+   * browser lands on.
+   *
+   * `callbackURL` is a same-site path only (Better Auth also validates it against its trusted origins), so a hostile
+   * `returnTo` cannot bounce the browser off-site. `errorCallbackURL` brings a refused sign-in (a banned user, the wrong
+   * tenant, no invitation) back to this page with `?error=<CODE>` instead of the API's own error page.
+   *
+   * `loginHint` pre-fills the address at Microsoft for the invited person who typed theirs (a vendor signs in as a guest
+   * of the company tenant). It is a hint, never an authorization: the API decides who gets in.
+   */
+  async function startMicrosoftSignIn(loginHint?: string): Promise<boolean> {
+    const requested = new URLSearchParams(window.location.search).get('returnTo') ?? '/'
+    const callbackURL = requested.startsWith('/') && !requested.startsWith('//') ? requested : '/'
+    const res = await fetch('/api/auth/sign-in/social', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: 'microsoft',
+        callbackURL,
+        errorCallbackURL: '/login',
+        ...(loginHint ? { loginHint } : {}),
+      }),
+    })
+    if (!res.ok) return false
+    const { url } = (await res.json()) as { url?: string }
+    if (!url) return false
+    window.location.assign(url) // execution stops at the redirect
+    return true
+  }
+
+  // ── One-click Microsoft sign-in (staff) ─────────────────────────────
   async function handleSsoLogin() {
     setSsoLoading(true)
     setSsoError(null)
     try {
-      const returnTo = new URLSearchParams(window.location.search).get('returnTo') ?? '/'
-      const res = await fetch('/v1/bff/login/sso', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ returnTo }),
-      })
-      if (!res.ok) {
+      if (!(await startMicrosoftSignIn())) {
         setSsoError(t('errors.ssoInit'))
         setSsoLoading(false)
-        return
       }
-      const { authorizeUrl } = (await res.json()) as { authorizeUrl: string }
-      window.location.href = authorizeUrl // execution stops at the redirect
     } catch {
       setSsoError(t('errors.ssoInit'))
       setSsoLoading(false)
     }
   }
 
-  // ── Email-first sign-in (multi-IdP broker) ──────────────────────────────
-  // Resolve the email's federated connection server-side and hand off to its
-  // IdP. Unknown/unmatched email → 401 NO_CONNECTION ("contact administrator").
+  // ── Email-first sign-in (invited guests / vendors) ──────────────────
+  // Same Microsoft sign-in with the address as a hint. Whether the person may come in is decided on the API (a profile or
+  // a live invitation), not here, so an unknown address is learned from the `?error=` the sign-in returns with.
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault()
     setEmailLoading(true)
     setEmailError(null)
     try {
-      const returnTo = new URLSearchParams(window.location.search).get('returnTo') ?? '/'
-      const res = await fetch('/v1/bff/login/start', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, returnTo }),
-      })
-      if (res.status === 401) {
-        setEmailError(t('noAccessError'))
-        setEmailLoading(false)
-        return
-      }
-      if (!res.ok) {
+      if (!(await startMicrosoftSignIn(email))) {
         setEmailError(t('signInFailed'))
         setEmailLoading(false)
-        return
       }
-      const { authorizeUrl } = (await res.json()) as { authorizeUrl: string }
-      window.location.href = authorizeUrl // execution stops at the redirect
     } catch {
       setEmailError(t('signInFailed'))
       setEmailLoading(false)
     }
   }
 
-  // ── Dev sign-in (non-SSO environments only) ─────────────────────────────
+  // ── Dev sign-in (non-production only) ───────────────────────────────
   async function handleDevLogin(e: React.FormEvent) {
     e.preventDefault()
     setDevLoading(true)
     setDevError(null)
     try {
-      // The session lands on the server (same-origin /v1/bff); the browser holds
-      // no tokens.
-      const endpoint = '/v1/bff/dev-login'
-      const res = await fetch(endpoint, {
+      // identity's passwordless `/api/auth/test-login`: it exists only when the API runs with IDENTITY_TEST_LOGIN=enabled
+      // and NODE_ENV development/test. The session lands on the server; the browser holds no tokens.
+      const res = await fetch('/api/auth/test-login', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -133,7 +142,7 @@ export function LoginPage() {
         setDevLoading(false)
         return
       }
-      // Full reload — bootstrapAuth() restores the session from the refresh cookie.
+      // Full reload — bootstrapAuth() restores the session from the cookie.
       window.location.assign('/')
     } catch {
       setDevError(t('errors.devApiUnreachable'))
@@ -255,7 +264,21 @@ export function LoginPage() {
             </div>
 
             <div className="px-7 py-6">
-              {/* ── Email-first sign-in (multi-IdP broker) ─────────────────── */}
+              {signInError && (
+                <div
+                  role="alert"
+                  className="mb-4 flex items-start gap-2 rounded border border-destructive-border bg-destructive-bg px-3 py-2.5 text-ui-sm text-destructive"
+                >
+                  <AlertCircle size={14} className="mt-px shrink-0" />
+                  <div>
+                    <p>{signInError.message}</p>
+                    <p className="mt-1 text-ui-xs text-foreground-subtle">
+                      Error code: {signInError.code}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {/* ── Email-first sign-in (invited guests) ───────────────────── */}
               <form onSubmit={handleEmailLogin} className="mb-4 flex flex-col gap-3">
                 {emailError && (
                   <div

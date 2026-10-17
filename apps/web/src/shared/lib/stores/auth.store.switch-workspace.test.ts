@@ -44,7 +44,7 @@ describe('useAuthStore.switchWorkspace (identity 8 session)', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('/v1/bff/switch-workspace')
+    expect(url).toBe('/v1/auth/switch-workspace')
     expect(init.method).toBe('POST')
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined()
     expect(init.body).toBe(JSON.stringify({ workspaceId: 'ws-2' }))
