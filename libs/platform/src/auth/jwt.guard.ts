@@ -7,9 +7,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { RequestContextService } from '../context/request-context';
-
-import { failOpenLog, SecurityMetrics } from '@quynhonsemiconductor/observability';
+import {
+  failOpenLog,
+  requestContextStorage,
+  SecurityMetrics,
+  setRequestPrincipal,
+} from '@quynhonsemiconductor/observability';
 import { clientIp, type ClientIpRequest } from '@quynhonsemiconductor/platform-http';
 import { AuthTokenCache } from '@quynhonsemiconductor/identity';
 import {
@@ -47,9 +50,10 @@ import type { JwtPayload } from './jwt.strategy';
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
   private readonly logger = new Logger(JwtAuthGuard.name);
+  /** The no-request-context error is logged once per process. */
+  private static warnedNoContext = false;
 
   constructor(
-    private readonly ctx: RequestContextService,
     private readonly authCache: AuthTokenCache,
     private readonly securityMetrics: SecurityMetrics,
     @Optional()
@@ -127,7 +131,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     req.user = claims;
     req.bffSid = sid;
-    this.ctx.setAuthContext(claims.workspaceId, claims.sub, claims.sessionId);
+    this.recordPrincipal(claims);
     return true;
   }
 
@@ -153,7 +157,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     req.user = principal;
     req.apiTokenId = principal.apiTokenId;
-    this.ctx.setAuthContext(principal.workspaceId, principal.sub, principal.sessionId);
+    this.recordPrincipal(principal);
     return true;
   }
 
@@ -207,6 +211,46 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     }
   }
 
+  /**
+   * Record WHO is calling in the request context, once, after authentication: the contract with
+   * `platform-http` (>= 5), whose exception filter reads the user from here and from nowhere else, and
+   * which rova's own rate limit, idempotency key and access log read through `currentUserId()` too.
+   * Replaces `RequestContextService.setAuthContext`, which wrote the same three fields without checking
+   * them; `setRequestPrincipal` also bounds them and refuses control characters.
+   *
+   * Never fails the request: a value it refuses (it should not happen) is logged by class and the
+   * unchecked write is used, so observability can never turn a verified caller into a 401/500.
+   */
+  private recordPrincipal(user: { sub: string; sessionId: string; workspaceId?: string }): void {
+    try {
+      const written = setRequestPrincipal({
+        userId: user.sub,
+        sessionId: user.sessionId,
+        ...(user.workspaceId ? { workspaceId: user.workspaceId } : {}),
+      });
+      // `false` = there was no request context to write to (nothing seeded one: CORRELATION_ID_MODE=disabled, or a call
+      // outside a request). The request is still authenticated, but platform-http's rate limit, access log and exception
+      // filter cannot tell who it is. Said once per process, at error: a misconfiguration, not a per-request event.
+      if (!written && !JwtAuthGuard.warnedNoContext) {
+        JwtAuthGuard.warnedNoContext = true;
+        this.logger.error(
+          'No request context to record the principal in: authenticated requests are keyed by address and carry no userId in the access log. Seed it with enableCorrelationId(app).',
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        { err: (err as Error)?.constructor?.name },
+        'Could not record the principal in the request context',
+      );
+      const store = requestContextStorage.getStore();
+      if (store) {
+        store.userId = user.sub;
+        store.sessionId = user.sessionId;
+        store.workspaceId = user.workspaceId;
+      }
+    }
+  }
+
   handleRequest<TUser extends { sub: string; workspaceId: string; sessionId: string }>(
     err: Error | null,
     user: TUser | false,
@@ -222,8 +266,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       throw new UnauthorizedException('Invalid or expired access token');
     }
 
-    // Populate AsyncLocalStorage context after successful token verification
-    this.ctx.setAuthContext(user.workspaceId, user.sub, user.sessionId);
+    // Record who is calling after successful token verification
+    this.recordPrincipal(user);
 
     return user;
   }
