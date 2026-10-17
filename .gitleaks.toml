@@ -27,6 +27,11 @@ paths = [
 # Hardcoded dev/CI service credentials intentionally public.
 # postgres/postgres is the standard docker-compose convention for ephemeral CI containers.
 regexes = [
+  # The throwaway ES256 key that .env.example and vitest.config.ts carried under identity 7 (base64 of the PEM, which gitleaks
+  # decodes: the finding's secret is the DECODED PEM, allow-listed by the body of that exact key). Both files no longer carry
+  # it, but the scan reads the whole git history (`--log-opts=--all`), where it stays. Nothing else matches it, so a different
+  # key pasted anywhere is still caught.
+  '''MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQguroUP5ujCG9PaA7F''',
   '''POSTGRES_PASSWORD:\s*postgres''',
   # CI CSRF placeholder. The literal is self-describing and exists only to satisfy
   # CSRF_SECRET's 32-character minimum in CI jobs. A REGEX rather than a
