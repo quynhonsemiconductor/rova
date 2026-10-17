@@ -274,7 +274,7 @@ The relay and the provider split the answers by **whose fault it is**:
 
 - **`User.Invite.All` stays on the sign-in app in this change.** Rova's Entra B2B guest invitation (worker, develop) uses the sign-in app's application
   permission today. It moves to the Service app with Phase 4 (D), together with its credential; until then the sign-in app is not yet delegated-only.
-- **Remove SES and Resend** (the `ses`/`resend` providers, `SES_*` and `MAIL_FROM_*` variables, the `ses:SendEmail` grants, the SES configuration set, SNS topic and
+- **Remove SES and Resend** (tracked: quynhonsemiconductor/rova#717) (the `ses`/`resend` providers, `SES_*` and `MAIL_FROM_*` variables, the `ses:SendEmail` grants, the SES configuration set, SNS topic and
   SQS bounce queue with their alarms) in one cleanup PR **after both environments are proven on Graph**: removing them earlier stops the API at boot, because the
   deployed task definitions still name `ses`. SES identity and DNS stay in infra/edge until all three products are off SES.
 - **Bounce feedback is gone with SES.** Graph reports no bounce events; a non-delivery report arrives in the shared mailbox. `email_outbox.status = 'sent'`
