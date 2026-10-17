@@ -173,6 +173,9 @@ locals {
     # the owner puts a value in, and is not injected into the API task until `edge_client_ip_secret_set` is true (see
     # that variable for why).
     "edge-client-ip-secret" = "Key the Cloudflare Pages Function signs the visitor address with, verified by the API (min 32 chars; openssl rand -base64 48). Same value as the Pages secret EDGE_CLIENT_IP_SECRET."
+    # The Entra app's certificate for Graph mail: a PEM with the private key AND the certificate (base64, one line). A KEY of the app bundle,
+    # absent until the owner puts a value in, and injected into the WORKER only once `mail_graph_certificate_set` is true.
+    "mail-graph-certificate" = "PEM (private key + certificate, base64) the worker signs its Microsoft Graph token request with, to send mail"
     # SCM (GitHub App) — minted in GitHub, pasted by hand (Terraform only scaffolds
     # empty containers). Both stay empty until the App is registered, which keeps the
     # SCM backfill and webhook paths dormant.
@@ -1959,7 +1962,10 @@ module "api" {
     # now fails at boot by design, because the old behaviour was to send every message as
     # `"Mini Rally" <>`, collect an SES rejection for each, open the email circuit breaker for the
     # life of the process — and go on reporting healthy.
-    { name = "EMAIL_PROVIDER", value = "ses" },
+    { name = "EMAIL_PROVIDER", value = var.email_provider },
+    # The shared mailbox Graph sends as (not a secret). The api gets it so both tasks agree on the transport; only the worker has the certificate.
+    { name = "MAIL_GRAPH_SENDER", value = var.mail_graph_sender },
+    { name = "MAIL_GRAPH_CLIENT_ID", value = var.mail_graph_client_id },
     { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     # Observability
     { name = "LOG_LEVEL", value = "info" },
@@ -2086,7 +2092,10 @@ module "worker" {
     # Cloudflare R2 bucket-scoped credentials (worker also reads/writes attachments).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
-    ], var.storage_public_credentials ? [
+    ], var.mail_graph_certificate_set ? [
+    # The Graph mail certificate: the WORKER's alone (it relays the outbox; the api never sends), injected only once populated.
+    { name = "MAIL_GRAPH_CERTIFICATE", secret_arn = module.secrets.secret_arns["mail-graph-certificate"] },
+    ] : [], var.storage_public_credentials ? [
     # Public-bucket-scoped pair, injected only once populated. NOT unconditional: the
     # deploy preflight blocks on an injected secret that holds no value, so wiring these
     # while empty broke every develop deploy. See the variable.
@@ -2152,7 +2161,10 @@ module "worker" {
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
     # The WORKER sends too — the notification relay is its job — so it needs the sender for the
     # same reason the api task does.
-    { name = "EMAIL_PROVIDER", value = "ses" },
+    { name = "EMAIL_PROVIDER", value = var.email_provider },
+    # The shared mailbox Graph sends as (not a secret). The api gets it so both tasks agree on the transport; only the worker has the certificate.
+    { name = "MAIL_GRAPH_SENDER", value = var.mail_graph_sender },
+    { name = "MAIL_GRAPH_CLIENT_ID", value = var.mail_graph_client_id },
     // `try`, not a plain index: the _shared stack owns these outputs, and a PR-time plan runs
     // against the remote state as it is TODAY — which does not have them yet. Empty until
     // _shared applies, which is exactly the loop's off state (the worker logs "feedback OFF").
