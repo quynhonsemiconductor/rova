@@ -7,7 +7,11 @@
 
 export const EMAIL_PROVIDER = Symbol('EMAIL_PROVIDER');
 
-/** The hardest a single provider send may take; equal to the EMAIL resilience preset's timeout. The relay's lease is sized from it. */
+/**
+ * The hard deadline of one send by a provider that owns its retries (Graph): at this point `EmailService` aborts the provider's signal. It equals the EMAIL
+ * resilience preset's per-call timeout. The relay's lease is NOT derived from it: `EmailRelayService.leaseMsFor` uses `leaseForResilience(EMAIL)` (about 4 minutes,
+ * sized for the wrapped providers), which outlasts this deadline by a wide margin, so a send is never still running when its lease lapses.
+ */
 export const EMAIL_SEND_TIMEOUT_MS = 30_000;
 
 /**

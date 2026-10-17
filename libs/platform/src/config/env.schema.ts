@@ -237,7 +237,8 @@ export const EnvSchema = z
     MAIL_GRAPH_CLIENT_ID: emptyToUndefined(z.string().uuid().optional()),
     /**
      * Credential for the 'graph' provider, ECS (now): a PEM holding the private key AND the certificate of the Service app (MAIL_GRAPH_CLIENT_ID),
-     * raw or base64, from the app bundle. READ BY THE WORKER ONLY (the API never sends; its task is not given this).
+     * raw or base64, from the standalone secret `rova/<env>/mail-graph-certificate` (NOT the app bundle: the API's task role reads the bundle).
+     * READ BY THE WORKER ONLY (the API never sends; only the worker's execution role is granted the secret).
      */
     MAIL_GRAPH_CERTIFICATE: emptyToUndefined(z.string().min(1).optional()),
     /**
