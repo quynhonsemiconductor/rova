@@ -921,9 +921,9 @@ variable "tunnel_enabled" {
     target group would health-check a port the tunnel already owns, and traffic could
     arrive by two paths with different TLS termination.
 
-    REQUIRES `tunnel-token` in the environment's secret bundle — the connector token
-    from `cloudflared`. Absent, the sidecar is not produced and the api would have NO
-    ingress at all, so this variable and that secret must move together.
+    REQUIRES `cloudflare_account_id`: the stack creates the tunnel and its connector token
+    (`aws_secretsmanager_secret.tunnel_token`). Without it the sidecar is not produced and
+    the api would have NO ingress at all, so this variable and that one must move together.
 
     WHAT IS GIVEN UP: ALB access logs, the option of an origin-side AWS WAF, and the
     per-target-group CloudWatch alarms. `monitor_target_health` in particular has no
