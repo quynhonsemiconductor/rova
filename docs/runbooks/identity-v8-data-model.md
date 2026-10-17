@@ -1,0 +1,102 @@
+# identity v8: the data model, and how the data gets there
+
+rova moves from `@quynhonsemiconductor/identity` 7.x to 8.x (the identity v8 plan §8.5). This page is the data half of that move. It describes
+what exists **now** (the tables, shipped ahead of the code), what runs **at the cutover** (the backfill), and how to undo either.
+
+Nothing here changes what rova does today: no code reads or writes the v8 tables yet.
+
+## What is in the database now
+
+Migration `0136_identity_v8_tables` adds four tables to the `identity` schema, next to the v7 ones. No v7 table is touched.
+
+| Table                   | What it is                                                                                    |
+| ----------------------- | --------------------------------------------------------------------------------------------- |
+| `identity."user"`       | Better Auth's login identity (**singular**; v8)                                               |
+| `identity.session`      | v8 sessions, with `context_id` (identity 8.4: the active workspace)                           |
+| `identity.account`      | the Microsoft identity of a user: `provider_id = 'microsoft'`, `account_id` = the Entra `oid` |
+| `identity.verification` | Better Auth's short-lived tokens (OAuth state)                                                |
+
+No `organization`, `member`, `sso_provider`, `invitation` or `two_factor` table: rova runs the `staff` preset (with `staff.allowGuests`) and
+defers per-workspace SSO. The tables are generated for exactly that `createIdentity` call (`db/schema/identity-auth.ts`).
+
+## `identity.users` stays
+
+rova's own `identity.users` (**plural**) is the product's **profile** table: `status`, `locale`, `timezone`, `phone`, `last_login_at`,
+`deleted_at`, and the id every `user_id` column in the schema points at. It is kept. The two tables are linked **by value**:
+
+```
+identity.users.id  =  identity."user".id        one-to-one, same uuid, no foreign key
+```
+
+No FK, on purpose: a soft-deleted or never-signed-in profile row has no login identity, and an FK either way would force one to exist for
+the other. The invariant is **asserted** by the backfill (set differences both ways) and by `test/e2e/identity-v8-tables.e2e.spec.ts`; at
+the cutover a monitor query will watch it:
+
+```sql
+-- both must be empty
+SELECT id FROM identity.users WHERE deleted_at IS NULL AND id NOT IN (SELECT id FROM identity."user");
+SELECT id FROM identity."user" WHERE id NOT IN (SELECT id FROM identity.users WHERE deleted_at IS NULL);
+```
+
+## How the v7 rows become v8 rows (the backfill)
+
+`db/identity-v8/backfill.sql`, run by `pnpm db:identity-v8:backfill`. **It is not a migration**: it is not in the drizzle journal, `pnpm db:migrate`
+never runs it, and it has not been run anywhere. It is rehearsed in CI on a seeded copy with guests and vendors.
+
+| v7                                               | v8                                                           | Rule                                                                                                                                                                                                                                      |
+| ------------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `identity.users` where `deleted_at IS NULL`      | `identity."user"`                                            | same `id`; `lower(email)`; `display_name` → `name`; `avatar_url` → `image`                                                                                                                                                                |
+| `status` `inactive` / `suspended`                | `banned = true`, `ban_reason = 'migrated from v7: <status>'` | `active` and `invited` are not banned                                                                                                                                                                                                     |
+| `email_verified`                                 | `email_verified`                                             | the v7 value **OR** the user has an Entra identity **OR** the address is on a staff domain (the tenant vouches). For rova that is `true` for every row that gets through the preflight                                                    |
+| `identity.sso_identities` (`provider = 'entra'`) | `identity.account`                                           | `provider_id = 'microsoft'`, `account_id = provider_sub` (the Entra `oid`). **Vendors and guests included**: a guest whose address already has a v8 user is refused (`ACCOUNT_LINK_REQUIRED`) unless that user already holds the same oid |
+| `identity.auth_sessions`, `refresh_tokens`       | —                                                            | **not migrated**: everyone signs in once                                                                                                                                                                                                  |
+| soft-deleted users                               | —                                                            | not copied; they stay as profile rows so history keeps its names                                                                                                                                                                          |
+| `workspace.workspace_members`                    | `session.context_id`                                         | set at sign-in by identity's `context.initial` (the last-active workspace)                                                                                                                                                                |
+| `identity.api_tokens`, `workspace_*`             | unchanged                                                    | rova keeps its API-token module                                                                                                                                                                                                           |
+
+Why not just `email_verified = true` for everyone: see the header of `backfill.sql` and `MIGRATION-v7-to-v8.md`.
+
+### It refuses, before writing anything, what it cannot map
+
+Every message names ids and counts, never an address. The whole script is one transaction.
+
+| Preflight                                                                                                                  | Meaning                                                                                                  |
+| -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| two live users share an address once lower-cased                                                                           | v8 needs one unique lower-cased address                                                                  |
+| an identity of a provider other than `entra`                                                                               | v8 has no equivalent                                                                                     |
+| a user with two Entra identities                                                                                           | v8 holds one Microsoft identity per user                                                                 |
+| a user with **no** Entra identity and an address outside the staff domains                                                 | a pre-invited outsider: a v8 user without the account would be refused on first sign-in. Decide per user |
+| an `sso_connections` row that is neither the home directory connection (your `--tenant-id`) nor a `shared` guest gate      | partner / per-workspace SSO is not part of this migration; the row would be left behind                  |
+| an owner of a live v7 session with no Entra identity                                                                       | a dev-login session, or data that should not be in a deployed environment                                |
+| an existing v8 user that disagrees with v7 (same id other address, or same address other id), or an oid on another v8 user | a re-run or a v8 sign-in found something inconsistent                                                    |
+
+After the inserts it **asserts** (each a `RAISE`): every live v7 user has a v8 user with the same id and address, and every v8 user is a live profile;
+every Entra identity of a live user is a Microsoft account of that user with the same oid; a user with an Entra identity has **exactly one**
+Microsoft account and nobody has more than one; every owner of a live v7 session has exactly one v8 user and one account; the `banned` flag matches the
+status; nobody migrated is unverified.
+
+### Running it
+
+```bash
+# dry run: does all of it, checks all of it, ROLLS BACK
+pnpm db:identity-v8:backfill --tenant-id "$ENTRA_TENANT_ID" --staff-domains qnsc.vn
+# for real
+pnpm db:identity-v8:backfill --tenant-id "$ENTRA_TENANT_ID" --staff-domains qnsc.vn --commit
+```
+
+It uses the migration role (`DATABASE_MIGRATION_URL`). It is **idempotent**: re-run it at the cutover to pick up users that v7 created since the last run.
+
+## Undoing it
+
+| To undo        | Do                                                                                      | Effect                                                                                                                                               |
+| -------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the backfill   | `TRUNCATE`-free: delete the v8 rows, or run the rollback below with `--allow-data-loss` | the v7 tables are untouched, so nothing is lost; the v8 rows are rebuildable                                                                         |
+| migration 0136 | `pnpm db:identity-v8:rollback`                                                          | drops exactly the four tables and forgets the migration, so `pnpm db:migrate` applies it again. Refuses if they hold rows unless `--allow-data-loss` |
+
+The rollback touches no v7 object. CI proves it: up, down, up on an empty database; and 0136 applied to a database that already has rova's schema
+and v7 data changes none of it (every other table's columns, indexes, constraints, triggers and rows hash the same before and after).
+
+## What is NOT done yet
+
+The code (identity 8, `SessionGuard`, the web client), the backfill run, the Entra redirect URI, `BETTER_AUTH_SECRET`, and the day-7 freeze / day-30 drop
+of the v7 tables. Those are PR 3 and the cutover.
