@@ -116,7 +116,7 @@ Do it twice: after step 2 (expect the **old** behaviour) and after step 4 (expec
    receives. `stale` means a clock more than 60 s apart.
 5. Rate limiting is per visitor: two testers on different networks each make one request to a route with the strict
    tier and each see their own `RateLimit-Remaining`, rather than sharing one count.
-6. Sign-in still works end to end (cookie set, `GET /v1/bff/me` 200): the Function no longer sets `x-forwarded-proto`
+6. Sign-in still works end to end (cookie set, `GET /v1/auth/me` 200): the Function no longer sets `x-forwarded-proto`
    or `x-forwarded-host`, and the API reads neither.
 
 ## Rotation

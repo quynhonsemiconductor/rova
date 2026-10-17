@@ -238,26 +238,23 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
       DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
       REDIS_URL: redis://localhost:6379
-      JWT_ISSUER: rova-api
-      JWT_AUDIENCE: rova-web
-      JWT_ACCESS_EXPIRY: 15m
-      JWT_REFRESH_EXPIRY: 30d
       CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
       COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
-      # Entra BFF OIDC — CI test-only placeholders (never used for real auth).
-      # The API boots BFF-only auth and validates these at startup.
+      # identity 8: the secret that signs its cookies, and the passwordless sign-in the E2E helper uses (identity
+      # refuses it unless NODE_ENV is test or development).
+      BETTER_AUTH_SECRET: ci-test-better-auth-secret-min-32-characters-ok
+      IDENTITY_TEST_LOGIN: enabled
+      # Entra — CI test-only placeholders (never used for real auth). The API validates them at startup.
       ENTRA_TENANT_ID: ci-test-tenant
       ENTRA_CLIENT_ID: ci-test-client
       ENTRA_CLIENT_SECRET: ci-test-secret
-      ENTRA_REDIRECT_URI: http://localhost:3000/v1/bff/callback
-      # Render the dev-login form (Vite build flag). The E2E helper signs in via
-      # the passwordless /v1/bff/dev-login form since CI has no Entra tenant.
+      # Render the dev-login form (Vite build flag). The E2E helper signs in via the form, which posts to
+      # identity's passwordless /api/auth/test-login, since CI has no Entra tenant.
       VITE_DEV_LOGIN: 'true'
-      # Rotating refresh tokens can't be shared across test contexts, so each
-      # spec logs in fresh — disable rate limiting so that never 429s.
+      # Each spec logs in fresh — disable rate limiting so that never 429s.
       DISABLE_RATE_LIMIT: 'true'
-      # Rally is SSO-only; the E2E helper signs in via the passwordless
-      # dev-login endpoint (seeded accounts, non-production only).
+      # Rally is SSO-only; the E2E helper signs in via the passwordless test-login endpoint
+      # (seeded accounts, NODE_ENV test/development only).
       NODE_ENV: test
 
     steps:
@@ -269,22 +266,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
-
-      # Ephemeral ES256 keypair for the API (matches platform.module.ts). Test-only.
-      - name: Generate CI JWT keypair
-        run: |
-          node - << 'EOF'
-          const { generateKeyPairSync } = require('crypto');
-          const { privateKey, publicKey } = generateKeyPairSync('ec', {
-            namedCurve: 'P-256',
-            privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-            publicKeyEncoding:  { type: 'spki',  format: 'pem' },
-          });
-          const b64 = (s) => Buffer.from(s).toString('base64');
-          const fs  = require('fs');
-          fs.appendFileSync(process.env.GITHUB_ENV,
-            `JWT_PRIVATE_KEY=${b64(privateKey)}\nJWT_PUBLIC_KEY=${b64(publicKey)}\n`);
-          EOF
 
       - name: Migrate + seed database
         run: pnpm db:migrate
@@ -478,16 +459,20 @@ jobs:
 
       # THROUGH THE VITE PROXY (:5173), not the API directly: this is the call a browser makes, and it is the one that
       # breaks when the example's PORT and the proxy target disagree.
-      - name: Sign in with the dev login and make an authenticated /v1 call, through the SPA's proxy
+      - name: Sign in with the test login and make an authenticated /v1 call, through the SPA's proxy
         run: |
           for _ in $(seq 1 30); do curl -sf http://localhost:5173/v1/healthz >/dev/null && break; sleep 2; done
           curl -sf http://localhost:5173/v1/healthz || { echo "::error::/v1 through the Vite proxy failed: .env.example PORT must equal the proxy target in apps/web/vite.config.ts"; exit 1; }
-          curl -sf -c "$LOGS/jar.txt" -H 'content-type: application/json' \
-            -d '{"email":"admin@qnsc.dev"}' http://localhost:5173/v1/bff/dev-login
-          me=$(curl -sf -b "$LOGS/jar.txt" http://localhost:5173/v1/bff/me)
+          # identity's session cookie is `__Secure-rova.session_token`: read it from the response headers and replay it by hand
+          # (a cookie jar will not send a Secure cookie over http).
+          curl -sf -D "$LOGS/headers.txt" -o /dev/null -H 'content-type: application/json' -H 'origin: http://localhost:5173' \
+            -d '{"email":"admin@qnsc.dev"}' http://localhost:5173/api/auth/test-login
+          cookie=$(grep -i '^set-cookie: __Secure-rova.session_token=' "$LOGS/headers.txt" | head -1 | sed -E 's/^[^:]*: ([^;]*).*/\1/' | tr -d '\r')
+          test -n "$cookie" || { echo "::error::test-login set no session cookie"; exit 1; }
+          me=$(curl -sf -H "cookie: $cookie" http://localhost:5173/v1/auth/me)
           echo "$me" | jq '{email, role}'
           echo "$me" | jq -e '.email == "admin@qnsc.dev" and .role == "workspace_admin"'
-          curl -sf -b "$LOGS/jar.txt" -o /dev/null -w 'GET /v1/projects -> %{http_code}\n' http://localhost:5173/v1/projects
+          curl -sf -H "cookie: $cookie" -o /dev/null -w 'GET /v1/projects -> %{http_code}\n' http://localhost:5173/v1/projects
 
       - name: Logs
         if: always()

@@ -63,7 +63,7 @@ The API and the worker validate against one schema, so one `.env` serves both an
 
 ### Sign in
 
-The login page has a "Sign in with Microsoft" button and, because `.env.example` sets `VITE_DEV_LOGIN=true`, a passwordless **dev login**: an email field for a seeded account. It is for local and non-production use only: `POST /v1/bff/dev-login` answers 404 when `NODE_ENV=production`. The demo users `db:migrate` seeded:
+The login page has a "Sign in with Microsoft" button and, because `.env.example` sets `VITE_DEV_LOGIN=true`, a passwordless **dev login**: an email field for a seeded account, backed by identity's `POST /api/auth/test-login`. It is for local and non-production use only: identity loads that route only with `IDENTITY_TEST_LOGIN=enabled` AND `NODE_ENV` of `test` or `development`, and the env schema refuses it in production. The demo users `db:migrate` seeded:
 
 | email | role |
 | --- | --- |
@@ -73,14 +73,15 @@ The login page has a "Sign in with Microsoft" button and, because `.env.example`
 
 **In the browser:** open http://localhost:5173, type `admin@qnsc.dev` in the dev-login field and submit.
 
-**With curl** (an API call without a browser; the session is an opaque `__Host-rova_session` cookie):
+**With curl** (an API call without a browser; the session is an opaque `__Secure-rova.session_token` cookie; a cookie jar will not send a `Secure` cookie over http, so replay it by hand):
 
 ```bash
-curl -s -c /tmp/rova.jar -H 'content-type: application/json' -d '{"email":"admin@qnsc.dev"}' localhost:3000/v1/bff/dev-login   # 204
-curl -s -b /tmp/rova.jar localhost:3000/v1/bff/me
+cookie=$(curl -s -D - -o /dev/null -H 'content-type: application/json' -d '{"email":"admin@qnsc.dev"}' localhost:3000/api/auth/test-login \
+  | sed -n 's/^set-cookie: \(__Secure-rova.session_token=[^;]*\).*/\1/ip' | tr -d '\r')
+curl -s -H "cookie: $cookie" localhost:3000/v1/auth/me
 ```
 
-**With Microsoft (optional).** The env schema requires `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` and `ENTRA_REDIRECT_URI` in every environment, so `.env.example` carries placeholders that let the API boot and sign nobody in. To use Microsoft locally, register a **dev** app in a tenant you control, separate from production's: platform *Web*, redirect URI `http://localhost:5173/v1/bff/callback`, delegated `openid profile email`, and a client secret. Put the real tenant id, client id and secret in `.env` and restart the API. The redirect is on the SPA origin because the browser lands there and the session cookie is set on that response.
+**With Microsoft (optional).** The env schema requires `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` in every environment, so `.env.example` carries placeholders that let the API boot and sign nobody in. To use Microsoft locally, register a **dev** app in a tenant you control, separate from production's: platform *Web*, redirect URI `http://localhost:5173/api/auth/callback/microsoft`, delegated `openid profile email`, and a client secret. Put the real tenant id, client id and secret in `.env` and restart the API. The redirect is on the SPA origin because the browser lands there and the session cookie is set on that response.
 
 ### Ports, and running beside opshub
 
@@ -95,10 +96,10 @@ These are the defaults. opshub's stack is offset from them (API 3001, Postgres 5
 | LocalStack (S3) | 4566 | **4567** |
 | OTel collector (OTLP / Prometheus) | 4318 / 8889 | **4319** / **8890** |
 
-The Vite server uses `strictPort`: a second SPA fails with "Port 5173 is already in use" instead of quietly moving to 5174, where the sign-in redirect (`ENTRA_REDIRECT_URI`, `APP_BASE_URL`) and the upload bucket's CORS would no longer match. To run both SPAs, start one of them elsewhere and tell **its** API the new origin on the command line (a variable in the environment beats `.env`):
+The Vite server uses `strictPort`: a second SPA fails with "Port 5173 is already in use" instead of quietly moving to 5174, where the sign-in redirect (`APP_BASE_URL`, whose `/api/auth/callback/microsoft` is the Entra redirect URI) and the upload bucket's CORS would no longer match. To run both SPAs, start one of them elsewhere and tell **its** API the new origin on the command line (a variable in the environment beats `.env`):
 
 ```bash
-APP_BASE_URL=http://localhost:5174 CORS_ORIGINS=http://localhost:5174 ENTRA_REDIRECT_URI=http://localhost:5174/v1/bff/callback pnpm start:dev
+APP_BASE_URL=http://localhost:5174 CORS_ORIGINS=http://localhost:5174 pnpm start:dev
 pnpm dev:web --port 5174
 ```
 
