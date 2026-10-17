@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.8.0](https://github.com/quynhonsemiconductor/rova/compare/v0.7.18...v0.8.0) (2026-10-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **logging:** log lines carry level as a label and time as ISO-8601 UTC
+
+### ✨ Features
+
+* **db:** authenticate to Postgres with IAM, which is what the roles require ([#636](https://github.com/quynhonsemiconductor/rova/issues/636)) ([3140a85](https://github.com/quynhonsemiconductor/rova/commit/3140a85c864ac3a34128d0b82ab9955396efe354))
+* **db:** the identity v8 tables, additive, and the backfill prepared (not run) ([#713](https://github.com/quynhonsemiconductor/rova/issues/713)) ([21a87d1](https://github.com/quynhonsemiconductor/rova/commit/21a87d1aacc9098a1e41e29bcbc374a05f200d2a))
+* **logging:** adopt the shared bootstrap and one log shape ([#695](https://github.com/quynhonsemiconductor/rova/issues/695)) ([2fab132](https://github.com/quynhonsemiconductor/rova/commit/2fab132e24fdf8d0ce680dce3b6fc1c013882050))
+* **platform:** adopt platform-http 5's principal contract ([#711](https://github.com/quynhonsemiconductor/rova/issues/711)) ([f2b6178](https://github.com/quynhonsemiconductor/rova/commit/f2b61781ddd4374800a6a0b5d5db213c5be6ba7a))
+* **platform:** adopt platform-runtime 0.1.3 and platform-http 4.3.0 ([#681](https://github.com/quynhonsemiconductor/rova/issues/681)) ([76d13cd](https://github.com/quynhonsemiconductor/rova/commit/76d13cd520821b932d845ef7bdc7e9e0486bdacd))
+* **platform:** count outbox relay passes that throw, and alert when one fails continuously ([#691](https://github.com/quynhonsemiconductor/rova/issues/691)) ([bbe6cb5](https://github.com/quynhonsemiconductor/rova/commit/bbe6cb5153ee3228465fdebaaee4115d96e602d2))
+* **reporting:** attribute split effort to the right iteration ([#638](https://github.com/quynhonsemiconductor/rova/issues/638)) ([fafaed1](https://github.com/quynhonsemiconductor/rova/commit/fafaed1403377eadba6b510bd841885c6a74396e))
+* **reporting:** exclude split carryover points from velocity ([#637](https://github.com/quynhonsemiconductor/rova/issues/637)) ([8990c4c](https://github.com/quynhonsemiconductor/rova/commit/8990c4c24307190f4a5a86d862434a3eacc81428))
+* serve /livez, wire the Kubernetes delivery path, immutable ECR tags ([#626](https://github.com/quynhonsemiconductor/rova/issues/626)) ([9435598](https://github.com/quynhonsemiconductor/rova/commit/94355981b2aae2deec7d1ac947eb4c5c73aed137))
+* **web:** align split story modal with BA mockup ([#651](https://github.com/quynhonsemiconductor/rova/issues/651)) ([7e574ee](https://github.com/quynhonsemiconductor/rova/commit/7e574eeaca78175ffc03cfce85dacdbac7003077))
+* **work-items:** commit a story split in one transaction ([#623](https://github.com/quynhonsemiconductor/rova/issues/623)) ([fc2a93a](https://github.com/quynhonsemiconductor/rova/commit/fc2a93ac97986e590fbc3fec59d9f203f943bf68))
+* **work-items:** configure both stories in the split modal ([#619](https://github.com/quynhonsemiconductor/rova/issues/619)) ([ea710d2](https://github.com/quynhonsemiconductor/rova/commit/ea710d2e8309de1e14e4df726c2f3ee395224eca))
+* **work-items:** distribute tasks, defects and test cases between the split panels ([#621](https://github.com/quynhonsemiconductor/rova/issues/621)) ([b315310](https://github.com/quynhonsemiconductor/rova/commit/b315310f3ecba65c8a34a01e0db04eaabbe4defa))
+* **work-items:** trace a split and show it on the iteration burndown ([#624](https://github.com/quynhonsemiconductor/rova/issues/624)) ([465e427](https://github.com/quynhonsemiconductor/rova/commit/465e427687a99064042ac965bc0c43dcc6faeb0e))
+* **work-items:** track story dates and carry stories across iterations ([#653](https://github.com/quynhonsemiconductor/rova/issues/653)) ([d493d17](https://github.com/quynhonsemiconductor/rova/commit/d493d171cc0082354e705b013ad6c6ad4475c003))
+
+
+### 🐛 Bug Fixes
+
+* **activity:** show rich-text field values in Revision History ([#640](https://github.com/quynhonsemiconductor/rova/issues/640)) ([39407b9](https://github.com/quynhonsemiconductor/rova/commit/39407b9030228a01653a731364a98e9c119a9873))
+* **ci:** restore infra-plan.yml, which a bad edit emptied ([#629](https://github.com/quynhonsemiconductor/rova/issues/629)) ([b23e4c0](https://github.com/quynhonsemiconductor/rova/commit/b23e4c0e8c15d40be37a7774934e4a69dcab3be9))
+* **db:** give the migrator the IAM auth the application already has ([#639](https://github.com/quynhonsemiconductor/rova/issues/639)) ([1a5c16c](https://github.com/quynhonsemiconductor/rova/commit/1a5c16cbda2e5f67f54bbcca818d7c6efa3dbb3b))
+* **db:** put two out-of-order journal entries above their predecessors ([#673](https://github.com/quynhonsemiconductor/rova/issues/673)) ([f209522](https://github.com/quynhonsemiconductor/rova/commit/f209522945f034a7e273cf861f703c3ba0593eb8))
+* **deps:** observability 0.4.2 (credential leak in error logging) ([#698](https://github.com/quynhonsemiconductor/rova/issues/698)) ([79d6632](https://github.com/quynhonsemiconductor/rova/commit/79d66329aaaffed40fab49438c38b732e50db2b6))
+* **deps:** platform-cache ^3.2.0, which platform-runtime 0.2.0 requires ([#699](https://github.com/quynhonsemiconductor/rova/issues/699)) ([4f49746](https://github.com/quynhonsemiconductor/rova/commit/4f497464d5958114136aa532f29e5c23c356319c))
+* **infra:** a prod apply is only for a release tag ([#677](https://github.com/quynhonsemiconductor/rova/issues/677)) ([5b308db](https://github.com/quynhonsemiconductor/rova/commit/5b308db601b7a34fc5d2e3d9f2d383447eb2b90c))
+* **infra:** alert on a failing scheduled job, whatever the volume ([#701](https://github.com/quynhonsemiconductor/rova/issues/701)) ([9a2dfe6](https://github.com/quynhonsemiconductor/rova/commit/9a2dfe6027f5ce51e88814067b3cb65209dd11a7))
+* **infra:** fail closed when the Cloudflare zone id is missing ([#671](https://github.com/quynhonsemiconductor/rova/issues/671)) ([c2d8942](https://github.com/quynhonsemiconductor/rova/commit/c2d8942d5af94485b27b489d73e2bcc09153d2b6))
+* **infra:** no 'latest' baseline image tag; reject it in the stack module ([#682](https://github.com/quynhonsemiconductor/rova/issues/682)) ([0d30985](https://github.com/quynhonsemiconductor/rova/commit/0d30985e64b3427a13c2e2f22c1b5d637a2a1685))
+* **infra:** point the outbound-HTTP panel at the series instrumentation-http 0.221 emits ([#687](https://github.com/quynhonsemiconductor/rova/issues/687)) ([87c000d](https://github.com/quynhonsemiconductor/rova/commit/87c000d8d41c466e2401230608ddb5b91979c228))
+* **test-cases:** show the parent's inherited Team on a Test Case ([#642](https://github.com/quynhonsemiconductor/rova/issues/642)) ([38b1e83](https://github.com/quynhonsemiconductor/rova/commit/38b1e83abcb23035cf1dd8d41b4d7c8f29ecdf0a))
+* **web:** approve workerd's build decision for pnpm 11 ([#664](https://github.com/quynhonsemiconductor/rova/issues/664)) ([014ea82](https://github.com/quynhonsemiconductor/rova/commit/014ea8228806ac3ae1f73c44ece8bc3c237ba39c))
+* **web:** grow a grid row to fit a cell that wrapped ([#643](https://github.com/quynhonsemiconductor/rova/issues/643)) ([8897518](https://github.com/quynhonsemiconductor/rova/commit/889751867780ea1da5244c690b3674f2285468fc))
+* **web:** return Back to the tab a record was opened from ([#641](https://github.com/quynhonsemiconductor/rova/issues/641)) ([23b5764](https://github.com/quynhonsemiconductor/rova/commit/23b57641f233414e025bca387e66c3856f78d9f8))
+* **web:** the repo-root .env feeds the dev server only, never a build ([#712](https://github.com/quynhonsemiconductor/rova/issues/712)) ([fbcce4e](https://github.com/quynhonsemiconductor/rova/commit/fbcce4ec37979c8bd3cdacd58b9592dcf4f090fa))
+* **worker:** install the pino logger so the worker's logs are JSON ([#692](https://github.com/quynhonsemiconductor/rova/issues/692)) ([910fc9b](https://github.com/quynhonsemiconductor/rova/commit/910fc9b4d75880e099ca085c50326af300de9105))
+* **worker:** name the worker by OTEL_WORKER_SERVICE_NAME; main and the spec share one options object ([#702](https://github.com/quynhonsemiconductor/rova/issues/702)) ([b922a21](https://github.com/quynhonsemiconductor/rova/commit/b922a21a3975c527a87ba0adbff80b42f4d9fd8c))
+* **worker:** report service.name rova-worker, not rally-worker ([#686](https://github.com/quynhonsemiconductor/rova/issues/686)) ([43d0aef](https://github.com/quynhonsemiconductor/rova/commit/43d0aef081dd4e052d1346d30802d2d2baa96e7f))
+* **worker:** set OTEL_WORKER_SERVICE_NAME in the task, and correct the comments ([#688](https://github.com/quynhonsemiconductor/rova/issues/688)) ([6302203](https://github.com/quynhonsemiconductor/rova/commit/630220357aaf00981b71a1bab4ccb13a873145d0))
+* **worker:** stop holding a transaction across relay calls ([#672](https://github.com/quynhonsemiconductor/rova/issues/672)) ([d60bfdf](https://github.com/quynhonsemiconductor/rova/commit/d60bfdfc16f668b7fcebd8c21e6c142317a69c1c))
+
 ## [0.7.18](https://github.com/quynhonsemiconductor/rova/compare/v0.7.17...v0.7.18) (2026-09-16)
 
 
