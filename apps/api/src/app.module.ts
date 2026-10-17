@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { RequestContextService } from '@platform/context/request-context';
 import { PlatformModule } from '@platform';
 import { IdentityModule } from '@modules/identity';
 import { WorkspaceModule } from '@modules/workspace';
@@ -22,7 +21,7 @@ import { QualityModule } from '@modules/quality';
 import { ScmModule } from '@modules/scm';
 import { ApiTokensModule } from '@modules/api-tokens';
 import { TestCasesModule } from '@modules/test-cases';
-import { GlobalExceptionFilter, REQUEST_CONTEXT } from '@quynhonsemiconductor/platform-http';
+import { GlobalExceptionFilter } from '@quynhonsemiconductor/platform-http';
 import { HttpLoggingInterceptor } from '@platform/http/http-logging.interceptor';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
@@ -57,9 +56,6 @@ import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
     TestCasesModule,
   ],
   providers: [
-    // Bind the shared filter's request-context port to rally's ALS-backed service.
-    { provide: REQUEST_CONTEXT, useExisting: RequestContextService },
-
     // Global exception filter → stable RFC-9457-style error envelope
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
 

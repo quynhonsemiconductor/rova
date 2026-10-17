@@ -11,7 +11,7 @@ import type { FastifyRequest } from 'fastify';
 import { Observable, from, of } from 'rxjs';
 import { switchMap, tap } from 'rxjs/operators';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
-import { clientIp } from '@quynhonsemiconductor/platform-http';
+import { clientIp, currentUserId } from '@quynhonsemiconductor/platform-http';
 
 /** TTL for cached idempotent responses (24 hours). */
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
@@ -41,9 +41,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (context.getType() !== 'http') return next.handle();
 
-    const req = context
-      .switchToHttp()
-      .getRequest<FastifyRequest & { user?: { id?: string; sub?: string } }>();
+    const req = context.switchToHttp().getRequest<FastifyRequest & { user?: { sub?: string } }>();
 
     if (!IDEMPOTENCY_METHODS.has(req.method)) return next.handle();
 
@@ -51,7 +49,13 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const idempotencyKey = Array.isArray(headerVal) ? headerVal[0] : headerVal;
     if (!idempotencyKey) return next.handle();
 
+    // WHO is calling: the request context first (platform-http >= 5; the guard writes it), then the guard's own
+    // `req.user`. The second matters when no context was seeded (CORRELATION_ID_MODE=disabled makes
+    // `setRequestPrincipal` a no-op): without it an AUTHENTICATED caller would be scoped by address + User-Agent, and
+    // two users behind one NAT with the same Idempotency-Key and URL could be handed each other's cached response.
+    // Only a request with neither is unauthenticated, and is told apart by address.
     const userId =
+      currentUserId() ??
       req.user?.sub ??
       createHash('sha256')
         .update(`${clientIp(req)}:${req.headers['user-agent'] ?? ''}`)

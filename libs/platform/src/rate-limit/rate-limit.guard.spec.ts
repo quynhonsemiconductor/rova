@@ -12,6 +12,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { requestContextStorage, type RequestContext } from '@quynhonsemiconductor/observability';
+import { KEYED_BY_ADDRESS } from '@quynhonsemiconductor/platform-http';
 import { signEdgeClientIp } from '@quynhonsemiconductor/platform-http/edge';
 import { RateLimitGuard } from './rate-limit.guard';
 import { RATE_LIMIT_METADATA_KEY, RATE_LIMIT_TIERS } from './rate-limit.constants';
@@ -144,11 +146,31 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     expect(keys).toEqual(['AUTH_LOGIN:ip:198.51.100.20']);
   });
 
-  it('an authenticated user is still keyed by user id, not address', async () => {
-    await guard.canActivate(
-      context(request({ headers: { 'cf-connecting-ip': '203.0.113.7' }, user: { sub: 'user-1' } })),
+  const principalStore = (userId?: string): RequestContext => ({
+    workspaceId: undefined,
+    userId,
+    sessionId: userId ? 'sess-1' : undefined,
+    correlationId: 'corr-1',
+    traceparent: undefined,
+  });
+
+  it('an authenticated user is keyed by user id, not address: the principal comes from the request context', async () => {
+    const req = request({ headers: { 'cf-connecting-ip': '203.0.113.7' } });
+    await requestContextStorage.run(principalStore('user-1'), () =>
+      guard.canActivate(context(req)),
     );
     expect(keys).toEqual(['DEFAULT:uid:user-1']);
+    expect((req as unknown as Record<symbol, unknown>)[KEYED_BY_ADDRESS]).toBeUndefined();
+  });
+
+  it('req.user alone is NOT a principal (platform-http 5): the caller is keyed by address, and the request is marked so a guard that authenticates later can say it ran too late', async () => {
+    const req = request({
+      headers: { 'cf-connecting-ip': '203.0.113.7' },
+      user: { sub: 'user-1' },
+    });
+    await requestContextStorage.run(principalStore(), () => guard.canActivate(context(req)));
+    expect(keys).toEqual(['DEFAULT:ip:203.0.113.7']);
+    expect((req as unknown as Record<symbol, unknown>)[KEYED_BY_ADDRESS]).toBe(true);
   });
 
   it("keeps rova's own thresholds: the guard changed WHO is counted, not how many", async () => {
