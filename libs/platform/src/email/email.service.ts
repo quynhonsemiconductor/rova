@@ -65,6 +65,14 @@ export class EmailService {
    * Returns the provider's message id (see EmailSendResult) so the relay can persist it
    * at acceptance — that id is the feedback loop's only exact match key.
    */
+  /**
+   * Fails now if the configured transport cannot work (the Graph provider names the missing variable). The worker calls this when its relay
+   * starts, so a bad deploy stops there instead of dead-lettering the first invitation. A provider with nothing to check passes.
+   */
+  assertReady(): void {
+    (this.provider as { assertReady?: () => void }).assertReady?.();
+  }
+
   async sendTemplate<K extends EmailTemplateName>(
     to: string,
     template: K,

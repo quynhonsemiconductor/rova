@@ -30,6 +30,7 @@ import { EMAIL_PROVIDER } from './email/email.provider';
 import { SesEmailProvider } from './email/providers/ses.provider';
 import { DevEmailProvider } from './email/providers/dev.provider';
 import { ResendEmailProvider } from './email/providers/resend.provider';
+import { GraphEmailProvider } from './email/providers/graph.provider';
 import { NotificationSchedulerService } from './notifications/notification-scheduler.service';
 import { NotificationPubSubService } from './notifications/notification-pubsub.service';
 import { ExclusiveJob } from '@quynhonsemiconductor/platform-runtime';
@@ -99,7 +100,7 @@ import { StorageService } from './storage/storage.service';
     { provide: APP_GUARD, useClass: RateLimitGuard },
     OutboxService,
     AuditProducer,
-    // Email provider — selected via EMAIL_PROVIDER env var ('ses' | 'resend' | 'dev').
+    // Email provider — selected via EMAIL_PROVIDER env var ('graph' | 'ses' | 'resend' | 'dev').
     // All providers share the same IEmailProvider interface; swap without touching business logic.
     // SES: needs MAIL_FROM_EMAIL + IAM ses:SendEmail role (cheapest at scale).
     // Resend: needs RESEND_API_KEY + verified domain (best DX, auto-DKIM, recommended for Phase 0).
@@ -109,6 +110,18 @@ import { StorageService } from './storage/storage.service';
       inject: [AppConfigService],
       useFactory: (config: AppConfigService) => {
         const provider = config.get('EMAIL_PROVIDER');
+        if (provider === 'graph') {
+          // Built lazily and only ever USED by the worker (the API writes outbox rows and never sends); the worker's email relay calls
+          // `assertReady()` at start, so a missing variable stops the deploy rather than dead-lettering the first invitation.
+          return new GraphEmailProvider({
+            sender: config.get('MAIL_GRAPH_SENDER') ?? '',
+            tenantId: config.get('ENTRA_TENANT_ID'),
+            clientId: config.get('ENTRA_CLIENT_ID'),
+            certificate: config.get('MAIL_GRAPH_CERTIFICATE'),
+            federatedTokenFile: config.get('MAIL_GRAPH_FEDERATED_TOKEN_FILE'),
+            nodeEnv: config.get('NODE_ENV'),
+          });
+        }
         if (provider === 'ses') return new SesEmailProvider(config);
         if (provider === 'resend') return new ResendEmailProvider(config);
         return new DevEmailProvider(config);
