@@ -17,10 +17,13 @@
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
+import { setUserBanned, type Identity } from '@quynhonsemiconductor/identity';
+import { AUTH } from '@quynhonsemiconductor/identity/nest';
+import { SESSION_COOKIE } from '@platform';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
+import { signInAs } from './support/session';
 
 const PROBE_ROUTE = '/audit-logs';
 const ADMIN_EMAIL = 'admin@qnsc.dev';
@@ -28,28 +31,28 @@ const VIEWER_EMAIL = 'viewer@qnsc.dev';
 
 describe('API tokens over HTTP (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
+  /** The signed-in session (cookie pair) for a seeded user, with the user's id. */
+  async function sessionFor(email: string): Promise<string> {
+    const { credential } = await signInAs(app, email);
+    expect(credential, `test-login for ${email}`).toBeTruthy();
+    return credential;
+  }
+  const tokenFor = sessionFor;
 
-  /** Bearer JWT for a seeded user. `devLogin` for the reason report-authz documents: no cookie plugin. */
-  async function tokenFor(email: string): Promise<string> {
-    const result = await auth.devLogin(email, '127.0.0.1');
-    expect(result.accessToken, `dev-login for ${email}`).toBeTruthy();
-    return result.accessToken;
+  /** A session cookie goes in `cookie`; an API token (`rly_...`) goes in `Authorization: Bearer`. */
+  function headersFor(credential: string): Record<string, string> {
+    return credential.startsWith(`${SESSION_COOKIE}=`)
+      ? { cookie: credential }
+      : { authorization: `Bearer ${credential}` };
   }
 
   function withAuth(credential: string) {
+    const headers = headersFor(credential);
     return {
-      get: (url: string) =>
-        app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${credential}` } }),
+      get: (url: string) => app.inject({ method: 'GET', url, headers }),
       post: (url: string, payload: Record<string, unknown>) =>
-        app.inject({
-          method: 'POST',
-          url,
-          headers: { authorization: `Bearer ${credential}` },
-          payload,
-        }),
-      delete: (url: string) =>
-        app.inject({ method: 'DELETE', url, headers: { authorization: `Bearer ${credential}` } }),
+        app.inject({ method: 'POST', url, headers, payload }),
+      delete: (url: string) => app.inject({ method: 'DELETE', url, headers }),
     };
   }
 
@@ -64,17 +67,11 @@ describe('API tokens over HTTP (e2e)', () => {
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    auth = app.get(AuthService);
   });
 
   afterAll(async () => {
@@ -201,5 +198,42 @@ describe('API tokens over HTTP (e2e)', () => {
 
     const response = await withAuth(viewer).delete(`/me/api-tokens/${created.id}`);
     expect(response.statusCode).toBe(404);
+  });
+
+  describe('a banned user', () => {
+    // WHY THIS IS HERE. A token is a credential that never touches a session, so the ban that ends every session
+    // (`setUserBanned`) would not reach it by itself. `ApiTokenGuard` runs BEFORE identity's global `SessionGuard` and tells
+    // it to stand aside with `markPreAuthenticated(req, { userId })`; `SessionGuard` then asks `isUserBanned` for that
+    // user. If the registration order were the other way round, or the userId were not passed, a banned user's automation
+    // would keep working for up to a year. Only a request through the real guard chain proves it.
+    it('is refused with a valid rly_ token and a valid session, and works again once reinstated', async () => {
+      const auth = app.get<Identity>(AUTH);
+      const { credential: session, userId } = await signInAs(app, ADMIN_EMAIL);
+      const created = await mint(session, { name: 'e2e ban' });
+      expect((await withAuth(created.token).get(PROBE_ROUTE)).statusCode).toBe(200);
+
+      try {
+        // Bans the user AND ends every session they hold.
+        await setUserBanned(auth, userId, true, 'e2e: ban the token owner');
+        const banned = await withAuth(created.token).get(PROBE_ROUTE);
+        expect(banned.statusCode, banned.body).toBe(401);
+        expect((await withAuth(session).get(PROBE_ROUTE)).statusCode).toBe(401);
+      } finally {
+        await setUserBanned(auth, userId, false);
+      }
+
+      const reinstated = await withAuth(created.token).get(PROBE_ROUTE);
+      expect(reinstated.statusCode, reinstated.body).toBe(200);
+    });
+  });
+
+  it('answers 401 to a request with no credential at all, and to a stale JWT-shaped bearer', async () => {
+    expect((await app.inject({ method: 'GET', url: PROBE_ROUTE })).statusCode).toBe(401);
+    const stale = await app.inject({
+      method: 'GET',
+      url: PROBE_ROUTE,
+      headers: { authorization: 'Bearer aaa.bbb.ccc' },
+    });
+    expect(stale.statusCode).toBe(401);
   });
 });

@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { PlatformModule, RateLimitModule } from '@platform';
+import { PlatformModule, RateLimitModule, RequestContextService } from '@platform';
 import { AuthModule } from '@modules/identity';
 import { WorkspaceModule } from '@modules/workspace';
 import { AccessModule } from '@modules/access';
@@ -21,7 +21,8 @@ import { QualityModule } from '@modules/quality';
 import { ScmModule } from '@modules/scm';
 import { ApiTokensModule } from '@modules/api-tokens';
 import { TestCasesModule } from '@modules/test-cases';
-import { GlobalExceptionFilter } from '@quynhonsemiconductor/platform-http';
+import { GlobalExceptionFilter, REQUEST_CONTEXT } from '@quynhonsemiconductor/platform-http';
+import { AuthApiErrorFilter } from '@quynhonsemiconductor/identity/nest';
 import { HttpLoggingInterceptor } from '@platform/http/http-logging.interceptor';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
@@ -64,6 +65,12 @@ import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
   providers: [
     // Global exception filter → stable RFC-9457-style error envelope
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
+    // identity's AuthApiErrorFilter injects `REQUEST_CONTEXT` (GlobalExceptionFilter no longer needs it: unbound it reads the
+    // same store). Bound to observability's request-context store, the one `enableCorrelationId` seeds.
+    { provide: REQUEST_CONTEXT, useExisting: RequestContextService },
+    // AFTER the global filter: Nest asks the LAST registered filter first. Maps an error raised through `auth.api.*` in our
+    // own controller (`setContext`: CONTEXT_FORBIDDEN is a 403) to the platform envelope instead of the global filter's 500.
+    { provide: APP_FILTER, useClass: AuthApiErrorFilter },
 
     // Global interceptor: structured HTTP access log (replaces pino-http autoLogging)
     { provide: APP_INTERCEPTOR, useClass: HttpLoggingInterceptor },

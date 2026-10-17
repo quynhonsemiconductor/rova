@@ -22,13 +22,13 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { WorkItemsService } from '@modules/work-items';
 import { AppModule } from '../../apps/api/src/app.module';
 import { adminActor, uniqueKey } from './support/flow-harness';
 import { NXP_ITER_CURRENT_ID, SEED_PROJECTS, TEAM_ALPHA_ID } from '../../db/seeds/constants';
+import { signIn } from './support/session';
 
 // No `/v1` prefix: `Test.createTestingModule` builds the app without the bootstrap that sets the
 // global prefix, so routes are mounted bare here.
@@ -40,21 +40,15 @@ describe('task routes resolve a task id (e2e)', () => {
   let storyId: string;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 
     items = app.get(WorkItemsService);
-    // A Bearer token, not the BFF cookie: `requiresCsrfProtection` exempts Bearer callers (an
-    // attacker's page cannot attach a header by hand), so this needs no CSRF dance.
-    token = (await app.get(AuthService).devLogin('admin@qnsc.dev', '127.0.0.1')).accessToken;
+    // The session cookie from test-login; this app has no CSRF hook (that is `bootstrapApp`'s), so no CSRF dance.
+    token = await signIn(app, 'admin@qnsc.dev');
 
     const actor = adminActor();
     const story = await items.createWorkItem(
@@ -76,7 +70,7 @@ describe('task routes resolve a task id (e2e)', () => {
   });
 
   function get(url: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: token } });
   }
 
   it('serves a task on every by-id read the routes expose', async () => {
@@ -95,7 +89,7 @@ describe('task routes resolve a task id (e2e)', () => {
     const response = await app.inject({
       method: 'PATCH',
       url: `/work-items/${taskId}`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
       payload: { todoHours: '3' },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -117,7 +111,7 @@ describe('task routes resolve a task id (e2e)', () => {
     const response = await app.inject({
       method: 'PATCH',
       url: `/team-status/tasks/${taskId}`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
       payload: { state: 'In-Progress' },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -132,7 +126,7 @@ describe('task routes resolve a task id (e2e)', () => {
           const response = await app.inject({
             method: 'PATCH',
             url: `/team-status/tasks/${taskId}`,
-            headers: { authorization: `Bearer ${token}` },
+            headers: { cookie: token },
             payload,
           });
           expect(response.statusCode, response.body).toBe(400);
@@ -163,7 +157,7 @@ describe('task routes resolve a task id (e2e)', () => {
     const written = await app.inject({
       method: 'PATCH',
       url: `/work-items/${taskId}`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
       payload: { notes: '<p>Blocked on the infra ticket</p>' },
     });
     expect(written.statusCode, written.body).toBe(200);

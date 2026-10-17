@@ -9,7 +9,7 @@ import {
 } from '@quynhonsemiconductor/identity/nest';
 import type { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { failOpenLog } from '@quynhonsemiconductor/observability';
-import type { PinoLogger } from 'nestjs-pino';
+import { Logger } from '@nestjs/common';
 import { IDENTITY_PRODUCT, type AppConfigService, type DrizzleDB } from '@platform';
 import * as identityAuthSchema from '../../../../../../db/schema/identity-auth';
 import type { StaffSignInHandler } from './staff-sign-in.handler';
@@ -24,7 +24,6 @@ export interface RovaIdentityDeps {
   staffSignIn: StaffSignInHandler;
   workspaceContext: WorkspaceContext;
   auditSink: SecurityEventSink;
-  logger: PinoLogger;
   /**
    * The Entra authority (default `https://login.microsoftonline.com`). For the end-to-end sign-in suite, which points it
    * at identity's mock IdP; deliberately a code parameter and NOT an environment variable, so no deployment can be
@@ -49,7 +48,15 @@ export interface RovaIdentityDeps {
  *  - Entra settings may be absent in development and CI (`test-login` signs in); production refuses that below.
  */
 export function createRovaIdentity(deps: RovaIdentityDeps): Identity {
-  const { config, logger } = deps;
+  const { config } = deps;
+  // Nest's `Logger` is the process logger: the shared pino logger (`createHttpApp`) is installed as the app logger, and the
+  // object-first call `(fields, message)` is how every service here already logs through it.
+  const nestLogger = new Logger('Identity');
+  const logger = {
+    info: (fields: Record<string, unknown>, message: string) => nestLogger.log(fields, message),
+    warn: (fields: Record<string, unknown>, message: string) => nestLogger.warn(fields, message),
+    error: (fields: Record<string, unknown>, message: string) => nestLogger.error(fields, message),
+  };
   const appUrl = config.get('APP_BASE_URL');
   const metrics = observabilitySecurityEvents(logger);
   const events: SecurityEventSink = {

@@ -146,25 +146,16 @@ export async function bootAuditProjectionRelay(): Promise<{
 }
 
 /**
- * Build a `JwtPayload` actor exactly as the auth guard would after minting an
- * access token. The application services read only `sub` and `workspaceId`; the
- * remaining JWT fields — `permissions` included, see `viewerActor` below — are
- * inert values so the shape type-checks.
+ * Build a `JwtPayload` actor exactly as the auth guard would after authenticating a session. The
+ * application services read only `sub` and `workspaceId`; `permissions` — see `viewerActor` below — is an
+ * inert value so the shape type-checks.
  */
 export function makeActor(userId: string, permissions: string[] = []): JwtPayload {
   return {
     sub: userId,
-    contextId: WORKSPACE_ID,
     workspaceId: WORKSPACE_ID,
     permissions,
-    claims: { permissions },
     sessionId: 'e2e-session',
-    jti: 'e2e-jti',
-    iss: 'rova-e2e',
-    aud: 'rova',
-    iat: 0,
-    exp: 0,
-    authMethod: 'sso',
   };
 }
 

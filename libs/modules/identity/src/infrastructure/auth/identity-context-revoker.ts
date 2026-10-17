@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
   clearContext,
   clearContextEverywhere,
@@ -12,7 +13,16 @@ import type { WorkspaceContextRevoker } from '@platform';
 export class IdentityContextRevoker implements WorkspaceContextRevoker {
   private readonly logger = new Logger(IdentityContextRevoker.name);
 
-  constructor(@Inject(AUTH) private readonly auth: Identity) {}
+  /**
+   * Resolved at CALL time, not injected. `WorkspaceService` takes this revoker, and the identity instance is built from the
+   * sign-in handler, which takes `WorkspaceService`: injecting `AUTH` here would close that circle, and Nest answers a
+   * circle of async providers by never finishing `compile()`.
+   */
+  private get auth(): Identity {
+    return this.moduleRef.get<Identity>(AUTH, { strict: false });
+  }
+
+  constructor(private readonly moduleRef: ModuleRef) {}
 
   async clearForUser(userId: string, workspaceId: string): Promise<number> {
     try {

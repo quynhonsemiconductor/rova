@@ -59,7 +59,7 @@ export class SessionAuthGuard implements CanActivate {
     request.user = {
       sub: found.user.id,
       sessionId: found.session.id,
-      workspaceId: contextIdOf(found.session) ?? '',
+      workspaceId: contextIdOf(found) ?? '',
       permissions: [],
     };
     return true;

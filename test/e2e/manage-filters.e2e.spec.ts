@@ -29,12 +29,12 @@
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { WorkItemsService } from '@modules/work-items';
 import { AppModule } from '../../apps/api/src/app.module';
 import { DEVELOPER_ID, SEEDED, adminActor, uniqueKey } from './support/flow-harness';
+import { signIn } from './support/session';
 
 interface BacklogRow {
   id: string;
@@ -89,7 +89,7 @@ describe('Manage Filters: every specified column filters SERVER-side (e2e)', () 
   const created: string[] = [];
 
   function get(url: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: token } });
   }
 
   async function backlog(query: string): Promise<Paged<BacklogRow>> {
@@ -118,9 +118,9 @@ describe('Manage Filters: every specified column filters SERVER-side (e2e)', () 
     await app.getHttpAdapter().getInstance().ready();
 
     items = app.get(WorkItemsService);
-    // A Bearer token, not the BFF cookie: `requiresCsrfProtection` exempts Bearer callers, so this
+    // The session cookie from test-login; this app has no CSRF hook (that is `bootstrapApp`'s), so this
     // needs no CSRF dance, and the test app registers no cookie plugin anyway.
-    token = (await app.get(AuthService).devLogin('admin@qnsc.dev', '127.0.0.1')).accessToken;
+    token = await signIn(app, 'admin@qnsc.dev');
 
     const actor = adminActor();
     const project = SEEDED.nxp.projectId;
