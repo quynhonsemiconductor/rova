@@ -35,6 +35,8 @@
     "db:seed": "tsx db/seeds/seed.ts",
     "db:seed:test": "tsx db/seeds/seed.ts --fixtures",
     "db:backfill:accepted-date": "tsx db/backfill-accepted-date.ts",
+    "db:identity-v8:backfill": "tsx db/identity-v8/cli.ts backfill",
+    "db:identity-v8:rollback": "tsx db/identity-v8/cli.ts rollback",
     "db:report:custom-roles": "tsx db/report-custom-roles.ts",
     "db:studio": "drizzle-kit studio",
     "prepare": "husky"
