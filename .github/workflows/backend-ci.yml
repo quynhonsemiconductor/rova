@@ -182,6 +182,21 @@ jobs:
           --health-timeout 3s
           --health-retries 5
 
+      # identity's conformance kit (test/e2e/identity-conformance.e2e.spec.ts) needs a fresh, EMPTY server it may create databases
+      # on, and identity <= 8.4.0's kit calls uuidv7(), which only PostgreSQL 18 has (app-platform#261 removes that; rova runs 17).
+      # Drop this service and IDENTITY_CONFORMANCE_DATABASE_URL once the identity release that carries it is adopted.
+      postgres-conformance:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
@@ -192,32 +207,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
 
-      # Generate a fresh ephemeral EC P-256 keypair for tests (matches ES256 in platform.module.ts).
-      # No stored secret needed — keys are test-only, discarded after the run.
-      - name: Generate CI JWT keypair
-        id: jwt
-        run: |
-          node - << 'EOF'
-          const { generateKeyPairSync } = require('crypto');
-          const { privateKey, publicKey } = generateKeyPairSync('ec', {
-            namedCurve: 'P-256',
-            privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-            publicKeyEncoding:  { type: 'spki',  format: 'pem' },
-          });
-          const b64 = (s) => Buffer.from(s).toString('base64');
-          const fs  = require('fs');
-          fs.appendFileSync(process.env.GITHUB_ENV,
-            `CI_JWT_PRIVATE_KEY=${b64(privateKey)}\nCI_JWT_PUBLIC_KEY=${b64(publicKey)}\n`);
-          EOF
-
       - name: Run migrations
         run: pnpm db:migrate
         env:
           DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
           # db:migrate also runs seedTenantBootstrap, which only creates the
           # primary Entra SSO connection when ENTRA_TENANT_ID is set. The SSO
-          # → RBAC e2e (test/e2e/sso-rbac.e2e.spec.ts) needs that connection to
-          # resolve a workspace, so seed it here. Values mirror .env.
+          # sign-in e2e (test/e2e/sign-in.e2e.spec.ts) builds its own identity over a mock
+          # Entra, so nothing here is needed for it; the bootstrap still wants the tenant.
           ENTRA_TENANT_ID: dev-tenant
           SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
 
@@ -227,12 +224,6 @@ jobs:
           NODE_ENV: test
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
           REDIS_URL: redis://localhost:6379
-          JWT_PRIVATE_KEY: ${{ env.CI_JWT_PRIVATE_KEY }}
-          JWT_PUBLIC_KEY: ${{ env.CI_JWT_PUBLIC_KEY }}
-          JWT_ISSUER: rova-api
-          JWT_AUDIENCE: rova-web
-          JWT_ACCESS_EXPIRY: 15m
-          JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
           COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
 
@@ -288,22 +279,20 @@ jobs:
           DATABASE_URL: postgresql://rova_app:rova_app@localhost:5432/rova_test?sslmode=disable
           DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
           REDIS_URL: redis://localhost:6379
-          JWT_PRIVATE_KEY: ${{ env.CI_JWT_PRIVATE_KEY }}
-          JWT_PUBLIC_KEY: ${{ env.CI_JWT_PUBLIC_KEY }}
-          JWT_ISSUER: rova-api
-          JWT_AUDIENCE: rova-web
-          JWT_ACCESS_EXPIRY: 15m
-          JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
           COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
-          # Entra BFF OIDC — CI test-only placeholders (never used for real auth).
-          # ENTRA_TENANT_ID matches the SSO connection seeded during migrations so
-          # the SSO → RBAC e2e resolves its workspace; PLATFORM_ADMIN_EMAILS drives
-          # the admin-elevation assertion. Both mirror .env.
+          # Entra — CI test-only placeholders (never used for real auth).
+          # ENTRA_TENANT_ID matches the tenant seeded during migrations; PLATFORM_ADMIN_EMAILS
+          # mirrors .env.
+          # identity 8: the secret that signs its cookies, and the passwordless sign-in the specs use
+          # (identity refuses it unless NODE_ENV is test or development).
+          BETTER_AUTH_SECRET: ci-test-better-auth-secret-min-32-characters-ok
+          IDENTITY_TEST_LOGIN: enabled
+          # identity 8.4's conformance kit calls uuidv7() (PostgreSQL 18); rova runs 17, so the kit gets a server of its own.
+          IDENTITY_CONFORMANCE_DATABASE_URL: postgresql://postgres:postgres@localhost:5433/postgres?sslmode=disable
           ENTRA_TENANT_ID: dev-tenant
           ENTRA_CLIENT_ID: ci-test-client
           ENTRA_CLIENT_SECRET: ci-test-secret
-          ENTRA_REDIRECT_URI: http://localhost:3000/v1/bff/callback
           SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
           PLATFORM_ADMIN_EMAILS: nghiavt@qnsc.vn
           # The suite shares ONE authenticated principal (admin@qnsc.dev) across 49 files, and the
@@ -530,21 +519,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
 
-      - name: Generate ephemeral JWT keys
-        run: |
-          node - << 'EOF'
-          const { generateKeyPairSync } = require('crypto');
-          const { privateKey, publicKey } = generateKeyPairSync('ec', {
-            namedCurve: 'P-256',
-            privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-            publicKeyEncoding:  { type: 'spki',  format: 'pem' },
-          });
-          const b64 = (s) => Buffer.from(s).toString('base64');
-          const fs  = require('fs');
-          fs.appendFileSync(process.env.GITHUB_ENV,
-            `CI_JWT_PRIVATE_KEY=${b64(privateKey)}\nCI_JWT_PUBLIC_KEY=${b64(publicKey)}\n`);
-          EOF
-
       - name: Run migrations
         run: pnpm db:migrate
         env:
@@ -579,21 +553,15 @@ jobs:
           SWAGGER_ENABLED: 'true'
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_openapi?sslmode=disable
           REDIS_URL: redis://localhost:6379
-          JWT_PRIVATE_KEY: ${{ env.CI_JWT_PRIVATE_KEY }}
-          JWT_PUBLIC_KEY: ${{ env.CI_JWT_PUBLIC_KEY }}
-          JWT_ISSUER: rova-api
-          JWT_AUDIENCE: rova-web
-          JWT_ACCESS_EXPIRY: 15m
-          JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
           COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
           OTEL_ENABLED: 'false'
           RESILIENCE_ENABLED: 'false'
-          # Entra BFF OIDC — CI test-only placeholders (never used for real auth).
+          # Entra — CI test-only placeholders (never used for real auth).
+          BETTER_AUTH_SECRET: ci-test-better-auth-secret-min-32-characters-ok
           ENTRA_TENANT_ID: ci-test-tenant
           ENTRA_CLIENT_ID: ci-test-client
           ENTRA_CLIENT_SECRET: ci-test-secret
-          ENTRA_REDIRECT_URI: http://localhost:3000/v1/bff/callback
 
       # `codegen:check` (the generated web client matches this spec) moved to Web CI's e2e job: the files it guards live in
       # apps/web, which this workflow skips for web-only changes, and a web-only edit to the generated client is exactly the case

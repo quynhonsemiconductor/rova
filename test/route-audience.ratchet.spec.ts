@@ -61,8 +61,6 @@ import { CapacityPlansController } from '../libs/modules/capacity/src/interface/
 import { CollaborationController } from '../libs/modules/collaboration/src/interface/http/collaboration.controller';
 import { PortfolioCollaborationController } from '../libs/modules/collaboration/src/interface/http/portfolio-collaboration.controller';
 import { AuthController } from '../libs/modules/identity/src/interface/http/auth.controller';
-import { BffController } from '../libs/modules/identity/src/interface/http/bff/bff.controller';
-import { IdentityController } from '../libs/modules/identity/src/interface/http/identity.controller';
 import { IterationsController } from '../libs/modules/iterations/src/interface/http/iterations.controller';
 import { MilestonesController } from '../libs/modules/milestones/src/interface/http/milestones.controller';
 import { NotificationPreferencesController } from '../libs/modules/notifications/src/interface/http/notification-preferences.controller';
@@ -95,10 +93,8 @@ const CONTROLLERS = [
   AccessController,
   AuditController,
   AuthController,
-  BffController,
   CapacityPlansController,
   CollaborationController,
-  IdentityController,
   IterationsController,
   MilestonesController,
   NotificationPreferencesController,
@@ -635,7 +631,7 @@ const MIN_PROJECT_TIER_ROUTES_COVERED = 139;
  */
 const MIN_ROUTES_FOUND = 200;
 /** `git ls-files 'libs/**\/*.controller.ts' 'apps/**\/*.controller.ts'` minus PublicConfigController (the one public route; it carries no permission). */
-const CONTROLLER_COUNT = 26;
+const CONTROLLER_COUNT = 24;
 
 interface DiscoveredRoute {
   key: string;
@@ -649,7 +645,7 @@ interface DiscoveredRoute {
 function discoverRoutes(): DiscoveredRoute[] {
   const routes: DiscoveredRoute[] = [];
   for (const ctor of CONTROLLERS) {
-    const prototype = ctor.prototype as Record<string, unknown>;
+    const prototype = ctor.prototype as unknown as Record<string, unknown>;
     for (const name of Object.getOwnPropertyNames(prototype)) {
       if (name === 'constructor') continue;
       const handler = prototype[name];
@@ -1019,6 +1015,12 @@ const READ_AUDIENCE_EXCEPTIONS: Record<string, string> = {
    */
   'AccessController.getMyProjectPermissions':
     'self-scoped: the subject reads their own permissions',
+  /**
+   * "Who am I": the SPA's one start-up read (profile, effective permissions, workspaces, CSRF token), addressed by the
+   * caller's own id. It was `BffController.me`, which `@ApiExcludeController` kept out of this sweep; `AuthController.me`
+   * declares its response type, so it is measured, and it is self-scoped by construction (`@SelfScoped`).
+   */
+  'AuthController.me': 'self-scoped: the subject reads their own profile and grants',
 };
 
 /**
@@ -1091,7 +1093,7 @@ interface RouteSchema {
 function discoverResponseSchemas(): RouteSchema[] {
   const out: RouteSchema[] = [];
   for (const ctor of CONTROLLERS) {
-    const prototype = ctor.prototype as Record<string, unknown>;
+    const prototype = ctor.prototype as unknown as Record<string, unknown>;
     for (const name of Object.getOwnPropertyNames(prototype)) {
       if (name === 'constructor') continue;
       const handler = prototype[name];

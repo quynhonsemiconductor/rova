@@ -5,18 +5,26 @@ import {
   createParamDecorator,
   ExecutionContext,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
-import { JwtAuthGuard } from './jwt.guard';
-import type { JwtPayload } from './jwt.strategy';
+import { ApiBearerAuth, ApiCookieAuth, ApiResponse } from '@nestjs/swagger';
+import { Public as IdentityPublic } from '@quynhonsemiconductor/identity/nest';
+import { IS_PUBLIC_KEY } from './public-key';
+import { SessionAuthGuard } from './session-auth.guard';
+import type { JwtPayload } from './principal';
 
-export const IS_PUBLIC_KEY = 'isPublic';
-
-/** Mark a route as unauthenticated (skip JwtAuthGuard). */
-export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
+export { IS_PUBLIC_KEY };
 
 /**
- * Extract the authenticated user's JWT payload from the request.
- * Only use on routes protected by @Auth() or JwtAuthGuard.
+ * Mark a route as unauthenticated.
+ *
+ * Sets BOTH keys: rova's own (read by {@link SessionAuthGuard}, the rate limiter, the route audit and `ApiTokenGuard`)
+ * and identity's, which its global `SessionGuard` reads. Setting only ours would answer 401 on the health probes before
+ * our guard is ever reached.
+ */
+export const Public = () => applyDecorators(SetMetadata(IS_PUBLIC_KEY, true), IdentityPublic());
+
+/**
+ * Extract the authenticated principal from the request.
+ * Only use on routes protected by @Auth() or SessionAuthGuard.
  *
  * @example
  * async getMe(@CurrentUser() user: JwtPayload) { ... }
@@ -59,16 +67,20 @@ export const ApiCommonErrors = (...codes: HttpErrorCode[]) =>
   );
 
 /**
- * Authentication only: verify the caller (Bearer or BFF session) and annotate
- * Swagger. It carries NO authorization — a route under `@Auth()` alone is open to
- * every authenticated caller, which is correct only for surfaces that are
- * self-scoped by construction (`me/*`, `notifications/*` — addressed by
- * `user.sub`) or that run around a session existing (`auth/*`).
+ * Authentication only: turn the caller's identity session (or API token) into `request.user` and annotate Swagger. It
+ * carries NO authorization: a route under `@Auth()` alone is open to every authenticated caller, which is correct only for
+ * surfaces that are self-scoped by construction (`me/*`, `notifications/*`, addressed by `user.sub`) or that run around a
+ * session existing (`auth/*`).
  *
- * For anything that resolves a workspace or project resource, use `@AuthPolicy()`
- * on the controller plus `@RequirePermission(...)` from `@modules/access`, which
- * is the single authorization decision point. `@Auth()` used to also mount the
- * `PermissionGuard` from `@quynhonsemiconductor/identity` and accept a workspace-tier code;
- * both are gone now that every permission check runs through `PolicyGuard`.
+ * For anything that resolves a workspace or project resource, use `@AuthPolicy()` on the controller plus
+ * `@RequirePermission(...)` from `@modules/access`, which is the single authorization decision point.
+ *
+ * The scheme names: `session` is the cookie, `access-token` is the API token (`Authorization: Bearer rly_...`); the name
+ * is kept so the generated client and every `@ApiBearerAuth('access-token')` stay as they were.
  */
-export const Auth = () => applyDecorators(UseGuards(JwtAuthGuard), ApiBearerAuth('access-token'));
+export const Auth = () =>
+  applyDecorators(
+    UseGuards(SessionAuthGuard),
+    ApiCookieAuth('session'),
+    ApiBearerAuth('access-token'),
+  );

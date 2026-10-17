@@ -16,13 +16,12 @@
  * stronger than a seeded absence, because a team that has just been created with no members named is
  * exactly the case "not automatically a Team member" is about.
  *
- * Bearer token from `AuthService.devLogin`: Bearer callers are CSRF-exempt by design, and the test app
- * has no `/v1` prefix and no cookie plugin (`reply.setCookie is not a function`).
+ * The session cookie from identity's test-login (`support/session.ts`). The test app is built without `bootstrapApp`, so it has
+ * no `/v1` prefix, no cookie plugin and no CSRF hook; a spec that needs those boots `createBootstrappedApp()`.
  */
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { AccessService } from '@modules/access';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -30,7 +29,7 @@ import { randomUUID } from 'crypto';
 
 import { AppModule } from '../../apps/api/src/app.module';
 import { ADMIN_USER_ID, DEVELOPER_ID, SEED_PROJECTS, WORKSPACE_ID } from '../../db/seeds/constants';
-import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
+import { provisionUser, signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -51,7 +50,7 @@ describe('a Workspace Admin as a Team member', () => {
     method: 'GET' | 'POST' | 'DELETE' | 'PATCH',
     url: string,
     payload?: Record<string, unknown>,
-  ) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+  ) => app.inject({ method, url, headers: { cookie: token }, payload });
 
   const roster = async (): Promise<RosterRow[]> =>
     (await as('GET', `/teams/${teamId}/members`)).json();
@@ -81,15 +80,11 @@ describe('a Workspace Admin as a Team member', () => {
       // So this file can JIT-provision an outsider through `ssoLogin` — the only path that creates a
       // workspace member with NO project access, which is the candidate the refusal is about. Same
       // override `directory-team-authz.e2e.spec.ts` uses.
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
       .compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    token = (await app.get(AuthService).devLogin('admin@qnsc.dev')).accessToken;
+    token = await signIn(app, 'admin@qnsc.dev');
     access = app.get(AccessService);
 
     // `varchar(10)`, uppercase, and unique per run — a fixed key would collide with itself on the
@@ -153,28 +148,14 @@ describe('a Workspace Admin as a Team member', () => {
    */
   it("refuses a workspace user who belongs to none of the team's projects", async () => {
     /**
-     * A JIT-provisioned SSO principal is the honest outsider — `devLogin` cannot be used, it refuses
-     * an address with no account ("No active account exists for this email"). `ssoLogin` provisions
-     * the user and its workspace membership, and under the 3-level model grants no project access at
+     * A freshly provisioned principal is the honest outsider — `provisionUser` creates the identity user,
+     * its profile and its workspace membership, and under the 3-level model grants no project access at
      * all, so this is a legitimate workspace member with nothing in `work.project_members`: exactly
      * the candidate the BA found being offered. A fresh address per run, never a shared fixture —
      * `work.project_members` survives to the next reset, so touching a seeded user is a lasting edit
      * other specs measure.
      */
-    const label = `team-outsider-${randomUUID().slice(0, 8)}`;
-    const login = await app.get(AuthService).ssoLogin(
-      JSON.stringify({
-        oid: `${label}-${randomUUID()}`,
-        email: `${label}@${SSO_EMAIL_DOMAIN}`,
-        displayName: 'E2E outsider',
-        externalTenantId: SSO_TENANT_ID,
-        roles: [],
-      }),
-      '127.0.0.1',
-    );
-    const outsiderId = JSON.parse(
-      Buffer.from(login.accessToken.split('.')[1], 'base64url').toString(),
-    ).sub as string;
+    const { userId: outsiderId } = await provisionUser(app, 'team-outsider', 'E2E outsider');
     expect(await access.getProjectAccessLevel(WORKSPACE_ID, outsiderId, NXP)).toBeNull();
 
     const res = await as('POST', `/teams/${teamId}/members`, { userId: outsiderId });

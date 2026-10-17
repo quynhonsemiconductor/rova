@@ -23,7 +23,7 @@ const TEAM_ALPHA_ID = '00000000-0000-7000-8000-000000000040'
  * cookies, and is immune to the page navigating underneath it (a `page.evaluate` fetch is not).
  */
 async function api<T>(page: Page, method: string, path: string, body?: unknown): Promise<T> {
-  const me = await page.request.get('/v1/bff/me')
+  const me = await page.request.get('/v1/auth/me')
   const { csrfToken } = (await me.json()) as { csrfToken?: string }
   const res = await page.request.fetch(path, {
     method,

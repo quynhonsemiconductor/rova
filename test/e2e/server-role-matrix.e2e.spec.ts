@@ -14,7 +14,7 @@
  * `GET /work-items/by-key` shipped carrying an admin-reserved code, and how `iteration:view` came to
  * gate a surface §3.2 hides. `route-policy.ratchet.spec.ts` reads SOURCE TEXT, so it cannot tell a
  * correct code from a misspelled one or from one the intended role cannot hold; a spec that calls a
- * service directly cannot see a guard defect at all. This drives real HTTP with real Bearer tokens
+ * service directly cannot see a guard defect at all. This drives real HTTP with real session cookies (identity's test-login)
  * and records the STATUS CODE each of the four principals actually gets.
  *
  * READ THIS BEFORE ADDING A PROBE — three properties every one of them must have:
@@ -50,13 +50,13 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
-import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
+import { SSO_EMAIL_DOMAIN } from './support/sso-env';
 import { WORKSPACE_ID } from '../../db/seeds/constants';
 import { ADMIN_USER_ID, grantProjectAccess, SEEDED } from './support/flow-harness';
+import { provisionUser, signIn } from './support/session';
 
 const NXP = SEEDED.nxp.projectId;
 const ITER = SEEDED.nxp.iterationCurrentId;
@@ -93,7 +93,6 @@ const MATRIX: Row[] = [];
 
 describe('server role matrix (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
   const token: Record<Role, string> = { wa: '', admin: '', editor: '', none: '' };
   let adminUserId = '';
   /** A seeded task under NXP's story — the Team Status task-edit probe needs a real one. */
@@ -101,17 +100,11 @@ describe('server role matrix (e2e)', () => {
   let taskTitle = '';
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    auth = app.get(AuthService);
 
     /**
      * THE FOUR PRINCIPALS.
@@ -136,17 +129,8 @@ describe('server role matrix (e2e)', () => {
     token.editor = await bearer('dev@qnsc.dev');
     token.none = await bearer('viewer@qnsc.dev');
 
-    const claims: EntraClaims = {
-      oid: `role-matrix-admin-${randomUUID()}`,
-      email: `role-matrix-admin-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
-      displayName: 'E2E Project Admin',
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    adminUserId = JSON.parse(Buffer.from(login.accessToken.split('.')[1], 'base64url').toString())[
-      'sub'
-    ] as string;
+    const login = await provisionUser(app, 'role-matrix-admin', 'E2E Project Admin');
+    adminUserId = login.userId;
     await grantProjectAccess(app, adminUserId, NXP, 'admin');
     token.admin = login.accessToken;
 
@@ -175,10 +159,10 @@ describe('server role matrix (e2e)', () => {
 
   // ── plumbing ───────────────────────────────────────────────────────────────
 
-  /** Bearer, not the BFF cookie: the test app has no cookie plugin, and Bearer is CSRF-exempt. */
+  /** The session cookie from identity's test-login; the test app has no CSRF hook. */
   async function bearer(email: string): Promise<string> {
-    const { accessToken } = await auth.devLogin(email, '127.0.0.1');
-    expect(accessToken, `dev-login for ${email}`).toBeTruthy();
+    const accessToken = await signIn(app, email);
+    expect(accessToken, `test-login for ${email}`).toBeTruthy();
     return accessToken;
   }
 
@@ -191,7 +175,7 @@ describe('server role matrix (e2e)', () => {
     return app.inject({
       method,
       url,
-      headers: { authorization: `Bearer ${token[role]}` },
+      headers: { cookie: token[role] },
       ...(payload === undefined ? {} : { payload: payload as Record<string, unknown> }),
     });
   }

@@ -30,14 +30,20 @@ export default defineConfig(({ mode, command }) => ({
     command === 'serve' && mode === 'development' ? path.resolve(__dirname, '../..') : undefined,
   server: {
     host: '0.0.0.0',
-    // 5173 is the origin the rest of the stack is wired to (.env.example CORS_ORIGINS, APP_BASE_URL and
-    // ENTRA_REDIRECT_URI, LocalStack's bucket CORS, Playwright's baseURL). strictPort: if another dev server holds it,
+    // 5173 is the origin the rest of the stack is wired to (.env.example CORS_ORIGINS and APP_BASE_URL, whose
+    // /api/auth/callback/microsoft is the Entra redirect URI, LocalStack's bucket CORS, Playwright's baseURL). strictPort: if another dev server holds it,
     // FAIL instead of silently moving to 5174, where the sign-in redirect and the upload bucket's CORS no longer match.
     port: 5173,
     strictPort: true,
     allowedHosts: ['.trycloudflare.com'],
     proxy: {
       '/v1': {
+        target: process.env.API_TARGET ?? 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false,
+      },
+      // identity 8 (Better Auth): sign-in, the Microsoft callback and sign-out, same-origin with the SPA.
+      '/api/auth': {
         target: process.env.API_TARGET ?? 'http://localhost:3000',
         changeOrigin: true,
         secure: false,

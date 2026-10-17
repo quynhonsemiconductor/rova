@@ -17,28 +17,21 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
 import { SEED_PROJECTS } from '../../db/seeds/constants';
+import { signIn } from './support/session';
 
 describe('cross-project read scoping (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    auth = app.get(AuthService);
   });
 
   afterAll(async () => {
@@ -46,13 +39,13 @@ describe('cross-project read scoping (e2e)', () => {
   });
 
   async function tokenFor(email: string): Promise<string> {
-    const { accessToken } = await auth.devLogin(email, '127.0.0.1');
-    expect(accessToken, `dev-login for ${email}`).toBeTruthy();
+    const accessToken = await signIn(app, email);
+    expect(accessToken, `test-login for ${email}`).toBeTruthy();
     return accessToken;
   }
 
   function get(url: string, token: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: token } });
   }
 
   it('shows a Workspace Admin every project — `null` means UNRESTRICTED', async () => {

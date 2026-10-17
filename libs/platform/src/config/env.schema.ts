@@ -1,4 +1,3 @@
-import { createPrivateKey, createPublicKey } from 'node:crypto';
 import { z } from 'zod';
 
 /** An empty string counts as unset (a variable blanked in a task definition or `.env`). */
@@ -82,29 +81,19 @@ export const EnvSchema = z
       .min(1, 'REDIS_URL is required: there is deliberately no localhost fallback'),
     REDIS_KEY_PREFIX: z.string().default('rova:'),
 
-    // JWT — keys may be raw PEM or base64-encoded PEM
-    JWT_PRIVATE_KEY: z
-      .string()
-      .min(1)
-      .transform((v) => (v.includes('-----BEGIN') ? v : Buffer.from(v, 'base64').toString('utf8')))
-      .refine((v) => v.includes('-----BEGIN'), 'JWT_PRIVATE_KEY must be a PEM-encoded private key'),
+    // ── Auth: identity 8 (Better Auth, the `staff` preset, Microsoft Entra) ──────────────────────────────────────────
+    // Sessions are database rows behind an HttpOnly cookie: there is no JWT, no refresh token and no key pair.
     /**
-     * OPTIONAL — derived from JWT_PRIVATE_KEY when absent (see the transform at the
-     * bottom of this file). Supply it only to override, e.g. a local .env that already
-     * has a pair. Nothing needs it configured: an ES256 public key is a pure function
-     * of its private key, and rova publishes no JWKS, so no verifier exists that
-     * lacks the private key.
+     * Signs identity's cookies and encrypts what it stores (identity README, "Environment"): 32+ characters, its own
+     * secret (not COOKIE_SECRET, not CSRF_SECRET). Rotating it signs everyone out. API ONLY: the worker never signs
+     * anyone in and is not given it; identity refuses to start the API without it.
      */
-    JWT_PUBLIC_KEY: z
-      .string()
-      .min(1)
-      .transform((v) => (v.includes('-----BEGIN') ? v : Buffer.from(v, 'base64').toString('utf8')))
-      .refine((v) => v.includes('-----BEGIN'), 'JWT_PUBLIC_KEY must be a PEM-encoded public key')
-      .optional(),
-    JWT_ACCESS_EXPIRY: z.string().default('15m'),
-    JWT_REFRESH_EXPIRY: z.string().default('30d'),
-    JWT_ISSUER: z.string().default('rova-api'),
-    JWT_AUDIENCE: z.string().default('rova-web'),
+    BETTER_AUTH_SECRET: emptyToUndefined(z.string().min(32).optional()),
+    /**
+     * `IDENTITY_TEST_LOGIN=enabled` loads identity's passwordless `/api/auth/test-login` for the end-to-end suites.
+     * Identity itself refuses it unless NODE_ENV is `test` or `development`; this schema ALSO refuses it in production.
+     */
+    IDENTITY_TEST_LOGIN: emptyToUndefined(z.enum(['enabled']).optional()),
 
     // Cookie signing. Distinct from CSRF_SECRET on purpose: this one signs every
     // cookie rally sets, so rotating it invalidates all of them. Sharing one value
@@ -266,25 +255,12 @@ export const EnvSchema = z
     INVITATION_TTL_DAYS: z.coerce.number().int().positive().default(7),
     SESSION_CLEANUP_OLDER_THAN_DAYS: z.coerce.number().int().positive().default(7),
 
-    // SSO — Microsoft Entra ID (Azure AD) OpenID Connect
-    // Rally authenticates exclusively through the server-side BFF flow, so these
-    // Entra credentials are mandatory in every environment; the API refuses to
-    // boot without them.
+    // SSO — Microsoft Entra ID. The sign-in app registration (a confidential client, single-tenant). The API signs
+    // people in with it (`ENTRA_CLIENT_SECRET` in the code exchange); the worker reuses the same registration for the
+    // Graph guest-invite call until that moves to the certificate-only Service app. Mandatory in every environment.
     ENTRA_TENANT_ID: z.string().min(1),
     ENTRA_CLIENT_ID: z.string().min(1),
-
-    // ── BFF (Backend-for-Frontend) — server-side OIDC session ──────────────────
-    // The API is a *confidential* OIDC client: it runs the Authorization-Code +
-    // PKCE flow server-side and issues an opaque, httpOnly `__Host-` session
-    // cookie, so Entra/JWT tokens never reach the browser. This is rally's sole
-    // authentication mode — every /bff/* route is always active.
-    /** Entra confidential-client secret. */
     ENTRA_CLIENT_SECRET: z.string().min(1),
-    /**
-     * Absolute URL of the BFF OIDC callback, registered as a redirect URI on the
-     * Entra app registration, e.g. https://rally-dev.qnsc.vn/v1/bff/callback.
-     */
-    ENTRA_REDIRECT_URI: z.string().url(),
     /**
      * The key the Cloudflare Pages Function signs the visitor's address with (`@quynhonsemiconductor/platform-http/edge`)
      * and `clientIp()` verifies. Behind a Pages Function the API's `cf-connecting-ip` is a Cloudflare address shared
@@ -327,29 +303,16 @@ export const EnvSchema = z
      */
     INTERNAL_EMAIL_DOMAINS: z.string().default(''),
     /**
-     * Multi-IdP broker: the single app-level OIDC callback shared by every
-     * federated connection (the same `/bff/callback` endpoint). Defaults to
-     * ENTRA_REDIRECT_URI when unset (the home connection reuses it).
+     * Staff email domains (comma-separated, exact; `*.x.y` opts into sub-domains): identity's `staff` preset refuses a
+     * Microsoft sign-in whose address is outside them. Also read by the migrator's tenant bootstrap.
      */
-    IDENTITY_REDIRECT_URI: z.string().url().optional(),
+    SSO_ALLOWED_EMAIL_DOMAINS: z.string().default('qnsc.vn'),
     /**
-     * Multi-IdP broker: Secrets Manager ref (name/ARN, e.g. `rova/${env}/sso/home`)
-     * holding the HOME Entra client secret for the broker path. When unset the home
-     * connection is seeded without a secret ref and only the legacy home flow works.
+     * Whether a staff-domain address may create its own account at first sign-in (`true`) or only when it already has
+     * a profile or a live invitation (`false`: invite-only, how every deployed environment runs). B2B guests are always
+     * invite-only. Also read by the migrator's tenant bootstrap.
      */
-    IDENTITY_HOME_SECRET_REF: z.string().optional(),
-    /**
-     * Same-origin path the browser lands on after a successful BFF login when no
-     * safe `returnTo` was supplied. Must be a root-relative path.
-     */
-    BFF_POST_LOGIN_REDIRECT: z.string().default('/'),
-    /** Server-side BFF session lifetime (seconds). Defaults to 30 days. */
-    BFF_SESSION_TTL_SECONDS: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(30 * 24 * 60 * 60),
-
+    SSO_JIT_ENABLED: booleanish(true),
     /**
      * Comma-separated SSO (Entra) emails auto-granted workspace_admin on first login.
      * Example: "nghiavt@qnsc.vn,quangld@qnsc.vn"
@@ -438,59 +401,24 @@ export const EnvSchema = z
       });
     }
   })
-  .transform((env, ctx) => {
-    // JWT_PUBLIC_KEY is DERIVED, not configured.
-    //
-    // Storing the public half alongside the private one invited the single failure a
-    // key pair cannot otherwise have: a MISMATCHED pair, where signing succeeds and
-    // every verification rejects — total auth outage. Nothing caught it, because both
-    // values were individually valid to Terraform, to the deploy preflight, and to
-    // this schema. Deriving removes the possibility rather than monitoring for it.
-    //
-    // An explicit value still wins, so a local .env with a real pair keeps working and
-    // infra can keep injecting one through the transition.
-    if (env.JWT_PUBLIC_KEY) return { ...env, JWT_PUBLIC_KEY: env.JWT_PUBLIC_KEY };
-
-    const reject = (message: string) => {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['JWT_PRIVATE_KEY'], message });
-      return z.NEVER;
-    };
-
-    // createPrivateKey FIRST, deliberately. createPublicKey happily accepts a public
-    // key as its input and hands it straight back, so deriving from it would silently
-    // succeed for the likeliest paste error there is — the public half dropped into
-    // the private slot — and fail much later at the first sign().
-    let privateKey;
-    try {
-      privateKey = createPrivateKey(env.JWT_PRIVATE_KEY);
-    } catch {
-      return reject(
-        'JWT_PRIVATE_KEY is PEM but not a PRIVATE key. A public key pasted here would ' +
-          'pass the format check and then break signing at runtime.',
-      );
+  .superRefine((env, ctx) => {
+    if (env.NODE_ENV !== 'production') return;
+    if (env.IDENTITY_TEST_LOGIN) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['IDENTITY_TEST_LOGIN'],
+        message:
+          'IDENTITY_TEST_LOGIN cannot be set when NODE_ENV=production: it is a passwordless sign-in for end-to-end suites only.',
+      });
     }
-
-    // ES256 means P-256 specifically. Any other curve signs happily and produces
-    // tokens every verifier rejects, which reads as a broken deploy with no cause.
-    const curve = privateKey.asymmetricKeyDetails?.namedCurve;
-    if (privateKey.asymmetricKeyType !== 'ec' || curve !== 'prime256v1') {
-      return reject(
-        `JWT_PRIVATE_KEY must be an EC P-256 key for ES256, got ` +
-          `${privateKey.asymmetricKeyType}${curve ? `/${curve}` : ''}.`,
-      );
+    if (!env.APP_BASE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['APP_BASE_URL'],
+        message:
+          'APP_BASE_URL must be https when NODE_ENV=production: it is the origin Entra redirects the browser to (/api/auth/callback/microsoft) and the origin of the session cookie.',
+      });
     }
-
-    return {
-      ...env,
-      // Derived from the validated PEM rather than the KeyObject: @types/node's
-      // createPublicKey overloads do not accept a bare KeyObject, though the runtime
-      // does. Re-exporting keeps this typed without a cast.
-      JWT_PUBLIC_KEY: createPublicKey(
-        privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
-      )
-        .export({ type: 'spki', format: 'pem' })
-        .toString(),
-    };
   });
 
 export type Env = z.infer<typeof EnvSchema>;

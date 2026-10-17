@@ -1,8 +1,7 @@
 /**
  * Auth bootstrap — runs once on app start (or page refresh). Restores the
- * session from the same-origin `__Host-rova_session` cookie via the
- * cookie-authenticated /v1/bff/me. There are no in-browser tokens; the shared
- * guard refreshes the underlying access token server-side. Must be awaited
+ * session from the same-origin `__Secure-rova.session_token` cookie (identity 8) via the
+ * cookie-authenticated GET /v1/auth/me. There are no in-browser tokens. Must be awaited
  * before the router guard evaluates `isAuthenticated`.
  */
 import { ENV } from '@/shared/config/env'
@@ -24,7 +23,7 @@ async function _run(): Promise<void> {
   const { clearAuth, setLoading, setUser } = useAuthStore.getState()
   setLoading(true)
   try {
-    const meRes = await fetch(`${BASE}/v1/bff/me`, {
+    const meRes = await fetch(`${BASE}/v1/auth/me`, {
       credentials: 'include',
       referrerPolicy: 'no-referrer',
       headers: { accept: 'application/json' },

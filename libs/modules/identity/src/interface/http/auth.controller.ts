@@ -1,14 +1,23 @@
-import { Body, Controller, HttpCode, Patch, Post, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Patch, Post, Req, Res } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import type { FastifyReply } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import '@fastify/cookie';
-import { Auth, ApiCommonErrors, BFF_SESSION_COOKIE, ConflictException } from '@platform';
+import type {} from '@fastify/csrf-protection';
+import {
+  Auth,
+  ApiCommonErrors,
+  ConflictException,
+  NotFoundException,
+  PermissionDeniedException,
+  SESSION_COOKIE,
+} from '@platform';
 import type { JwtPayload } from '@platform';
-import { AuthService } from '@quynhonsemiconductor/identity';
+import { revokeUserSessions, setContext, type Identity } from '@quynhonsemiconductor/identity';
+import { AUTH } from '@quynhonsemiconductor/identity/nest';
 import { AccessService, SelfScoped } from '@modules/access';
 import { WorkspaceService } from '@modules/workspace';
 import { AttachmentsService, USER_AVATAR_POLICY } from '@modules/attachments';
-import { UpdateProfileDto } from './dto/login.dto';
+import { SwitchWorkspaceDto, UpdateProfileDto } from './dto/update-profile.dto';
 import { UserProfileResponseDto } from './dto/auth-response.dto';
 import {
   PresignAvatarDto,
@@ -17,25 +26,51 @@ import {
   ConfirmAvatarResponseDto,
 } from './dto/avatar.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { UserDirectory, type Profile } from '../../infrastructure/auth/user-directory';
+import { ProfileSync } from '../../infrastructure/auth/profile-sync';
 
 /**
- * Current-user profile surface. All authentication and session lifecycle lives
- * in the BFF controller (`/v1/bff/*`); this controller only exposes the profile
- * update and the "sign out everywhere" action, both authenticated via the shared
- * session-cookie guard.
+ * What is left of `/v1/auth`: the SPA's "who am I?", the profile, and the workspace switch.
+ *
+ * Signing in and out is identity 8's own surface, mounted at `/api/auth/*` (Better Auth: `sign-in/social`, the Microsoft
+ * callback, `sign-out`); the Pages Function proxies it so it is same-origin with the SPA. The v7 routes (`/v1/bff/*`:
+ * login, callback, dev-login, logout, switch-workspace, me) are gone with the BFF session they served.
  */
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(
-    private readonly authService: AuthService,
+    private readonly directory: UserDirectory,
     private readonly accessService: AccessService,
     private readonly workspaceService: WorkspaceService,
     private readonly attachments: AttachmentsService,
+    private readonly profileSync: ProfileSync,
+    @Inject(AUTH) private readonly auth: Identity,
   ) {}
 
-  // ── PATCH /auth/me ─────────────────────────────────────────────────────────
+  /** Everything the SPA shell needs to render: the profile, the effective permissions, the workspaces, a CSRF token. */
+  @Get('me')
+  @SelfScoped("returns the caller's own principal")
+  @Auth()
+  @ApiOperation({ summary: 'Return the authenticated user, their workspaces and permissions' })
+  @ApiResponse({ status: 200, type: UserProfileResponseDto })
+  @ApiCommonErrors(401)
+  async me(
+    @CurrentUser() user: JwtPayload,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<UserProfileResponseDto> {
+    const profile = await this.requireProfile(user.sub);
+    const body = await this.render(user, profile);
+    // Minted here rather than from a dedicated endpoint: the SPA already calls this on every start and page refresh, so
+    // the token's lifecycle matches the session's with no extra round-trip, and `generateCsrf` plants the signed secret
+    // cookie on the first call. Bound to the session cookie, so a token lifted from one session cannot be replayed in
+    // another. An API-token caller has no cookie and needs none.
+    const session = req.cookies?.[SESSION_COOKIE];
+    return { ...body, csrfToken: session ? reply.generateCsrf({ userInfo: session }) : undefined };
+  }
 
+  /** Update the authenticated user's own editable profile fields. */
   @Patch('me')
   @SelfScoped("updates the caller's own profile")
   @Auth()
@@ -46,43 +81,45 @@ export class AuthController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: UpdateProfileDto,
   ): Promise<UserProfileResponseDto> {
-    const [profile, { role, permissions }, memberships, settings] = await Promise.all([
-      this.authService.updateProfile(user.sub, dto),
-      this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
-      this.workspaceService.getMemberships(user.sub),
-      this.workspaceService.getSettings(user.workspaceId).catch(() => null),
-    ]);
-    return {
-      id: profile.id,
-      email: profile.email,
-      displayName: profile.displayName,
-      avatarUrl: profile.avatarUrl,
-      locale: profile.locale,
-      timezone: profile.timezone,
-      phone: profile.phone ?? null,
-      role,
-      permissions,
-      emailVerified: profile.emailVerified,
-      createdAt: profile.createdAt.toISOString(),
-      updatedAt: profile.updatedAt.toISOString(),
-      memberships,
-      workspaceDefaults: settings
-        ? {
-            timezone: settings.timezone,
-            locale: settings.defaultLocale,
-            dateFormat: settings.dateFormat,
-          }
-        : null,
-    };
+    const profile = await this.profileSync.updateProfile(user.sub, dto);
+    return this.render(user, profile);
   }
 
-  // ── POST /auth/me/avatar/presign ────────────────────────────────────────────
+  /**
+   * Switch the session's active workspace. A service-side `setContext` rather than identity's own
+   * `POST /api/auth/context/set`, so the switch keeps rova's CSRF gate and stamps `last_active_at` (which is what the next
+   * sign-in's `initial()` returns). The caller must be an active member: identity asks `workspace_members` and answers
+   * 403 `CONTEXT_FORBIDDEN` otherwise, changing nothing.
+   */
+  @Post('switch-workspace')
+  @SelfScoped("switches the caller's own session to another of THEIR workspaces")
+  @HttpCode(204)
+  @Auth()
+  @ApiOperation({ summary: 'Make another of your workspaces the active one' })
+  @ApiCommonErrors(401, 403)
+  async switchWorkspace(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: SwitchWorkspaceDto,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<void> {
+    if (user.apiTokenId) {
+      throw new PermissionDeniedException(
+        'API_TOKEN_CANNOT_SWITCH_WORKSPACE',
+        'An API token is bound to its workspace. Use an interactive session.',
+      );
+    }
+    const { headers } = await setContext(this.auth, {
+      headers: new Headers(req.headers as Record<string, string>),
+      contextId: dto.workspaceId,
+    });
+    // The staff preset has no cookie cache, so there is nothing to forward; the public preset would need it.
+    for (const [name, value] of headers)
+      if (name.toLowerCase() === 'set-cookie') reply.header(name, value);
+    await this.workspaceService.touchMembership(user.sub, dto.workspaceId);
+  }
 
-  // Avatar upload reuses the shared AttachmentsService + USER_AVATAR_POLICY
-  // (public bucket, 2 MB raster cap, maxPerOwner 1) — the same presign → PUT →
-  // confirm mechanics as work-item attachments. The avatar has no link table in
-  // identity (it is just a URL on the user row), so `currentOwnerCount` is 0:
-  // each upload mints a fresh object and the old one is reaped.
+  /** Presign a PUT URL to upload the current user's avatar. */
   @Post('me/avatar/presign')
   @SelfScoped("presigns an upload for the caller's own avatar")
   @Auth()
@@ -107,8 +144,7 @@ export class AuthController {
     return { fileId, uploadUrl, requiredHeaders };
   }
 
-  // ── POST /auth/me/avatar/confirm ────────────────────────────────────────────
-
+  /** Confirm the uploaded avatar and store its public URL on the profile. */
   @Post('me/avatar/confirm')
   @SelfScoped("confirms the caller's own avatar upload")
   @Auth()
@@ -125,22 +161,17 @@ export class AuthController {
       dto.fileId,
       USER_AVATAR_POLICY,
     );
-    // A public policy resolves to a durable CDN URL (expiresInSeconds === 0). A
-    // positive TTL means no CDN is configured, so the URL is a short-lived
-    // presigned GET — unsuitable to persist as a stable avatarUrl. Fail clearly
-    // rather than store an expiring link.
     if (expiresInSeconds > 0) {
       throw new ConflictException(
         'AVATAR_STORAGE_UNCONFIGURED',
         'Avatar storage is not configured (no public CDN base URL).',
       );
     }
-    await this.authService.updateProfile(user.sub, { avatarUrl: url });
+    await this.profileSync.updateProfile(user.sub, { avatarUrl: url });
     return { avatarUrl: url };
   }
 
-  // ── POST /auth/logout-all ──────────────────────────────────────────────────
-
+  /** "Sign out everywhere": end every session of the caller. */
   @Post('logout-all')
   @SelfScoped("revokes the caller's own sessions")
   @Auth()
@@ -152,9 +183,45 @@ export class AuthController {
     @CurrentUser() user: JwtPayload,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<void> {
-    await this.authService.logoutAll(user);
-    // Under the BFF flow the browser holds only the opaque session cookie; drop
-    // it so the current device is signed out immediately alongside the others.
-    reply.clearCookie(BFF_SESSION_COOKIE, { path: '/' });
+    await revokeUserSessions(this.auth, user.sub);
+    reply.clearCookie(SESSION_COOKIE, { path: '/' });
+  }
+
+  private async requireProfile(userId: string): Promise<Profile> {
+    const profile = await this.directory.findById(userId);
+    if (!profile) throw new NotFoundException('USER_NOT_FOUND', 'User not found');
+    return profile;
+  }
+
+  private async render(user: JwtPayload, profile: Profile): Promise<UserProfileResponseDto> {
+    const [{ role, permissions }, memberships, settings] = await Promise.all([
+      this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
+      this.workspaceService.getMemberships(user.sub),
+      user.workspaceId
+        ? this.workspaceService.getSettings(user.workspaceId).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    return {
+      id: profile.id,
+      email: profile.email,
+      displayName: profile.displayName,
+      avatarUrl: profile.avatarUrl,
+      locale: profile.locale,
+      timezone: profile.timezone,
+      phone: profile.phone ?? null,
+      role,
+      permissions,
+      emailVerified: profile.emailVerified,
+      createdAt: profile.createdAt.toISOString(),
+      updatedAt: profile.updatedAt.toISOString(),
+      memberships,
+      workspaceDefaults: settings
+        ? {
+            timezone: settings.timezone,
+            locale: settings.defaultLocale,
+            dateFormat: settings.dateFormat,
+          }
+        : null,
+    };
   }
 }

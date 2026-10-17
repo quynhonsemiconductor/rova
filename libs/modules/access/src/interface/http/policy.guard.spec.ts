@@ -20,16 +20,8 @@ const PROJ_CODE = 'work_item:edit';
 const actor = (permissions: string[]): JwtPayload => ({
   sub: 'user-1',
   workspaceId: 'ws-1',
-  contextId: 'ws-1',
   permissions,
-  claims: { permissions },
   sessionId: 's1',
-  jti: 'j1',
-  iss: 'rova',
-  aud: 'rova',
-  iat: 0,
-  exp: 0,
-  authMethod: 'sso',
 });
 
 function makeCtx(

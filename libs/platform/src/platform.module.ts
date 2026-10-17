@@ -1,26 +1,20 @@
 import { Global, Module } from '@nestjs/common';
-import { PassportModule } from '@nestjs/passport';
-import { JwtModule } from '@nestjs/jwt';
-import { APP_GUARD } from '@nestjs/core';
 import { AppConfigModule } from './config/config.module';
 import { AppConfigService } from './config/app-config.service';
 import { DatabaseModule } from './database/database.module';
 import { CacheModule } from '@quynhonsemiconductor/platform-cache';
-import { AuthTokenCache } from '@quynhonsemiconductor/identity';
 import { RequestContextService } from './context/request-context';
-import { JwtStrategy } from './auth/jwt.strategy';
-import { JwtAuthGuard } from './auth/jwt.guard';
+import { SessionAuthGuard } from './auth/session-auth.guard';
 // Metric instruments come from the shared package so every product emits the same
 // names with the same bounded labels.
 import {
-  AuthMetrics,
   DbPoolMetrics,
   HttpMetrics,
   JobMetrics,
   QueueMetrics,
   SecurityMetrics,
+  AuthMetrics,
 } from '@quynhonsemiconductor/observability';
-import { RateLimitGuard } from './rate-limit/rate-limit.guard';
 import { OutboxService } from './outbox/outbox.service';
 import { AuditProducer } from './audit/audit-producer.service';
 import { EmailService } from './email/email.service';
@@ -34,7 +28,6 @@ import { NotificationSchedulerService } from './notifications/notification-sched
 import { NotificationPubSubService } from './notifications/notification-pubsub.service';
 import { ExclusiveJob } from '@quynhonsemiconductor/platform-runtime';
 import { PublicConfigController } from './observability/public-config.controller';
-import { Algorithm } from 'jsonwebtoken';
 import { IdempotencyInterceptor } from './http/idempotency.interceptor';
 import { HttpLoggingInterceptor } from './http/http-logging.interceptor';
 import { ResilienceModule } from './resilience/resilience.module';
@@ -56,27 +49,6 @@ import { StorageService } from './storage/storage.service';
       }),
     }),
 
-    PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.registerAsync({
-      inject: [AppConfigService],
-      useFactory: (config: AppConfigService) => ({
-        privateKey: config.get('JWT_PRIVATE_KEY'),
-        publicKey: config.get('JWT_PUBLIC_KEY'),
-        signOptions: {
-          algorithm: 'ES256' as Algorithm,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-          expiresIn: config.get('JWT_ACCESS_EXPIRY') as any,
-          issuer: config.get('JWT_ISSUER'),
-          audience: config.get('JWT_AUDIENCE'),
-        },
-        verifyOptions: {
-          algorithms: ['ES256'] as Algorithm[],
-          issuer: config.get('JWT_ISSUER'),
-          audience: config.get('JWT_AUDIENCE'),
-        },
-      }),
-    }),
-
     ResilienceModule,
   ],
   controllers: [PublicConfigController],
@@ -88,15 +60,14 @@ import { StorageService } from './storage/storage.service';
     QueueMetrics,
     DbPoolMetrics,
     SecurityMetrics,
+    // `auth_login_total{method,outcome}`: the sign-in counter the `auth-login-failure-rate` alert and the dashboard read. Fed by
+    // the identity module's security-event sink (a sign-in no longer passes through a controller of ours).
     AuthMetrics,
-    // Auth-token cache (denylist / rotation grace / user revocation) owned by
-    // @quynhonsemiconductor/identity, composing the shared CacheService primitive.
-    AuthTokenCache,
-    JwtStrategy,
-    JwtAuthGuard,
-    // Global rate-limit guard — applies to every route.
-    // Use @RateLimit('TIER') to override, @SkipRateLimit() to opt out.
-    { provide: APP_GUARD, useClass: RateLimitGuard },
+    // The route-level half of authentication (`@Auth()`): identity's global SessionGuard authenticates, this turns the
+    // session (or an API token) into `request.user`.
+    SessionAuthGuard,
+    // NOT here: the global RateLimitGuard. It must run AFTER identity's SessionGuard, and a guard declared in a module
+    // that is imported earlier runs first, so it lives in `RateLimitModule`, imported after the identity module.
     OutboxService,
     AuditProducer,
     // Email provider — selected via EMAIL_PROVIDER env var ('ses' | 'resend' | 'dev').
@@ -127,8 +98,6 @@ import { StorageService } from './storage/storage.service';
     AppConfigModule,
     DatabaseModule,
     CacheModule,
-    AuthTokenCache,
-    JwtModule,
     ExclusiveJob,
     RequestContextService,
     HttpMetrics,
@@ -137,7 +106,7 @@ import { StorageService } from './storage/storage.service';
     DbPoolMetrics,
     SecurityMetrics,
     AuthMetrics,
-    JwtAuthGuard,
+    SessionAuthGuard,
     OutboxService,
     AuditProducer,
     EmailService,

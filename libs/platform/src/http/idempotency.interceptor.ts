@@ -1,3 +1,4 @@
+import { Reflector } from '@nestjs/core';
 import {
   CallHandler,
   ExecutionContext,
@@ -12,6 +13,7 @@ import { Observable, from, of } from 'rxjs';
 import { switchMap, tap } from 'rxjs/operators';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { clientIp, currentUserId } from '@quynhonsemiconductor/platform-http';
+import { IS_PUBLIC_KEY } from '../auth/public-key';
 
 /** TTL for cached idempotent responses (24 hours). */
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
@@ -36,7 +38,10 @@ const IDEMPOTENCY_METHODS = new Set(['POST', 'PUT']);
 export class IdempotencyInterceptor implements NestInterceptor {
   private readonly logger = new Logger(IdempotencyInterceptor.name);
 
-  constructor(private readonly cache: CacheService) {}
+  constructor(
+    private readonly cache: CacheService,
+    private readonly reflector: Reflector,
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (context.getType() !== 'http') return next.handle();
@@ -53,14 +58,29 @@ export class IdempotencyInterceptor implements NestInterceptor {
     // `req.user`. The second matters when no context was seeded (CORRELATION_ID_MODE=disabled makes
     // `setRequestPrincipal` a no-op): without it an AUTHENTICATED caller would be scoped by address + User-Agent, and
     // two users behind one NAT with the same Idempotency-Key and URL could be handed each other's cached response.
-    // Only a request with neither is unauthenticated, and is told apart by address.
-    const userId =
-      currentUserId() ??
-      req.user?.sub ??
-      createHash('sha256')
+    const known = currentUserId() ?? req.user?.sub;
+    let userId: string;
+    if (known) {
+      userId = known;
+    } else {
+      // No user id. On a route that needs authentication that means the caller was authenticated by something that
+      // recorded no principal: scoping by address would let two people behind one NAT share an entry, so NOTHING is
+      // cached (the request still runs). Only an `@Public()` route has no user by design, and is told apart by address.
+      const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+      if (!isPublic) {
+        this.logger.warn(
+          'idempotency: an authenticated route has no user id on the request; not caching',
+        );
+        return next.handle();
+      }
+      userId = createHash('sha256')
         .update(`${clientIp(req)}:${req.headers['user-agent'] ?? ''}`)
         .digest('hex')
         .slice(0, 16);
+    }
     const redisKey = `idem:${userId}:${req.method}:${req.url}:${idempotencyKey}`;
 
     return from(this.cache.instance.get(redisKey)).pipe(
