@@ -37,12 +37,13 @@ import { seedTenantBootstrapInto } from './bootstrap';
 import { resetFixtureTables } from './reset';
 
 export { seed } from './demo';
+import { mirrorIdentityUsers } from './identity-v8-users';
 export { seedSystemRoles } from './reference';
 export { seedTenantBootstrap } from './bootstrap';
 
 /**
  * Dev baseline: RBAC catalogue + QNSC workspace + SSO + a single platform-admin
- * user so dev-login works. NO demo projects/work items — a clean develop DB.
+ * user so test-login works. NO demo projects/work items — a clean develop DB.
  * Prod-safe pieces (roles + workspace) mirror the deploy path; the admin row is
  * a dev convenience (in prod the admin JIT-provisions on first SSO login).
  * Idempotent (fixed UUIDs + onConflictDoNothing).
@@ -58,7 +59,7 @@ export async function seedBaseline(connectionUrl?: string): Promise<void> {
     await seedSystemRolesInto(db);
     await seedTenantBootstrapInto(db);
 
-    // Platform-admin user + workspace membership (dev-login target).
+    // Platform-admin user + workspace membership (test-login target).
     const adminEmail = process.env['ADMIN_EMAIL'] ?? 'admin@qnsc.dev';
     await db
       .insert(schema.users)
@@ -75,6 +76,7 @@ export async function seedBaseline(connectionUrl?: string): Promise<void> {
       .insert(schema.workspaceMembers)
       .values({ workspaceId: WORKSPACE_ID, userId: ADMIN_USER_ID })
       .onConflictDoNothing();
+    await mirrorIdentityUsers(db);
 
     // workspace_admin role (prefer the workspace-owned copy over the global template).
     const rows = await db

@@ -645,7 +645,7 @@ interface DiscoveredRoute {
 function discoverRoutes(): DiscoveredRoute[] {
   const routes: DiscoveredRoute[] = [];
   for (const ctor of CONTROLLERS) {
-    const prototype = ctor.prototype as Record<string, unknown>;
+    const prototype = ctor.prototype as unknown as Record<string, unknown>;
     for (const name of Object.getOwnPropertyNames(prototype)) {
       if (name === 'constructor') continue;
       const handler = prototype[name];
@@ -1093,7 +1093,7 @@ interface RouteSchema {
 function discoverResponseSchemas(): RouteSchema[] {
   const out: RouteSchema[] = [];
   for (const ctor of CONTROLLERS) {
-    const prototype = ctor.prototype as Record<string, unknown>;
+    const prototype = ctor.prototype as unknown as Record<string, unknown>;
     for (const name of Object.getOwnPropertyNames(prototype)) {
       if (name === 'constructor') continue;
       const handler = prototype[name];

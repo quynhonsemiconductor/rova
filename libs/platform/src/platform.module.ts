@@ -13,6 +13,7 @@ import {
   JobMetrics,
   QueueMetrics,
   SecurityMetrics,
+  AuthMetrics,
 } from '@quynhonsemiconductor/observability';
 import { OutboxService } from './outbox/outbox.service';
 import { AuditProducer } from './audit/audit-producer.service';
@@ -60,6 +61,9 @@ import { StorageService } from './storage/storage.service';
     QueueMetrics,
     DbPoolMetrics,
     SecurityMetrics,
+    // `auth_login_total{method,outcome}`: the sign-in counter the `auth-login-failure-rate` alert and the dashboard read. Fed by
+    // the identity module's security-event sink (a sign-in no longer passes through a controller of ours).
+    AuthMetrics,
     // The route-level half of authentication (`@Auth()`): identity's global SessionGuard authenticates, this turns the
     // session (or an API token) into `request.user`.
     SessionAuthGuard,
@@ -114,6 +118,7 @@ import { StorageService } from './storage/storage.service';
     QueueMetrics,
     DbPoolMetrics,
     SecurityMetrics,
+    AuthMetrics,
     SessionAuthGuard,
     OutboxService,
     AuditProducer,

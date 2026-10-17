@@ -1,6 +1,5 @@
 import { Global, Module } from '@nestjs/common';
 import { IdentityModule } from '@quynhonsemiconductor/identity/nest';
-import { PinoLogger } from 'nestjs-pino';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { AppConfigService, DRIZZLE, WORKSPACE_CONTEXT_REVOKER, type DrizzleDB } from '@platform';
 import { AccessModule } from '@modules/access';
@@ -53,7 +52,6 @@ class IdentityBindingsModule {}
         StaffSignInHandler,
         WorkspaceContext,
         SecurityEventAuditSink,
-        PinoLogger,
       ],
       useFactory: (
         config: AppConfigService,
@@ -62,9 +60,7 @@ class IdentityBindingsModule {}
         staffSignIn: StaffSignInHandler,
         workspaceContext: WorkspaceContext,
         auditSink: SecurityEventAuditSink,
-        logger: PinoLogger,
-      ) =>
-        createRovaIdentity({ config, db, cache, staffSignIn, workspaceContext, auditSink, logger }),
+      ) => createRovaIdentity({ config, db, cache, staffSignIn, workspaceContext, auditSink }),
     }),
   ],
   controllers: [AuthController],
@@ -73,6 +69,6 @@ class IdentityBindingsModule {}
     IdentityContextRevoker,
     { provide: WORKSPACE_CONTEXT_REVOKER, useExisting: IdentityContextRevoker },
   ],
-  exports: [WORKSPACE_CONTEXT_REVOKER, UserDirectory],
+  exports: [WORKSPACE_CONTEXT_REVOKER, IdentityBindingsModule],
 })
 export class AuthModule {}

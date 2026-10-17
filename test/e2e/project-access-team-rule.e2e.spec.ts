@@ -20,9 +20,8 @@
  * only fall — for a branch of a pure function the unit spec already pins in both directions.
  *
  * No `/v1` prefix: `Test.createTestingModule` builds the app WITHOUT the bootstrap that sets the
- * global prefix. Bearer tokens from `AuthService.devLogin` / `ssoLogin` rather than the BFF, because
- * the test app registers no cookie plugin (`reply.setCookie is not a function`) — and Bearer callers
- * are CSRF-exempt by design, so there is no token dance.
+ * global prefix. Sessions come from identity's test-login (`support/session.ts`); this app has no CSRF hook
+ * (that is `bootstrapApp`'s), so there is no token dance.
  *
  * THE REFUSAL IS 412, NOT 422. `PreconditionFailedException` maps to `PRECONDITION_FAILED` → 412 in
  * `@quynhonsemiconductor/platform-http`, while every route in this repo declares `@ApiCommonErrors(…, 422)` for a
@@ -35,17 +34,16 @@ import { randomUUID } from 'node:crypto';
 
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
-import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import {
   ADMIN_USER_ID,
   SEED_PROJECTS,
   TEAM_ALPHA_ID,
   TEAM_BETA_ID,
 } from '../../db/seeds/constants';
+import { provisionUser, signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 const MEMBERS = `/projects/${NXP}/members`;
@@ -60,20 +58,19 @@ interface TeamMemberRow {
 
 describe('PRJ-08: an Editor needs a Team, enforced over HTTP (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
   let waToken: string;
 
   function post(url: string, body: unknown) {
     return app.inject({
       method: 'POST',
       url,
-      headers: { authorization: `Bearer ${waToken}` },
+      headers: { cookie: waToken },
       payload: body as Record<string, unknown>,
     });
   }
 
   function get(url: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${waToken}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: waToken } });
   }
 
   /**
@@ -83,17 +80,7 @@ describe('PRJ-08: an Editor needs a Team, enforced over HTTP (e2e)', () => {
    * A fresh user per test so no assertion depends on another's leftover rows.
    */
   async function newPrincipal(label: string): Promise<string> {
-    const claims: EntraClaims = {
-      oid: `${label}-${randomUUID()}`,
-      email: `${label}-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
-      displayName: `E2E ${label}`,
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    return JSON.parse(Buffer.from(login.accessToken.split('.')[1], 'base64url').toString())[
-      'sub'
-    ] as string;
+    return (await provisionUser(app, `${label}`, `E2E ${label}`)).userId;
   }
 
   async function levelOf(userId: string): Promise<string | null | undefined> {
@@ -110,24 +97,17 @@ describe('PRJ-08: an Editor needs a Team, enforced over HTTP (e2e)', () => {
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-
-    auth = app.get(AuthService);
     // The Workspace Admin is the only principal §3.1 lets assign project access. `admin@qnsc.dev`,
     // not `dev@qnsc.dev`: the seeded WA is `ADMIN_USER_ID`, whose address is the former, and
     // `devLogin` PROVISIONS an unknown address — so the wrong one returns a perfectly valid token for
     // a principal holding nothing, and every assertion here reads 403 instead of the status it means.
-    const login = await auth.devLogin('admin@qnsc.dev', '127.0.0.1');
-    expect(login.accessToken, 'dev-login for admin@qnsc.dev').toBeTruthy();
+    const login = { accessToken: await signIn(app, 'admin@qnsc.dev') };
+    expect(login.accessToken, 'test-login for admin@qnsc.dev').toBeTruthy();
     waToken = login.accessToken;
   });
 

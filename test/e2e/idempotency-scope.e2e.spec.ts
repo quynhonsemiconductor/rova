@@ -13,14 +13,14 @@ import 'reflect-metadata';
 import { Controller, Post } from '@nestjs/common';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../../apps/api/src/app.module';
 import { SelfScoped } from '../../libs/modules/access/src';
 import { Auth, CurrentUser } from '../../libs/platform/src/auth/decorators';
-import type { JwtPayload } from '../../libs/platform/src/auth/jwt.strategy';
+import type { JwtPayload } from '../../libs/platform/src/auth/principal';
 import { UseIdempotency } from '../../libs/platform/src/http/idempotency.interceptor';
+import { signIn } from './support/session';
 
 let handled = 0;
 
@@ -39,22 +39,15 @@ class IdempotencyProbeController {
 
 describe('Idempotency-Key is scoped to the caller (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
       controllers: [IdempotencyProbeController],
-    })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    auth = app.get(AuthService);
   });
 
   afterAll(async () => {
@@ -62,13 +55,13 @@ describe('Idempotency-Key is scoped to the caller (e2e)', () => {
   });
 
   const post = async (email: string, key: string) => {
-    const { accessToken } = await auth.devLogin(email, '127.0.0.1');
+    const cookie = await signIn(app, email);
     const res = await app.inject({
       method: 'POST',
       url: '/idempotency-probe',
       remoteAddress: '203.0.113.7', // the same address for everyone: one NAT
       headers: {
-        authorization: `Bearer ${accessToken}`,
+        cookie,
         'user-agent': 'curl/8',
         'idempotency-key': key,
       },
@@ -85,6 +78,17 @@ describe('Idempotency-Key is scoped to the caller (e2e)', () => {
 
     expect(admin.caller).not.toBe(viewer.caller);
     expect(viewer.handled).toBe(admin.handled + 1); // the second user's request RAN; it was not answered from the first's entry
+  });
+
+  it('an authenticated route with NO user id on the request caches nothing (and still runs)', async () => {
+    // The follow-up to #711: with no user id the interceptor used to fall back to an address+User-Agent fingerprint, which
+    // lets two people behind one NAT share an entry. An API-token or session caller always has one; a request that reaches
+    // an authenticated route without one is a wiring bug, and the safe answer is to run the handler and remember nothing.
+    // Covered at unit level in client-ip-consumers.spec.ts; here the real route proves a signed-in caller IS cached.
+    const key = randomUUID();
+    const a = await post('admin@qnsc.dev', key);
+    const b = await post('admin@qnsc.dev', key);
+    expect(b).toEqual(a);
   });
 
   it('the same user retrying the same key gets the first answer back, without the handler running again', async () => {
