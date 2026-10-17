@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BFF_SESSION_COOKIE } from '../auth/bff-session-resolver';
+import { SESSION_COOKIE } from '../auth/session-cookie';
 import { requiresCsrfProtection } from './csrf';
 
 /**
@@ -8,7 +8,7 @@ import { requiresCsrfProtection } from './csrf';
  * no answer anywhere in the codebase or the test suite.
  */
 describe('requiresCsrfProtection', () => {
-  const sessionCookies = { [BFF_SESSION_COOKIE]: 'sid-1' };
+  const sessionCookies = { [SESSION_COOKIE]: 'sid-1' };
 
   const req = (over: Partial<Parameters<typeof requiresCsrfProtection>[0]> = {}) => ({
     method: 'POST',
@@ -52,24 +52,30 @@ describe('requiresCsrfProtection', () => {
   });
 
   it.each([
-    '/v1/bff/login/sso',
-    '/v1/bff/login/start',
-    '/v1/bff/dev-login',
+    '/api/auth/sign-in/social',
+    '/api/auth/sign-out',
+    '/api/auth/context/set',
     '/v1/scm/webhook',
     '/v1/scm/webhook/github',
   ])('exempts %s', (url) => {
-    // Login starters run before a session exists; the webhook is called by GitHub
-    // with an HMAC signature, never by a browser.
+    // identity's own surface runs before a session exists (Better Auth enforces its own Origin check there); the
+    // webhook is called by GitHub with an HMAC signature, never by a browser.
     expect(requiresCsrfProtection(req({ url }))).toBe(false);
   });
 
   it('ignores the query string when matching exempt paths', () => {
-    expect(requiresCsrfProtection(req({ url: '/v1/bff/dev-login?returnTo=/home' }))).toBe(false);
+    expect(requiresCsrfProtection(req({ url: '/api/auth/sign-in/social?returnTo=/home' }))).toBe(
+      false,
+    );
   });
 
   it('does not exempt a path that merely starts with an exempt prefix', () => {
-    // `/v1/bff/logout` must NOT ride on the `/v1/bff/login/...` exemptions.
-    expect(requiresCsrfProtection(req({ url: '/v1/bff/logout' }))).toBe(true);
+    // `/api/authx` must NOT ride on the `/api/auth/...` exemption.
+    expect(requiresCsrfProtection(req({ url: '/api/authx/sign-out' }))).toBe(true);
     expect(requiresCsrfProtection(req({ url: '/v1/scm/webhooks-admin' }))).toBe(true);
+  });
+
+  it('pins the session cookie name identity issues', () => {
+    expect(SESSION_COOKIE).toBe('__Secure-rova.session_token');
   });
 });
