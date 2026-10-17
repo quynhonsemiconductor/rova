@@ -662,6 +662,23 @@ variable "edge_client_ip_secret_set" {
   default     = false
 }
 
+variable "better_auth_secret_set" {
+  description = <<-EOT
+    Inject `better-auth-secret` into the API as BETTER_AUTH_SECRET: identity 8 (Better Auth) signs the session cookie and encrypts
+    what it stores with it, and refuses to start the API without a secret of at least 32 characters.
+
+    OFF by default, for the same mechanical reason as `edge_client_ip_secret_set`: the deploy preflight refuses to deploy when an
+    injected Secrets Manager secret holds no value, so injecting it before it is populated blocks every deploy. The key is declared
+    either way. Order, per environment (docs/runbooks/identity-v8-cutover.md):
+      1. generate a value (`openssl rand -base64 48`) and put it into the `better-auth-secret` key of `<product>/<env>/app`;
+      2. set this true and apply;
+      3. only then deploy the identity 8 image (an image deployed before this is true cannot start its API).
+    The worker is never given it.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "storage_public_credentials" {
   description = <<-EOT
     Inject the PUBLIC-bucket R2 credential into api and worker, so the token that writes

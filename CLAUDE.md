@@ -83,8 +83,8 @@ Four deployables from one repo, sharing `libs/` and `db/`:
   running worker is a competing consumer of the same outbox tables the BE e2e suite waits on.
 - **`apps/web`** — React 19 + Vite SPA in Feature-Sliced Design (`app / pages / widgets / features /
 entities / shared`). Its API client is GENERATED from `/api/docs-json` and COMMITTED. Browser auth is
-  BFF: the SPA holds no tokens and talks to `apps/web/functions/v1/[[path]].ts` (a Cloudflare Pages
-  Function) which proxies to the API with an opaque session cookie.
+  an opaque session cookie (identity 8): the SPA holds no tokens and talks to `apps/web/functions/v1/[[path]].ts` and
+  `functions/api/auth/[[path]].ts` (Cloudflare Pages Functions) which proxy `/v1/*` and `/api/auth/*` to the API.
 - **`db/`** — Drizzle schema, hand-written migrations, seeds, and `permissions.catalog.ts`. It ships
   as its own migrator image, which is why the catalogue lives outside `libs/`.
 
@@ -1216,11 +1216,17 @@ either opens a hole or leaks API surface.
 
 ## Auth model (read before touching a guard)
 
-- **Browser sessions are BFF, not bearer.** The SPA holds no tokens. It talks to a
-  same-origin Cloudflare Pages Function (`apps/web/functions/v1/[[path]].ts`) that
-  proxies to the API, and authentication rides an opaque `__Host-rova_session`
-  cookie backed by a server-side Valkey session. Bearer still works for machine
-  clients — `JwtAuthGuard` handles both paths.
+- **Browser sessions are identity 8 cookies, not bearer.** The SPA holds no tokens. It talks to
+  same-origin Cloudflare Pages Functions (`apps/web/functions/v1/[[path]].ts`, `functions/api/auth/[[path]].ts`)
+  that proxy to the API, and authentication rides an opaque `__Secure-rova.session_token` cookie (a database
+  row, cached in Valkey) issued by `@quynhonsemiconductor/identity` 8 (Better Auth, `staff` preset, Entra).
+  identity's global `SessionGuard` authenticates; rova's route-level `SessionAuthGuard` (`@Auth()`) turns the
+  session into `request.user`. The session's `contextId` IS the active workspace (kept honest against
+  `workspace_members`, revalidated every 60 s, cleared at once when a member is removed). API tokens (`rly_...`,
+  `Authorization: Bearer`) are authenticated by `ApiTokenGuard`, a GLOBAL guard registered BEFORE
+  identity's — module order in `AppModule` is the mechanism (`ApiTokensModule`, `AuthModule`, then
+  `RateLimitModule`) — which calls `markPreAuthenticated(req, { userId })` so a banned user's token is refused.
+  There is no JWT, no refresh token and no key pair. docs/runbooks/identity-v8-cutover.md.
 - **One guard, one decorator.** `PolicyGuard`
   (`libs/modules/access/src/interface/http/policy.guard.ts`) is the single
   authorization decision point. Controllers carry `@AuthPolicy()`; routes carry
