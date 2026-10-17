@@ -21,7 +21,31 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/auth/me': {
+  '/v1/me/api-tokens': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * List my API tokens
+     * @description Includes revoked tokens: the list is also the audit surface, and a token that vanished on revocation would leave no record that it ever existed.
+     */
+    get: operations['ApiTokensController_list']
+    put?: never
+    /**
+     * Mint an API token
+     * @description Returns the credential ONCE. It is stored only as a hash, so it cannot be shown again — a lost token is revoked and replaced. Scopes narrow the token; they can never widen it.
+     */
+    post: operations['ApiTokensController_create']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/me/api-tokens/{id}': {
     parameters: {
       query?: never
       header?: never
@@ -31,31 +55,34 @@ export interface paths {
     get?: never
     put?: never
     post?: never
-    delete?: never
+    /** Revoke one of my API tokens */
+    delete: operations['ApiTokensController_revoke']
     options?: never
     head?: never
-    /** Update authenticated user profile */
-    patch: operations['AuthController_updateProfile']
+    patch?: never
     trace?: never
   }
-  '/v1/auth/me/avatar/presign': {
+  '/v1/api-tokens': {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    get?: never
+    /**
+     * List every live API token in the workspace
+     * @description Live tokens only. Revoked ones are history and belong to their owner’s list; this surface answers "what still has access".
+     */
+    get: operations['ApiTokensAdminController_list']
     put?: never
-    /** Presign a PUT URL to upload the current user avatar */
-    post: operations['AuthController_presignAvatar']
+    post?: never
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  '/v1/auth/me/avatar/confirm': {
+  '/v1/api-tokens/{id}': {
     parameters: {
       query?: never
       header?: never
@@ -64,26 +91,9 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Confirm the uploaded avatar and store it on the profile */
-    post: operations['AuthController_confirmAvatar']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/auth/logout-all': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Revoke all sessions for the authenticated user */
-    post: operations['AuthController_logoutAll']
-    delete?: never
+    post?: never
+    /** Revoke any API token in the workspace */
+    delete: operations['ApiTokensAdminController_revoke']
     options?: never
     head?: never
     patch?: never
@@ -152,6 +162,109 @@ export interface paths {
      * @description Baseline (workspace-wide) permissions unioned with any project-scoped role. Used by the frontend to gate project-scoped UI accurately.
      */
     get: operations['AccessController_getMyProjectPermissions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/auth/me': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Return the authenticated user, their workspaces and permissions */
+    get: operations['AuthController_me']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update authenticated user profile */
+    patch: operations['AuthController_updateProfile']
+    trace?: never
+  }
+  '/v1/auth/switch-workspace': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Make another of your workspaces the active one */
+    post: operations['AuthController_switchWorkspace']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/auth/me/avatar/presign': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Presign a PUT URL to upload the current user avatar */
+    post: operations['AuthController_presignAvatar']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/auth/me/avatar/confirm': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Confirm the uploaded avatar and store it on the profile */
+    post: operations['AuthController_confirmAvatar']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/auth/logout-all': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Revoke all sessions for the authenticated user */
+    post: operations['AuthController_logoutAll']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/audit-logs': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Query audit logs for the workspace */
+    get: operations['AuditController_list']
     put?: never
     post?: never
     delete?: never
@@ -2309,23 +2422,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/audit-logs': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Query audit logs for the workspace */
-    get: operations['AuditController_list']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/v1/reports/iteration-burndown': {
     parameters: {
       query?: never
@@ -2911,84 +3007,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/me/api-tokens': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /**
-     * List my API tokens
-     * @description Includes revoked tokens: the list is also the audit surface, and a token that vanished on revocation would leave no record that it ever existed.
-     */
-    get: operations['ApiTokensController_list']
-    put?: never
-    /**
-     * Mint an API token
-     * @description Returns the credential ONCE. It is stored only as a hash, so it cannot be shown again — a lost token is revoked and replaced. Scopes narrow the token; they can never widen it.
-     */
-    post: operations['ApiTokensController_create']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/me/api-tokens/{id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** Revoke one of my API tokens */
-    delete: operations['ApiTokensController_revoke']
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/api-tokens': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /**
-     * List every live API token in the workspace
-     * @description Live tokens only. Revoked ones are history and belong to their owner’s list; this surface answers "what still has access".
-     */
-    get: operations['ApiTokensAdminController_list']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/api-tokens/{id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** Revoke any API token in the workspace */
-    delete: operations['ApiTokensAdminController_revoke']
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/v1/work-items/{id}/test-cases': {
     parameters: {
       query?: never
@@ -3374,72 +3392,47 @@ export interface paths {
 export type webhooks = Record<string, never>
 export interface components {
   schemas: {
-    UpdateProfileDto: {
-      displayName?: string
-      avatarUrl?: string | null
-      locale?: string
-      timezone?: string
-      phone?: string | null
+    CreateApiTokenDto: {
+      /** @description Human label, shown in the token list */
+      name: string
+      /** @description Lifetime in days. Defaults to 90, capped at 365. */
+      expiresInDays?: number
+      /** @description Permission codes this token may use. NARROWING only — the effective set is your own permissions intersected with this list, so a token can never exceed its owner. Omit to inherit your permissions unchanged. */
+      scopes?: string[]
     }
-    UserProfileResponseDto: {
+    CreatedApiTokenResponseDto: {
+      /** Format: uuid */
       id: string
-      email: string
-      displayName: string
-      avatarUrl: string | null
-      locale: string
-      timezone: string
-      phone: string | null
-      role: string
-      permissions: string[]
-      emailVerified: boolean
+      name: string
+      /** @description First 12 characters. Identifies the token; cannot reconstruct it. */
+      prefix: string
+      scopes: string[] | null
+      /** Format: date-time */
+      expiresAt: string
+      lastUsedAt: string | null
+      revokedAt: string | null
       /** Format: date-time */
       createdAt: string
+      /** Format: uuid */
+      userId: string
+      /** @description The credential. Shown once and never retrievable again — store it now. A lost token is revoked and replaced, not recovered. */
+      token: string
+    }
+    ApiTokenResponseDto: {
+      /** Format: uuid */
+      id: string
+      name: string
+      /** @description First 12 characters. Identifies the token; cannot reconstruct it. */
+      prefix: string
+      scopes: string[] | null
       /** Format: date-time */
-      updatedAt: string
-      memberships: {
-        workspaceId: string
-        name: string
-        slug: string
-        lastActiveAt: string | null
-        roleSlug: string | null
-        roleName: string | null
-      }[]
-      workspaceDefaults: {
-        timezone: string | null
-        locale: string | null
-        dateFormat: string | null
-      } | null
-      csrfToken?: string
-    }
-    PresignAvatarDto: {
-      /** @enum {string} */
-      contentType: 'image/png' | 'image/jpeg' | 'image/webp'
-      contentLength: number
-      checksumSha256: string
-    }
-    PresignAvatarResponseDto: {
+      expiresAt: string
+      lastUsedAt: string | null
+      revokedAt: string | null
+      /** Format: date-time */
+      createdAt: string
       /** Format: uuid */
-      fileId: string
-      /**
-       * Format: uri
-       * @description Presigned PUT URL — expires in 5 minutes
-       */
-      uploadUrl: string
-      /** @description Headers the client MUST send on the PUT — they are part of the signature. */
-      requiredHeaders: {
-        [key: string]: string
-      }
-    }
-    ConfirmAvatarDto: {
-      /** Format: uuid */
-      fileId: string
-    }
-    ConfirmAvatarResponseDto: {
-      /**
-       * Format: uri
-       * @description Durable CDN URL now stored on the user profile
-       */
-      avatarUrl: string
+      userId: string
     }
     RoleResponseDto: {
       /** Format: uuid */
@@ -3471,6 +3464,96 @@ export interface components {
       /** Format: uuid */
       projectId: string
       permissions: string[]
+    }
+    UserProfileResponseDto: {
+      id: string
+      email: string
+      displayName: string
+      avatarUrl: string | null
+      locale: string
+      timezone: string
+      phone: string | null
+      role: string
+      permissions: string[]
+      emailVerified: boolean
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+      memberships: {
+        workspaceId: string
+        name: string
+        slug: string
+        lastActiveAt: string | null
+        roleSlug: string | null
+        roleName: string | null
+      }[]
+      workspaceDefaults: {
+        timezone: string | null
+        locale: string | null
+        dateFormat: string | null
+      } | null
+      csrfToken?: string
+    }
+    UpdateProfileDto: {
+      displayName?: string
+      avatarUrl?: string | null
+      locale?: string
+      timezone?: string
+      phone?: string | null
+    }
+    SwitchWorkspaceDto: {
+      /** Format: uuid */
+      workspaceId: string
+    }
+    PresignAvatarDto: {
+      /** @enum {string} */
+      contentType: 'image/png' | 'image/jpeg' | 'image/webp'
+      contentLength: number
+      checksumSha256: string
+    }
+    PresignAvatarResponseDto: {
+      /** Format: uuid */
+      fileId: string
+      /**
+       * Format: uri
+       * @description Presigned PUT URL — expires in 5 minutes
+       */
+      uploadUrl: string
+      /** @description Headers the client MUST send on the PUT — they are part of the signature. */
+      requiredHeaders: {
+        [key: string]: string
+      }
+    }
+    ConfirmAvatarDto: {
+      /** Format: uuid */
+      fileId: string
+    }
+    ConfirmAvatarResponseDto: {
+      /**
+       * Format: uri
+       * @description Durable CDN URL now stored on the user profile
+       */
+      avatarUrl: string
+    }
+    AuditLogResponseDto: {
+      /** Format: uuid */
+      id: string
+      actorId: string | null
+      actorName: string | null
+      actorEmail: string | null
+      action: string
+      resourceType: string
+      resourceId: string
+      projectId: string | null
+      changes: {
+        [key: string]: unknown
+      } | null
+      metadata: {
+        [key: string]: unknown
+      }
+      /** Format: date-time */
+      occurredAt: string
     }
     WorkspaceResponseDto: {
       /** Format: uuid */
@@ -5521,25 +5604,6 @@ export interface components {
       inApp?: boolean
       email?: boolean
     }
-    AuditLogResponseDto: {
-      /** Format: uuid */
-      id: string
-      actorId: string | null
-      actorName: string | null
-      actorEmail: string | null
-      action: string
-      resourceType: string
-      resourceId: string
-      projectId: string | null
-      changes: {
-        [key: string]: unknown
-      } | null
-      metadata: {
-        [key: string]: unknown
-      }
-      /** Format: date-time */
-      occurredAt: string
-    }
     IterationBurndownResponseDto: {
       context: {
         /** Format: uuid */
@@ -6786,48 +6850,6 @@ export interface components {
       /** @description True when a backfill job was queued */
       enqueued: boolean
     }
-    CreateApiTokenDto: {
-      /** @description Human label, shown in the token list */
-      name: string
-      /** @description Lifetime in days. Defaults to 90, capped at 365. */
-      expiresInDays?: number
-      /** @description Permission codes this token may use. NARROWING only — the effective set is your own permissions intersected with this list, so a token can never exceed its owner. Omit to inherit your permissions unchanged. */
-      scopes?: string[]
-    }
-    CreatedApiTokenResponseDto: {
-      /** Format: uuid */
-      id: string
-      name: string
-      /** @description First 12 characters. Identifies the token; cannot reconstruct it. */
-      prefix: string
-      scopes: string[] | null
-      /** Format: date-time */
-      expiresAt: string
-      lastUsedAt: string | null
-      revokedAt: string | null
-      /** Format: date-time */
-      createdAt: string
-      /** Format: uuid */
-      userId: string
-      /** @description The credential. Shown once and never retrievable again — store it now. A lost token is revoked and replaced, not recovered. */
-      token: string
-    }
-    ApiTokenResponseDto: {
-      /** Format: uuid */
-      id: string
-      name: string
-      /** @description First 12 characters. Identifies the token; cannot reconstruct it. */
-      prefix: string
-      scopes: string[] | null
-      /** Format: date-time */
-      expiresAt: string
-      lastUsedAt: string | null
-      revokedAt: string | null
-      /** Format: date-time */
-      createdAt: string
-      /** Format: uuid */
-      userId: string
-    }
     TestCaseResponseDto: {
       /** Format: uuid */
       id: string
@@ -6999,25 +7021,58 @@ export interface operations {
       }
     }
   }
-  AuthController_updateProfile: {
+  ApiTokensController_list: {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateProfileDto']
-      }
-    }
+    requestBody?: never
     responses: {
       200: {
         headers: {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['UserProfileResponseDto']
+          'application/json': components['schemas']['ApiTokenResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ApiTokensController_create: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateApiTokenDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CreatedApiTokenResponseDto']
         }
       }
       /** @description Bad Request — validation error or malformed input */
@@ -7029,6 +7084,13 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }
@@ -7043,29 +7105,19 @@ export interface operations {
       }
     }
   }
-  AuthController_presignAvatar: {
+  ApiTokensController_revoke: {
     parameters: {
       query?: never
       header?: never
-      path?: never
+      path: {
+        id: string
+      }
       cookie?: never
     }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['PresignAvatarDto']
-      }
-    }
+    requestBody?: never
     responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PresignAvatarResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
+      /** @description Revoked, or already revoked — the call is idempotent. */
+      204: {
         headers: {
           [name: string]: unknown
         }
@@ -7078,52 +7130,8 @@ export interface operations {
         }
         content?: never
       }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AuthController_confirmAvatar: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ConfirmAvatarDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ConfirmAvatarResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }
@@ -7136,23 +7144,9 @@ export interface operations {
         }
         content?: never
       }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
     }
   }
-  AuthController_logoutAll: {
+  ApiTokensAdminController_list: {
     parameters: {
       query?: never
       header?: never
@@ -7161,7 +7155,42 @@ export interface operations {
     }
     requestBody?: never
     responses: {
-      /** @description All sessions revoked */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ApiTokenResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ApiTokensAdminController_revoke: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Revoked, or already revoked — the call is idempotent. */
       204: {
         headers: {
           [name: string]: unknown
@@ -7170,6 +7199,20 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }
@@ -7314,6 +7357,307 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_me: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UserProfileResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_updateProfile: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateProfileDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UserProfileResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_switchWorkspace: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SwitchWorkspaceDto']
+      }
+    }
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_presignAvatar: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PresignAvatarDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PresignAvatarResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_confirmAvatar: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConfirmAvatarDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ConfirmAvatarResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_logoutAll: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description All sessions revoked */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuditController_list: {
+    parameters: {
+      query?: {
+        actorId?: string
+        resourceType?: string
+        resourceId?: string
+        projectId?: string
+        action?: string
+        from?: string
+        to?: string
+        limit?: number
+        offset?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['AuditLogResponseDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
+              total?: number
+            }
+          }
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -14962,68 +15306,6 @@ export interface operations {
       }
     }
   }
-  AuditController_list: {
-    parameters: {
-      query?: {
-        actorId?: string
-        resourceType?: string
-        resourceId?: string
-        projectId?: string
-        action?: string
-        from?: string
-        to?: string
-        limit?: number
-        offset?: number
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Paginated list */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': {
-            data?: components['schemas']['AuditLogResponseDto'][]
-            pageInfo?: {
-              /** @description Opaque cursor token for the next page */
-              nextCursor: string | null
-              hasNextPage: boolean
-              /** @description Number of items returned per page */
-              limit: number
-              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
-              total?: number
-            }
-          }
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
   ReportingController_getIterationBurndown: {
     parameters: {
       query: {
@@ -17073,205 +17355,6 @@ export interface operations {
     requestBody?: never
     responses: {
       /** @description Mapping removed */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  ApiTokensController_list: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ApiTokenResponseDto'][]
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  ApiTokensController_create: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateApiTokenDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['CreatedApiTokenResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  ApiTokensController_revoke: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Revoked, or already revoked — the call is idempotent. */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  ApiTokensAdminController_list: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ApiTokenResponseDto'][]
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  ApiTokensAdminController_revoke: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Revoked, or already revoked — the call is idempotent. */
       204: {
         headers: {
           [name: string]: unknown

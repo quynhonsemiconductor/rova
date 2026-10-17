@@ -1,5 +1,5 @@
 /**
- * `revokeSession` — end the server-side BFF session and clear local auth state.
+ * `revokeSession` — end the server-side session and clear local auth state.
  *
  * Extracted from `widgets/app-shell`'s `handleSignOut`, which was the only implementation, because a
  * PAGE now needs it too: `/accept-invitation` refuses a forwarded link with
@@ -13,7 +13,7 @@
  * `/login`, the accept page goes to `/login?returnTo=<the invitation link>`.
  *
  * The browser holds no tokens (see `http-client.ts`), so "sign out" is entirely: tell the server to
- * drop the session behind `__Host-rova_session`, then forget the user locally.
+ * drop the session behind `__Secure-rova.session_token`, then forget the user locally.
  */
 import { ENV } from '@/shared/config/env'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -21,11 +21,15 @@ import { withCsrfHeader } from './csrf'
 
 export async function revokeSession(): Promise<void> {
   try {
-    await fetch(`${ENV.API_BASE_URL}/v1/bff/logout`, {
+    // identity 8's own sign-out (Better Auth): it ends the session row and clears the cookie. `/api/auth/*` is exempt
+    // from the API's CSRF gate (Better Auth checks the Origin itself); the token is sent anyway, as on every write, and the body
+    // must be JSON.
+    await fetch(`${ENV.API_BASE_URL}/api/auth/sign-out`, {
       method: 'POST',
       credentials: 'include',
-      referrerPolicy: 'no-referrer',
-      headers: withCsrfHeader('POST'),
+      referrerPolicy: 'strict-origin-when-cross-origin',
+      headers: withCsrfHeader('POST', { 'Content-Type': 'application/json' }),
+      body: '{}',
     })
   } catch {
     // Ignore network errors on sign-out — local state is cleared either way, which is the state the
