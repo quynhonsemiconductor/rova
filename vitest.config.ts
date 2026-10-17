@@ -98,6 +98,8 @@ export default defineConfig({
         'libs/modules/identity/src/infrastructure/secrets-manager-secret-resolver.ts',
         'libs/platform/src/config/env.schema.ts',
         'libs/platform/src/email/email-delivery.service.ts',
+        'libs/platform/src/email/email.service.ts',
+        'libs/platform/src/email/providers/graph.provider.ts',
         'libs/platform/src/outbox/relay-lease.ts',
         'libs/platform/src/rate-limit/rate-limit.guard.ts',
         'libs/platform/src/outbox/retry-after.ts',

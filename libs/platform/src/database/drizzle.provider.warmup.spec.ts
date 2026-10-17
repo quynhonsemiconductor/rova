@@ -166,7 +166,8 @@ describe('DrizzleProvider.onModuleInit — warm-up', () => {
   it('logs at LOG, not WARN, when the pool warms completely', async () => {
     const fake = fakePool();
     withFakePool(provider, fake);
-    const logger = (provider as unknown as { logger: { warn: () => void; log: () => void } }).logger;
+    const logger = (provider as unknown as { logger: { warn: () => void; log: () => void } })
+      .logger;
     const warn = vi.spyOn(logger, 'warn');
     const log = vi.spyOn(logger, 'log');
 

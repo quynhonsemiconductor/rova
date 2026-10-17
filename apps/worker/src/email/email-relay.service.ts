@@ -57,6 +57,8 @@ export class EmailRelayService
   }
 
   async onModuleInit(): Promise<void> {
+    // Fail the deploy, not the first invitation, if the configured transport cannot work (a missing Graph variable).
+    this.emailService.assertReady();
     this.logger.log('Email relay started — polling email_outbox every 5s');
     this.unsubscribeRelayWake = await this.pubSub.subscribeEmailRelayWake(() => {
       this.relay().catch((err: unknown) =>
