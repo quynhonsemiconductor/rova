@@ -106,6 +106,12 @@ module "stack" {
   seed_on_deploy        = false
   platform_admin_emails = var.platform_admin_emails
 
+  // Mail through Microsoft 365 (Graph): STAGED, NOT SWITCHED ON. `email_provider` stays at the module default ("ses") until the owner has done
+  // docs/runbooks/mail-graph.md for this environment; the cut-over is then a PR setting email_provider = "graph",
+  // mail_graph_client_id (the "Rova Prod Service" app) and mail_graph_certificate_set = true.
+  // A non-prod environment never sends from the prod mailbox: develop has its own.
+  mail_graph_sender = "noreply-rova@qnsc.vn"
+
   entra_tenant_id = var.entra_tenant_id
 
   # qnsc.vn is the company tenant: those users are directory members on SSO, not B2B

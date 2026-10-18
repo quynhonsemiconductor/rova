@@ -181,6 +181,87 @@ variable "platform_admin_emails" {
   default     = []
 }
 
+variable "email_provider" {
+  description = <<-EOT
+    Which transport sends mail: "graph" sends through Microsoft 365 (Graph `sendMail`) from `mail_graph_sender`, "ses" uses this
+    account's SES (being replaced by graph), "dev" logs and sends nothing.
+
+    Defaults to "ses", which is what both environments ran when this variable did not exist, so applying this changes nothing until
+    somebody chooses "graph". "graph" needs `mail_graph_sender` and the worker's certificate (`mail_graph_certificate_set`); the WORKER
+    is the only process that sends. The mailbox is granted to the Entra app by Exchange RBAC for Applications, NOT by a Graph
+    permission in Entra: docs/runbooks/mail-graph.md has the owner steps, in order.
+  EOT
+  type        = string
+  default     = "ses"
+
+  validation {
+    condition     = contains(["graph", "ses", "dev"], var.email_provider)
+    error_message = "email_provider must be graph, ses or dev."
+  }
+
+  validation {
+    condition = var.email_provider != "graph" || (
+      var.mail_graph_sender != "" && var.mail_graph_client_id != "" && var.mail_graph_certificate_set
+    )
+    error_message = "email_provider = \"graph\" needs mail_graph_sender, mail_graph_client_id and mail_graph_certificate_set = true. Finish docs/runbooks/mail-graph.md first: the deploy refuses to inject a secret that holds no value."
+  }
+}
+
+variable "mail_graph_sender" {
+  description = <<-EOT
+    The shared mailbox Graph sends as, e.g. `noreply-rova@qnsc.vn`. Required for email_provider = "graph". A public address, held in git.
+    Graph sends as exactly this mailbox: the Exchange role assignment is scoped to its PrimarySmtpAddress, so any other sender is a 403.
+
+    A NON-PROD ENVIRONMENT NEVER SENDS FROM THE PROD MAILBOX (decision 2026-10-18, HYBRID-INFRA-PLAN §7.4): develop sends as
+    `noreply-rova-dev@qnsc.vn`, scoped to the develop Service app; production sends as `noreply-rova@qnsc.vn`, scoped to the production Service app.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.mail_graph_sender == "" || can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.mail_graph_sender))
+    error_message = "mail_graph_sender must be a single bare email address (no display name)."
+  }
+
+  # A non-prod environment never sends from the prod mailbox, and production never from the dev one. Each is scoped to its own Service app in
+  # Exchange; this stops the wrong address being typed into the wrong environment's live/main.tf.
+  validation {
+    condition     = var.mail_graph_sender == "" || lower(trimspace(var.mail_graph_sender)) == (var.env == "production" ? "noreply-${var.product}@qnsc.vn" : "noreply-${var.product}-dev@qnsc.vn")
+    error_message = "mail_graph_sender must be noreply-rova@qnsc.vn in production and noreply-rova-dev@qnsc.vn in every other environment (a non-prod environment never sends from the prod mailbox)."
+  }
+}
+
+variable "mail_graph_client_id" {
+  description = <<-EOT
+    Application (client) id of the "Rova <Dev|Prod> Service" Entra app: certificate only (no client secret), worker only. It holds the Exchange
+    RBAC role "Application Mail.Send" scoped to `mail_graph_sender`, and NO Graph permission in Entra. NOT `entra_client_id`, the sign-in app
+    (delegated, client secret, API): a compromised API process must not hold a credential that can send mail. A public identifier, held in git.
+    Empty until the app exists (docs/runbooks/mail-graph.md).
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.mail_graph_client_id == "" || can(regex("^[0-9a-fA-F-]{36}$", var.mail_graph_client_id))
+    error_message = "mail_graph_client_id must be empty or an Entra application (client) id (a UUID)."
+  }
+}
+
+variable "mail_graph_certificate_set" {
+  description = <<-EOT
+    Inject `mail-graph-certificate` into the WORKER (never the api) as MAIL_GRAPH_CERTIFICATE.
+
+    OFF by default, for the same mechanical reason as `edge_client_ip_secret_set`: the deploy preflight refuses to deploy when an
+    injected Secrets Manager secret holds no value. Order, per environment (docs/runbooks/mail-graph.md):
+      1. generate a key and certificate with openssl, upload the public certificate to the Entra app;
+      2. put the PEM (the private key, then the certificate; raw or base64) into the standalone secret `<product>/<env>/mail-graph-certificate`
+         (NOT the app bundle: the API's task role reads the bundle, and must not be able to read this);
+      3. set this true, together with email_provider = "graph".
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "mail_from_email" {
   description = <<-EOT
     Verified sender for all outbound mail. REQUIRED while email_provider is not "dev":
