@@ -35,7 +35,8 @@ the cutover a monitor query will watch it:
 ```sql
 -- both must be empty
 SELECT id FROM identity.users WHERE deleted_at IS NULL AND id NOT IN (SELECT id FROM identity."user");
-SELECT id FROM identity."user" WHERE id NOT IN (SELECT id FROM identity.users WHERE deleted_at IS NULL);
+SELECT u.id FROM identity."user" u WHERE u.id NOT IN (SELECT id FROM identity.users WHERE deleted_at IS NULL)
+AND NOT (u.banned AND u.id IN (SELECT id FROM identity.users WHERE deleted_at IS NOT NULL));  -- banned by v7 soft-delete: exempt
 ```
 
 ## How the v7 rows become v8 rows (the backfill)

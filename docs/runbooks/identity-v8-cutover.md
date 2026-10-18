@@ -6,7 +6,7 @@ instead of the v7 BFF session. This page is the operator's half: what to prepare
 [identity-v8-data-model.md](identity-v8-data-model.md).
 
 **The cutover change does not touch a v7 table.** The v7 tables (`identity.auth_sessions`, `sso_identities`, `sso_connections`, ...) are frozen at
-day 7 and dropped at day 30, in two later changes. Until then rollback is a redeploy.
+day 7 and dropped at day 30, in two later changes that do not gate the cutover. Until the drop, rollback is a redeploy.
 
 ## The order of everything (read this first)
 
@@ -18,19 +18,14 @@ Three changes, in this order. Reversing 1 and 3 is an outage.
 | 2   | **Your steps**: secret, Entra redirect URI, dry run, **commit the backfill**              | See "What you prepare" and "The cutover".                                              | Additive: the backfill writes only `identity."user"` and `identity.account`.                                                                                                                                                                                                      |
 | 3   | **rova#718**: the cutover                                                                 | The v8 API, worker and web.                                                            | Merge only when steps 1 and 2 are done on that environment.                                                                                                                                                                                                                       |
 
-**Prod releases are FROZEN from the #718 merge until the prod window.** Production's migrator image (and its API, worker and SPA) only ever come from a
-release tag, so a tag cut after #718 carries identity 8, and there is no "early" prod release to carry the backfill ahead of it: **we do not cut one.**
-A guard in `backend-deploy.yml`, `web-deploy.yml` and `k8s-promote.yml` enforces the freeze: it refuses a tag, before the migrator and before any
-publish, while `infra/live/prod/main.tf` lacks either of
+**Production is cut in the same release as develop, shortly after develop is verified**, with an announced downtime. Production's migrator image (and its API, worker and SPA) only come from a release tag, so the cutover is a tag cut after the flags below are true on `main` and applied. The reusable deploy workflows refuse a tag, before the migrator and before any publish, while `infra/live/prod/main.tf` lacks either of
 
 - `better_auth_secret_set = true`: the v8 API cannot start without `BETTER_AUTH_SECRET`; the circuit breaker would roll the API back to v7, the worker would
   stay v8, and the SPA (published by the web deploy of the same tag) would already be v8 against a v7 API;
 - `edge_client_ip_secret_set = true`: without it the API falls back to `cf-connecting-ip`, which behind the Pages Function is **one** Cloudflare address for every
   visitor, so the address-keyed rate limit (1,200 requests/min) and identity's own sign-in limits become **company-wide** on the morning everyone signs in again.
 
-The prod cutover release **is** the first tag cut after both are true. There is no hotfix path in the meantime other than reverting #718 on `main` first
-(the guard is part of #718): a branch does not help, because prod only deploys tags, and a tag from before #718 is a tag nobody can cut from `main` any more.
-What replaces an early release is in "Production" below: dry runs from an explicit image digest, and the cutover tag's own migrator committing the backfill.
+The cutover release is the first tag cut after both flags are true. Rollback after it is in "Rollback" below.
 
 A tag's web deploy now waits for the **same tag's** backend deploy (`wait-for-backend` in `web-deploy.yml`), so the SPA of a release never goes
 live ahead of its API, or stays live if that API is rolled back. On **develop** the two deploys are independent (a push to `main`); expect up to ~45
@@ -52,14 +47,14 @@ are green.
 
 ## What you prepare (once per environment)
 
-| #   | Who   | What                                                                                                                                                                                                                             | Proof                                                                                             |
-| --- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| 1   | owner | Entra app registration (the **sign-in** app, single-tenant): add the redirect URI `https://<app domain>/api/auth/callback/microsoft`. **Keep** the v7 one (`/v1/bff/callback`) until the day-7 change.                           | the app's Authentication blade lists both                                                         |
-| 2   | owner | The registration emits the `email` and `upn` claims in the ID token (optional claims). The `staff` preset checks the address AND the UPN against `SSO_ALLOWED_EMAIL_DOMAINS`.                                                    | `Sign-in logs` show a successful token with both; a test sign-in succeeds on develop              |
-| 3   | owner | **Put the key into the bundle and prove the KEY is there** (below). The deploy preflight proves only that the bundle has a version; a missing key passes it and fails at task start, after the migrator ran.                     | `jq -e 'has("better-auth-secret")'` prints `true`                                                 |
-| 4   | owner | Set `better_auth_secret_set = true` in `infra/live/<env>/main.tf` and apply. develop's is already `true` in #718: **do step 3 before merging #718.** Production stays `false` until its window.                                  | `tofu plan` shows the API task gaining `BETTER_AUTH_SECRET`, nothing else                         |
-| 5   | owner | Cloudflare Pages: `API_ORIGIN` and `EDGE_CLIENT_IP_SECRET` are already set for `/v1/*`; the new `/api/auth/*` Function reuses both.                                                                                              | the web deploy lists `functions/api/auth`                                                         |
-| 6   | owner | **Production only:** `edge_client_ip_secret_set = true` (the key the Pages Function signs the visitor address with; docs/runbooks/edge-client-ip.md, "PRODUCTION"). The tag guard refuses a prod tag without it. Develop has it. | a request through the Pages Function logs the visitor's real address; `tofu plan` shows no change |
+| #   | Who   | What                                                                                                                                                                                                                                                      | Proof                                                                                             |
+| --- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 1   | owner | Entra app registration (the **sign-in** app, single-tenant): add the redirect URI `https://<app domain>/api/auth/callback/microsoft`. **Keep** the v7 one (`/v1/bff/callback`) until the day-7 change.                                                    | the app's Authentication blade lists both                                                         |
+| 2   | owner | The registration emits the `email` and `upn` claims in the ID token (optional claims). The `staff` preset checks the address AND the UPN against `SSO_ALLOWED_EMAIL_DOMAINS`.                                                                             | `Sign-in logs` show a successful token with both; a test sign-in succeeds on develop              |
+| 3   | owner | **Put the key into the bundle and prove the KEY is there** (below). The deploy preflight proves only that the bundle has a version; a missing key passes it and fails at task start, after the migrator ran.                                              | `jq -e 'has("better-auth-secret")'` prints `true`                                                 |
+| 4   | owner | Set `better_auth_secret_set = true` in `infra/live/<env>/main.tf` and apply. develop's is already `true` in #718: **do step 3 before merging #718.** For production, set it `true` in the release change (the script's release step checks it on `main`). | `tofu plan` shows the API task gaining `BETTER_AUTH_SECRET`, nothing else                         |
+| 5   | owner | Cloudflare Pages: `API_ORIGIN` and `EDGE_CLIENT_IP_SECRET` are already set for `/v1/*`; the new `/api/auth/*` Function reuses both.                                                                                                                       | the web deploy lists `functions/api/auth`                                                         |
+| 6   | owner | **Production only:** `edge_client_ip_secret_set = true` (the key the Pages Function signs the visitor address with; docs/runbooks/edge-client-ip.md, "PRODUCTION"). The tag guard refuses a prod tag without it. Develop has it.                          | a request through the Pages Function logs the visitor's real address; `tofu plan` shows no change |
 
 The worker is **not** given `BETTER_AUTH_SECRET`. Until PR 4 (below) the worker's Graph guest invite still uses `ENTRA_CLIENT_SECRET`.
 
@@ -88,8 +83,9 @@ Rotating the value later signs everyone out (nothing else); do it the same way a
 
 ## The cutover, in order (develop first, then production)
 
-Steps 1-3 are additive and happen **before** #718 deploys; 4-6 are the window. On production the window is off-peak (Friday evening or Saturday
-morning, the owner picks the slot) and starts only after develop's **day-7 checkpoint**.
+**Develop, interactive:** `bash scripts/owner/identity-v8-cutover.sh develop` runs steps 1 to 6 for develop and the rehearsal (below), one step at a time, with a `yes` before each write. It discovers the names, checks the migrator image contains #719, writes the key (never printed), runs the dry run and the commit, checks the invariant, pauses for the #718 merge, re-runs the backfill, walks the verification checklist and the rollback rehearsal. `--from <step>` resumes (`preflight`, `secret`, `backfill-dry`, `commit`, `merge`, `verify`, `rehearsal`). Its log holds no secret values. Production has its own window and is not handled by it.
+
+Steps 1-3 are additive and happen **before** #718 deploys; 4-6 are the window. Production runs the same steps in one release, shortly after develop is verified, with an announced downtime and a database snapshot before any write (see "Production").
 
 1. **Dry run of the backfill**, from the migrator image (it has the SQL since #719). A one-off ECS task on the migrator's task definition, with the
    command overridden. **First verify what that task definition runs**: its image must be a build of `main` that contains #719 (merge commit `4744d1b3`), or the
@@ -100,7 +96,7 @@ morning, the owner picks the slot) and starts only after develop's **day-7 check
    # -> .../rova-migrator:<tag>. On develop the tag is the commit it was built from: `git merge-base --is-ancestor 4744d1b3 <that commit>` must succeed.
    ```
 
-Names below are `rova-<env_slug>`; find the real ones with the discovery lines first.
+Names below are `rova-<env_slug>`. They come from `infra/modules/stack` (`name = "${product}-${env_slug}"`: cluster `rova-develop`, services `rova-develop-api` and `rova-develop-worker`, migrator family `rova-develop-migrator`, API log group `/ecs/rova-develop-api`). The owner script confirms them against the account before any write.
 
 ```sh
 export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1 ENV_SLUG=develop        # production: prod
@@ -164,15 +160,15 @@ the reason this is done before #718, not after**: fix or remove the fixture, dry
    - [ ] A vendor with a live invitation signs in as a guest and sees only what their invitation granted; a guest with none, or one removed from the workspace, gets `?error=STAFF_SIGN_IN_REFUSED` on the login page.
    - [ ] An API token minted before the cutover authenticates; revoking it returns 401. Banning the owner (`setUserBanned`) returns 401 for the token too. 301 requests with made-up `rly_` tokens from one address end in `429`.
    - [ ] A user suspended/removed from the workspace cannot reach it (zero permissions), and their API tokens are revoked (unchanged behaviour).
+   - [ ] 301 requests with made-up `rly_` tokens from one address end in `429` (the pre-auth limiter).
    - [ ] Sign out, and "sign out everywhere" (`POST /v1/auth/logout-all`), end the session. `GET /api/auth/get-session` carries no `token`.
    - [ ] No `identity.profile_id_mismatch`, `identity.staff_sign_in_refused` (other than the refusals you caused), `identity.auth_handler_threw` or `identity.context_cache_stale` log line. `sign_in.failure` is a metric; the `rate_limit` fail-open alarm stays quiet.
 
 ## Production: how it differs from the develop steps above
 
-Prod's migrator image only comes from a release tag, and tags are frozen from the #718 merge (see "The order of everything"). Two things replace
-the develop path.
+Prod's migrator image only comes from a release tag, so the dry run uses an explicit digest of a build of `main`, and the cutover tag's own migrator commits the backfill. `bash scripts/owner/identity-v8-cutover.sh prod` does both, in this order:
 
-### (a) Dry runs, ahead of the window: from an explicit image digest
+### (a) The dry run: from an explicit image digest (the script's `adhoc-dry` step)
 
 The ECR repositories are one account and one set of repositories for every environment, and a `main` build is `rova-migrator:sha-<full commit sha>`. A
 build of `main` that contains #719 (merge commit `4744d1b3`) therefore already holds the backfill. A one-off task names its **digest**, not a tag, so what
@@ -224,22 +220,27 @@ definition carries `IDENTITY_V8_BACKFILL=commit` (`db/identity-v8/on-deploy.ts`,
 - **The change after the cutover sets it back to `false`.** While it is `true`, every deploy re-runs the preflight against live data and a new outsider row could
   fail an unrelated release.
 
-Cutover sequence on production, in order:
+Cutover sequence on production, in order (the script walks it):
 
-1. (a) done, dry runs green on the digest of a recent `main`; secret and Entra rows from "What you prepare" done (including the `edge_client_ip_secret_set` row);
-2. the cutover change merges (`better_auth_secret_set`, `identity_v8_backfill_on_deploy`, and `edge_client_ip_secret_set` all `true` in `infra/live/prod/main.tf`) and `infra-apply` applies it;
-3. cut the tag in the off-peak window. Backend deploy: migrate, **backfill commit**, API roll; web deploy waits for it (see below);
-4. verify (step 6 above); then the follow-up change sets `identity_v8_backfill_on_deploy` back to `false`.
+1. **Backup:** assert automated backups (retention at least 7 days), create the manual snapshot `rova-prod-pre-identity-v8-<date>`, and wait until it is available. Nothing is written before this.
+2. **Secret and Entra:** `better-auth-secret` into `rova/production/app`; the redirect URI and the optional claims `email` and `upn` on the production sign-in app.
+   2b. **Edge secret** (`docs/runbooks/edge-client-ip.md`): one generated value, set as the Pages secret `EDGE_CLIENT_IP_SECRET` on `rova-prod-web` and as `edge-client-ip-secret` in `rova/production/app`. The script refuses if either already exists, because the Pages value cannot be read back. It must exist before the release: the Function answers 500 without it.
+3. **Dry run** from the digest of a build of `main` (provenance verified), through an ad-hoc task definition. Writes nothing.
+4. **Release change:** `better_auth_secret_set`, `edge_client_ip_secret_set` and `identity_v8_backfill_on_deploy` all `true` in `infra/live/prod/main.tf`, merged, and `infra-apply` applied.
+5. **Announce** the downtime, then cut the tag (the script asks for the name and confirms before it pushes). Backend deploy: migrate, **backfill commit**, API roll; the web deploy waits for it.
+6. **Verify** (you and one other person). Then the follow-up change sets `identity_v8_backfill_on_deploy` back to `false`.
 
-### The web deploy of a prod tag can time out waiting for the backend
+Rollback in this window is in "Rollback" below. The snapshot is the last resort.
+
+can time out waiting for the backend
 
 `wait-for-backend` allows 6 hours: the backend deploy itself waits for apply-prod and the `production` environment's required reviewer. If it still expires, the
 web job fails and the SPA is **not** published (the safe direction: the previous SPA keeps serving against the new API for a while). **Re-run the web jobs once the
 backend deploy is green** (Actions -> Web - Deploy -> the tag's run -> Re-run all jobs). Never publish the SPA by hand ahead of the API.
 
-## Rollback (day 0 to day 7)
+## Rollback
 
-Before the day-7 freeze nothing in the database has to be undone **except the bans** (step 1). Two paths; pick by urgency.
+Until the v7 tables are dropped (the day-30 change), nothing in the database has to be undone **except the bans** (step 1). Two paths; pick by urgency.
 
 **Before either: mirror the bans** (v8-only bans would otherwise be silently lifted, because the v7 image reads `identity.users.status`, not identity 8's `banned`):
 
@@ -272,10 +273,10 @@ on a database where nothing has been written, and it refuses once a later migrat
 
 A fix-forward is usually better than a rollback for a problem in the product hook (`StaffSignInHandler`): its refusals are visible, per person, and carry a code.
 
-### Rehearsal (do this on develop before production; write the result here)
+### Rehearsal (on develop; the script runs it; write the result here)
 
 The rollback has **not been rehearsed** by the author of #718: it needs the ECS and Cloudflare permissions of an operator and a develop deploy to roll back from.
-Before the production window, on develop, with the cutover live and at least one ban placed through `setUserBanned`:
+Before the production release, on develop, with the cutover live and at least one ban placed through `setUserBanned`:
 
 1. note the current task definition revisions and Pages deployment id (the "after" state);
 2. run `mirror-bans` (dry run, then `--commit`), then path A; confirm: staff sign in on v7, the banned person is refused, an API token still works;
@@ -285,7 +286,7 @@ Before the production window, on develop, with the cutover live and at least one
 | ---- | --- | ---- | ----------------------- | --------- | ------ |
 |      |     |      |                         |           |        |
 
-## Day 7 and day 30 (separate changes, not #718; tracked as rova issues)
+## Day 7 and day 30 (separate changes, not #718; tracked as rova issues; not prerequisites for the production cutover)
 
 - **Day 7, freeze:** stop writing v7, remove `JWT_PRIVATE_KEY`, `JWT_*` and `ENTRA_REDIRECT_URI` from the task definitions, remove the v7 redirect URI from the
   Entra app. **The worker's daily cleanup (`apps/worker/src/cron/cleanup.cron.ts`, `DELETE FROM identity.auth_sessions ...`) is a v7 write**: it must go in the
