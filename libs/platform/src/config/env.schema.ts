@@ -216,10 +216,36 @@ export const EnvSchema = z
     // ── Email ──────────────────────────────────────────────────────────────────
     /**
      * Which email transport to use. Defaults to 'dev' (logs to stdout).
+     * 'graph' sends through Microsoft 365 (Graph sendMail) from the environment's shared mailbox: needs MAIL_GRAPH_SENDER and
+     * MAIL_GRAPH_CLIENT_ID (the "Rova <Env> Service" app, NOT the sign-in app), and in the WORKER its certificate MAIL_GRAPH_CERTIFICATE.
+     * See docs/runbooks/mail-graph.md.
+     * 'ses' and 'resend' are the transports it replaces and stay only until the cut-over is done.
      * 'ses' requires MAIL_FROM_EMAIL + IAM role with ses:SendEmail.
      * 'resend' requires RESEND_API_KEY + a verified domain in the Resend dashboard.
      */
-    EMAIL_PROVIDER: z.enum(['ses', 'resend', 'dev']).default('dev'),
+    EMAIL_PROVIDER: z.enum(['graph', 'ses', 'resend', 'dev']).default('dev'),
+    /**
+     * The shared mailbox mail goes out as (`noreply-rova@qnsc.vn`). Required for 'graph'; not a secret. Graph sends as this mailbox and no
+     * other (the Exchange role assignment is scoped to it); the display name is the mailbox's own, so MAIL_FROM_NAME does not apply.
+     */
+    MAIL_GRAPH_SENDER: emptyToUndefined(z.string().email().optional()),
+    /**
+     * The "Rova <Env> Service" Entra app: certificate only, worker only, no client secret. NOT `ENTRA_CLIENT_ID`, the sign-in app (delegated,
+     * client secret, API): a compromised API process must not hold a credential that can send mail. The Exchange RBAC role "Application
+     * Mail.Send" is assigned to THIS app, scoped to this environment's mailbox. A public identifier.
+     */
+    MAIL_GRAPH_CLIENT_ID: emptyToUndefined(z.string().uuid().optional()),
+    /**
+     * Credential for the 'graph' provider, ECS (now): a PEM holding the private key AND the certificate of the Service app (MAIL_GRAPH_CLIENT_ID),
+     * raw or base64, from the standalone secret `rova/<env>/mail-graph-certificate` (NOT the app bundle: the API's task role reads the bundle).
+     * READ BY THE WORKER ONLY (the API never sends; only the worker's execution role is granted the secret).
+     */
+    MAIL_GRAPH_CERTIFICATE: emptyToUndefined(z.string().min(1).optional()),
+    /**
+     * Credential for the 'graph' provider, k3s (later): the projected ServiceAccount token a federated credential on the app exchanges. Wins over
+     * the certificate, so the move is: mount the token, set this, delete the certificate.
+     */
+    MAIL_GRAPH_FEDERATED_TOKEN_FILE: emptyToUndefined(z.string().min(1).optional()),
     /** Display name that appears in the From header, e.g. "Mini Rova". */
     MAIL_FROM_NAME: z.string().default('Mini Rova'),
     /** Verified sender address — used by all providers. Required when EMAIL_PROVIDER != 'dev'. */
@@ -427,7 +453,26 @@ export const EnvSchema = z
      * the rule this repo already follows for the database credentials above, and for the same
      * reason — a precise message now beats an invisible outage later.
      */
-    if (env.EMAIL_PROVIDER !== 'dev' && !env.MAIL_FROM_EMAIL) {
+    if (env.EMAIL_PROVIDER === 'graph' && !env.MAIL_GRAPH_SENDER) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAIL_GRAPH_SENDER'],
+        message:
+          'MAIL_GRAPH_SENDER is required when EMAIL_PROVIDER is "graph": it is the shared mailbox Graph sends as ' +
+          '(noreply-rova@qnsc.vn in production, noreply-rova-dev@qnsc.vn in develop), and the Exchange role ' +
+          'assignment names exactly that mailbox.',
+      });
+    }
+    if (env.EMAIL_PROVIDER === 'graph' && !env.MAIL_GRAPH_CLIENT_ID) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAIL_GRAPH_CLIENT_ID'],
+        message:
+          'MAIL_GRAPH_CLIENT_ID is required when EMAIL_PROVIDER is "graph": the "Rova <Env> Service" app that holds the ' +
+          'Exchange "Application Mail.Send" role for the mailbox (not the sign-in app, ENTRA_CLIENT_ID).',
+      });
+    }
+    if (env.EMAIL_PROVIDER !== 'dev' && env.EMAIL_PROVIDER !== 'graph' && !env.MAIL_FROM_EMAIL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['MAIL_FROM_EMAIL'],

@@ -58,7 +58,7 @@ export class EmailSchedulerService {
     options: ScheduleEmailOptions<K>,
     tx?: AnyDb,
   ): Promise<void> {
-    const db = (tx ?? this.db);
+    const db = tx ?? this.db;
     await db
       .insert(emailOutbox)
       .values({

@@ -12,9 +12,7 @@ export type StorageVisibility = 'private' | 'public';
  * type-check. The choice is "is a user waiting on this or not", and there are exactly
  * two answers.
  */
-export type HeadObjectBudget =
-  | ResiliencePreset.STORAGE
-  | ResiliencePreset.STORAGE_INTERACTIVE;
+export type HeadObjectBudget = ResiliencePreset.STORAGE | ResiliencePreset.STORAGE_INTERACTIVE;
 
 export interface PresignPutRequest {
   key: string;

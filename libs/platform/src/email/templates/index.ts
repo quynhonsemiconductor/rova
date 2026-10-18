@@ -214,7 +214,8 @@ function notification(vars: EmailTemplateVars['notification']): RenderedEmail {
     subject,
     html: layout(subject, vars.title, bodyHtml),
     text,
-    category: 'marketing' as const,
+    // A product notification the user asked for, not marketing. 'marketing' was also what made the Graph provider refuse every one of them.
+    category: 'notification' as const,
   };
 }
 
