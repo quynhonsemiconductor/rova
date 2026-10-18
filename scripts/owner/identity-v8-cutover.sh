@@ -117,6 +117,13 @@ discover() {
   if [ -z "$TENANT_ID" ]; then ask "ENTRA_TENANT_ID is not in the task environment; type the sign-in app's tenant id:"; TENANT_ID="$ANSWER"; fi
 }
 
+check_cloudflare_login() { # prod only: the edge step and the release check talk to Cloudflare
+  if ! "${WRANGLER[@]}" whoami >/dev/null 2>&1; then
+    die "not logged in to Cloudflare, which the prod edge step and the release check need. Run 'wrangler login' (or export CLOUDFLARE_API_TOKEN), then run this script again"
+  fi
+  note "Cloudflare: logged in (wrangler whoami)"
+}
+
 print_discovery() {
   say "a. preflight: the names in the account (read-only)"
   note "cluster $CLUSTER; services $API_SERVICE, $WORKER_SERVICE"
@@ -546,7 +553,7 @@ wait_services_on() { # <api ARN> <worker ARN>: the waiter alone also returns aft
 
 # ── run ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
 discover
-run_from preflight && print_discovery
+run_from preflight && { [ "$ENV_NAME" = prod ] && check_cloudflare_login; print_discovery; }
 run_from backup && step_backup
 run_from secret && step_secret
 run_from backfill-dry && step_backfill_dry
