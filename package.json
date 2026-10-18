@@ -37,6 +37,7 @@
     "db:backfill:accepted-date": "tsx db/backfill-accepted-date.ts",
     "db:identity-v8:backfill": "tsx db/identity-v8/cli.ts backfill",
     "db:identity-v8:rollback": "tsx db/identity-v8/cli.ts rollback",
+    "db:identity-v8:mirror-bans": "tsx db/identity-v8/cli.ts mirror-bans",
     "db:report:custom-roles": "tsx db/report-custom-roles.ts",
     "db:studio": "drizzle-kit studio",
     "prepare": "husky"

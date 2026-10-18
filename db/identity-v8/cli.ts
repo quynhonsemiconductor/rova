@@ -1,6 +1,7 @@
 /**
  * pnpm db:identity-v8:backfill  --tenant-id <ENTRA_TENANT_ID> --staff-domains qnsc.vn [--commit --database <name>]
  * pnpm db:identity-v8:rollback  [--allow-data-loss]
+ * pnpm db:identity-v8:mirror-bans [--commit --database <name>]   (before a rollback to the v7 image: see mirror-bans.sql)
  *
  * See backfill.sql and rollback.sql. Neither runs as part of `pnpm db:migrate`.
  */
@@ -13,7 +14,7 @@ try {
 import { Client } from 'pg';
 import { resolveMigrationPoolConfig } from '../pg-pool-config';
 import { log } from '../script-log';
-import { runBackfill, runRollback } from './run';
+import { runBackfill, runMirrorBans, runRollback } from './run';
 
 function option(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -23,15 +24,27 @@ const flag = (name: string): boolean => process.argv.includes(`--${name}`);
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== 'backfill' && command !== 'rollback') {
+  if (command !== 'backfill' && command !== 'rollback' && command !== 'mirror-bans') {
     process.stderr.write(
-      'usage: cli.ts backfill --tenant-id <id> --staff-domains <a,b> [--commit] | rollback [--allow-data-loss]\n',
+      'usage: cli.ts backfill --tenant-id <id> --staff-domains <a,b> [--commit] | rollback [--allow-data-loss] | mirror-bans [--commit --database <name>]\n',
     );
     process.exit(2);
   }
   const client = new Client(resolveMigrationPoolConfig());
   await client.connect();
   try {
+    if (command === 'mirror-bans') {
+      const commit = flag('commit');
+      const summary = await runMirrorBans(client, { commit, database: option('database') });
+      for (const [what, n] of Object.entries(summary))
+        process.stdout.write(`${String(n).padStart(8)}  ${what}\n`);
+      log.info(
+        commit
+          ? 'identity v8 bans mirrored onto identity.users.status (COMMITTED)'
+          : 'identity v8 mirror-bans DRY RUN: nothing was written (pass --commit --database <name>)',
+      );
+      return;
+    }
     if (command === 'rollback') {
       await runRollback(client, { allowDataLoss: flag('allow-data-loss') });
       log.info(
