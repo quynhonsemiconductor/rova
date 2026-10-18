@@ -128,7 +128,6 @@ module "stack" {
   // Mail through Microsoft 365 (Graph): ON. The worker sends as noreply-rova-dev@qnsc.vn with the "Rova Dev Service" app (certificate only, no Entra
   // permissions; Exchange "Application Mail.Send" scoped to that one mailbox). The certificate is the standalone secret rova/develop/mail-graph-certificate.
   // A non-prod environment never sends from the prod mailbox: develop has its own. docs/runbooks/mail-graph.md.
-  email_provider             = "graph"
   mail_graph_client_id       = "ba917ac2-3580-43ef-a8c1-c8cb6288651a"
   mail_graph_certificate_set = true
   mail_graph_sender          = "noreply-rova-dev@qnsc.vn"

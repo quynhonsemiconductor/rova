@@ -175,7 +175,7 @@ export const outboxStatusEnum = pgEnum('outbox_status', ['pending', 'published',
  * `sent` means ACCEPTED BY THE PROVIDER, not delivered — SES takes the message and
  * answers 200 before the receiving mail server has said anything. `bounced` and
  * `complained` are the provider's asynchronous verdicts arriving later over the
- * feedback loop (SES configuration-set events drained by BounceFeedbackService):
+ * feedback loop (SES configuration-set events, removed with SES in rova#717):
  * `bounced` = the receiving server rejected it (bad mailbox, spam-policy refusal,
  * quarantine-as-bounce), `complained` = the recipient marked it spam. They are
  * terminal overlays on a row already `sent` — the send happened, this is what came

@@ -159,7 +159,6 @@ export default defineConfig({
         // NOTE for whoever comments in this array next: it is parsed by regex, so an apostrophe
         // re-pairs every quote after it and a closing square bracket truncates the whole list.
         // Both fail the ratchet with a diff full of fragments rather than a filename.
-        'apps/worker/src/email/bounce-feedback.service.ts',
         'apps/worker/src/identity/entra-guest-invite-relay.service.ts',
         'apps/worker/src/heartbeat/worker-heartbeat.service.ts',
         'libs/platform/src/context/request-context.ts',

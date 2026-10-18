@@ -138,18 +138,6 @@ export const EnvSchema = z
      */
     AWS_ENDPOINT_URL: z.string().url().optional(),
     /**
-     * SES configuration set every send is tagged with, so bounce/complaint events fan out
-     * to the feedback queue. OPTIONAL: unset = sends are untagged and behave exactly as
-     * before the feedback loop existed (the dev provider ignores it entirely).
-     */
-    SES_BOUNCE_CONFIGSET: z.string().default(''),
-    /**
-     * The SQS queue BounceFeedbackService drains for SES bounce/complaint verdicts.
-     * OPTIONAL and the consumer's OFF switch: unset = no consumer starts. Set alongside
-     * SES_BOUNCE_CONFIGSET in a deployed environment for the loop to be live end to end.
-     */
-    SES_BOUNCE_QUEUE_URL: z.string().default(''),
-    /**
      * Static AWS credentials. Set ONLY alongside AWS_ENDPOINT_URL for local dev /
      * CI (LocalStack accepts any value, conventionally "test"). In real AWS the
      * ECS task role / instance profile supplies credentials — leave these UNSET.
@@ -208,18 +196,16 @@ export const EnvSchema = z
      * 'graph' sends through Microsoft 365 (Graph sendMail) from the environment's shared mailbox: needs MAIL_GRAPH_SENDER and
      * MAIL_GRAPH_CLIENT_ID (the "Rova <Env> Service" app, NOT the sign-in app), and in the WORKER its certificate MAIL_GRAPH_CERTIFICATE.
      * See docs/runbooks/mail-graph.md.
-     * 'ses' and 'resend' are the transports it replaces and stay only until the cut-over is done.
-     * 'ses' requires MAIL_FROM_EMAIL + IAM role with ses:SendEmail.
-     * 'resend' requires RESEND_API_KEY + a verified domain in the Resend dashboard.
      */
-    EMAIL_PROVIDER: z.enum(['graph', 'smtp', 'ses', 'resend', 'dev']).default('dev'),
+    EMAIL_PROVIDER: z.enum(['graph', 'smtp', 'dev']).default('dev'),
     /**
      * 'smtp' sends through a plain SMTP relay: Mailpit in development (`MAIL_SMTP_HOST`/`MAIL_SMTP_PORT`, sender `MAIL_FROM_EMAIL`).
      * Development only: refused when NODE_ENV=production here and by platform-mail's smtp-guard.
      */
+
     /**
      * The shared mailbox mail goes out as (`noreply-rova@qnsc.vn`). Required for 'graph'; not a secret. Graph sends as this mailbox and no
-     * other (the Exchange role assignment is scoped to it); the display name is the mailbox's own, so MAIL_FROM_NAME does not apply.
+     * other (the Exchange role assignment is scoped to it); the display name is the mailbox's own, so no From name is configured.
      */
     MAIL_GRAPH_SENDER: emptyToUndefined(z.string().email().optional()),
     /**
@@ -245,10 +231,9 @@ export const EnvSchema = z
     MAIL_SMTP_PORT: emptyToUndefined(z.coerce.number().int().min(1).max(65535).optional()),
     /** Display name that appears in the From header, e.g. "Mini Rova". */
     MAIL_FROM_NAME: z.string().default('Mini Rova'),
-    /** Verified sender address — used by all providers. Required when EMAIL_PROVIDER != 'dev'. */
+    /** Verified sender address for the smtp relay (graph sends as the mailbox, so it does not need it). */
     MAIL_FROM_EMAIL: z.string().email().optional(),
-    /** Required when EMAIL_PROVIDER=resend. */
-    RESEND_API_KEY: z.string().optional(),
+
     /** Reply-To address shown in email clients. Defaults to a no-reply alias. */
     MAIL_REPLY_TO: z.string().email().optional(),
     /** Public base URL used to build password-reset and invitation links (e.g. https://app.rally.io). */
@@ -410,19 +395,10 @@ export const EnvSchema = z
     }
 
     /**
-     * A real email provider needs a SENDER, and the absence of one is silent otherwise.
-     *
-     * `MAIL_FROM_EMAIL` said "Required when EMAIL_PROVIDER != 'dev'" in its own comment and was
-     * `.optional()` in the schema, so nothing enforced it. Unset, `resolveFromEmail()` returns `''`
-     * and every message goes out as `"Mini Rova" <>`: SES rejects each one with
-     * `Email address not verified`, three failures open the email circuit breaker, and it stays open
-     * for the life of the process. The task boots healthy and reports healthy — invitations,
-     * notifications and password resets simply never arrive.
-     *
-     * That was the live state of BOTH deployed environments: `infra/modules/stack/main.tf` sets
-     * `EMAIL_PROVIDER=ses` for the api and worker tasks and nothing set a sender. Failing at boot is
-     * the rule this repo already follows for the database credentials above, and for the same
-     * reason — a precise message now beats an invisible outage later.
+     * A real email provider needs a SENDER, and the absence of one is silent otherwise. Graph
+     * sends as the configured mailbox, so the mailbox is required: without it every message would
+     * be refused and the task would still report healthy. Failing at boot is the rule this repo
+     * follows for the database credentials above.
      */
     if (env.EMAIL_PROVIDER === 'graph' && !env.MAIL_GRAPH_SENDER) {
       ctx.addIssue({
@@ -460,16 +436,16 @@ export const EnvSchema = z
           'MAIL_SMTP_HOST and MAIL_SMTP_PORT are required when EMAIL_PROVIDER is "smtp" (Mailpit: localhost and 1120 on the host, mailpit and 1025 in a container).',
       });
     }
-    if (env.EMAIL_PROVIDER !== 'dev' && env.EMAIL_PROVIDER !== 'graph' && !env.MAIL_FROM_EMAIL) {
+    if (env.EMAIL_PROVIDER === 'smtp' && !env.MAIL_FROM_EMAIL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['MAIL_FROM_EMAIL'],
         message:
-          `EMAIL_PROVIDER is "${env.EMAIL_PROVIDER}", which sends real mail, so a verified sender ` +
-          `is required. Set MAIL_FROM_EMAIL, or set ` +
-          `EMAIL_PROVIDER=dev to log messages instead of sending them.`,
+          'EMAIL_PROVIDER is "smtp", which sends real mail through the relay, so a verified sender is required. ' +
+          'Set MAIL_FROM_EMAIL, or set EMAIL_PROVIDER=dev to log messages instead of sending them.',
       });
     }
+>>>>>>> 4b99d9ba (chore(email): remove SES and Resend senders)
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return;

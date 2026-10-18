@@ -75,8 +75,8 @@ const BLOCK_EXPLANATION: Record<BlockReason, string> = {
  * is deliberately given no Graph credential; constructing the sender eagerly would crash it at boot. The WORKER fails fast instead:
  * `assertReady()` is called when the email relay starts, so a missing variable stops the deploy rather than blocking the first invitation.
  *
- * The `from` the service passes (a display name and an address) is IGNORED: the transport refuses any sender but the configured mailbox, and its
- * display name is the mailbox's own. Marketing is refused: M365 is not for bulk or marketing mail (HYBRID-INFRA-PLAN §7.4).
+ * The sender is the configured mailbox alone (`MAIL_GRAPH_SENDER`): the transport refuses any other sender, and its display name is the mailbox's
+ * own, so the service passes no From address. Marketing is refused: M365 is not for bulk or marketing mail (HYBRID-INFRA-PLAN §7.4).
  */
 export class GraphEmailProvider implements IEmailProvider {
   /** The provider owns its retries (the transport, bounded by the caller's deadline, and the relay's backoff): no wrapper may retry it again. */

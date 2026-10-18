@@ -84,43 +84,22 @@ describe('EnvSchema — REDIS_URL', () => {
   });
 });
 
-describe('EnvSchema — email sender', () => {
+describe('EnvSchema — email transport', () => {
   /**
-   * The sender is required whenever mail actually leaves the process.
-   *
-   * `MAIL_FROM_EMAIL` documented itself as "Required when EMAIL_PROVIDER != 'dev'" and was
-   * `.optional()`, so nothing enforced it — and both deployed environments ran
-   * `EMAIL_PROVIDER=ses` with no sender. Every message went out as `"Mini Rova" <>`, SES rejected
-   * each one, three failures opened the email circuit breaker for the life of the process, and the
-   * task went on reporting healthy. Invitations, notifications and password resets simply never
-   * arrived, with nothing in the health checks to say so.
+   * Graph is the only production transport. SES and Resend were removed (rova#717), so a deployment
+   * that still names either one is refused at boot, rather than silently sending nothing.
    */
-  it('REFUSES to boot with a real provider and no sender', () => {
-    const result = EnvSchema.safeParse(env({ EMAIL_PROVIDER: 'ses' }));
+  it.each(['ses', 'resend'])('REFUSES the removed %s transport', (provider) => {
+    const result = EnvSchema.safeParse(env({ EMAIL_PROVIDER: provider }));
     expect(result.success).toBe(false);
     if (result.success) return;
-    // The message has to name the way out, both of them: set a sender, or stop sending.
-    const issue = result.error.issues.find((i) => i.path.includes('MAIL_FROM_EMAIL'));
-    expect(issue?.message).toMatch(/MAIL_FROM_EMAIL/);
-    expect(issue?.message).toMatch(/EMAIL_PROVIDER=dev/);
-  });
-
-  it('boots with a sender', () => {
-    const result = EnvSchema.safeParse(
-      env({ EMAIL_PROVIDER: 'ses', MAIL_FROM_EMAIL: 'noreply@qnsc.vn' }),
-    );
-    expect(result.success).toBe(true);
+    expect(result.error.issues.some((i) => i.path.includes('EMAIL_PROVIDER'))).toBe(true);
   });
 
   it('needs no sender for the dev provider, which only logs', () => {
     // The default. Local development and CI must not have to configure mail at all.
     expect(EnvSchema.safeParse(env({ EMAIL_PROVIDER: 'dev' })).success).toBe(true);
     expect(EnvSchema.safeParse(env()).success).toBe(true);
-  });
-
-  it('rejects a resend deployment with no sender too — the rule is about SENDING', () => {
-    const result = EnvSchema.safeParse(env({ EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 'k' }));
-    expect(result.success).toBe(false);
   });
 });
 
