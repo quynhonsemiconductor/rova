@@ -267,6 +267,23 @@ describe('EnvSchema — EMAIL_PROVIDER=graph (Microsoft 365 mail)', () => {
     );
   });
 
+  it('refuses an unreplaced release-template placeholder for the tenant, the mailbox and the Service app', () => {
+    const placeholders: Record<string, string> = {
+      ENTRA_TENANT_ID: '<ENTRA_TENANT_ID>',
+      MAIL_GRAPH_SENDER: '<ROVA_PROD_MAILBOX>',
+      MAIL_GRAPH_CLIENT_ID: '<ROVA_PROD_SERVICE_APP_ID>',
+    };
+    for (const [key, value] of Object.entries(placeholders)) {
+      const result = EnvSchema.safeParse(env({ ...graph, [key]: value }));
+      expect(result.success, key).toBe(false);
+      expect(
+        !result.success &&
+          result.error.issues.some((i) => i.path[0] === key && i.message.includes('placeholder')),
+        key,
+      ).toBe(true);
+    }
+  });
+
   it('treats the empty strings Terraform injects for unset variables as unset', () => {
     const result = EnvSchema.safeParse(
       env({
