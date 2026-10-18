@@ -82,6 +82,19 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
+      # IDENTITY 8 GUARD (tags only). A prod tag cut from a main that carries identity 8 cannot be released until the owner has
+      # enabled it in prod (docs/runbooks/identity-v8-cutover.md): the v8 API refuses to start without BETTER_AUTH_SECRET, the
+      # circuit breaker then rolls the API back to v7 while the worker stays v8 and the SPA (published by the web deploy of the
+      # same tag, which does not wait for the backend) is already v8. Failing HERE, before the migrator and before any publish,
+      # leaves prod exactly as it was. The prod cutover release IS the first tag cut after `better_auth_secret_set = true`.
+      - name: Refuse a prod tag until identity 8 is enabled in prod
+        if: github.ref_type == 'tag'
+        run: |
+          if ! grep -Eq '^[[:space:]]*better_auth_secret_set[[:space:]]*=[[:space:]]*true([[:space:]]|$)' infra/live/prod/main.tf; then
+            echo "::error::infra/live/prod/main.tf does not set better_auth_secret_set = true. This tag carries identity 8, whose API cannot start without BETTER_AUTH_SECRET. Do not cut a prod tag from main before the prod cutover window: see docs/runbooks/identity-v8-cutover.md."
+            exit 1
+          fi
+
       - name: Does this commit change infrastructure?
         id: touched
         run: |
@@ -147,8 +160,38 @@ jobs:
           missing-message: >-
             No Web · CI run was found for this commit.
 
+  # ───────────────────────────────────────────────────────────────────────────
+  # Backend gate (tags only) — the SPA of a release must not go live ahead of that release's API.
+  #
+  # The web deploy and the backend deploy of one tag are independent workflows. The backend one runs a migration, rolls ECS and can
+  # be rolled back by the circuit breaker; the web one publishes in a minute. Without this the SPA of the tag (identity 8: it calls
+  # /api/auth/* and /v1/auth/me) could be live against the previous API for the whole backend deploy, or for good if that deploy
+  # is rolled back. On develop the gap is a known maintenance window (docs/runbooks/identity-v8-cutover.md); prod has none.
+  # `branch` is the tag name: the backend run for a tag has the tag as its head ref (the develop run's is `main`).
+  # ───────────────────────────────────────────────────────────────────────────
+  wait-for-backend:
+    name: Wait for this tag's Backend · Deploy
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Wait for Backend · Deploy of this tag
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@v1
+        with:
+          workflow: backend-deploy.yml
+          branch: ${{ github.ref_name }}
+          label: prod Backend · Deploy
+          if-missing: fail
+          missing-message: >-
+            No Backend · Deploy run was found for this tag. Publishing the SPA without its API is the failure this gate exists for.
+
   deploy:
-    needs: [wait-for-infra, wait-for-ci]
+    needs: [wait-for-infra, wait-for-ci, wait-for-backend]
+    # `wait-for-backend` is skipped on a push to main; a skipped need must not skip the deploy.
+    if: ${{ !cancelled() && !failure() }}
     # Must match the UNION of every inner job's own permissions in the reusable
     # web-deploy.yml, not just its top-level default (contents: read) — GitHub
     # validates a reusable call's whole permission chain at trigger time, and

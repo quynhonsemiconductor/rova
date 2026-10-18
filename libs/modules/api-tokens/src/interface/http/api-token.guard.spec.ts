@@ -21,6 +21,13 @@ function ctx(req: Record<string, unknown>, type = 'http'): ExecutionContext {
 const reflector = (isPublic = false) =>
   ({ getAllAndOverride: () => (isPublic ? true : undefined) }) as unknown as Reflector;
 
+/** A drizzle stand-in whose `select().from().where().limit()` yields `rows`. */
+const dbWith = (rows: unknown[]) =>
+  ({
+    select: () => ({ from: () => ({ where: () => ({ limit: () => Promise.resolve(rows) }) }) }),
+  }) as never;
+const OWNER_EXISTS = dbWith([{ id: '0194a000-0000-7000-8000-0000000000aa' }]);
+
 const tokens = (verified: unknown) =>
   ({ verify: vi.fn().mockResolvedValue(verified) }) as unknown as ApiTokensService;
 
@@ -44,7 +51,7 @@ const store = (): RequestContext => ({
 describe('ApiTokenGuard', () => {
   it('leaves a request that carries no API token to SessionGuard', async () => {
     const service = tokens(VERIFIED);
-    const guard = new ApiTokenGuard(service, reflector());
+    const guard = new ApiTokenGuard(service, reflector(), OWNER_EXISTS);
     for (const authorization of [undefined, 'Bearer aaa.bbb.ccc', 'Basic abc', 'Bearer ']) {
       const req = { headers: authorization ? { authorization } : {} };
       expect(await guard.canActivate(ctx(req))).toBe(true);
@@ -58,19 +65,21 @@ describe('ApiTokenGuard', () => {
     const req: Record<string, unknown> = {
       headers: { authorization: 'Bearer rly_abcdefgh_secret' },
     };
-    expect(await new ApiTokenGuard(service, reflector(true)).canActivate(ctx(req))).toBe(true);
+    expect(
+      await new ApiTokenGuard(service, reflector(true), OWNER_EXISTS).canActivate(ctx(req)),
+    ).toBe(true);
     expect(service.verify).not.toHaveBeenCalled();
     expect(req).not.toHaveProperty('user');
   });
 
   it('answers one 401 for every unusable token (unknown, expired, revoked, forged)', async () => {
-    const guard = new ApiTokenGuard(tokens(null), reflector());
+    const guard = new ApiTokenGuard(tokens(null), reflector(), OWNER_EXISTS);
     const req = { headers: { authorization: 'Bearer rly_abcdefgh_secret' } };
     await expect(guard.canActivate(ctx(req))).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('writes the principal, marks the request pre-authenticated WITH the user id, and records it in the request context', async () => {
-    const guard = new ApiTokenGuard(tokens(VERIFIED), reflector());
+    const guard = new ApiTokenGuard(tokens(VERIFIED), reflector(), OWNER_EXISTS);
     const req: Record<string | symbol, unknown> = {
       headers: { authorization: 'Bearer rly_abcdefgh_secret' },
     };
@@ -99,15 +108,24 @@ describe('ApiTokenGuard', () => {
   });
 
   it('still authenticates when there is no request context (the principal is just not recorded)', async () => {
-    const guard = new ApiTokenGuard(tokens(VERIFIED), reflector());
+    const guard = new ApiTokenGuard(tokens(VERIFIED), reflector(), OWNER_EXISTS);
     const req = { headers: { authorization: 'Bearer rly_abcdefgh_secret' } };
     expect(await guard.canActivate(ctx(req))).toBe(true);
     expect(req).toHaveProperty('user.sub', USER);
   });
 
+  it('refuses a valid token whose owner has no identity user: the ban check cannot see a user it cannot find', async () => {
+    const guard = new ApiTokenGuard(tokens(VERIFIED), reflector(), dbWith([]));
+    const req = { headers: { authorization: 'Bearer rly_abcdefgh_secret' } };
+    await expect(guard.canActivate(ctx(req))).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(req).not.toHaveProperty('user');
+  });
+
   it('does nothing outside HTTP', async () => {
     const service = tokens(VERIFIED);
-    expect(await new ApiTokenGuard(service, reflector()).canActivate(ctx({}, 'rpc'))).toBe(true);
+    expect(
+      await new ApiTokenGuard(service, reflector(), OWNER_EXISTS).canActivate(ctx({}, 'rpc')),
+    ).toBe(true);
     expect(service.verify).not.toHaveBeenCalled();
   });
 });

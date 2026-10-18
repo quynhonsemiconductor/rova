@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { PlatformModule, RateLimitModule, RequestContextService } from '@platform';
+import {
+  PlatformModule,
+  PreAuthRateLimitModule,
+  RateLimitModule,
+  RequestContextService,
+} from '@platform';
 import { AuthModule } from '@modules/identity';
 import { WorkspaceModule } from '@modules/workspace';
 import { AccessModule } from '@modules/access';
@@ -35,9 +40,10 @@ import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
     PlatformModule,
 
     // GLOBAL GUARD ORDER IS MODULE ORDER, and it is load-bearing. ApiTokenGuard (api tokens) authenticates `Bearer rly_...` and
-    // tells identity's SessionGuard to stand aside, so ApiTokensModule comes BEFORE AuthModule (SessionGuard: sessions, the
+    // tells identity's SessionGuard to stand aside, so PreAuthRateLimitModule (the address-keyed floor under traffic that never authenticates) is FIRST, ApiTokensModule comes BEFORE AuthModule (SessionGuard: sessions, the
     // ban check, the principal); RateLimitModule comes AFTER both so the limiter keys by the user they wrote. Pinned by
     // test/e2e/api-tokens.e2e.spec.ts and test/e2e/rate-limit-keying.e2e.spec.ts.
+    PreAuthRateLimitModule,
     ApiTokensModule,
     AuthModule,
     RateLimitModule,

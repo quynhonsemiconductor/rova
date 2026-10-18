@@ -106,6 +106,19 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
+      # IDENTITY 8 GUARD (tags only). A prod tag cut from a main that carries identity 8 cannot be released until the owner has
+      # enabled it in prod (docs/runbooks/identity-v8-cutover.md): the v8 API refuses to start without BETTER_AUTH_SECRET, the
+      # circuit breaker then rolls the API back to v7 while the worker stays v8 and the SPA (published by the web deploy of the
+      # same tag, which does not wait for the backend) is already v8. Failing HERE, before the migrator and before any publish,
+      # leaves prod exactly as it was. The prod cutover release IS the first tag cut after `better_auth_secret_set = true`.
+      - name: Refuse a prod tag until identity 8 is enabled in prod
+        if: github.ref_type == 'tag'
+        run: |
+          if ! grep -Eq '^[[:space:]]*better_auth_secret_set[[:space:]]*=[[:space:]]*true([[:space:]]|$)' infra/live/prod/main.tf; then
+            echo "::error::infra/live/prod/main.tf does not set better_auth_secret_set = true. This tag carries identity 8, whose API cannot start without BETTER_AUTH_SECRET. Do not cut a prod tag from main before the prod cutover window: see docs/runbooks/identity-v8-cutover.md."
+            exit 1
+          fi
+
       - name: Does this commit change infrastructure?
         id: touched
         run: |

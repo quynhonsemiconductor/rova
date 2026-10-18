@@ -6,10 +6,19 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { eq } from 'drizzle-orm';
 import { requestContextStorage, setRequestPrincipal } from '@quynhonsemiconductor/observability';
 import { isUuid } from '@quynhonsemiconductor/identity';
 import { markPreAuthenticated } from '@quynhonsemiconductor/identity/nest';
-import { bearerValue, IS_PUBLIC_KEY, isApiTokenValue, type ApiTokenPrincipal } from '@platform';
+import {
+  bearerValue,
+  InjectDrizzle,
+  IS_PUBLIC_KEY,
+  isApiTokenValue,
+  type ApiTokenPrincipal,
+  type DrizzleDB,
+} from '@platform';
+import { user as identityUser } from '../../../../../../db/schema/identity-auth';
 import { ApiTokensService } from '../../application/api-tokens.service';
 
 interface TokenRequest {
@@ -45,6 +54,7 @@ export class ApiTokenGuard implements CanActivate {
   constructor(
     private readonly tokens: ApiTokensService,
     private readonly reflector: Reflector,
+    @InjectDrizzle() private readonly db: DrizzleDB,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -61,6 +71,22 @@ export class ApiTokenGuard implements CanActivate {
 
     const verified = await this.tokens.verify(bearer);
     if (!verified) throw new UnauthorizedException('Invalid, expired or revoked API token');
+
+    // The ban check that follows (`isUserBanned`) believes a user it cannot find is NOT banned. A token whose owner has no identity
+    // user (not backfilled, never signed in on v8) would therefore sail past it: such a user cannot have been banned, and cannot be.
+    // Refused with the same 401 as any unusable token; they sign in once, which creates the row, and the token works again.
+    const [owner] = await this.db
+      .select({ id: identityUser.id })
+      .from(identityUser)
+      .where(eq(identityUser.id, verified.userId))
+      .limit(1);
+    if (!owner) {
+      this.logger.warn(
+        { tokenId: verified.id },
+        'API token refused: its owner has no identity user',
+      );
+      throw new UnauthorizedException('Invalid, expired or revoked API token');
+    }
 
     req.user = {
       sub: verified.userId,

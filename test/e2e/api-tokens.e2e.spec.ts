@@ -19,11 +19,13 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { Test } from '@nestjs/testing';
 import { setUserBanned, type Identity } from '@quynhonsemiconductor/identity';
 import { AUTH } from '@quynhonsemiconductor/identity/nest';
-import { SESSION_COOKIE } from '@platform';
+import { DRIZZLE, SESSION_COOKIE, type DrizzleDB } from '@platform';
+import { eq } from 'drizzle-orm';
+import { user as identityUser } from '../../db/schema/identity-auth';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
-import { signInAs } from './support/session';
+import { provisionUser, signInAs } from './support/session';
 
 const PROBE_ROUTE = '/audit-logs';
 const ADMIN_EMAIL = 'admin@qnsc.dev';
@@ -225,6 +227,21 @@ describe('API tokens over HTTP (e2e)', () => {
       const reinstated = await withAuth(created.token).get(PROBE_ROUTE);
       expect(reinstated.statusCode, reinstated.body).toBe(200);
     });
+  });
+
+  it('refuses a valid token whose owner has no identity user: the ban check cannot see a user it cannot find', async () => {
+    // A user created after the backfill who never signed in on v8 has a profile and (here) a token, but no identity."user" row.
+    // `isUserBanned` believes a user it cannot find is NOT banned, so without the guard's own check this token would be a way
+    // around every ban. Provision a user (profile + identity user), mint, then take the identity user away.
+    const { credential, userId } = await provisionUser(app, 'no-identity', 'E2E No Identity');
+    const created = await mint(credential, { name: 'e2e orphan' });
+    // authenticated while the identity user exists: the credential reaches the route guards (a 403, this user holds nothing)
+    expect((await withAuth(created.token).get(PROBE_ROUTE)).statusCode).toBe(403);
+    await app.get<DrizzleDB>(DRIZZLE).delete(identityUser).where(eq(identityUser.id, userId));
+
+    const refused = await withAuth(created.token).get(PROBE_ROUTE);
+
+    expect(refused.statusCode, refused.body).toBe(401);
   });
 
   it('answers 401 to a request with no credential at all, and to a stale JWT-shaped bearer', async () => {

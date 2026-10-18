@@ -24,6 +24,12 @@ export class UserDirectory {
     return rows[0] ?? null;
   }
 
+  /** The profile with this id, soft-deleted or not (a deleted person must be told apart from one who never existed). */
+  async findAnyById(id: string): Promise<Profile | null> {
+    const rows = await this.db.select().from(users).where(eq(users.id, id)).limit(1);
+    return rows[0] ?? null;
+  }
+
   async findByEmail(email: string): Promise<Profile | null> {
     const rows = await this.db
       .select()
@@ -37,7 +43,13 @@ export class UserDirectory {
    * Create the profile for a user identity just created, with the SAME id. A no-op when it is there (a retried
    * sign-in): `ON CONFLICT (id)` only, so an address clash with a different id still raises and the sign-in is refused.
    */
-  async insertProfile(input: { id: string; email: string; displayName: string }): Promise<void> {
+  async insertProfile(input: {
+    id: string;
+    email: string;
+    displayName: string;
+    /** Default true: the address of a tenant MEMBER is vouched for. Pass false for a B2B guest. */
+    emailVerified?: boolean;
+  }): Promise<void> {
     await this.db
       .insert(users)
       .values({
@@ -45,7 +57,7 @@ export class UserDirectory {
         email: input.email.toLowerCase().trim(),
         displayName: input.displayName,
         status: 'active',
-        emailVerified: true, // the tenant vouches for the address
+        emailVerified: input.emailVerified ?? true,
       })
       .onConflictDoNothing({ target: users.id });
   }
@@ -81,9 +93,16 @@ export class UserDirectory {
   }
 
   /**
-   * A LIVE (pending, unexpired) invitation to `workspaceId` for this address, or addressed to this directory object.
-   * The status alone is not the question: a cron flips rows to `expired`, so between a row's expiry and the next tick it
-   * is still `pending` and must not admit anyone. The timestamp is authoritative.
+   * A LIVE (pending, unexpired) invitation to `workspaceId` for this person.
+   *
+   * An invitation that was provisioned for a directory object (`entra_guest_object_id`, the guest's object id in OUR tenant, which a
+   * guest cannot set) is matched on that object ONLY. Matching it on the address too would let anyone whose own tenant lets them
+   * choose their `email` claim present the invitee's address first and take the invitation's place (or, once admitted under the
+   * invitee's address, lock the invitee out). An invitation with no object id yet (the relay has not run, or a staff invitation)
+   * is matched on the address, which is as strong as it ever was.
+   *
+   * The status alone is not the question: a cron flips rows to `expired`, so between a row's expiry and the next tick it is still
+   * `pending` and must not admit anyone. The timestamp is authoritative.
    */
   async hasLiveInvitation(workspaceId: string, email: string, oid: string): Promise<boolean> {
     const rows = await this.db
@@ -95,7 +114,10 @@ export class UserDirectory {
           eq(workspaceInvitations.status, 'pending'),
           gt(workspaceInvitations.expiresAt, new Date()),
           or(
-            sql`lower(${workspaceInvitations.email}) = ${email.toLowerCase()}`,
+            and(
+              isNull(workspaceInvitations.entraGuestObjectId),
+              sql`lower(${workspaceInvitations.email}) = ${email.toLowerCase()}`,
+            ),
             sql`${workspaceInvitations.entraGuestObjectId}::text = ${oid.toLowerCase()}`,
           ),
         ),

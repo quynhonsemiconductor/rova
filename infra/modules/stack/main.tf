@@ -1920,8 +1920,9 @@ module "api" {
     ] : [],
     var.better_auth_secret_set ? [
       # The API's alone (the worker signs nobody in; its schema leaves it optional and the process never reads it). Injected only
-      # once populated: the deploy preflight refuses to deploy when an injected secret holds no value, and identity refuses to start
-      # the API without it. See the variable.
+      # once the KEY is in the bundle. The deploy preflight only proves the bundle container has a version, NOT that this key exists in
+      # it: a missing key fails at task start, after the migrator ran. Identity also refuses to start the API without the value.
+      # See the variable.
       { name = "BETTER_AUTH_SECRET", secret_arn = module.secrets.secret_arns["better-auth-secret"] },
   ] : [])
 

@@ -54,7 +54,15 @@ export class StaffSignInHandler {
     const email = user.email.toLowerCase().trim();
     const workspaceId = HOME_WORKSPACE_ID;
 
-    const byId = await this.directory.findById(user.id);
+    // A soft-deleted profile is a person who was removed, not a person who has not arrived yet: refuse, never create a session on it.
+    const existing = await this.directory.findAnyById(user.id);
+    if (existing?.deletedAt) {
+      throw new StaffSignInRefusedError(
+        'USER_DEACTIVATED',
+        `sign-in refused: the profile of user ${user.id} was deleted`,
+      );
+    }
+    const byId = existing;
     const byEmail = byId ?? (await this.directory.findByEmail(email));
 
     if (byEmail && byEmail.id !== user.id) {
@@ -79,13 +87,17 @@ export class StaffSignInHandler {
 
     const isPlatformAdmin = !claims.guest && this.platformAdmins().includes(email);
     const hasInvitation = await this.directory.hasLiveInvitation(workspaceId, email, claims.oid);
+    // A guest is admitted by a live invitation or by a seat they STILL hold (an active workspace_members row), exactly as under v7's
+    // invite-only shared gate: a profile alone is not a seat. A guest who was removed from the workspace keeps their profile (history
+    // keeps its names) and must not be able to sign back in on it.
+    const stillSeated = claims.guest && (await this.workspaces.getMemberships(user.id)).length > 0;
     const admitted = claims.guest
-      ? byId !== null || hasInvitation
+      ? hasInvitation || stillSeated
       : this.config.get('SSO_JIT_ENABLED') || isPlatformAdmin || byId !== null || hasInvitation;
     if (!admitted) {
       throw new StaffSignInRefusedError(
         claims.guest ? 'SSO_NO_ACCESS' : 'SSO_JIT_DISABLED',
-        `sign-in refused: user ${user.id} has no profile and no live invitation`,
+        `sign-in refused: user ${user.id} has no seat, no profile and no live invitation`,
       );
     }
 
@@ -94,6 +106,8 @@ export class StaffSignInHandler {
         id: user.id,
         email,
         displayName: user.name || email,
+        // The tenant vouches for a MEMBER's address; a guest's `email` claim is whatever the guest's own tenant says.
+        emailVerified: !claims.guest,
       });
     }
     await this.workspaces.enrollMember(workspaceId, user.id);

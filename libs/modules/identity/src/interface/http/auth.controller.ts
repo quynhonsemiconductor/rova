@@ -194,8 +194,12 @@ export class AuthController {
   }
 
   private async render(user: JwtPayload, profile: Profile): Promise<UserProfileResponseDto> {
+    // A session with no active workspace (a new guest not yet seated, a member whose only workspace was removed) is a valid session:
+    // it has no role and no permissions, and `/v1/auth/me` must say so instead of querying a uuid column with ''.
     const [{ role, permissions }, memberships, settings] = await Promise.all([
-      this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
+      user.workspaceId
+        ? this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId)
+        : Promise.resolve({ role: '', permissions: [] as string[] }),
       this.workspaceService.getMemberships(user.sub),
       user.workspaceId
         ? this.workspaceService.getSettings(user.workspaceId).catch(() => null)

@@ -10,10 +10,13 @@ import { WorkspaceService } from '@modules/workspace';
 export class WorkspaceContext {
   constructor(private readonly workspaces: WorkspaceService) {}
 
-  /** May this user act in this workspace? An ACTIVE `workspace_members` row of a live workspace. */
+  /**
+   * May this user act in this workspace? An ACTIVE `workspace_members` row of a LIVE workspace: a deleted workspace keeps its member
+   * rows, so the membership list (active members, deleted workspaces filtered out) is the question, not the bare row.
+   */
   async isActiveMember(userId: string, workspaceId: string): Promise<boolean> {
-    const member = await this.workspaces.getMembership(userId, workspaceId);
-    return member?.status === 'active';
+    const memberships = await this.workspaces.getMemberships(userId);
+    return memberships.some((m) => m.workspaceId === workspaceId);
   }
 
   /** The workspace a new session starts in, and the one it falls back to: the member's most recently active. */

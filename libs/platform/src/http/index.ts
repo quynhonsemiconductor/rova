@@ -13,3 +13,4 @@ export {
   albWaitMs,
   ALB_WAIT_REPORTING_FLOOR_MS,
 } from '@quynhonsemiconductor/platform-runtime';
+export * from './session-token-redaction';

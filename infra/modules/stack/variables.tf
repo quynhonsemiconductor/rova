@@ -748,9 +748,12 @@ variable "better_auth_secret_set" {
     Inject `better-auth-secret` into the API as BETTER_AUTH_SECRET: identity 8 (Better Auth) signs the session cookie and encrypts
     what it stores with it, and refuses to start the API without a secret of at least 32 characters.
 
-    OFF by default, for the same mechanical reason as `edge_client_ip_secret_set`: the deploy preflight refuses to deploy when an
-    injected Secrets Manager secret holds no value, so injecting it before it is populated blocks every deploy. The key is declared
-    either way. Order, per environment (docs/runbooks/identity-v8-cutover.md):
+    OFF by default. The key is declared either way; injecting it before the owner has put a value in makes the API task unable to
+    start. WHAT THE DEPLOY PREFLIGHT DOES AND DOES NOT CATCH: it refuses to deploy when an injected secret CONTAINER holds no value at
+    all. The app bundle is ONE container with many JSON keys, so a bundle that has a version but lacks the `better-auth-secret` key
+    passes the preflight and then fails at task start (ECS cannot resolve `<arn>:better-auth-secret::`), after the migrator ran.
+    Check the KEY, not the container, before setting this (docs/runbooks/identity-v8-cutover.md, step 3: `jq -e 'has("better-auth-secret")'`).
+    Order, per environment:
       1. generate a value (`openssl rand -base64 48`) and put it into the `better-auth-secret` key of `<product>/<env>/app`;
       2. set this true and apply;
       3. only then deploy the identity 8 image (an image deployed before this is true cannot start its API).

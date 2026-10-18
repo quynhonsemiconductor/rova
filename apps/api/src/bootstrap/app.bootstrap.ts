@@ -11,6 +11,7 @@ import { enableHealth, registerRequestTiming } from '@quynhonsemiconductor/platf
 import { SseConnections, registerSseShutdown } from '@modules/notifications';
 import { assertEdgeClientIpEnv, enableCorrelationId } from '@quynhonsemiconductor/platform-http';
 import { SESSION_COOKIE } from '@platform/auth';
+import { isSessionBody, redactSessionTokens } from '@platform/http/session-token-redaction';
 
 /**
  * `/livez`, `/readyz` and the legacy `/v1/healthz`, `/v1/readyz`, as raw Fastify routes (`enableHealth`). Built in:
@@ -94,6 +95,16 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // check once here — rather than per route — means a new controller is covered by
   // default instead of opting in and being forgotten.
   const fastify = app.getHttpAdapter().getInstance();
+
+  // identity answers get-session / list-sessions with each session's raw `token` in the JSON body, readable by script even though the
+  // cookie is HttpOnly. Nothing in the SPA reads it: remove it on the way out (libs/platform/src/http/session-token-redaction.ts).
+  fastify.addHook('onSend', async (request, reply, payload) => {
+    if (!isSessionBody(request.url)) return payload;
+    const redacted = redactSessionTokens(payload);
+    // The body got shorter; a Content-Length copied from identity's own response would no longer match it.
+    if (redacted !== payload) reply.removeHeader('content-length');
+    return redacted;
+  });
 
   // Registered BEFORE the CSRF gate, and before any hook that can reject: this only
   // stamps an arrival timestamp, and it has to run on every request that reaches the

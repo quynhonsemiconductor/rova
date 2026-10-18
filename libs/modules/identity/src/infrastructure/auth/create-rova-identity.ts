@@ -10,7 +10,7 @@ import {
 import type { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { failOpenLog } from '@quynhonsemiconductor/observability';
 import { Logger } from '@nestjs/common';
-import { IDENTITY_PRODUCT, type AppConfigService, type DrizzleDB } from '@platform';
+import { HOST_COOKIES, IDENTITY_PRODUCT, type AppConfigService, type DrizzleDB } from '@platform';
 import * as identityAuthSchema from '../../../../../../db/schema/identity-auth';
 import type { StaffSignInHandler } from './staff-sign-in.handler';
 import type { WorkspaceContext } from './workspace-context';
@@ -79,6 +79,8 @@ export function createRovaIdentity(deps: RovaIdentityDeps): Identity {
     baseURL: appUrl,
     trustedOrigins: [appUrl],
     presets: ['staff'],
+    // `__Host-` cookie names in production (see SESSION_COOKIE): the same constant the CSRF gate reads.
+    hostCookies: HOST_COOKIES,
     staff: {
       tenantId: entra('ENTRA_TENANT_ID'),
       clientId: entra('ENTRA_CLIENT_ID'),

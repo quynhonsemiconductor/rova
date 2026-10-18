@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { PreAuthRateLimitGuard } from './pre-auth-rate-limit.guard';
 import { RateLimitGuard } from './rate-limit.guard';
 
 /**
@@ -14,3 +15,11 @@ import { RateLimitGuard } from './rate-limit.guard';
  */
 @Module({ providers: [{ provide: APP_GUARD, useClass: RateLimitGuard }] })
 export class RateLimitModule {}
+
+/**
+ * The pre-authentication, address-keyed floor (see `PreAuthRateLimitGuard`). Imported FIRST in `AppModule`: global guards run in
+ * module registration order, and this one must run before `ApiTokenGuard` and identity's `SessionGuard` answer 401 to the traffic it
+ * exists to count.
+ */
+@Module({ providers: [{ provide: APP_GUARD, useClass: PreAuthRateLimitGuard }] })
+export class PreAuthRateLimitModule {}

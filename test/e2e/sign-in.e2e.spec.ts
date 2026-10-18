@@ -25,7 +25,7 @@
  *
  * Prereqs: `docker compose -f docker-compose.dev.yml up -d`, `pnpm db:migrate`, `pnpm db:seed`.
  */
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -79,7 +79,8 @@ function person(over: Partial<IdpIdentity> = {}, guest = false): IdpIdentity {
   const n = ++seq;
   return {
     sub: `idp-sub-${RUN}-${n}`,
-    oid: `00000000-0000-4000-8000-${RUN.padStart(6, '0')}${String(n).padStart(6, '0')}`,
+    // a real uuid: the invitations table has a uuid column for the directory object
+    oid: randomUUID(),
     tid: TENANT,
     email: `signin.${RUN}.${n}@qnsc.vn`,
     name: `Sign In ${n}`,
@@ -350,6 +351,124 @@ describe('B2B guests (vendors)', () => {
   });
 });
 
+describe('guests (vendors): who may come back, and whose invitation it is', () => {
+  it('refuses a guest who was removed from the workspace: a profile is not a seat', async () => {
+    policy.jit = false;
+    const who = person({ email: `vendor.${RUN}.d@vendor.example` }, true);
+    await liveInvitation(who.email!);
+    const first = await microsoftSignIn(who);
+    expect(first.cookie, 'the invited guest signs in').toBeDefined();
+    const { id } = (await me(first.cookie!)).body;
+    // the invitation is spent and the guest is removed (v7: the invite-only gate required an active workspace_members row)
+    await db
+      .update(workspaceInvitations)
+      .set({ status: 'cancelled' })
+      .where(eq(workspaceInvitations.email, who.email!));
+    await app.get(WorkspaceService).removeMember(WORKSPACE_ID, id, ADMIN_USER_ID);
+
+    const again = await microsoftSignIn(who);
+
+    expect(again.cookie, 'a removed guest got back in on their profile').toBeUndefined();
+    expect(again.error).toBe('STAFF_SIGN_IN_REFUSED');
+  });
+
+  it('binds an invitation made for a directory object to that object only: a spoofed email claim neither squats it nor locks the invitee out', async () => {
+    policy.jit = false;
+    const invitee = person({ email: `vendor.${RUN}.e@vendor.example` }, true);
+    await db.insert(workspaceInvitations).values({
+      workspaceId: WORKSPACE_ID,
+      email: invitee.email!,
+      tokenHash: randomBytes(32).toString('hex'),
+      invitedBy: ADMIN_USER_ID,
+      expiresAt: new Date(Date.now() + 86_400_000),
+      entraGuestObjectId: invitee.oid!,
+    });
+
+    // someone else, whose tenant lets them choose the `mail` claim, presents the invitee's address
+    const squatter = await microsoftSignIn({ ...person({}, true), email: invitee.email! });
+    expect(squatter.cookie, 'a spoofed address took the invitation').toBeUndefined();
+    expect(squatter.error).toBe('STAFF_SIGN_IN_REFUSED');
+
+    // the real invitee still gets in (by their object id), and nothing was squatted
+    const real = await microsoftSignIn(invitee);
+    expect(real.error).toBeUndefined();
+    expect((await me(real.cookie!)).status).toBe(200);
+  });
+
+  it('lets a guest accept an invitation bound to their directory object (the v8 account is what proves it)', async () => {
+    policy.jit = false;
+    const guest = person({ email: `vendor.${RUN}.f@vendor.example` }, true);
+    const raw = randomBytes(32).toString('base64url');
+    await db.insert(workspaceInvitations).values({
+      workspaceId: WORKSPACE_ID,
+      email: guest.email!,
+      tokenHash: createHash('sha256').update(raw).digest('hex'),
+      invitedBy: ADMIN_USER_ID,
+      expiresAt: new Date(Date.now() + 86_400_000),
+      entraGuestObjectId: guest.oid!,
+    });
+    const { cookie } = await microsoftSignIn(guest);
+    const { id } = (await me(cookie!)).body;
+
+    // before the fix this read the v7 sso_identities, which a v8 sign-in never writes: INVITATION_EMAIL_MISMATCH
+    await expect(app.get(WorkspaceService).acceptInvitation(raw, id)).resolves.toBeUndefined();
+  });
+
+  it("records a guest profile as email-unverified (the claim is their own tenant's), a staff one as verified", async () => {
+    policy.jit = false;
+    const guest = person({ email: `vendor.${RUN}.g@vendor.example` }, true);
+    await liveInvitation(guest.email!);
+    await microsoftSignIn(guest);
+    policy.jit = true;
+    const staff = person();
+    await microsoftSignIn(staff);
+
+    const [g] = await db.select().from(users).where(eq(users.email, guest.email!));
+    const [m] = await db.select().from(users).where(eq(users.email, staff.email!));
+    expect(g.emailVerified).toBe(false);
+    expect(m.emailVerified).toBe(true);
+  });
+});
+
+describe('profiles, sessions and the session body', () => {
+  it('refuses a person whose profile was soft-deleted, instead of creating a session on it', async () => {
+    policy.jit = true;
+    const who = person();
+    const first = await microsoftSignIn(who);
+    const { id } = (await me(first.cookie!)).body;
+    await db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, id));
+
+    const again = await microsoftSignIn(who);
+
+    expect(again.cookie).toBeUndefined();
+    expect(again.error).toBe('STAFF_SIGN_IN_REFUSED');
+  });
+
+  it('answers /v1/auth/me for a session with no workspace: no role, no permissions, no 500', async () => {
+    policy.jit = true;
+    const { cookie } = await microsoftSignIn(person());
+    const { id } = (await me(cookie!)).body;
+    await app.get(WorkspaceService).removeMember(WORKSPACE_ID, id, ADMIN_USER_ID);
+    expect(await contextOf(cookie!)).toBeNull();
+
+    const principal = await me(cookie!);
+
+    expect(principal.status).toBe(200);
+    expect(principal.body).toMatchObject({ role: '', permissions: [], memberships: [] });
+  });
+
+  it('keeps the raw session token out of get-session and list-sessions', async () => {
+    policy.jit = true;
+    const { cookie } = await microsoftSignIn(person());
+    for (const url of ['/api/auth/get-session', '/api/auth/list-sessions']) {
+      const res = await app.inject({ method: 'GET', url, headers: { cookie } });
+      expect(res.statusCode, url).toBe(200);
+      expect(res.body, url).not.toMatch(/"token"/);
+      expect(res.body, url).toContain('"expiresAt"');
+    }
+  });
+});
+
 describe('the active workspace of the session', () => {
   async function csrf(cookie: string): Promise<{ cookie: string; token: string }> {
     const res = await me(cookie);
@@ -414,5 +533,29 @@ describe('the active workspace of the session', () => {
       .removeMember(second, body.id, ADMIN_USER_ID)
       .catch(() => undefined);
     expect(await contextOf(session!)).not.toBe(second);
+  });
+
+  it('does not let a session back into a workspace that was deleted, and drops it from the switcher', async () => {
+    policy.jit = true;
+    const { cookie: session } = await microsoftSignIn(person());
+    const { body } = await me(session!);
+    const doomed = await secondWorkspace();
+    await app.get(WorkspaceService).enrollMember(doomed, body.id);
+    const { cookie, token } = await csrf(session!);
+    const post = (workspaceId: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/v1/auth/switch-workspace',
+        headers: { cookie, 'x-csrf-token': token },
+        payload: { workspaceId },
+      });
+    expect((await post(doomed)).statusCode).toBe(204);
+
+    // deleted by someone other than this service (a soft delete straight on the row, as a repair or a script would)
+    await db.update(workspaces).set({ deletedAt: new Date() }).where(eq(workspaces.id, doomed));
+
+    const back = await post(doomed);
+    expect(back.statusCode, back.body).toBe(403);
+    expect((await me(session!)).body.memberships.map((m) => m.workspaceId)).not.toContain(doomed);
   });
 });
