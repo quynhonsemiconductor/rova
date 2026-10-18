@@ -56,14 +56,14 @@ module "ecr" {
   # dead: `tagPrefixList` is AND, so it only matched images carrying BOTH prefixes).
   # Verified live under v2.0.0: 105 `sha-` images sat under a policy claiming to keep 30.
   #
-  # Defaults now: RELEASE images (v*) expire after release_retention_days = 180; keep 20
-  # builds (sha-*); untagged expire after 1 day. BEFORE APPLYING to the live repositories,
+  # Defaults now: RELEASE images (v*) expire after release_retention_days = 180; keep 10
+  # builds (sha-*; ecr-v2.2.0 default, was 20); untagged expire after 1 day. BEFORE APPLYING to the live repositories,
   # run the estate preview (infra/scripts/ecr_lifecycle_preview.py — task 0.7) and attach
   # its output to the PR: a time rule can delete what a count rule was keeping, and the
   # direction depends on the current promotion rate. Do NOT lower the number to match what
   # a count rule happened to keep; raise it if the preview expires a release you would
   # still roll back to.
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecr?ref=ecr-v2.1.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecr?ref=ecr-v2.2.0"
 
   repository_names = ["rova-api", "rova-worker", "rova-migrator"]
 
