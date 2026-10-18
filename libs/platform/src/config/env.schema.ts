@@ -456,15 +456,6 @@ export const EnvSchema = z
         }
       }
     }
-    if (env.EMAIL_PROVIDER === 'smtp' && !env.MAIL_FROM_EMAIL) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['MAIL_FROM_EMAIL'],
-        message:
-          'EMAIL_PROVIDER is "smtp", which sends real mail through the relay, so a verified sender is required. ' +
-          'Set MAIL_FROM_EMAIL, or set EMAIL_PROVIDER=dev to log messages instead of sending them.',
-      });
-    }
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return;

@@ -32,7 +32,7 @@ Administrator consent is needed**, which is the point.
 | "Rova <Dev                                                 | Prod> Service" Entra app                                   | **missing: create it, certificate only** (step 3)                                                                                               | **missing: create it** (step 3) |
 | Certificate and secret `rova/<env>/mail-graph-certificate` | missing (steps 4-5)                                        | missing (steps 4-5)                                                                                                                             |
 | Exchange role assignment                                   | missing (step 6)                                           | exists, but on the **sign-in app** "Rova Prod" (`503133fe-58c0-4158-86ca-0cecb2f6f376`): **it moves to the Service app** (step 6, then step 10) |
-| Switch-on PR                                               | not opened: needs the Service app's client id              | not opened: same                                                                                                                                |
+| Switch-on PR                                               | not opened: needs the Service app's client id              | in rova#727, gated on the Service app's client id (section 9)                                                                                                                                |
 
 The sign-in apps are `45fabceb-e51c-446b-894e-af4c4b7f30f8` (develop) and `503133fe-58c0-4158-86ca-0cecb2f6f376` (production). The author could not verify any of the
 "missing" rows against the tenant (no access): they are what the plan, the repository and the 2026-10-11 record show, so **confirm each** as you go.
@@ -188,6 +188,19 @@ PASS  DENIED  as noreply-opshub@qnsc.vn: forbidden HTTP 403 (request-id ...)
 
 ## 9. Switch the environment on
 
+**Production goes in one release window, with the identity v8 cutover (decided 2026-10-19).** Downtime is accepted; the database snapshot is the only hard gate. In order:
+
+a. Take an RDS snapshot of production and record its id. Nothing below starts without it.
+b. Steps 1-8 for production (mailbox, scope, Service app, certificate, secret, role assignment, proof).
+c. In rova#727, set `mail_graph_client_id` in `infra/live/prod/main.tf` to the Service app's client id, and flip `mail_graph_certificate_set` to `true`. #727 already sets `email_provider = "graph"`. Flip the flag only after the secret holds the PEM: the worker refuses to start with an empty secret.
+d. Deploy the release that contains rova#727 and rova#730 together, with the identity v8 cutover (rova#718, owner script rova#729).
+e. Steps 4 and 5 below, for production: the smoke run, then one real invitation from `noreply-rova@qnsc.vn`, delivered.
+f. Section 10: remove the old sign-in-app grant.
+g. SES removal follows immediately, after step e: rova#730 here, then KB #216, opshub #413, and infra #188 last (it removes the shared SES identity and DNS).
+
+Develop was switched on earlier, so steps 1-5 below describe develop's procedure, and the same steps apply to production inside the window.
+
+
 1. The repository already names the mailbox for each environment (`mail_graph_sender` in `infra/live/<env>/main.tf`). Open a PR that sets, for the
    environment: `email_provider = "graph"`, `mail_graph_client_id = "<the Service app's client id>"` and `mail_graph_certificate_set = true`. The module fails the plan if the sender, the client id or the certificate flag is missing.
 2. Merge it. `Infrastructure · Apply` registers the task definitions with the new variables; the **image must already contain the Graph provider**
@@ -213,7 +226,7 @@ Rova production was scoped on 2026-10-11 **on the sign-in app** ("Rova Prod", `5
 the BFF client secret and runs in the API. Mail belongs to the Service app (certificate only, worker only), so the assignment **moves**:
 
 1. Create the production Service app and its assignment (steps 3-7) **first**, while the old assignment is still in place.
-2. Pass step 8 with the Service app, then complete step 9 and see a real invitation arrive from `noreply-rova@qnsc.vn`.
+2. Pass step 8 with the Service app, then complete section 9 (the release) and see a real invitation arrive from `noreply-rova@qnsc.vn`.
 3. **Only then** remove the old one:
 
    ```powershell
@@ -227,7 +240,9 @@ the BFF client secret and runs in the API. Mail belongs to the Service app (cert
 
    Leave the sign-in app's Exchange service-principal pointer if you like; with no assignment it grants nothing.
 
-If step 2 fails, nothing was lost: the old assignment still lets the sign-in app send, and production is still on SES until step 9.
+If step 2 fails, do not remove the old assignment: the sign-in app keeps sending until the Service app works. Fix the Service app and repeat step 2.
+
+Rollback after the release: redeploy the previous release. Take the RDS snapshot in section 9, step a, before the release; it is the data fallback. Once rova#730 is merged, the previous release's SES path is no longer in the repository, so a rollback restores mail only by redeploying an image built before #730.
 
 ## When Graph refuses, or does not answer
 
@@ -275,8 +290,9 @@ The relay and the provider split the answers by **whose fault it is**:
 - **`User.Invite.All` stays on the sign-in app in this change.** Rova's Entra B2B guest invitation (worker, develop) uses the sign-in app's application
   permission today. It moves to the Service app with Phase 4 (D), together with its credential; until then the sign-in app is not yet delegated-only.
 - **Remove SES and Resend** (tracked: quynhonsemiconductor/rova#717) (the `ses`/`resend` providers, `SES_*` and `MAIL_FROM_*` variables, the `ses:SendEmail` grants, the SES configuration set, SNS topic and
-  SQS bounce queue with their alarms) in one cleanup PR **after both environments are proven on Graph**: removing them earlier stops the API at boot, because the
-  deployed task definitions still name `ses`. SES identity and DNS stay in infra/edge until all three products are off SES.
+  SQS bounce queue with their alarms) in rova#730, merged in the same release window right after the production proof (section 9, step g). Removing them before the deployed
+  task definitions name `graph` stops the API at boot. The SES identity and DNS are removed last, by infra#188, once rova, opshub and KB no
+  longer send through SES (rally is not yet confirmed).
 - **Bounce feedback is gone with SES.** Graph reports no bounce events; a non-delivery report arrives in the shared mailbox. `email_outbox.status = 'sent'`
   then means "accepted by Graph". Reading the mailbox for NDRs is a later decision (platform-mail lists bounce handling as a later ADR); until then someone
   who needs to know a mistyped address bounced reads the mailbox.
