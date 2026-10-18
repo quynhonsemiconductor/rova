@@ -21,7 +21,12 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Client, Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { runBackfill, runRollback, type BackfillOptions } from '../../db/identity-v8/run';
+import {
+  runBackfill,
+  runMirrorBans,
+  runRollback,
+  type BackfillOptions,
+} from '../../db/identity-v8/run';
 
 const MIGRATIONS = join(__dirname, '../../db/migrations');
 const V8_SQL_DIR = join(__dirname, '../../db/identity-v8');
@@ -582,6 +587,81 @@ describe('the backfill, on a seeded copy with guests and vendors', () => {
     });
   });
 
+  it('a re-run after a B2B guest signed in on v8 (a Microsoft account, no v7 identity, an unverified address) still passes', async () => {
+    const name = await seededCopy();
+    await backfill(name);
+    await withPool(name, async (pool) => {
+      const guest = '00000000-0000-7000-8000-0000000000c1';
+      await pool.query(
+        `insert into identity.users (id, email, display_name) values ($1, 'new.vendor@vendor.example', 'New Vendor')`,
+        [guest],
+      );
+      await pool.query(
+        `insert into identity."user" (id, name, email, email_verified) values ($1, 'New Vendor', 'new.vendor@vendor.example', false)`,
+        [guest],
+      );
+      await pool.query(
+        `insert into identity.account (id, account_id, provider_id, user_id, created_at, updated_at) values (gen_random_uuid(), '22222222-2222-4222-8222-222222222201', 'microsoft', $1, now(), now())`,
+        [guest],
+      );
+      const summary = await backfill(name);
+      expect(summary['v8 users']).toBe(8);
+    });
+  });
+
+  it('a re-run never lifts a ban placed in v8, and keeps its reason', async () => {
+    const name = await seededCopy();
+    await backfill(name);
+    await withPool(name, async (pool) => {
+      await pool.query(
+        `update identity."user" set banned = true, ban_reason = 'offboarded in v8' where id = $1`,
+        [U.alice],
+      );
+      await backfill(name);
+      const [alice] = await pool
+        .query(`select banned, ban_reason from identity."user" where id = $1`, [U.alice])
+        .then((r) => r.rows as Array<Record<string, unknown>>);
+      expect(alice).toMatchObject({ banned: true, ban_reason: 'offboarded in v8' });
+      // and a v7 suspension still arrives: bob is suspended in v7 and banned with the migrated reason
+      const [bob] = await pool
+        .query(`select banned, ban_reason from identity."user" where id = $1`, [U.bob])
+        .then((r) => r.rows as Array<Record<string, unknown>>);
+      expect(bob).toMatchObject({ banned: true, ban_reason: 'migrated from v7: suspended' });
+    });
+  });
+
+  it('mirror-bans marks a v8-only ban suspended in v7 before a rollback, dry run by default, and needs --database to commit', async () => {
+    const name = await seededCopy();
+    await backfill(name);
+    await withPool(name, async (pool) => {
+      await pool.query(`update identity."user" set banned = true, ban_reason = 'x' where id = $1`, [
+        U.alice,
+      ]);
+      const statusOf = async (id: string) =>
+        String(
+          (
+            (await pool.query(`select status from identity.users where id = $1`, [id]))
+              .rows as Array<{ status: unknown }>
+          )[0].status,
+        );
+
+      await withClient(name, (c) => runMirrorBans(c));
+      expect(await statusOf(U.alice), 'a dry run writes nothing').toBe('active');
+
+      await expect(withClient(name, (c) => runMirrorBans(c, { commit: true }))).rejects.toThrow(
+        /--commit needs --database/,
+      );
+
+      const summary = await withClient(name, (c) =>
+        runMirrorBans(c, { commit: true, database: name }),
+      );
+      expect(await statusOf(U.alice)).toBe('suspended');
+      expect(await statusOf(U.bob), 'already suspended in v7: untouched').toBe('suspended');
+      expect(await statusOf(U.vendor1), 'not banned: untouched').toBe('active');
+      expect(summary['v8 users banned']).toBeGreaterThanOrEqual(2);
+    });
+  });
+
   it('a soft-deleted user with a live v7 session and no Entra identity does not block it', async () => {
     const name = await seededCopy(async (pool) => {
       const ghost = '00000000-0000-7000-8000-0000000000d1';
@@ -776,6 +856,8 @@ describe('the backfill, on a seeded copy with guests and vendors', () => {
   describe('the assertions fail loudly when the result is corrupted (they are not decoration)', () => {
     // Run the assertions section of backfill.sql on its own, after a good backfill, with ONE thing broken in a
     // transaction that is rolled back.
+    // The assertions read the staff domains the runner sets as a transaction-local setting; set it the way the runner does.
+    const STAFF_SETTINGS = "SELECT set_config('rova.v8_staff_domains', 'qnsc.vn', true)";
     const sql = readFileSync(join(V8_SQL_DIR, 'backfill.sql'), 'utf8');
     const assertions = sql.slice(sql.indexOf('-- ── 4.'), sql.indexOf('-- ── 5.'));
     let committed: string;
@@ -790,6 +872,7 @@ describe('the backfill, on a seeded copy with guests and vendors', () => {
         await withClient(committed, async (client) => {
           await client.query('BEGIN');
           try {
+            await client.query(STAFF_SETTINGS);
             await client.query(corrupt);
             await expect(client.query(assertions)).rejects.toThrow(message);
           } finally {
@@ -801,7 +884,7 @@ describe('the backfill, on a seeded copy with guests and vendors', () => {
     it('passes on the real result (the section is the real one)', async () => {
       expect(assertions.length).toBeGreaterThan(500);
       await withClient(committed, async (client) => {
-        await client.query(assertions);
+        await client.query(`${STAFF_SETTINGS};\n${assertions}`);
       });
     });
 
@@ -843,7 +926,7 @@ describe('the backfill, on a seeded copy with guests and vendors', () => {
     fails(
       'the wrong banned flag',
       `update identity."user" set banned = false where id = '${U.bob}'`,
-      /wrong banned flag/,
+      /inactive or suspended in v7 and not banned in v8/,
     );
     fails(
       'an unverified migrated user',
