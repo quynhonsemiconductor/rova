@@ -86,7 +86,13 @@ pnpm db:identity-v8:backfill --tenant-id "$ENTRA_TENANT_ID" --staff-domains qnsc
 
 It uses the migration role (`DATABASE_MIGRATION_URL`). `--commit` also needs `--database <name>` equal to the database the connection is on: a write to the wrong database is the one mistake a dry run cannot catch. One transaction, `REPEATABLE READ`.
 
-It is **idempotent and re-runnable**: re-run it at the cutover to pick up what v7 did since the last run. A re-run INSERTs new users, UPDATEs the name, avatar and ban of existing ones to match v7, and bans (never deletes) a v8 user whose profile was soft-deleted since. It never touches `email_verified` of a user that already exists in v8. It writes no session: revoke a banned user's sessions through the product.
+It is **idempotent and re-runnable**: re-run it at the cutover to pick up what v7 did since the last run. A re-run INSERTs new users, UPDATEs the name and avatar of existing ones to match v7, bans anyone v7 has inactive or suspended, and bans (never deletes) a v8 user whose profile was soft-deleted since. It never touches `email_verified` of a user that already exists in v8. It writes no session: revoke a banned user's sessions through the product.
+
+**A ban is one way.** Once identity 8 serves traffic a person is disabled in v8 (`setUserBanned`). A re-run keeps every ban that is already there, with its reason: `banned = v8's OR v7's`. The assertion is therefore "everyone v7 has inactive or suspended is banned in v8", not the reverse. The cost: someone un-suspended in v7 after an earlier run stays banned in v8 until someone unbans them there.
+
+**A re-run after the cutover is supported.** A B2B guest who signed in on v8 has a Microsoft account and no v7 identity (and an unverified address): the preflight and the assertions ignore them instead of refusing.
+
+**Before a rollback to the v7 image**, mirror the bans onto v7's terms: `node dist/db/identity-v8/cli.js mirror-bans` (a dry run) then `... mirror-bans --commit --database <name>`. The v7 image reads `identity.users.status`, not identity 8's `banned`; without this the rollback quietly reinstates everybody banned since the cutover. It writes only `status = 'suspended'` (and `updated_at`), only for a live user who is `active` in v7 and banned in v8.
 
 **Deployed image.** The migrator image does not copy `db/identity-v8/*.sql` today, so the cutover PR must add that `COPY` (or the operator runs the SQL with `psql`, setting `rova.v8_tenant_id` / `rova.v8_staff_domains` first). Not done here: nothing runs it yet.
 

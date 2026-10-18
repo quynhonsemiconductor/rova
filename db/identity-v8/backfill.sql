@@ -92,6 +92,9 @@ BEGIN
   FROM identity.users u
   WHERE u.deleted_at IS NULL
     AND NOT EXISTS (SELECT 1 FROM identity.sso_identities s WHERE s.user_id = u.id AND s.provider = 'entra')
+    -- A RE-RUN after cutover: a B2B guest who has signed in on v8 has a Microsoft account there and no v7 identity. That is a
+    -- supported state (a vendor created by the v8 sign-in), not an outsider this script has to refuse.
+    AND NOT EXISTS (SELECT 1 FROM identity.account a WHERE a.user_id = u.id AND a.provider_id = 'microsoft')
     AND substring(lower(u.email) from '@([^@]+)$') <> ALL (domains);
   IF n > 0 THEN
     RAISE EXCEPTION 'identity v8 backfill: % live user(s) have no Entra identity and an address outside the staff domains (user ids: %). A v8 user without the account would be refused on first sign-in; decide per user (remove them, or let their first sign-in create them).', n, ids;
@@ -151,15 +154,23 @@ WHERE u.deleted_at IS NULL
 -- A re-run carries what v7 changed since the last run: a rename, a new avatar, a suspension. Guarded on the address matching
 -- (a clash was refused above), and a no-op when nothing differs. email_verified is NOT touched: once a user exists in v8 it is
 -- identity's.
+-- A BAN IS ONE WAY HERE. v8 is where bans are placed once it serves traffic (setUserBanned: offboarding, a suspected compromise), and
+-- a re-run must never lift one: banned = v8's OR v7's, and a ban that is already there keeps its reason. (The cost: a person
+-- un-suspended in v7 after a previous run stays banned in v8 until someone unbans them there. Lifting a ban is a decision, not a sync.)
 ON CONFLICT (id) DO UPDATE
   SET name = EXCLUDED.name,
       image = EXCLUDED.image,
-      banned = EXCLUDED.banned,
-      ban_reason = EXCLUDED.ban_reason,
+      banned = coalesce(identity."user".banned, FALSE) OR EXCLUDED.banned,
+      ban_reason = CASE WHEN coalesce(identity."user".banned, FALSE) THEN identity."user".ban_reason ELSE EXCLUDED.ban_reason END,
       updated_at = now()
   WHERE identity."user".email = EXCLUDED.email
-    AND (identity."user".name, identity."user".image, identity."user".banned, identity."user".ban_reason)
-        IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.image, EXCLUDED.banned, EXCLUDED.ban_reason);
+    AND (identity."user".name, identity."user".image, coalesce(identity."user".banned, FALSE), identity."user".ban_reason)
+        IS DISTINCT FROM (
+          EXCLUDED.name,
+          EXCLUDED.image,
+          coalesce(identity."user".banned, FALSE) OR EXCLUDED.banned,
+          CASE WHEN coalesce(identity."user".banned, FALSE) THEN identity."user".ban_reason ELSE EXCLUDED.ban_reason END
+        );
 
 -- A user soft-deleted in v7 since the last run keeps its v8 row (it may hold accounts and sessions) but can no longer sign in.
 -- Revoke its sessions through the product (revokeUserSessions): this script writes no session.
@@ -224,17 +235,21 @@ BEGIN
      OR (SELECT count(*) FROM identity.account a WHERE a.user_id = o.user_id AND a.provider_id = 'microsoft') <> 1;
   IF n > 0 THEN RAISE EXCEPTION 'identity v8 backfill assertion failed: % owner(s) of a live v7 session do not have exactly one v8 user and one Microsoft account', n; END IF;
 
-  -- The ban mapping, both columns, for every migrated user.
+  -- The ban mapping: everyone v7 has inactive or suspended is banned in v8. (Not the other way round: a ban placed in v8 is v8's.)
   SELECT count(*) INTO n FROM (
-    SELECT id, (status IN ('inactive', 'suspended')) FROM identity.users WHERE deleted_at IS NULL
+    SELECT id FROM identity.users WHERE deleted_at IS NULL AND status IN ('inactive', 'suspended')
     EXCEPT
-    SELECT id, coalesce(banned, FALSE) FROM identity."user") d;
-  IF n > 0 THEN RAISE EXCEPTION 'identity v8 backfill assertion failed: % user(s) have the wrong banned flag', n; END IF;
+    SELECT id FROM identity."user" WHERE banned) d;
+  IF n > 0 THEN RAISE EXCEPTION 'identity v8 backfill assertion failed: % user(s) are inactive or suspended in v7 and not banned in v8', n; END IF;
 
   -- Nobody migrated is unverified (the squatting rule would replace them on first sign-in).
+  -- Of the users THIS script is responsible for: an Entra identity in v7, or a staff-domain address. (A B2B guest created by a v8
+  -- sign-in after the cutover is not unverified by anything the backfill did, and must not stop a re-run.)
   SELECT count(*) INTO n FROM identity."user" v
   JOIN identity.users u ON u.id = v.id AND u.deleted_at IS NULL
-  WHERE NOT v.email_verified;
+  WHERE NOT v.email_verified
+    AND (EXISTS (SELECT 1 FROM identity.sso_identities s WHERE s.user_id = u.id AND s.provider = 'entra')
+         OR substring(lower(u.email) from '@([^@]+)$') = ANY (string_to_array(lower(current_setting('rova.v8_staff_domains')), ',')));
   IF n > 0 THEN RAISE EXCEPTION 'identity v8 backfill assertion failed: % migrated user(s) are not email_verified', n; END IF;
 
   -- The counts agree (a belt for the set differences above).

@@ -218,6 +218,11 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 # Raw SQL migrations go into dist/db/migrations — matches __dirname in compiled migrate.js.
 COPY --from=builder /app/dist/db ./dist/db
 COPY --from=builder /app/db/migrations ./dist/db/migrations
+# The identity v8 backfill/rollback SQL sits next to the compiled runner (run.js reads it from __dirname). It must be IN THE IMAGE
+# BEFORE the identity v8 cutover change deploys, because the backfill (dry run, then --commit) has to run first: with empty v8 tables
+# every existing user's sign-in is refused. Run it with: node dist/db/identity-v8/cli.js backfill --tenant-id ... --staff-domains ...
+# (docs/runbooks/identity-v8-cutover.md).
+COPY --from=builder /app/db/identity-v8/*.sql ./dist/db/identity-v8/
 COPY --from=builder /app/package.json ./
 
 RUN addgroup --system --gid 1001 nodejs \

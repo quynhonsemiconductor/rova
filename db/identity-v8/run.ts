@@ -92,3 +92,43 @@ export async function runRollback(client: Queryable, options: RollbackOptions = 
     throw error;
   }
 }
+
+export interface MirrorBansOptions {
+  /** Persist. Default false: do it, count it, then roll back. */
+  commit?: boolean;
+  /** With `commit`, REQUIRED and must equal the database the connection is on (as for the backfill). */
+  database?: string | undefined;
+}
+
+/**
+ * Runs `mirror-bans.sql`: marks `suspended` in v7's `identity.users.status` everyone banned in identity 8, so that a rollback to the
+ * v7 image does not reinstate them. Returns the summary the SQL ends with.
+ */
+export async function runMirrorBans(
+  client: Queryable,
+  options: MirrorBansOptions = {},
+): Promise<BackfillSummary> {
+  if (options.commit) {
+    const actual = (
+      (await client.query('select current_database() as d')) as { rows: Array<{ d: string }> }
+    ).rows[0].d;
+    if (options.database !== actual) {
+      throw new Error(
+        `identity v8 mirror-bans: --commit needs --database ${actual} (the database this connection is on); got ${options.database ?? 'nothing'}`,
+      );
+    }
+  }
+  await client.query('BEGIN');
+  try {
+    const results = (await client.query(sqlFile('mirror-bans.sql'))) as Array<{
+      rows: Array<{ what: string; n: number }>;
+    }>;
+    const summary: BackfillSummary = {};
+    for (const row of results[results.length - 1]?.rows ?? []) summary[row.what] = Number(row.n);
+    await client.query(options.commit ? 'COMMIT' : 'ROLLBACK');
+    return summary;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  }
+}
