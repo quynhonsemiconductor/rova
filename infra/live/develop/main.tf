@@ -127,7 +127,7 @@ module "stack" {
 
   // Mail through Microsoft 365 (Graph): STAGED, NOT SWITCHED ON. `email_provider` stays at the module default ("ses") until the owner has done
   // docs/runbooks/mail-graph.md for this environment; the cut-over is then a PR setting email_provider = "graph",
-  // mail_graph_client_id (the "Rova Develop Service" app) and mail_graph_certificate_set = true.
+  // mail_graph_client_id (the "Rova Dev Service" app) and mail_graph_certificate_set = true.
   // A non-prod environment never sends from the prod mailbox: develop has its own.
   mail_graph_sender = "noreply-rova-dev@qnsc.vn"
 

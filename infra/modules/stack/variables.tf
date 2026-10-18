@@ -233,7 +233,7 @@ variable "mail_graph_sender" {
 
 variable "mail_graph_client_id" {
   description = <<-EOT
-    Application (client) id of the "Rova <Env> Service" Entra app: certificate only (no client secret), worker only. It holds the Exchange
+    Application (client) id of the "Rova <Dev|Prod> Service" Entra app: certificate only (no client secret), worker only. It holds the Exchange
     RBAC role "Application Mail.Send" scoped to `mail_graph_sender`, and NO Graph permission in Entra. NOT `entra_client_id`, the sign-in app
     (delegated, client secret, API): a compromised API process must not hold a credential that can send mail. A public identifier, held in git.
     Empty until the app exists (docs/runbooks/mail-graph.md).

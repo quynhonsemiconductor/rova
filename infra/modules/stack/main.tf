@@ -397,7 +397,7 @@ module "tunnel" {
   config_src = "" // NOT omittable: the module defaults it to "cloudflare". See above.
 }
 
-# The Graph mail credential: ONE PEM holding the private key then the certificate, of the "Rova <Env> Service" Entra app. A STANDALONE secret and not a
+# The Graph mail credential: ONE PEM holding the private key then the certificate, of the "Rova <Dev|Prod> Service" Entra app. A STANDALONE secret and not a
 # key of the app bundle on purpose: `task_secret_arns` gives the whole bundle to the task role of BOTH services, so a bundled key would be readable by
 # the API process. This one is referenced only from the worker's `secrets` (the execution role injects it at start) and is in no task role.
 # Terraform creates the empty container; the owner puts the value (docs/runbooks/mail-graph.md), and `mail_graph_certificate_set` injects it only after.
