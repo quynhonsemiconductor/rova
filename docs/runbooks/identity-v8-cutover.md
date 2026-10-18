@@ -83,7 +83,9 @@ Rotating the value later signs everyone out (nothing else); do it the same way a
 
 ## The cutover, in order (develop first, then production)
 
-**Develop, interactive:** `bash scripts/owner/identity-v8-cutover.sh develop` runs steps 1 to 6 for develop and the rehearsal (below), one step at a time, with a `yes` before each write. It discovers the names, checks the migrator image contains #719, writes the key (never printed), runs the dry run and the commit, checks the invariant, pauses for the #718 merge, re-runs the backfill, walks the verification checklist and the rollback rehearsal. `--from <step>` resumes (`preflight`, `secret`, `backfill-dry`, `commit`, `merge`, `verify`, `rehearsal`). Its log holds no secret values. Production has its own window and is not handled by it.
+**Interactive script:** `scripts/owner/identity-v8-cutover.sh` (in #729) runs the develop steps with `develop` and the production steps with `prod` (see "Production"). The develop run covers steps 1 to 6 and the rehearsal (below), one step at a time, with a `yes` before each write. It discovers the names, checks the migrator image contains #719, writes the key (never printed), runs the dry run and the commit, checks the invariant, pauses for the #718 merge, re-runs the backfill, walks the verification checklist and the rollback rehearsal. `--from <step>` resumes (`preflight`, `secret`, `backfill-dry`, `commit`, `merge`, `verify`, `rehearsal`). Its log holds no secret values. Production is the `prod` run, with its own snapshot and release steps.
+
+**The script lands with #729, after #718.** Until #729 merges, run its steps from the #729 branch, in a worktree next to this checkout: `git worktree add ../wt729 owner/identity-v8-develop-cutover`, then `bash ../wt729/scripts/owner/identity-v8-cutover.sh develop`. The pre-merge steps (secret, dry run, commit) need nothing from #718's merge.
 
 Steps 1-3 are additive and happen **before** #718 deploys; 4-6 are the window. Production runs the same steps in one release, shortly after develop is verified, with an announced downtime and a database snapshot before any write (see "Production").
 
@@ -160,7 +162,6 @@ the reason this is done before #718, not after**: fix or remove the fixture, dry
    - [ ] A vendor with a live invitation signs in as a guest and sees only what their invitation granted; a guest with none, or one removed from the workspace, gets `?error=STAFF_SIGN_IN_REFUSED` on the login page.
    - [ ] An API token minted before the cutover authenticates; revoking it returns 401. Banning the owner (`setUserBanned`) returns 401 for the token too. 301 requests with made-up `rly_` tokens from one address end in `429`.
    - [ ] A user suspended/removed from the workspace cannot reach it (zero permissions), and their API tokens are revoked (unchanged behaviour).
-   - [ ] 301 requests with made-up `rly_` tokens from one address end in `429` (the pre-auth limiter).
    - [ ] Sign out, and "sign out everywhere" (`POST /v1/auth/logout-all`), end the session. `GET /api/auth/get-session` carries no `token`.
    - [ ] No `identity.profile_id_mismatch`, `identity.staff_sign_in_refused` (other than the refusals you caused), `identity.auth_handler_threw` or `identity.context_cache_stale` log line. `sign_in.failure` is a metric; the `rate_limit` fail-open alarm stays quiet.
 
@@ -232,7 +233,7 @@ Cutover sequence on production, in order (the script walks it):
 
 Rollback in this window is in "Rollback" below. The snapshot is the last resort.
 
-can time out waiting for the backend
+### The web deploy of a prod tag can time out waiting for the backend
 
 `wait-for-backend` allows 6 hours: the backend deploy itself waits for apply-prod and the `production` environment's required reviewer. If it still expires, the
 web job fails and the SPA is **not** published (the safe direction: the previous SPA keeps serving against the new API for a while). **Re-run the web jobs once the
