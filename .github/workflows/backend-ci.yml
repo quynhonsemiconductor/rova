@@ -182,21 +182,6 @@ jobs:
           --health-timeout 3s
           --health-retries 5
 
-      # identity's conformance kit (test/e2e/identity-conformance.e2e.spec.ts) needs a fresh, EMPTY server it may create databases
-      # on, and identity <= 8.4.0's kit calls uuidv7(), which only PostgreSQL 18 has (app-platform#261 removes that; rova runs 17).
-      # Drop this service and IDENTITY_CONFORMANCE_DATABASE_URL once the identity release that carries it is adopted.
-      postgres-conformance:
-        image: postgres:17.11-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports: ['5433:5432']
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
@@ -288,8 +273,6 @@ jobs:
           # (identity refuses it unless NODE_ENV is test or development).
           BETTER_AUTH_SECRET: ci-test-better-auth-secret-min-32-characters-ok
           IDENTITY_TEST_LOGIN: enabled
-          # identity 8.4's conformance kit calls uuidv7() (PostgreSQL 18); rova runs 17, so the kit gets a server of its own.
-          IDENTITY_CONFORMANCE_DATABASE_URL: postgresql://postgres:postgres@localhost:5433/postgres?sslmode=disable
           ENTRA_TENANT_ID: dev-tenant
           ENTRA_CLIENT_ID: ci-test-client
           ENTRA_CLIENT_SECRET: ci-test-secret

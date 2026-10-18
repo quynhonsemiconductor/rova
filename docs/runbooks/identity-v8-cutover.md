@@ -295,8 +295,8 @@ Before the production release, on develop, with the cutover live and at least on
   connection writes (`db/seeds/bootstrap.ts`) stop at the same time; the sign-in hook already reads the home workspace from `HOME_WORKSPACE_ID` and the domains and
   the JIT flag from the environment, not from `sso_connections`.
 - **Day 30, drop:** `DROP` the v7 tables (`auth_sessions`, `sso_identities`, `sso_connections`, `sso_connection_domains`) in a migration.
-- **Whenever identity ships the release with app-platform#261:** delete the PostgreSQL 18 `postgres-conformance` service and `IDENTITY_CONFORMANCE_DATABASE_URL` from
-  `backend-ci.yml` (the kit then runs on the e2e PostgreSQL 17).
+- **Done (#722, identity 8.4.1):** the PostgreSQL 18 `postgres-conformance` service and `IDENTITY_CONFORMANCE_DATABASE_URL` are gone from
+  `backend-ci.yml`; the conformance kit runs on the e2e PostgreSQL 17.
 
 ## Not in this change (PR 4)
 

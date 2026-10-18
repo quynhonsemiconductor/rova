@@ -20,10 +20,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runIdentityConformance } from '@quynhonsemiconductor/identity/testing';
 import { pgOptions } from '../../db/pg-ssl';
 
-// The kit's own SQL calls `uuidv7()`, which exists only on PostgreSQL 18 (identity <= 8.4.0; app-platform#261 makes it
-// `gen_random_uuid()`, available on 17). rova runs PostgreSQL 17, so until that release the kit gets a PostgreSQL 18 server of
-// its own: set IDENTITY_CONFORMANCE_DATABASE_URL (a role that may CREATE DATABASE). Unset, it uses the e2e server, which is the
-// right place once the kit runs on 17. The throwaway database is created and dropped on whichever server it is.
+// The kit runs on the e2e server (PostgreSQL 17): identity 8.4.1 uses gen_random_uuid(), not uuidv7(). It needs a role that may
+// CREATE DATABASE; the throwaway database is created and dropped on that server. IDENTITY_CONFORMANCE_DATABASE_URL overrides it.
 const adminUrl =
   process.env['IDENTITY_CONFORMANCE_DATABASE_URL'] ??
   process.env['DATABASE_MIGRATION_URL'] ??
