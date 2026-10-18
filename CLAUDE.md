@@ -1218,14 +1218,14 @@ either opens a hole or leaks API surface.
 
 - **Browser sessions are identity 8 cookies, not bearer.** The SPA holds no tokens. It talks to
   same-origin Cloudflare Pages Functions (`apps/web/functions/v1/[[path]].ts`, `functions/api/auth/[[path]].ts`)
-  that proxy to the API, and authentication rides an opaque `__Secure-rova.session_token` cookie (a database
+  that proxy to the API, and authentication rides an opaque `__Host-rova.session_token` cookie in production (`__Secure-` elsewhere; a database
   row, cached in Valkey) issued by `@quynhonsemiconductor/identity` 8 (Better Auth, `staff` preset, Entra).
   identity's global `SessionGuard` authenticates; rova's route-level `SessionAuthGuard` (`@Auth()`) turns the
   session into `request.user`. The session's `contextId` IS the active workspace (kept honest against
   `workspace_members`, revalidated every 60 s, cleared at once when a member is removed). API tokens (`rly_...`,
   `Authorization: Bearer`) are authenticated by `ApiTokenGuard`, a GLOBAL guard registered BEFORE
   identity's — module order in `AppModule` is the mechanism (`ApiTokensModule`, `AuthModule`, then
-  `RateLimitModule`) — which calls `markPreAuthenticated(req, { userId })` so a banned user's token is refused.
+  `RateLimitModule`, with `PreAuthRateLimitModule` — an address-keyed floor under traffic that never authenticates — first) — which calls `markPreAuthenticated(req, { userId })` so a banned user's token is refused.
   There is no JWT, no refresh token and no key pair. docs/runbooks/identity-v8-cutover.md.
 - **One guard, one decorator.** `PolicyGuard`
   (`libs/modules/access/src/interface/http/policy.guard.ts`) is the single

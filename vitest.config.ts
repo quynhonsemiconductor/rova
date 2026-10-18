@@ -88,6 +88,8 @@ export default defineConfig({
         'libs/modules/collaboration/src/application/collaboration.service.ts',
         'libs/platform/src/aws/secrets-manager-secret-resolver.ts',
         'libs/platform/src/auth/session-auth.guard.ts',
+        'libs/platform/src/rate-limit/pre-auth-rate-limit.guard.ts',
+        'libs/platform/src/http/session-token-redaction.ts',
         'libs/modules/api-tokens/src/interface/http/api-token.guard.ts',
         'libs/platform/src/config/env.schema.ts',
         'libs/platform/src/email/email-delivery.service.ts',

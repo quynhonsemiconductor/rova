@@ -5,116 +5,223 @@ instead of the v7 BFF session. This page is the operator's half: what to prepare
 **production**, how to prove it worked, and how to undo it. The data half (the tables, the backfill) is
 [identity-v8-data-model.md](identity-v8-data-model.md).
 
-**This change does not touch a v7 table.** The v7 tables (`identity.auth_sessions`, `sso_identities`, `sso_connections`, ...) are frozen at
+**The cutover change does not touch a v7 table.** The v7 tables (`identity.auth_sessions`, `sso_identities`, `sso_connections`, ...) are frozen at
 day 7 and dropped at day 30, in two later changes. Until then rollback is a redeploy.
+
+## The order of everything (read this first)
+
+Three changes, in this order. Reversing 1 and 3 is an outage.
+
+| #   | Change                                                                           | What it does                                                                           | Why it is first/last                                                                                                                                                                                                                                                              |
+| --- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **rova#719**: the backfill in the migrator image (+ re-run fixes, `mirror-bans`) | Nothing at runtime. Puts `db/identity-v8/*.sql` into the image the backfill runs from. | The backfill must be dry-run and **committed before** the v8 API serves. With empty v8 tables every existing user's sign-in is refused (`PROFILE_ID_MISMATCH`, fail-closed) until it commits, and a dry run that raises on real data (the seeded admin, say) extends that outage. |
+| 2   | **Your steps**: secret, Entra redirect URI, dry run, **commit the backfill**     | See "What you prepare" and "The cutover".                                              | Additive: the backfill writes only `identity."user"` and `identity.account`.                                                                                                                                                                                                      |
+| 3   | **rova#718**: the cutover                                                        | The v8 API, worker and web.                                                            | Merge only when steps 1 and 2 are done on that environment.                                                                                                                                                                                                                       |
+
+**No prod tag from `main` until the prod window.** A tag cut after #718 carries identity 8 and is refused by a guard in `backend-deploy.yml` and
+`web-deploy.yml` while `infra/live/prod/main.tf` has no `better_auth_secret_set = true`. Without it the failure is bad in a specific way: the v8 API
+cannot start without `BETTER_AUTH_SECRET`, the circuit breaker rolls the API back to v7, the worker stays on v8, and the SPA (published by
+the web deploy of the same tag) is already v8 against a v7 API. The prod cutover release **is** the first tag cut after `better_auth_secret_set = true`
+lands in prod. If a hotfix is needed in prod before that, cut it from a branch that does not contain #718 (the guard is part of #718, so a tag from
+before it is not guarded, and not v8).
+
+A tag's web deploy now waits for the **same tag's** backend deploy (`wait-for-backend` in `web-deploy.yml`), so the SPA of a release never goes
+live ahead of its API, or stays live if that API is rolled back. On **develop** the two deploys are independent (a push to `main`); expect up to ~45
+minutes in which the SPA and the API are on different sides of the cutover. Announce it as a maintenance window, and do the verification after both
+are green.
 
 ## What changes for people
 
 - Sign-in is `POST /api/auth/sign-in/social` -> Microsoft -> `/api/auth/callback/microsoft`, same-origin with the SPA (a second Pages Function,
-  `apps/web/functions/api/auth/[[path]].ts`). The cookie is `__Secure-rova.session_token` (it was `__Host-rova_session`).
+  `apps/web/functions/api/auth/[[path]].ts`). The cookie is `__Host-rova.session_token` in production (`__Secure-` elsewhere); it was `__Host-rova_session`.
+  `SameSite=Lax` stays what identity sets: the Microsoft callback is a cross-site top-level navigation, so a `Strict` state cookie would not come back.
 - **Everyone signs in once.** v7 sessions are not migrated.
 - The workspace switch is `POST /v1/auth/switch-workspace`; "who am I" is `GET /v1/auth/me` (both replace `/v1/bff/*`).
-- API tokens (`rly_...`) keep working unchanged: the table is untouched and the credential is the same. A **banned** user's token is refused.
-- A vendor signs in as a **B2B guest** of the company tenant. They are admitted only with a profile or a live invitation (by address or directory
-  object); a guest is never created by just-in-time provisioning. Staff addresses follow `SSO_JIT_ENABLED` (invite-only in every deployed
-  environment).
+- API tokens (`rly_...`) keep working unchanged: the table is untouched and the credential is the same. A **banned** user's token is refused, and so is
+  one whose owner has no identity user yet (they sign in once and it works again).
+- A vendor signs in as a **B2B guest** of the company tenant. They are admitted only with a live invitation (by directory object when the invitation
+  carries one, by address otherwise) or a workspace seat they still hold; a guest is never created by just-in-time provisioning, and a profile alone is not a seat.
+  Staff addresses follow `SSO_JIT_ENABLED` (invite-only in every deployed environment).
 
 ## What you prepare (once per environment)
 
-| #   | Who   | What                                                                                                                                                                                                              | Proof                                                                                |
-| --- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| 1   | owner | Entra app registration (the **sign-in** app, single-tenant): add the redirect URI `https://<app domain>/api/auth/callback/microsoft`. **Keep** the v7 one (`/v1/bff/callback`) until the day-7 change.           | the app's Authentication blade lists both                                            |
-| 2   | owner | The registration emits the `email` and `upn` claims in the ID token (optional claims). The `staff` preset checks the address AND the UPN against `SSO_ALLOWED_EMAIL_DOMAINS`.                                      | `Sign-in logs` show a successful token with both; a test sign-in succeeds on develop |
-| 3   | owner | `openssl rand -base64 48` -> the `better-auth-secret` key of `rova/<env>/app` (Secrets Manager). **Before** the image that needs it is deployed.                                                                  | `aws secretsmanager get-secret-value` shows the key (do not print it)                |
-| 4   | owner | Set `better_auth_secret_set = true` in `infra/live/<env>/main.tf` and apply. develop's is already `true` in this change: **populate step 3 before merging.** Production stays `false` until its window.         | `tofu plan` shows the API task gaining `BETTER_AUTH_SECRET`, nothing else            |
-| 5   | owner | Cloudflare Pages: `API_ORIGIN` and `EDGE_CLIENT_IP_SECRET` are already set for `/v1/*`; the new `/api/auth/*` Function reuses both.                                                                                | the web deploy lists `functions/api/auth`                                            |
-| 6   | agent | The packages: `@quynhonsemiconductor/identity` >= 8.4.0 is in the registry (it is).                                                                                                                                | `pnpm install --frozen-lockfile` passes in CI                                        |
+| #   | Who   | What                                                                                                                                                                                                         | Proof                                                                                |
+| --- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| 1   | owner | Entra app registration (the **sign-in** app, single-tenant): add the redirect URI `https://<app domain>/api/auth/callback/microsoft`. **Keep** the v7 one (`/v1/bff/callback`) until the day-7 change.       | the app's Authentication blade lists both                                            |
+| 2   | owner | The registration emits the `email` and `upn` claims in the ID token (optional claims). The `staff` preset checks the address AND the UPN against `SSO_ALLOWED_EMAIL_DOMAINS`.                                | `Sign-in logs` show a successful token with both; a test sign-in succeeds on develop |
+| 3   | owner | **Put the key into the bundle and prove the KEY is there** (below). The deploy preflight proves only that the bundle has a version; a missing key passes it and fails at task start, after the migrator ran. | `jq -e 'has("better-auth-secret")'` prints `true`                                    |
+| 4   | owner | Set `better_auth_secret_set = true` in `infra/live/<env>/main.tf` and apply. develop's is already `true` in #718: **do step 3 before merging #718.** Production stays `false` until its window.              | `tofu plan` shows the API task gaining `BETTER_AUTH_SECRET`, nothing else            |
+| 5   | owner | Cloudflare Pages: `API_ORIGIN` and `EDGE_CLIENT_IP_SECRET` are already set for `/v1/*`; the new `/api/auth/*` Function reuses both.                                                                          | the web deploy lists `functions/api/auth`                                            |
 
 The worker is **not** given `BETTER_AUTH_SECRET`. Until PR 4 (below) the worker's Graph guest invite still uses `ENTRA_CLIENT_SECRET`.
 
+### Step 3 in commands (the value is never printed)
+
+```sh
+export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1
+SECRET_ID=rova/develop/app            # production: the bundle named in infra/live/prod/main.tf (rova/production/app)
+
+# 1. is the key already there? (prints only true/false)
+aws secretsmanager get-secret-value --secret-id "$SECRET_ID" --query SecretString --output text | jq -e 'has("better-auth-secret")'
+
+# 2. if false: generate it into the environment and add it to the bundle (read-modify-write; the value goes through a pipe, not argv)
+export KEY="$(openssl rand -base64 48)"
+aws secretsmanager get-secret-value --secret-id "$SECRET_ID" --query SecretString --output text \
+  | python3 -c 'import json,os,sys; d=json.load(sys.stdin); d["better-auth-secret"]=os.environ["KEY"]; print(json.dumps(d))' \
+  | aws secretsmanager put-secret-value --secret-id "$SECRET_ID" --secret-string file:///dev/stdin
+unset KEY
+
+# 3. prove it, again without printing it: the key exists and is at least 32 characters
+aws secretsmanager get-secret-value --secret-id "$SECRET_ID" --query SecretString --output text \
+  | jq -e '(.["better-auth-secret"] | length) >= 32'
+```
+
+Rotating the value later signs everyone out (nothing else); do it the same way and redeploy.
+
 ## The cutover, in order (develop first, then production)
 
-Everything before step 4 is additive and can be done any time before; steps 4-6 are the window. On production the window is off-peak
-(Friday evening or Saturday morning, the owner picks the slot) and starts only after develop's **day-7 checkpoint**.
+Steps 1-3 are additive and happen **before** #718 deploys; 4-6 are the window. On production the window is off-peak (Friday evening or Saturday
+morning, the owner picks the slot) and starts only after develop's **day-7 checkpoint**.
 
-1. **Dry run of the backfill.** It does everything, checks everything, then rolls back. From the migrator image (the runbook does not need a
-   laptop with database access):
+1. **Dry run of the backfill**, from the migrator image (it has the SQL since #719). A one-off ECS task on the migrator's task definition, with the
+   command overridden. Names below are `rova-<env_slug>`; find the real ones with the discovery lines first.
 
-   ```bash
-   # one-off task with the migrator image and the migration role's connection (the same task definition as db:migrate)
-   node dist/db/identity-v8/cli.js backfill --tenant-id <ENTRA_TENANT_ID> --staff-domains qnsc.vn
+   ```sh
+   export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1 ENV_SLUG=develop        # production: prod
+   CLUSTER=rova-$ENV_SLUG TASKDEF=rova-$ENV_SLUG-migrator
+
+   # discovery: the cluster, its services, and the network the API runs in (the migrator task needs the same subnets and a security group
+   # that can reach the database, i.e. the API's)
+   aws ecs list-clusters --query 'clusterArns' --output text
+   aws ecs list-services --cluster "$CLUSTER" --output text
+   aws ecs describe-services --cluster "$CLUSTER" --services "$(aws ecs list-services --cluster "$CLUSTER" --query 'serviceArns[?contains(@, `-api`)]|[0]' --output text)" \
+     --query 'services[0].networkConfiguration.awsvpcConfiguration' --output json   # -> subnets, securityGroups
    ```
 
-   It prints the counts it would write and either `DRY RUN: every preflight check and assertion passed` or a `RAISE` naming ids and counts (never
-   addresses). Every raise is a decision for the owner, not a retry: more than one Entra identity per user, a live user that is neither an Entra
-   user nor a staff address, an `sso_connections` row beyond the home directory connection and the `shared` guest gate (partner SSO is deferred),
-   two users sharing a lower-cased address. Fix the data in v7, then dry-run again.
+   ```sh
+   SUBNETS='subnet-aaa,subnet-bbb' SGS='sg-xxx'     # from the lines above
+   TENANT_ID="<ENTRA_TENANT_ID>"                    # the sign-in app's tenant (var.entra_tenant_id)
+
+   run_migrator() {   # run_migrator '<json array of the command>'
+     aws ecs run-task --cluster "$CLUSTER" --task-definition "$TASKDEF" --launch-type FARGATE \
+       --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SGS],assignPublicIp=DISABLED}" \
+       --overrides "{\"containerOverrides\":[{\"name\":\"migrator\",\"command\":$1}]}" \
+       --query 'tasks[0].taskArn' --output text
+   }
+   TASK=$(run_migrator '["node","dist/db/identity-v8/cli.js","backfill","--tenant-id","'"$TENANT_ID"'","--staff-domains","qnsc.vn"]')
+   aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
+   aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" --query 'tasks[0].containers[0].{exit:exitCode,reason:reason}'
+   # the output: the migrator's log group, newest stream of the task
+   aws logs tail "/ecs/$(echo "$TASKDEF")" --since 15m
+   ```
+
+   Exit code `0` and `DRY RUN: every preflight check and assertion passed` is a pass. A non-zero exit is a `RAISE` naming ids and counts (never addresses). Every
+   raise is a decision for the owner, not a retry: more than one Entra identity per user, a live user that is neither an Entra user nor a staff address,
+   an `sso_connections` row beyond the home directory connection and the `shared` guest gate (partner SSO is deferred), two users sharing a lower-cased
+   address. Fix the data in v7, then dry-run again. **A raise on develop's seeded data (e.g. `admin@qnsc.dev`: no Entra identity and an address off `qnsc.vn`) is
+   the reason this is done before #718, not after**: fix or remove the fixture, dry-run again, until it passes.
 
 2. **Commit the backfill** (additive: it reads v7 and writes only `identity."user"` and `identity.account`):
 
-   ```bash
-   node dist/db/identity-v8/cli.js backfill --tenant-id <ENTRA_TENANT_ID> --staff-domains qnsc.vn --commit --database <database name>
+   ```sh
+   TASK=$(run_migrator '["node","dist/db/identity-v8/cli.js","backfill","--tenant-id","'"$TENANT_ID"'","--staff-domains","qnsc.vn","--commit","--database","<database name>"]')
+   aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
+   aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" --query 'tasks[0].containers[0].exitCode'
    ```
 
-   `--commit` refuses unless `--database` names the database the connection is on. It is idempotent and re-runnable: a re-run carries renames,
-   avatars and suspensions, and bans (never deletes) a user deleted in v7 since.
+   `--commit` refuses unless `--database` names the database the connection is on. It is idempotent and re-runnable: a re-run carries renames and avatars,
+   bans anyone v7 has inactive or suspended, bans (never deletes) a user deleted in v7 since, and **never lifts a ban placed in v8**.
 
 3. **Check the invariant** (both queries must return no rows): the one in identity-v8-data-model.md, "`identity.users` stays".
 
-4. **Deploy** the API, the worker and the web together (the usual pipeline). On develop that is the merge of this change. The API starts only
-   if `BETTER_AUTH_SECRET` is present (step 3-4 above): a missing secret is a crash-looping API task, not a silent downgrade, and the previous
-   task keeps serving until the new one is healthy.
+4. **Deploy** (#718): the API, the worker and the web. On develop that is the merge; on production it is the tag (the guard above lets it through once `better_auth_secret_set = true`).
+   The API starts only if `BETTER_AUTH_SECRET` is present: a missing secret is a task that cannot start, not a silent downgrade, and the previous task keeps serving
+   until the new one is healthy.
 
-5. **Re-run the backfill** once the deploy has settled (idempotent): it picks up anyone v7 created while the rolling deploy overlapped. Those
-   people would sign in again anyway; this keeps the id invariant true for them.
+5. **Re-run the backfill** once the deploy has settled (idempotent): it picks up anyone v7 created while the rolling deploy overlapped, and it passes after a v8
+   guest signed in. Those people would sign in again anyway; this keeps the id invariant true for them.
 
 6. **Verify** (develop: you; production: you and one other person), in a private window:
 
    - [ ] Staff sign-in lands in the home workspace; `GET /v1/auth/me` returns the same `id` as before the cutover for that person (the profile id did not change).
-   - [ ] A workspace switch works for a member of two workspaces and is refused (403) for a workspace they are not in. Removing the member takes the workspace away on their open session within a second.
-   - [ ] A vendor with a live invitation signs in as a guest and sees only what their invitation granted; a guest with none gets `?error=STAFF_SIGN_IN_REFUSED` on the login page.
-   - [ ] An API token minted before the cutover authenticates; revoking it returns 401. Disabling the owner (a banned `identity."user"`) returns 401 for the token too.
+   - [ ] A workspace switch works for a member of two workspaces and is refused (403) for a workspace they are not in, and for one that was deleted. Removing the member takes the workspace away on their open session within a second.
+   - [ ] A vendor with a live invitation signs in as a guest and sees only what their invitation granted; a guest with none, or one removed from the workspace, gets `?error=STAFF_SIGN_IN_REFUSED` on the login page.
+   - [ ] An API token minted before the cutover authenticates; revoking it returns 401. Banning the owner (`setUserBanned`) returns 401 for the token too. 301 requests with made-up `rly_` tokens from one address end in `429`.
    - [ ] A user suspended/removed from the workspace cannot reach it (zero permissions), and their API tokens are revoked (unchanged behaviour).
-   - [ ] Sign out, and "sign out everywhere" (`POST /v1/auth/logout-all`), end the session.
-   - [ ] No `identity.profile_id_mismatch`, `identity.staff_sign_in_refused` (other than the refusals you caused), `identity.auth_handler_threw` or `identity.context_cache_stale` log line. `identity.sign_in.failure` is a metric; the `rate_limit` fail-open alarm stays quiet.
+   - [ ] Sign out, and "sign out everywhere" (`POST /v1/auth/logout-all`), end the session. `GET /api/auth/get-session` carries no `token`.
+   - [ ] No `identity.profile_id_mismatch`, `identity.staff_sign_in_refused` (other than the refusals you caused), `identity.auth_handler_threw` or `identity.context_cache_stale` log line. `sign_in.failure` is a metric; the `rate_limit` fail-open alarm stays quiet.
 
 ## Rollback (day 0 to day 7)
 
-Before the day-7 freeze nothing in the database has to be undone: **redeploy the previous image** (API, worker) and the previous Pages deployment.
-The v7 tables, the profile table, workspace membership, roles and API tokens are shared, so:
+Before the day-7 freeze nothing in the database has to be undone **except the bans** (step 1). Two paths; pick by urgency.
 
-- people sign in again (v8 sessions mean nothing to v7, and the reverse), and they are provisioned by v7's sign-in as before;
-- anyone created in v8 has a profile row (`identity.users`), which v7's sign-in links by address;
-- the Terraform keeps `JWT_PRIVATE_KEY` and `ENTRA_REDIRECT_URI` bound to the tasks for exactly this: the v7 image needs both to boot. They go in
-  the day-7 change, not before.
+**Before either: mirror the bans** (v8-only bans would otherwise be silently lifted, because the v7 image reads `identity.users.status`, not identity 8's `banned`):
 
-Do **not** run `db:identity-v8:rollback` as part of this rollback: the v8 tables are inert for the v7 image and hold the bans. It exists to undo
-migration 0136 on a database where nothing has been written, and it refuses once a later migration is recorded (roll forward with a DROP migration).
+```sh
+TASK=$(run_migrator '["node","dist/db/identity-v8/cli.js","mirror-bans"]')                                   # dry run: prints the counts
+TASK=$(run_migrator '["node","dist/db/identity-v8/cli.js","mirror-bans","--commit","--database","<database name>"]')
+```
 
-A fix-forward is usually better than a rollback for a problem in the product hook (`StaffSignInHandler`): its refusals are visible, per person,
-and carry a code.
+**A. Fast (minutes): put the previous task definitions back, and the previous SPA.** For the API and the worker (replace `<prev>` with the revision that was live before the cutover; read it from `aws ecs list-task-definitions --family-prefix rova-$ENV_SLUG-api --sort DESC`):
 
-## Day 7 and day 30 (separate changes, not this one)
+```sh
+aws ecs update-service --cluster "$CLUSTER" --service rova-$ENV_SLUG-api    --task-definition rova-$ENV_SLUG-api:<prev>    --force-new-deployment
+aws ecs update-service --cluster "$CLUSTER" --service rova-$ENV_SLUG-worker --task-definition rova-$ENV_SLUG-worker:<prev> --force-new-deployment
+aws ecs wait services-stable --cluster "$CLUSTER" --services rova-$ENV_SLUG-api rova-$ENV_SLUG-worker
+```
 
-- **Day 7, freeze:** stop writing v7 (revoke `INSERT/UPDATE/DELETE` on the v7 identity tables from the app role), remove `JWT_PRIVATE_KEY`,
-  `JWT_*` and `ENTRA_REDIRECT_URI` from the task definitions, and remove the v7 redirect URI from the Entra app. The seed's v7 SSO
-  connection writes (`db/seeds/bootstrap.ts`) stop at the same time; the sign-in hook already reads the home workspace from `HOME_WORKSPACE_ID`
-  and the domains and the JIT flag from the environment, not from `sso_connections`.
-- **Day 30, drop:** `DROP` the v7 tables (`auth_sessions`, `sso_identities`, `sso_connections`, `sso_connection_domains`) in a migration, and
-  delete the backfill's inputs from the docs.
+then Cloudflare Pages: Workers & Pages -> `rova-<env>-web` -> Deployments -> the deployment before the cutover -> **Rollback to this deployment**. Do the SPA
+and the API together: a v8 SPA against a v7 API (or the reverse) cannot sign anyone in. This path leaves Terraform's desired state ahead of the running
+state; the **next** deploy re-registers the current definition, so follow it with path B the same day. The previous task definitions need
+`JWT_PRIVATE_KEY` and `ENTRA_REDIRECT_URI`: they are still bound on purpose.
+
+**B. Durable (an hour): revert the merge.** `git revert -m 1 <the #718 merge commit>` in a PR titled `revert: identity 8 cutover`, merge it; develop deploys
+on merge and production on the next tag (the revert also removes the tag guard, since the guard belongs to #718). Keep `better_auth_secret_set` as is.
+
+In both: people sign in again (v8 sessions mean nothing to v7, and the reverse) and are provisioned by v7's sign-in as before; anyone created in v8 has a profile row
+that v7's sign-in links by address; the `rly_` tokens, workspace membership and roles are shared and untouched.
+
+Do **not** run `db:identity-v8:rollback` as part of this rollback: the v8 tables are inert for the v7 image and hold the bans. It exists to undo migration 0136
+on a database where nothing has been written, and it refuses once a later migration is recorded (roll forward with a DROP migration).
+
+A fix-forward is usually better than a rollback for a problem in the product hook (`StaffSignInHandler`): its refusals are visible, per person, and carry a code.
+
+### Rehearsal (do this on develop before production; write the result here)
+
+The rollback has **not been rehearsed** by the author of #718: it needs the ECS and Cloudflare permissions of an operator and a develop deploy to roll back from.
+Before the production window, on develop, with the cutover live and at least one ban placed through `setUserBanned`:
+
+1. note the current task definition revisions and Pages deployment id (the "after" state);
+2. run `mirror-bans` (dry run, then `--commit`), then path A; confirm: staff sign in on v7, the banned person is refused, an API token still works;
+3. roll forward again (path A back to the "after" revisions, or redeploy `main`), re-run the backfill, confirm the banned person is still banned in v8.
+
+| Date | Who | Path | Time to restore service | Surprises | Result |
+| ---- | --- | ---- | ----------------------- | --------- | ------ |
+|      |     |      |                         |           |        |
+
+## Day 7 and day 30 (separate changes, not #718; tracked as rova issues)
+
+- **Day 7, freeze:** stop writing v7, remove `JWT_PRIVATE_KEY`, `JWT_*` and `ENTRA_REDIRECT_URI` from the task definitions, remove the v7 redirect URI from the
+  Entra app. **The worker's daily cleanup (`apps/worker/src/cron/cleanup.cron.ts`, `DELETE FROM identity.auth_sessions ...`) is a v7 write**: it must go in the
+  same change, or the freeze (which revokes `INSERT/UPDATE/DELETE` on the v7 identity tables from the app roles) turns it into a failing job every day. The seed's v7 SSO
+  connection writes (`db/seeds/bootstrap.ts`) stop at the same time; the sign-in hook already reads the home workspace from `HOME_WORKSPACE_ID` and the domains and
+  the JIT flag from the environment, not from `sso_connections`.
+- **Day 30, drop:** `DROP` the v7 tables (`auth_sessions`, `sso_identities`, `sso_connections`, `sso_connection_domains`) in a migration.
+- **Whenever identity ships the release with app-platform#261:** delete the PostgreSQL 18 `postgres-conformance` service and `IDENTITY_CONFORMANCE_DATABASE_URL` from
+  `backend-ci.yml` (the kit then runs on the e2e PostgreSQL 17).
 
 ## Not in this change (PR 4)
 
-`User.Invite.All` (the Graph application permission the worker uses to invite a vendor as a B2B guest) is still on the **sign-in** app, and the
-worker still authenticates to Graph with `ENTRA_CLIENT_SECRET`. The plan moves it to the "Rova <Env> Service" app with a certificate (worker only),
-which is rova#715 (the code) and rova#716 (the infra: the standalone secret `rova/<env>/mail-graph-certificate`). It is a separate change on
-purpose: it is a different app registration, a different credential and a different consent, and it must not ride on a sign-in cutover. When it
-lands the sign-in app is delegated-only.
+`User.Invite.All` (the Graph application permission the worker uses to invite a vendor as a B2B guest) is still on the **sign-in** app, and the worker still
+authenticates to Graph with `ENTRA_CLIENT_SECRET`. The plan moves it to the "Rova <Env> Service" app with a certificate (worker only), which is rova#715 (the code)
+and rova#716 (the infra: the standalone secret `rova/<env>/mail-graph-certificate`). It is a separate change on purpose: it is a different app registration, a different
+credential and a different consent, and it must not ride on a sign-in cutover. When it lands the sign-in app is delegated-only.
 
 ## Operating notes
 
 - Rotating `BETTER_AUTH_SECRET` signs everyone out (and nothing else). `COOKIE_SECRET` and `CSRF_SECRET` are separate and unaffected.
 - A session lasts 12 hours (the `staff` preset); there is no refresh. Signing in again is one redirect.
-- Offboarding someone from the workspace is unchanged (members -> suspend/remove). To disable a person everywhere, ban their identity user
-  (`setUserBanned`, service side): it ends every session and refuses sign-in and API tokens at once. There is no admin screen for it yet.
+- Offboarding someone from the workspace is unchanged (members -> suspend/remove). To disable a person everywhere, ban their identity user (`setUserBanned`, service side): it
+  ends every session and refuses sign-in and API tokens at once. There is no admin screen for it yet.
+- Rate limits: an address-keyed floor runs first (1,200 requests/min per address, 300/min of API-token presentations per address), the user-keyed `DEFAULT` after authentication.
 - The identity package's own checks run in CI as `test/e2e/identity-conformance.e2e.spec.ts` (against a PostgreSQL 18 service until the kit runs on 17).
