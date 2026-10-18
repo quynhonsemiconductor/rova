@@ -372,6 +372,32 @@ describe('guests (vendors): who may come back, and whose invitation it is', () =
     expect(again.error).toBe('STAFF_SIGN_IN_REFUSED');
   });
 
+  it('refuses a guest whose only seat is in ANOTHER workspace: the seat that counts is the home workspace (v7 parity)', async () => {
+    policy.jit = false;
+    const who = person({ email: `vendor.${RUN}.h@vendor.example` }, true);
+    await liveInvitation(who.email!);
+    const first = await microsoftSignIn(who);
+    const { id } = (await me(first.cookie!)).body;
+    await db
+      .update(workspaceInvitations)
+      .set({ status: 'cancelled' })
+      .where(eq(workspaceInvitations.email, who.email!));
+    const [other] = await db
+      .insert(workspaces)
+      .values({ slug: `seat-${RUN}-${++seq}`, name: 'Elsewhere' })
+      .returning({ id: workspaces.id });
+    await app.get(WorkspaceService).enrollMember(other.id, id);
+    await app.get(WorkspaceService).removeMember(WORKSPACE_ID, id, ADMIN_USER_ID);
+
+    const again = await microsoftSignIn(who);
+
+    expect(
+      again.cookie,
+      'a seat in another workspace admitted a guest to this install',
+    ).toBeUndefined();
+    expect(again.error).toBe('STAFF_SIGN_IN_REFUSED');
+  });
+
   it('binds an invitation made for a directory object to that object only: a spoofed email claim neither squats it nor locks the invitee out', async () => {
     policy.jit = false;
     const invitee = person({ email: `vendor.${RUN}.e@vendor.example` }, true);

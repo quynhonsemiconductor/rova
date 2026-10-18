@@ -87,10 +87,14 @@ export class StaffSignInHandler {
 
     const isPlatformAdmin = !claims.guest && this.platformAdmins().includes(email);
     const hasInvitation = await this.directory.hasLiveInvitation(workspaceId, email, claims.oid);
-    // A guest is admitted by a live invitation or by a seat they STILL hold (an active workspace_members row), exactly as under v7's
+    // A guest is admitted by a live invitation or by a seat they STILL hold (an active workspace_members row in the home workspace), exactly as under v7's
     // invite-only shared gate: a profile alone is not a seat. A guest who was removed from the workspace keeps their profile (history
     // keeps its names) and must not be able to sign back in on it.
-    const stillSeated = claims.guest && (await this.workspaces.getMemberships(user.id)).length > 0;
+    // The seat is in the HOME workspace, as under v7 (the shared connection admitted a guest into the connection's workspace): a seat in some
+    // other workspace is not an invitation to this install.
+    const stillSeated =
+      claims.guest &&
+      (await this.workspaces.getMemberships(user.id)).some((m) => m.workspaceId === workspaceId);
     const admitted = claims.guest
       ? hasInvitation || stillSeated
       : this.config.get('SSO_JIT_ENABLED') || isPlatformAdmin || byId !== null || hasInvitation;

@@ -12,18 +12,25 @@ day 7 and dropped at day 30, in two later changes. Until then rollback is a rede
 
 Three changes, in this order. Reversing 1 and 3 is an outage.
 
-| #   | Change                                                                           | What it does                                                                           | Why it is first/last                                                                                                                                                                                                                                                              |
-| --- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **rova#719**: the backfill in the migrator image (+ re-run fixes, `mirror-bans`) | Nothing at runtime. Puts `db/identity-v8/*.sql` into the image the backfill runs from. | The backfill must be dry-run and **committed before** the v8 API serves. With empty v8 tables every existing user's sign-in is refused (`PROFILE_ID_MISMATCH`, fail-closed) until it commits, and a dry run that raises on real data (the seeded admin, say) extends that outage. |
-| 2   | **Your steps**: secret, Entra redirect URI, dry run, **commit the backfill**     | See "What you prepare" and "The cutover".                                              | Additive: the backfill writes only `identity."user"` and `identity.account`.                                                                                                                                                                                                      |
-| 3   | **rova#718**: the cutover                                                        | The v8 API, worker and web.                                                            | Merge only when steps 1 and 2 are done on that environment.                                                                                                                                                                                                                       |
+| #   | Change                                                                                    | What it does                                                                           | Why it is first/last                                                                                                                                                                                                                                                              |
+| --- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **rova#719** (merged): the backfill in the migrator image (+ re-run fixes, `mirror-bans`) | Nothing at runtime. Puts `db/identity-v8/*.sql` into the image the backfill runs from. | The backfill must be dry-run and **committed before** the v8 API serves. With empty v8 tables every existing user's sign-in is refused (`PROFILE_ID_MISMATCH`, fail-closed) until it commits, and a dry run that raises on real data (the seeded admin, say) extends that outage. |
+| 2   | **Your steps**: secret, Entra redirect URI, dry run, **commit the backfill**              | See "What you prepare" and "The cutover".                                              | Additive: the backfill writes only `identity."user"` and `identity.account`.                                                                                                                                                                                                      |
+| 3   | **rova#718**: the cutover                                                                 | The v8 API, worker and web.                                                            | Merge only when steps 1 and 2 are done on that environment.                                                                                                                                                                                                                       |
 
-**No prod tag from `main` until the prod window.** A tag cut after #718 carries identity 8 and is refused by a guard in `backend-deploy.yml` and
-`web-deploy.yml` while `infra/live/prod/main.tf` has no `better_auth_secret_set = true`. Without it the failure is bad in a specific way: the v8 API
-cannot start without `BETTER_AUTH_SECRET`, the circuit breaker rolls the API back to v7, the worker stays on v8, and the SPA (published by
-the web deploy of the same tag) is already v8 against a v7 API. The prod cutover release **is** the first tag cut after `better_auth_secret_set = true`
-lands in prod. If a hotfix is needed in prod before that, cut it from a branch that does not contain #718 (the guard is part of #718, so a tag from
-before it is not guarded, and not v8).
+**Prod releases are FROZEN from the #718 merge until the prod window.** Production's migrator image (and its API, worker and SPA) only ever come from a
+release tag, so a tag cut after #718 carries identity 8, and there is no "early" prod release to carry the backfill ahead of it: **we do not cut one.**
+A guard in `backend-deploy.yml`, `web-deploy.yml` and `k8s-promote.yml` enforces the freeze: it refuses a tag, before the migrator and before any
+publish, while `infra/live/prod/main.tf` lacks either of
+
+- `better_auth_secret_set = true`: the v8 API cannot start without `BETTER_AUTH_SECRET`; the circuit breaker would roll the API back to v7, the worker would
+  stay v8, and the SPA (published by the web deploy of the same tag) would already be v8 against a v7 API;
+- `edge_client_ip_secret_set = true`: without it the API falls back to `cf-connecting-ip`, which behind the Pages Function is **one** Cloudflare address for every
+  visitor, so the address-keyed rate limit (1,200 requests/min) and identity's own sign-in limits become **company-wide** on the morning everyone signs in again.
+
+The prod cutover release **is** the first tag cut after both are true. There is no hotfix path in the meantime other than reverting #718 on `main` first
+(the guard is part of #718): a branch does not help, because prod only deploys tags, and a tag from before #718 is a tag nobody can cut from `main` any more.
+What replaces an early release is in "Production" below: dry runs from an explicit image digest, and the cutover tag's own migrator committing the backfill.
 
 A tag's web deploy now waits for the **same tag's** backend deploy (`wait-for-backend` in `web-deploy.yml`), so the SPA of a release never goes
 live ahead of its API, or stays live if that API is rolled back. On **develop** the two deploys are independent (a push to `main`); expect up to ~45
@@ -45,13 +52,14 @@ are green.
 
 ## What you prepare (once per environment)
 
-| #   | Who   | What                                                                                                                                                                                                         | Proof                                                                                |
-| --- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| 1   | owner | Entra app registration (the **sign-in** app, single-tenant): add the redirect URI `https://<app domain>/api/auth/callback/microsoft`. **Keep** the v7 one (`/v1/bff/callback`) until the day-7 change.       | the app's Authentication blade lists both                                            |
-| 2   | owner | The registration emits the `email` and `upn` claims in the ID token (optional claims). The `staff` preset checks the address AND the UPN against `SSO_ALLOWED_EMAIL_DOMAINS`.                                | `Sign-in logs` show a successful token with both; a test sign-in succeeds on develop |
-| 3   | owner | **Put the key into the bundle and prove the KEY is there** (below). The deploy preflight proves only that the bundle has a version; a missing key passes it and fails at task start, after the migrator ran. | `jq -e 'has("better-auth-secret")'` prints `true`                                    |
-| 4   | owner | Set `better_auth_secret_set = true` in `infra/live/<env>/main.tf` and apply. develop's is already `true` in #718: **do step 3 before merging #718.** Production stays `false` until its window.              | `tofu plan` shows the API task gaining `BETTER_AUTH_SECRET`, nothing else            |
-| 5   | owner | Cloudflare Pages: `API_ORIGIN` and `EDGE_CLIENT_IP_SECRET` are already set for `/v1/*`; the new `/api/auth/*` Function reuses both.                                                                          | the web deploy lists `functions/api/auth`                                            |
+| #   | Who   | What                                                                                                                                                                                                                             | Proof                                                                                             |
+| --- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 1   | owner | Entra app registration (the **sign-in** app, single-tenant): add the redirect URI `https://<app domain>/api/auth/callback/microsoft`. **Keep** the v7 one (`/v1/bff/callback`) until the day-7 change.                           | the app's Authentication blade lists both                                                         |
+| 2   | owner | The registration emits the `email` and `upn` claims in the ID token (optional claims). The `staff` preset checks the address AND the UPN against `SSO_ALLOWED_EMAIL_DOMAINS`.                                                    | `Sign-in logs` show a successful token with both; a test sign-in succeeds on develop              |
+| 3   | owner | **Put the key into the bundle and prove the KEY is there** (below). The deploy preflight proves only that the bundle has a version; a missing key passes it and fails at task start, after the migrator ran.                     | `jq -e 'has("better-auth-secret")'` prints `true`                                                 |
+| 4   | owner | Set `better_auth_secret_set = true` in `infra/live/<env>/main.tf` and apply. develop's is already `true` in #718: **do step 3 before merging #718.** Production stays `false` until its window.                                  | `tofu plan` shows the API task gaining `BETTER_AUTH_SECRET`, nothing else                         |
+| 5   | owner | Cloudflare Pages: `API_ORIGIN` and `EDGE_CLIENT_IP_SECRET` are already set for `/v1/*`; the new `/api/auth/*` Function reuses both.                                                                                              | the web deploy lists `functions/api/auth`                                                         |
+| 6   | owner | **Production only:** `edge_client_ip_secret_set = true` (the key the Pages Function signs the visitor address with; docs/runbooks/edge-client-ip.md, "PRODUCTION"). The tag guard refuses a prod tag without it. Develop has it. | a request through the Pages Function logs the visitor's real address; `tofu plan` shows no change |
 
 The worker is **not** given `BETTER_AUTH_SECRET`. Until PR 4 (below) the worker's Graph guest invite still uses `ENTRA_CLIENT_SECRET`.
 
@@ -84,44 +92,52 @@ Steps 1-3 are additive and happen **before** #718 deploys; 4-6 are the window. O
 morning, the owner picks the slot) and starts only after develop's **day-7 checkpoint**.
 
 1. **Dry run of the backfill**, from the migrator image (it has the SQL since #719). A one-off ECS task on the migrator's task definition, with the
-   command overridden. Names below are `rova-<env_slug>`; find the real ones with the discovery lines first.
+   command overridden. **First verify what that task definition runs**: its image must be a build of `main` that contains #719 (merge commit `4744d1b3`), or the
+   command fails with `Cannot find module` / `ENOENT backfill.sql`:
 
    ```sh
-   export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1 ENV_SLUG=develop        # production: prod
-   CLUSTER=rova-$ENV_SLUG TASKDEF=rova-$ENV_SLUG-migrator
-
-   # discovery: the cluster, its services, and the network the API runs in (the migrator task needs the same subnets and a security group
-   # that can reach the database, i.e. the API's)
-   aws ecs list-clusters --query 'clusterArns' --output text
-   aws ecs list-services --cluster "$CLUSTER" --output text
-   aws ecs describe-services --cluster "$CLUSTER" --services "$(aws ecs list-services --cluster "$CLUSTER" --query 'serviceArns[?contains(@, `-api`)]|[0]' --output text)" \
-     --query 'services[0].networkConfiguration.awsvpcConfiguration' --output json   # -> subnets, securityGroups
+   aws ecs describe-task-definition --task-definition "$TASKDEF" --query 'taskDefinition.containerDefinitions[?name==`migrator`].image' --output text
+   # -> .../rova-migrator:<tag>. On develop the tag is the commit it was built from: `git merge-base --is-ancestor 4744d1b3 <that commit>` must succeed.
    ```
 
-   ```sh
-   SUBNETS='subnet-aaa,subnet-bbb' SGS='sg-xxx'     # from the lines above
-   TENANT_ID="<ENTRA_TENANT_ID>"                    # the sign-in app's tenant (var.entra_tenant_id)
+Names below are `rova-<env_slug>`; find the real ones with the discovery lines first.
 
-   run_migrator() {   # run_migrator '<json array of the command>'
-     aws ecs run-task --cluster "$CLUSTER" --task-definition "$TASKDEF" --launch-type FARGATE \
-       --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SGS],assignPublicIp=DISABLED}" \
-       --overrides "{\"containerOverrides\":[{\"name\":\"migrator\",\"command\":$1}]}" \
-       --query 'tasks[0].taskArn' --output text
-   }
-   TASK=$(run_migrator '["node","dist/db/identity-v8/cli.js","backfill","--tenant-id","'"$TENANT_ID"'","--staff-domains","qnsc.vn"]')
-   aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
-   aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" --query 'tasks[0].containers[0].{exit:exitCode,reason:reason}'
-   # the output: the migrator's log group, newest stream of the task
-   aws logs tail "/ecs/$(echo "$TASKDEF")" --since 15m
-   ```
+```sh
+export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1 ENV_SLUG=develop        # production: prod
+CLUSTER=rova-$ENV_SLUG TASKDEF=rova-$ENV_SLUG-migrator
 
-   Exit code `0` and `DRY RUN: every preflight check and assertion passed` is a pass. A non-zero exit is a `RAISE` naming ids and counts (never addresses). Every
-   raise is a decision for the owner, not a retry: more than one Entra identity per user, a live user that is neither an Entra user nor a staff address,
-   an `sso_connections` row beyond the home directory connection and the `shared` guest gate (partner SSO is deferred), two users sharing a lower-cased
-   address. Fix the data in v7, then dry-run again. **A raise on develop's seeded data (e.g. `admin@qnsc.dev`: no Entra identity and an address off `qnsc.vn`) is
-   the reason this is done before #718, not after**: fix or remove the fixture, dry-run again, until it passes.
+# discovery: the cluster, its services, and the network the API runs in (the migrator task needs the same subnets and a security group
+# that can reach the database, i.e. the API's)
+aws ecs list-clusters --query 'clusterArns' --output text
+aws ecs list-services --cluster "$CLUSTER" --output text
+aws ecs describe-services --cluster "$CLUSTER" --services "$(aws ecs list-services --cluster "$CLUSTER" --query 'serviceArns[?contains(@, `-api`)]|[0]' --output text)" \
+  --query 'services[0].networkConfiguration.awsvpcConfiguration' --output json   # -> subnets, securityGroups
+```
 
-2. **Commit the backfill** (additive: it reads v7 and writes only `identity."user"` and `identity.account`):
+```sh
+SUBNETS='subnet-aaa,subnet-bbb' SGS='sg-xxx'     # from the lines above
+TENANT_ID="<ENTRA_TENANT_ID>"                    # the sign-in app's tenant (var.entra_tenant_id)
+
+run_migrator() {   # run_migrator '<json array of the command>'
+  aws ecs run-task --cluster "$CLUSTER" --task-definition "$TASKDEF" --launch-type FARGATE \
+    --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SGS],assignPublicIp=DISABLED}" \
+    --overrides "{\"containerOverrides\":[{\"name\":\"migrator\",\"command\":$1}]}" \
+    --query 'tasks[0].taskArn' --output text
+}
+TASK=$(run_migrator '["node","dist/db/identity-v8/cli.js","backfill","--tenant-id","'"$TENANT_ID"'","--staff-domains","qnsc.vn"]')
+aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
+aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" --query 'tasks[0].containers[0].{exit:exitCode,reason:reason}'
+# the output: the migrator's log group, newest stream of the task
+aws logs tail "/ecs/$(echo "$TASKDEF")" --since 15m
+```
+
+Exit code `0` and `DRY RUN: every preflight check and assertion passed` is a pass. A non-zero exit is a `RAISE` naming ids and counts (never addresses). Every
+raise is a decision for the owner, not a retry: more than one Entra identity per user, a live user that is neither an Entra user nor a staff address,
+an `sso_connections` row beyond the home directory connection and the `shared` guest gate (partner SSO is deferred), two users sharing a lower-cased
+address. Fix the data in v7, then dry-run again. **A raise on develop's seeded data (e.g. `admin@qnsc.dev`: no Entra identity and an address off `qnsc.vn`) is
+the reason this is done before #718, not after**: fix or remove the fixture, dry-run again, until it passes.
+
+2. **Commit the backfill** (`<database name>` is `DATABASE_NAME` in the migrator task definition's environment, i.e. `module.rds.db_name`: `aws ecs describe-task-definition --task-definition "$TASKDEF" --query 'taskDefinition.containerDefinitions[?name==`migrator`].environment[?name==`DATABASE_NAME`].value' --output text`; additive: it reads v7 and writes only `identity."user"` and `identity.account`):
 
    ```sh
    TASK=$(run_migrator '["node","dist/db/identity-v8/cli.js","backfill","--tenant-id","'"$TENANT_ID"'","--staff-domains","qnsc.vn","--commit","--database","<database name>"]')
@@ -150,6 +166,76 @@ morning, the owner picks the slot) and starts only after develop's **day-7 check
    - [ ] A user suspended/removed from the workspace cannot reach it (zero permissions), and their API tokens are revoked (unchanged behaviour).
    - [ ] Sign out, and "sign out everywhere" (`POST /v1/auth/logout-all`), end the session. `GET /api/auth/get-session` carries no `token`.
    - [ ] No `identity.profile_id_mismatch`, `identity.staff_sign_in_refused` (other than the refusals you caused), `identity.auth_handler_threw` or `identity.context_cache_stale` log line. `sign_in.failure` is a metric; the `rate_limit` fail-open alarm stays quiet.
+
+## Production: how it differs from the develop steps above
+
+Prod's migrator image only comes from a release tag, and tags are frozen from the #718 merge (see "The order of everything"). Two things replace
+the develop path.
+
+### (a) Dry runs, ahead of the window: from an explicit image digest
+
+The ECR repositories are one account and one set of repositories for every environment, and a `main` build is `rova-migrator:sha-<full commit sha>`. A
+build of `main` that contains #719 (merge commit `4744d1b3`) therefore already holds the backfill. A one-off task names its **digest**, not a tag, so what
+runs is exactly what you inspected. A task definition's image cannot be overridden at `run-task`, so register an **ad-hoc** definition (its own family: the
+Terraform-managed `rova-prod-migrator` is never touched):
+
+```sh
+export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1
+SHA=<a commit on main that contains 4744d1b3; e.g. the newest>      # git merge-base --is-ancestor 4744d1b3 $SHA
+REPO=rova-migrator
+
+# 1. the digest of that build, and proof it is the build of that commit (the tag is immutable)
+DIGEST=$(aws ecr describe-images --repository-name "$REPO" --image-ids imageTag="sha-$SHA" --query 'imageDetails[0].imageDigest' --output text)
+REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com
+echo "$REGISTRY/$REPO@$DIGEST"
+# provenance, the same check the deploy runs on the API image (signed by the shared builder workflow, scoped to this repository):
+gh attestation verify "oci://$REGISTRY/$REPO@$DIGEST" --repo quynhonsemiconductor/rova \
+  --signer-workflow quynhonsemiconductor/ci/.github/workflows/backend-deploy.yml
+
+# 2. an ad-hoc task definition: prod's migrator definition with ONLY the image changed, under another family
+aws ecs describe-task-definition --task-definition rova-prod-migrator --query taskDefinition > /tmp/migrator.json
+jq --arg image "$REGISTRY/$REPO@$DIGEST" \
+  'del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)
+   | .family = "rova-prod-migrator-adhoc"
+   | (.containerDefinitions[] | select(.name == "migrator").image) = $image' /tmp/migrator.json > /tmp/migrator-adhoc.json
+aws ecs register-task-definition --cli-input-json file:///tmp/migrator-adhoc.json --query 'taskDefinition.taskDefinitionArn' --output text
+
+# 3. verify the SQL is in it, then dry-run (the same run_migrator helper as above, with the ad-hoc family)
+export ENV_SLUG=prod CLUSTER=rova-prod TASKDEF=rova-prod-migrator-adhoc
+TASK=$(run_migrator '["ls","dist/db/identity-v8"]')     # expect: backfill.sql cli.js ... mirror-bans.sql rollback.sql run.js
+TASK=$(run_migrator '["node","dist/db/identity-v8/cli.js","backfill","--tenant-id","'"$TENANT_ID"'","--staff-domains","qnsc.vn"]')
+```
+
+Read each task's exit code and log as in step 1. **Commit nothing from here:** a dry run rolls back, and on production the commit is (b)'s job. Deregister the
+ad-hoc revision when you are done (`aws ecs deregister-task-definition`). A `RAISE` on production data is the point of doing this a week early: fix it in v7,
+dry-run again, until it passes.
+
+### (b) The cutover tag's migrator commits the backfill itself
+
+The reusable deploy (`quynhonsemiconductor/ci` `backend-deploy.yml`) runs the migrator and only then rolls the API; a migrator that exits non-zero stops the
+deploy and **the v7 tasks keep serving**. The migrator therefore runs the backfill, committed, **after the migrations and before the API rolls**, when its task
+definition carries `IDENTITY_V8_BACKFILL=commit` (`db/identity-v8/on-deploy.ts`, called from `db/migrate.ts`). It is **opt-in per environment**:
+
+- Terraform `identity_v8_backfill_on_deploy` (default `false`) sets that variable on the migrator task definition. **develop leaves it `false`** and runs the
+  backfill by hand (steps 1-2 above). Production sets it **`true` only in the cutover change**, which is the same change that sets `better_auth_secret_set = true`
+  and (if not already) `edge_client_ip_secret_set = true` in `infra/live/prod/main.tf`; that change's apply precedes the tag, as for any infra change.
+- Any preflight `RAISE` or assertion fails the migrator task, so the deploy fails and nothing has changed for users. The backfill is additive and idempotent, so a
+  retry after fixing the data is safe.
+- **The change after the cutover sets it back to `false`.** While it is `true`, every deploy re-runs the preflight against live data and a new outsider row could
+  fail an unrelated release.
+
+Cutover sequence on production, in order:
+
+1. (a) done, dry runs green on the digest of a recent `main`; secret and Entra rows from "What you prepare" done (including the `edge_client_ip_secret_set` row);
+2. the cutover change merges (`better_auth_secret_set`, `identity_v8_backfill_on_deploy`, and `edge_client_ip_secret_set` all `true` in `infra/live/prod/main.tf`) and `infra-apply` applies it;
+3. cut the tag in the off-peak window. Backend deploy: migrate, **backfill commit**, API roll; web deploy waits for it (see below);
+4. verify (step 6 above); then the follow-up change sets `identity_v8_backfill_on_deploy` back to `false`.
+
+### The web deploy of a prod tag can time out waiting for the backend
+
+`wait-for-backend` allows 6 hours: the backend deploy itself waits for apply-prod and the `production` environment's required reviewer. If it still expires, the
+web job fails and the SPA is **not** published (the safe direction: the previous SPA keeps serving against the new API for a while). **Re-run the web jobs once the
+backend deploy is green** (Actions -> Web - Deploy -> the tag's run -> Re-run all jobs). Never publish the SPA by hand ahead of the API.
 
 ## Rollback (day 0 to day 7)
 

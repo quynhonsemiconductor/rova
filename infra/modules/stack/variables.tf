@@ -743,6 +743,20 @@ variable "edge_client_ip_secret_set" {
   default     = false
 }
 
+variable "identity_v8_backfill_on_deploy" {
+  description = <<-EOT
+    Make the migrator commit the identity v8 backfill (`IDENTITY_V8_BACKFILL=commit`) as part of a deploy: after the migrations, before the
+    API rolls, failing the deploy (the previous tasks keep serving) if a preflight check or an assertion raises.
+
+    For PRODUCTION, whose migrator image only ever comes from a release tag: the cutover tag's own migrator is the one that can run the backfill
+    before the v8 API serves. Set true only in the production cutover change (together with `better_auth_secret_set`), and back to false in the
+    change after it: while true, every deploy re-runs the backfill's preflight against live data. DEVELOP leaves it false and runs the backfill by
+    hand (docs/runbooks/identity-v8-cutover.md). Idempotent either way.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "better_auth_secret_set" {
   description = <<-EOT
     Inject `better-auth-secret` into the API as BETTER_AUTH_SECRET: identity 8 (Better Auth) signs the session cookie and encrypts

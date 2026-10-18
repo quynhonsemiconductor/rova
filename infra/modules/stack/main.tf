@@ -2264,7 +2264,7 @@ module "migrator" {
   region             = var.region
   log_retention_days = var.log_retention_days
 
-  environment = {
+  environment = merge({
     NODE_ENV       = "production"
     AWS_REGION     = var.region
     SEED_ON_DEPLOY = tostring(var.seed_on_deploy)
@@ -2305,7 +2305,12 @@ module "migrator" {
     #
     # So the split the schema already intends stands: directory = staff, by owned domain. Shared =
     # externals, by invitation.
-  }
+    }, var.identity_v8_backfill_on_deploy ? {
+    # The identity v8 backfill, committed by THIS task after the migrations and before the API rolls; a failed preflight or assertion
+    # fails the task and so the deploy (the previous tasks keep serving). Set true only by the production cutover change and back to
+    # false after it. docs/runbooks/identity-v8-cutover.md, "Production".
+    IDENTITY_V8_BACKFILL = "commit"
+  } : {})
 
   secrets = merge({
     # The master credential, and it stays that way even when `db_least_privilege`

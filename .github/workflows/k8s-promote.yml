@@ -64,6 +64,23 @@ jobs:
     outputs:
       source-tag: ${{ steps.tag.outputs.source-tag }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          persist-credentials: false
+
+      # IDENTITY 8 GUARD, the same as backend-deploy.yml's: this workflow is DISABLED today, but if it is ever restored a prod promotion of
+      # an identity 8 build must not run before prod is ready for it (docs/runbooks/identity-v8-cutover.md).
+      - name: Refuse a prod tag until prod is ready for identity 8
+        run: |
+          missing=""
+          for flag in better_auth_secret_set edge_client_ip_secret_set; do
+            grep -Eq "^[[:space:]]*${flag}[[:space:]]*=[[:space:]]*true([[:space:]]|$)" infra/live/prod/main.tf || missing="$missing $flag"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::infra/live/prod/main.tf does not set:${missing} = true. Prod releases are frozen from the identity 8 merge until the prod cutover window: see docs/runbooks/identity-v8-cutover.md."
+            exit 1
+          fi
+
       - name: Compute the source (dev) tag
         id: tag
         run: |

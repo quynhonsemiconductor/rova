@@ -106,16 +106,26 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
-      # IDENTITY 8 GUARD (tags only). A prod tag cut from a main that carries identity 8 cannot be released until the owner has
-      # enabled it in prod (docs/runbooks/identity-v8-cutover.md): the v8 API refuses to start without BETTER_AUTH_SECRET, the
-      # circuit breaker then rolls the API back to v7 while the worker stays v8 and the SPA (published by the web deploy of the
-      # same tag, which does not wait for the backend) is already v8. Failing HERE, before the migrator and before any publish,
-      # leaves prod exactly as it was. The prod cutover release IS the first tag cut after `better_auth_secret_set = true`.
-      - name: Refuse a prod tag until identity 8 is enabled in prod
+      # IDENTITY 8 GUARD (tags only). The release that carries identity 8 cannot be tagged until prod is READY for it (the runbook:
+      # docs/runbooks/identity-v8-cutover.md), and prod's migrator image only ever comes from a release tag, so tags are FROZEN from the
+      # identity 8 merge until the prod window: this step is what enforces the freeze. Two flags must be true in infra/live/prod/main.tf:
+      #   - better_auth_secret_set: the v8 API cannot start without BETTER_AUTH_SECRET; the circuit breaker would roll the API back to v7
+      #     while the worker stays v8 and the SPA (published by the web deploy of the same tag) is already v8;
+      #   - edge_client_ip_secret_set: without it the API falls back to cf-connecting-ip, which behind the Pages Function is ONE Cloudflare
+      #     address for every visitor, so the new address-keyed rate limit and identity's own sign-in limits become company-wide on the
+      #     morning everyone signs in again.
+      # Failing HERE, before the migrator and before any publish, leaves prod exactly as it was. The cutover release IS the first tag cut
+      # after both are true (and, if the owner opts in, after `identity_v8_backfill_on_deploy = true`, which makes that tag's migrator
+      # commit the backfill).
+      - name: Refuse a prod tag until prod is ready for identity 8
         if: github.ref_type == 'tag'
         run: |
-          if ! grep -Eq '^[[:space:]]*better_auth_secret_set[[:space:]]*=[[:space:]]*true([[:space:]]|$)' infra/live/prod/main.tf; then
-            echo "::error::infra/live/prod/main.tf does not set better_auth_secret_set = true. This tag carries identity 8, whose API cannot start without BETTER_AUTH_SECRET. Do not cut a prod tag from main before the prod cutover window: see docs/runbooks/identity-v8-cutover.md."
+          missing=""
+          for flag in better_auth_secret_set edge_client_ip_secret_set; do
+            grep -Eq "^[[:space:]]*${flag}[[:space:]]*=[[:space:]]*true([[:space:]]|$)" infra/live/prod/main.tf || missing="$missing $flag"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::infra/live/prod/main.tf does not set:${missing} = true. This tag carries identity 8 and prod is not ready for it. Prod releases are frozen from the identity 8 merge until the prod cutover window: see docs/runbooks/identity-v8-cutover.md."
             exit 1
           fi
 
