@@ -158,6 +158,15 @@ module "stack" {
   secrets_bundle_name = "app"
   secrets_use_bundle  = true
 
+  // identity 8 cutover (docs/runbooks/identity-v8-cutover.md, the production section). These three flags are set in the release change,
+  // merged and applied in the cutover window AFTER the secret steps: `better-auth-secret` and `edge-client-ip-secret` must already be in
+  // rova/production/app, and EDGE_CLIENT_IP_SECRET in the rova-prod-web Pages project, or the API cannot start / the Function answers 500.
+  // The tag guard in the deploy workflows refuses a prod tag unless the first two are true on the tagged commit.
+  // identity_v8_backfill_on_deploy makes the cutover tag's migrator commit the backfill. The change after the cutover sets it back to false.
+  better_auth_secret_set         = true
+  edge_client_ip_secret_set      = true
+  identity_v8_backfill_on_deploy = true
+
   // ── Ingress via Cloudflare Tunnel, not the shared ALB ───────────────────────
   // cloudflared runs as a sidecar in the api task and dials OUT to Cloudflare, so
   // production needs no ALB listener rule, no target group and no public IPv4. Every
