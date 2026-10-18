@@ -137,8 +137,8 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0(8dd0f83152c0cd18ee8be31940ebbe34)
       '@quynhonsemiconductor/platform-mail':
-        specifier: 0.1.3-pr.258.60d7174
-        version: 0.1.3-pr.258.60d7174(29e5bf5a9b7497c9b17fcd3912e7d105)
+        specifier: ^0.1.4
+        version: 0.1.4(29e5bf5a9b7497c9b17fcd3912e7d105)
       '@quynhonsemiconductor/platform-runtime':
         specifier: ^0.3.1
         version: 0.3.1(818ba3c9a7bf120604ebe24ad5fd387b)
@@ -3136,8 +3136,8 @@ packages:
       drizzle-orm: '>=0.45 <1'
       pg: '>=8.11'
 
-  '@quynhonsemiconductor/platform-mail@0.1.3-pr.258.60d7174':
-    resolution: {integrity: sha512-IuyVkrQYb0HwUILU1XX1yfh0/t+wNMzmse5Qu2M/DiRD3tCnGnnQ7dEFg0ZLr63ayCim7f3ss1OJ873KsAMTYQ==, tarball: https://npm.pkg.github.com/download/@quynhonsemiconductor/platform-mail/0.1.3-pr.258.60d7174/8b14cb2b7df023b48f2ff97417e71c82d6fe3dd4}
+  '@quynhonsemiconductor/platform-mail@0.1.4':
+    resolution: {integrity: sha512-HMMtPeQ68lIC+EzbWcUuz7vHtBw4Z5iXLn7cChMO5ZczHPPB5tlL1BZRSlX+FN1/U9Tt/xtQ8l3THRjsysm6hg==, tarball: https://npm.pkg.github.com/download/@quynhonsemiconductor/platform-mail/0.1.4/b1ddbc73abbccfaf9ff66ca2da9d9d941d8d0bb5}
     hasBin: true
     peerDependencies:
       '@azure/identity': '>=4.4'
@@ -12242,7 +12242,7 @@ snapshots:
       - '@opentelemetry/api'
       - pg-native
 
-  '@quynhonsemiconductor/platform-mail@0.1.3-pr.258.60d7174(29e5bf5a9b7497c9b17fcd3912e7d105)':
+  '@quynhonsemiconductor/platform-mail@0.1.4(29e5bf5a9b7497c9b17fcd3912e7d105)':
     dependencies:
       '@azure/identity': 4.14.0(supports-color@10.2.2)
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
