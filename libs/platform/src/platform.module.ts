@@ -92,7 +92,6 @@ import { StorageService } from './storage/storage.service';
             nodeEnv: config.get('NODE_ENV'),
           });
         }
-<<<<<<< HEAD
         if (provider === 'smtp') {
           // Built lazily, like graph: the worker's email relay calls `assertReady()` at start, so a missing variable stops the process.
           return new SmtpEmailProvider({
