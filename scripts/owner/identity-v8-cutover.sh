@@ -14,7 +14,7 @@ set -euo pipefail
 ENV_NAME="${1:-}"
 case "$ENV_NAME" in
   develop) ENV_SLUG=develop; STEPS=(preflight secret backfill-dry commit merge verify rehearsal) ;;
-  prod)    ENV_SLUG=prod;    STEPS=(preflight backup secret adhoc-dry release verify) ;;
+  prod)    ENV_SLUG=prod;    STEPS=(preflight backup secret edge adhoc-dry release verify) ;;
   *) echo "usage: $0 develop|prod [--from STEP]" >&2; exit 2 ;;
 esac
 shift
@@ -36,6 +36,8 @@ fi
 EXPECTED_ACCOUNT=608983206583
 MIGRATOR_MIN_COMMIT=4744d1b3               # #719: a migrator image must contain the backfill SQL
 ROVA_REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+PAGES_PROJECT=rova-prod-web                # the Pages project the prod SPA and its Function deploy to
+if command -v wrangler >/dev/null; then WRANGLER=(wrangler); else WRANGLER=(npx --yes wrangler@4.149.0); fi
 LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/rova-identity-v8"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 LOG="$LOG_DIR/$ENV_NAME-cutover-$RUN_ID.log"
@@ -299,6 +301,53 @@ step_commit() {
   check_invariant
 }
 
+pages_edge_secret_state() { # sets PAGES_EDGE to present or absent (names only). No subshell: a die here must stop the script
+  local list
+  list="$("${WRANGLER[@]}" pages secret list --project-name "$PAGES_PROJECT" 2>/dev/null)" || die "cannot list the Pages secrets of $PAGES_PROJECT (wrangler login?)"
+  if grep -q EDGE_CLIENT_IP_SECRET <<< "$list"; then PAGES_EDGE=present; else PAGES_EDGE=absent; fi
+}
+
+step_edge() { # prod: the visitor-address secret, the same value in the Pages project and in the app bundle (docs/runbooks/edge-client-ip.md)
+  say "edge: the edge client-IP secret, one value in the Pages project and in $SECRET_ID (never printed)"
+  "${WRANGLER[@]}" whoami >/dev/null 2>&1 || die "wrangler is not logged in: run 'wrangler login' (or set CLOUDFLARE_API_TOKEN) and run this step again"
+  pages_edge_secret_state
+  if [ "$PAGES_EDGE" = present ]; then
+    die "$PAGES_PROJECT already has EDGE_CLIENT_IP_SECRET, and its value cannot be read back: this step will not guess. Rotate by hand (runbook, Rotation), then --from edge"
+  fi
+  read_secret
+  if printf '%s' "$SECRET_JSON" | jq -e 'has("edge-client-ip-secret")' >/dev/null; then
+    die "$SECRET_ID already has edge-client-ip-secret, and the Pages project has none: the two would not match. Fix by hand, then --from edge"
+  fi
+  unset SECRET_JSON
+  confirm "Generate ONE key and set it as EDGE_CLIENT_IP_SECRET on $PAGES_PROJECT AND as edge-client-ip-secret in $SECRET_ID?"
+  local KEY new_json
+  KEY="$(openssl rand -base64 48)"
+  export KEY
+  printf '%s' "$KEY" | "${WRANGLER[@]}" pages secret put EDGE_CLIENT_IP_SECRET --project-name "$PAGES_PROJECT" >>"$LOG" 2>&1 ||
+    { unset KEY; die "the Pages secret write failed: nothing in the bundle was changed; see $LOG"; }
+  note "Pages secret written"
+  new_json="$(aws secretsmanager get-secret-value --secret-id "$SECRET_ID" --query SecretString --output text |
+    python3 -c '
+import json, os, sys
+d = json.load(sys.stdin)
+if "edge-client-ip-secret" in d:
+    sys.exit("the key appeared since the check")
+d["edge-client-ip-secret"] = os.environ["KEY"]
+json.dump(d, sys.stdout)
+')" || { unset KEY; die "could not build the bundle: the Pages secret IS set now and the bundle is NOT: set the bundle key to the same value by hand, or rotate both"; }
+  printf '%s' "$new_json" | aws secretsmanager put-secret-value --secret-id "$SECRET_ID" --secret-string file:///dev/stdin >/dev/null ||
+    { unset KEY new_json; die "the bundle write failed: the Pages secret IS set now and the bundle is NOT"; }
+  unset KEY new_json
+  read_secret
+  printf '%s' "$SECRET_JSON" | jq -e '(.["edge-client-ip-secret"] | type == "string") and ((.["edge-client-ip-secret"] | length) >= 32)' >/dev/null ||
+    die "the bundle's edge-client-ip-secret is missing or short after the write"
+  note "bundle key written and checked (length only)"
+  unset SECRET_JSON
+  pages_edge_secret_state
+  [ "$PAGES_EDGE" = present ] || die "the Pages secret is not listed after the write"
+  note "PASS: one value in both places. It reaches the Function on the next web deploy, which is the release: do not release before this step."
+}
+
 step_adhoc_dry() { # prod: the dry run from a build of main, pinned by digest, with its provenance checked
   say "d. dry run from a build of main, pinned by digest (what runs is what was inspected)"
   local sha digest registry image tmp arn
@@ -356,6 +405,9 @@ step_release() { # prod: the infra flags on main, then the tag. The tag's migrat
       die "origin/main infra/live/prod/main.tf does not set $flag = true. Merge the infra PR (the three flags) and let infra-apply finish first."
   done
   git -C "$ROVA_REPO" merge-base --is-ancestor "$MIGRATOR_MIN_COMMIT" origin/main || die "origin/main lacks #719"
+  pages_edge_secret_state
+  [ "$PAGES_EDGE" = present ] ||
+    die "$PAGES_PROJECT has no EDGE_CLIENT_IP_SECRET: run --from edge before releasing (the Function answers 500 without it)"
   note "origin/main $main_sha: the three flags are true and it contains #719"
   ask "Has infra-apply for prod finished green? (yes/no)"; [ "$ANSWER" = yes ] || die "wait for infra-apply, then --from release"
   ask "Downtime is announced to users and the window has started? (yes/no)"; [ "$ANSWER" = yes ] || die "announce it first (sign-ins break during the window)"
@@ -390,16 +442,20 @@ step_verify() {
     "No identity.profile_id_mismatch, identity.auth_handler_threw or identity.context_cache_stale log line (search below)."
   )
   if [ "$ENV_NAME" = prod ]; then
+    items+=("Edge: a request through the production SPA host logs the tester's own address as ip (docs/runbooks/edge-client-ip.md, the post-deploy check), not a Cloudflare address.")
+  fi
+  if [ "$ENV_NAME" = prod ]; then
     note "prod: a second person checks at least items 1, 4 and 5 with you (the runbook: you and one other person)."
     ask "The second person has checked them with you? (yes/no)"; [ "$ANSWER" = yes ] || die "get the second check done, then --from verify"
   fi
   local i=0 item
+  local items_count=${#items[@]}
   for item in "${items[@]}"; do
     i=$((i + 1))
     ask "Checklist $i passed? (yes/no) -- $item"
     [ "$ANSWER" = yes ] || die "checklist item $i did not pass: fix it, record the time and request id, then run this step again with --from verify"
   done
-  note "all ${#items[@]} verification items passed"
+  note "all $items_count verification items passed"
   local since=$(( ($(date +%s) - 3600) * 1000 )) pattern
   note "log search, last hour (run as is):"
   for pattern in identity.profile_id_mismatch identity.auth_handler_threw identity.context_cache_stale; do
@@ -494,6 +550,7 @@ run_from preflight && print_discovery
 run_from backup && step_backup
 run_from secret && step_secret
 run_from backfill-dry && step_backfill_dry
+run_from edge && step_edge
 run_from adhoc-dry && step_adhoc_dry
 run_from commit && step_commit
 run_from merge && step_merge
