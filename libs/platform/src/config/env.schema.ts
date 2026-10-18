@@ -465,6 +465,7 @@ export const EnvSchema = z
         message:
           'MAIL_SMTP_HOST and MAIL_SMTP_PORT are required when EMAIL_PROVIDER is "smtp" (Mailpit: localhost and 1120 on the host, mailpit and 1025 in a container).',
       });
+    }
     if (env.EMAIL_PROVIDER === 'graph') {
       for (const key of ['ENTRA_TENANT_ID', 'MAIL_GRAPH_SENDER', 'MAIL_GRAPH_CLIENT_ID'] as const) {
         const value = env[key];
