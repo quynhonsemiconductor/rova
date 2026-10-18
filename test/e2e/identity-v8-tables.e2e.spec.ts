@@ -274,9 +274,10 @@ beforeAll(async () => {
   await admin.connect();
 });
 afterAll(async () => {
+  // One FORCE drop per throwaway database, in series: dozens of them outlast the 30 s default hook on a slow Docker host.
   for (const name of created) await dropDatabase(name).catch(() => undefined);
   await admin?.end();
-});
+}, 120_000);
 
 describe('migration 0136: the v8 tables', () => {
   it('is the last journal entry, ships its rollback, and the rollback forgets exactly this migration', () => {
