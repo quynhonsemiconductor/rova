@@ -121,7 +121,7 @@ importers:
         specifier: ^1.41.1
         version: 1.41.1
       '@quynhonsemiconductor/identity':
-        specifier: ^8.4.0
+        specifier: ^8.4.1
         version: 8.4.1(490a0b5010502f68dd8cd5e5dac30f27)
       '@quynhonsemiconductor/observability':
         specifier: ^0.6.0
