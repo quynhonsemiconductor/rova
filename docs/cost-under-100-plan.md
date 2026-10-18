@@ -1,5 +1,12 @@
 # Plan — rally dev + prod under $100/mo
 
+> **ARCHIVED 2026-10-18: historical plan, do not follow.** Two parts no longer match the code:
+> - The Cloudflare Tunnel token is no longer a key in the app bundle (`rally/<env>/app`, `tunnel-token`). It is
+>   a standalone, Terraform-managed secret named `<product>/<env>/tunnel-token-tf` (`infra/modules/stack/main.tf`).
+> - "rally" is the old product name in this plan. The product is now rova.
+>
+> Kept as history, so it is not deleted. Cost figures are as of 2026-08-02.
+
 Target: **both environments, prod live, under $100/mo.** Decided 2026-08-02.
 
 The current architecture cannot reach it. Prod alone at go-live is ~$142/mo before dev
