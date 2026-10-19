@@ -22,6 +22,7 @@ import { strandedMigrations } from './stranded-migrations';
 import { resolveDatabaseUrl } from './database-url';
 import { resolveMigrationPoolConfig } from './pg-pool-config';
 import { log } from './script-log';
+import { runBackfillIfRequested } from './identity-v8/on-deploy';
 
 // Resolves DATABASE_MIGRATION_URL, else DATABASE_URL, else composes from the
 // DATABASE_* parts (the deployed path — credentials come straight from the
@@ -188,6 +189,10 @@ async function run() {
      * Refused LOUDLY rather than silently skipped: a deploy that expected fixtures should say why it has
      * none, or the next person debugs an empty environment instead of reading a log line.
      */
+    // The identity v8 backfill, when this environment opted in (`IDENTITY_V8_BACKFILL=commit`): after the schema, before the API rolls,
+    // failing the deploy (the previous tasks keep serving) if any preflight or assertion raises. Nothing otherwise.
+    await runBackfillIfRequested(pool, process.env, log);
+
     if (process.env['SEED_ON_DEPLOY'] === 'true') {
       if (process.env['NODE_ENV'] === 'production') {
         log.warn(

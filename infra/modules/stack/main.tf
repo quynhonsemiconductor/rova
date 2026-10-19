@@ -166,7 +166,10 @@ locals {
     # startup, so a task wired to an empty secret cannot boot (a failed deploy plus
     # rollback, not a silent downgrade, which is the intent).
     "cookie-secret"       = "Cookie signing secret (distinct from csrf-secret)"
-    "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
+    "entra-client-secret" = "Microsoft Entra confidential-client secret (sign-in app; the worker's Graph guest invite reuses it until it moves to the Service app)"
+    # identity 8 (Better Auth): signs the session cookie and encrypts what it stores. API only; rotating it signs everyone out.
+    # A KEY of the app bundle, absent until the owner puts a value in; injected into the API only once `better_auth_secret_set`.
+    "better-auth-secret" = "Identity 8 (Better Auth) cookie-signing and encryption secret, 32+ characters (openssl rand -base64 48). API only. Not the cookie-secret, not the csrf-secret."
     # The key the Cloudflare Pages Function signs the visitor's address with
     # (`@quynhonsemiconductor/platform-http/edge`) and the API verifies (`clientIp()`). The SAME value as the Pages
     # project's secret of that name. A KEY of the app bundle (both environments bundle their secrets): it is absent until
@@ -1893,6 +1896,9 @@ module "api" {
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
     { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
+    # `JWT_PRIVATE_KEY` above and `ENTRA_REDIRECT_URI` below are identity 7's. The image no longer reads them; they stay bound so that
+    # a rollback to the previous (v7) image can still boot. They are removed with the v7 tables, in the day-7 freeze change
+    # (docs/runbooks/identity-v8-cutover.md).
     # GitHub App webhook HMAC secret — the API verifies X-Hub-Signature-256 on
     # inbound SCM webhooks (/v1/scm/webhook/*). Absent → the receiver returns 503,
     # no boot impact. Execution-role read is covered by secret_arns above.
@@ -1911,6 +1917,13 @@ module "api" {
       # The API's alone (the worker serves no visitor). Injected only once populated: the deploy preflight refuses to
       # deploy when an injected secret holds no value. See the variable.
       { name = "EDGE_CLIENT_IP_SECRET", secret_arn = module.secrets.secret_arns["edge-client-ip-secret"] },
+    ] : [],
+    var.better_auth_secret_set ? [
+      # The API's alone (the worker signs nobody in; its schema leaves it optional and the process never reads it). Injected only
+      # once the KEY is in the bundle. The deploy preflight only proves the bundle container has a version, NOT that this key exists in
+      # it: a missing key fails at task start, after the migrator ran. Identity also refuses to start the API without the value.
+      # See the variable.
+      { name = "BETTER_AUTH_SECRET", secret_arn = module.secrets.secret_arns["better-auth-secret"] },
   ] : [])
 
   environment_vars = concat(local.api_db_env, [
@@ -1934,7 +1947,12 @@ module "api" {
     # Microsoft Entra SSO (BFF) — all Entra vars are mandatory; the API fails to boot without them.
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
+    # identity 7's redirect URI, kept for a rollback to the previous image. Identity 8's is `${local.app_base_url}/api/auth/callback/microsoft`,
+    # registered on the Entra app next to this one; nothing here carries it because the API derives it from APP_BASE_URL.
     { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
+    # Invite-only access, the same value the migrator writes onto the home connection (below): a staff address that has no profile
+    # and no live invitation is refused at first sign-in (B2B guests always are). The sign-in hook reads it from the API's env.
+    { name = "SSO_JIT_ENABLED", value = "false" },
     # Enqueue-side of Entra B2B guest provisioning: `inviteMember` writes a guest_invite_outbox row
     # only while this is true. The worker carries the same value for the drain side.
     { name = "ENTRA_GUEST_INVITE_ENABLED", value = tostring(var.entra_guest_invite_enabled) },
@@ -2246,7 +2264,7 @@ module "migrator" {
   region             = var.region
   log_retention_days = var.log_retention_days
 
-  environment = {
+  environment = merge({
     NODE_ENV       = "production"
     AWS_REGION     = var.region
     SEED_ON_DEPLOY = tostring(var.seed_on_deploy)
@@ -2287,7 +2305,12 @@ module "migrator" {
     #
     # So the split the schema already intends stands: directory = staff, by owned domain. Shared =
     # externals, by invitation.
-  }
+    }, var.identity_v8_backfill_on_deploy ? {
+    # The identity v8 backfill, committed by THIS task after the migrations and before the API rolls; a failed preflight or assertion
+    # fails the task and so the deploy (the previous tasks keep serving). Set true only by the production cutover change and back to
+    # false after it. docs/runbooks/identity-v8-cutover.md, "Production".
+    IDENTITY_V8_BACKFILL = "commit"
+  } : {})
 
   secrets = merge({
     # The master credential, and it stays that way even when `db_least_privilege`

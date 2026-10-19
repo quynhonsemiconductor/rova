@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
 import { of, throwError } from 'rxjs';
 import type { CallHandler, ExecutionContext } from '@nestjs/common';
+import type { Reflector } from '@nestjs/core';
 import {
   requestContextStorage,
   type HttpMetrics,
@@ -20,8 +21,17 @@ const TUNNEL = '172.16.0.9';
 
 function ctx(req: Record<string, unknown>, status = 200): ExecutionContext {
   const http = { getRequest: () => req, getResponse: () => ({ statusCode: status }) };
-  return { getType: () => 'http', switchToHttp: () => http } as unknown as ExecutionContext;
+  return {
+    getType: () => 'http',
+    switchToHttp: () => http,
+    getHandler: () => () => undefined,
+    getClass: () => class Route {},
+  } as unknown as ExecutionContext;
 }
+
+/** `Reflector` stubs: the route is `@Public()` (no user by design), or it needs authentication. */
+const publicRoute = { getAllAndOverride: () => true } as unknown as Reflector;
+const protectedRoute = { getAllAndOverride: () => undefined } as unknown as Reflector;
 
 const base = (visitor: string) => ({
   method: 'POST',
@@ -59,6 +69,26 @@ describe('HttpLoggingInterceptor — the ip it logs', () => {
   });
 });
 
+describe('IdempotencyInterceptor — a route that needs authentication, but the request has no user id', () => {
+  it('caches nothing and still runs the handler: scoping by address would let two people behind one NAT share an entry', async () => {
+    const get = vi.fn().mockResolvedValue(null);
+    const set = vi.fn().mockResolvedValue('OK');
+    const interceptor = new IdempotencyInterceptor(
+      { isAvailable: true, instance: { get, set } } as never,
+      protectedRoute,
+    );
+    const handled = vi.fn(() => of({ ok: true }));
+    await new Promise<void>((resolve) =>
+      interceptor
+        .intercept(ctx(base('203.0.113.7')), { handle: handled } as CallHandler)
+        .subscribe({ complete: resolve }),
+    );
+    expect(handled).toHaveBeenCalledOnce();
+    expect(get).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+  });
+});
+
 describe('IdempotencyInterceptor — an unauthenticated caller is told apart by address', () => {
   async function redisKeyFor(visitor: string): Promise<string> {
     const get = vi.fn().mockResolvedValue(null);
@@ -66,7 +96,7 @@ describe('IdempotencyInterceptor — an unauthenticated caller is told apart by 
       isAvailable: true,
       instance: { get, set: vi.fn().mockResolvedValue('OK') },
     };
-    const interceptor = new IdempotencyInterceptor(cache as never);
+    const interceptor = new IdempotencyInterceptor(cache as never, publicRoute);
     await new Promise<void>((resolve) =>
       interceptor
         .intercept(ctx(base(visitor)), { handle: () => of({}) } as CallHandler)
@@ -102,7 +132,7 @@ describe('the user comes from the request context, not from req.user', () => {
   async function idempotencyKey(req: Record<string, unknown>, store?: RequestContext) {
     const get = vi.fn().mockResolvedValue(null);
     const cache = { isAvailable: true, instance: { get, set: vi.fn().mockResolvedValue('OK') } };
-    const interceptor = new IdempotencyInterceptor(cache as never);
+    const interceptor = new IdempotencyInterceptor(cache as never, publicRoute);
     const run = () =>
       new Promise<void>((resolve) =>
         interceptor

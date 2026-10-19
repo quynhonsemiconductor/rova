@@ -19,69 +19,50 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
-import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import { SEED_PROJECTS } from '../../db/seeds/constants';
 import { grantProjectAccess } from './support/flow-harness';
+import { provisionUser, signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
 describe('test case type catalog (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
   let adminToken: string;
 
   function get(url: string, token: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: token } });
   }
 
   function post(url: string, token: string, payload: Record<string, unknown>) {
     return app.inject({
       method: 'POST',
       url,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
       payload,
     });
   }
 
   function del(url: string, token: string) {
-    return app.inject({ method: 'DELETE', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'DELETE', url, headers: { cookie: token } });
   }
 
   /** A fresh Project Admin on NXP — holds `project:edit`, never `workspace:edit`. */
   async function projectAdminToken(): Promise<string> {
-    const claims: EntraClaims = {
-      oid: `tct-admin-${randomUUID()}`,
-      email: `tct-admin-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
-      displayName: 'E2E Project Admin',
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const { accessToken } = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    const userId = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString())[
-      'sub'
-    ] as string;
+    const { accessToken, userId } = await provisionUser(app, 'tct-admin', 'E2E Project Admin');
     await grantProjectAccess(app, userId, NXP, 'admin');
     return accessToken;
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-
-    auth = app.get(AuthService);
-    adminToken = (await auth.devLogin('admin@qnsc.dev', '127.0.0.1')).accessToken;
+    adminToken = await signIn(app, 'admin@qnsc.dev');
   });
 
   afterAll(async () => {

@@ -743,6 +743,40 @@ variable "edge_client_ip_secret_set" {
   default     = false
 }
 
+variable "identity_v8_backfill_on_deploy" {
+  description = <<-EOT
+    Make the migrator commit the identity v8 backfill (`IDENTITY_V8_BACKFILL=commit`) as part of a deploy: after the migrations, before the
+    API rolls, failing the deploy (the previous tasks keep serving) if a preflight check or an assertion raises.
+
+    For PRODUCTION, whose migrator image only ever comes from a release tag: the cutover tag's own migrator is the one that can run the backfill
+    before the v8 API serves. Set true only in the production cutover change (together with `better_auth_secret_set`), and back to false in the
+    change after it: while true, every deploy re-runs the backfill's preflight against live data. DEVELOP leaves it false and runs the backfill by
+    hand (docs/runbooks/identity-v8-cutover.md). Idempotent either way.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "better_auth_secret_set" {
+  description = <<-EOT
+    Inject `better-auth-secret` into the API as BETTER_AUTH_SECRET: identity 8 (Better Auth) signs the session cookie and encrypts
+    what it stores with it, and refuses to start the API without a secret of at least 32 characters.
+
+    OFF by default. The key is declared either way; injecting it before the owner has put a value in makes the API task unable to
+    start. WHAT THE DEPLOY PREFLIGHT DOES AND DOES NOT CATCH: it refuses to deploy when an injected secret CONTAINER holds no value at
+    all. The app bundle is ONE container with many JSON keys, so a bundle that has a version but lacks the `better-auth-secret` key
+    passes the preflight and then fails at task start (ECS cannot resolve `<arn>:better-auth-secret::`), after the migrator ran.
+    Check the KEY, not the container, before setting this (docs/runbooks/identity-v8-cutover.md, step 3: `jq -e 'has("better-auth-secret")'`).
+    Order, per environment:
+      1. generate a value (`openssl rand -base64 48`) and put it into the `better-auth-secret` key of `<product>/<env>/app`;
+      2. set this true and apply;
+      3. only then deploy the identity 8 image (an image deployed before this is true cannot start its API).
+    The worker is never given it.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "storage_public_credentials" {
   description = <<-EOT
     Inject the PUBLIC-bucket R2 credential into api and worker, so the token that writes

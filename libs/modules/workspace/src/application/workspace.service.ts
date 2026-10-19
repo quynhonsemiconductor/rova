@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import { uuidv7 } from 'uuidv7';
 import {
@@ -16,7 +16,14 @@ import {
   AUDIT_RESOURCE,
   addDays,
 } from '@platform';
-import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
+import { WORKSPACE_CONTEXT_REVOKER } from '@platform';
+import type {
+  JwtPayload,
+  CursorPayload,
+  PagedResult,
+  DbExecutor,
+  WorkspaceContextRevoker,
+} from '@platform';
 import type { EmailDeliveryStatus } from '@platform';
 import { isProjectAccessLevel } from '@shared-kernel';
 import { AccessService } from '@modules/access';
@@ -79,6 +86,10 @@ export class WorkspaceService {
     // Injectable without importing ApiTokensModule: it is @Global and exports the service, for the same
     // reason IdentityModule is (its guard seam must be visible everywhere).
     private readonly apiTokens: ApiTokensService,
+    // Bound by the API's identity module only; the worker has none and skips it.
+    @Optional()
+    @Inject(WORKSPACE_CONTEXT_REVOKER)
+    private readonly contexts?: WorkspaceContextRevoker,
   ) {}
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
@@ -239,6 +250,7 @@ export class WorkspaceService {
   async deleteWorkspace(workspaceId: string): Promise<void> {
     await this.getWorkspace(workspaceId);
     await this.workspaceRepo.softDelete(workspaceId);
+    await this.contexts?.clearForWorkspace(workspaceId);
     this.logger.log({ workspaceId }, 'Workspace soft-deleted');
   }
 
@@ -406,6 +418,7 @@ export class WorkspaceService {
     if (input.status === 'suspended' || input.status === 'removed') {
       await this.access.invalidateUser(workspaceId, member.userId);
       await this.revokeMachineCredentials(workspaceId, member.userId);
+      await this.contexts?.clearForUser(member.userId, workspaceId);
     }
     this.logger.log({ workspaceId, memberId, actorId }, 'Member updated');
     return updated;
@@ -451,6 +464,8 @@ export class WorkspaceService {
     // now so the very next request from the removed member resolves nothing.
     await this.access.invalidateUser(workspaceId, userId);
     await this.revokeMachineCredentials(workspaceId, userId);
+    // Their sessions stop holding this workspace now, not at the next membership re-check (identity, <= 60 s).
+    await this.contexts?.clearForUser(userId, workspaceId);
     this.logger.log({ workspaceId, userId, actorId }, 'Member removed from workspace');
   }
 

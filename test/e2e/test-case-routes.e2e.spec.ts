@@ -22,7 +22,6 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { DRIZZLE, type DrizzleDB } from '@platform';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -34,6 +33,7 @@ import {
   NXP_TEST_CASE_1_ID,
   NXP_TEST_CASE_2_ID,
 } from '../../db/seeds/constants';
+import { signIn } from './support/session';
 
 // No `/v1` prefix: `Test.createTestingModule` builds the app without the bootstrap that sets the
 // global prefix, so routes are mounted bare here.
@@ -42,19 +42,14 @@ describe('test case routes (e2e)', () => {
   let token: string;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 
-    // Bearer, not the BFF cookie: `requiresCsrfProtection` exempts Bearer callers, so no CSRF dance.
-    token = (await app.get(AuthService).devLogin('admin@qnsc.dev', '127.0.0.1')).accessToken;
+    // The session cookie from test-login; this app has no CSRF hook (that is `bootstrapApp`'s), so no CSRF dance.
+    token = await signIn(app, 'admin@qnsc.dev');
 
     // NXP gets its five default Test Case Types from migration 0129's backfill, which only
     // covers projects that ALREADY EXIST when it runs — NXP is created by the demo SEED, which
@@ -86,14 +81,14 @@ describe('test case routes (e2e)', () => {
   });
 
   function get(url: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: token } });
   }
 
   function post(url: string, payload: Record<string, unknown>) {
     return app.inject({
       method: 'POST',
       url,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
       payload,
     });
   }
@@ -102,13 +97,13 @@ describe('test case routes (e2e)', () => {
     return app.inject({
       method: 'PATCH',
       url,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
       payload,
     });
   }
 
   function del(url: string) {
-    return app.inject({ method: 'DELETE', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'DELETE', url, headers: { cookie: token } });
   }
 
   it("lists the parent Work Item's Test Cases, in rank order (AC2)", async () => {

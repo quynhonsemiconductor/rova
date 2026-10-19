@@ -69,6 +69,7 @@ import {
 import { userRoleAssignments } from '../schema/access';
 import { seedSystemRolesInto } from './reference';
 import { seedTenantBootstrapInto } from './bootstrap';
+import { mirrorIdentityUsers } from './identity-v8-users';
 import { seedSecondProject } from './second-project';
 import { seedReferenceExtras } from './reference-extras';
 import {
@@ -1527,8 +1528,8 @@ export async function seed(connectionUrl?: string): Promise<void> {
 
     // ── Admin user ───────────────────────────────────────────────────────────
     // SSO-only: no password. The platform-admin email is seeded so the first
-    // Entra SSO login merges into this row (upsertBySsoIdentity matches by email)
-    // and PLATFORM_ADMIN_EMAILS auto-elevates it to workspace_admin.
+    // Entra SSO login finds this profile (matched by address) and PLATFORM_ADMIN_EMAILS
+    // auto-elevates it to workspace_admin.
     const adminEmail = process.env['ADMIN_EMAIL'] ?? 'admin@qnsc.dev';
     await db
       .insert(schema.users)
@@ -1582,6 +1583,9 @@ export async function seed(connectionUrl?: string): Promise<void> {
         { workspaceId: WORKSPACE_ID, userId: VIEWER_ID },
       ])
       .onConflictDoNothing();
+
+    // Each profile above also needs its identity 8 user (same id), or test-login would mint a stranger.
+    await mirrorIdentityUsers(db);
 
     // ── System roles ─────────────────────────────────────────────────────────
     // Reference catalogue (roles + permission grants). Shared with the prod-safe

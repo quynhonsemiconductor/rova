@@ -18,15 +18,12 @@
  * which cannot be satisfied locally.
  */
 import 'reflect-metadata';
-import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ACCESS_LEVEL_PERMISSIONS } from '@shared-kernel';
 import { AppModule } from '../../apps/api/src/app.module';
-import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import {
   NXP_ITER_CURRENT_ID,
   NXP_RELEASE_1_ID,
@@ -34,6 +31,7 @@ import {
   SEED_PROJECTS,
 } from '../../db/seeds/constants';
 import { grantProjectAccess } from './support/flow-harness';
+import { provisionUser, signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 const ITERATION = NXP_ITER_CURRENT_ID;
@@ -67,7 +65,6 @@ const ROUTES = [
 
 describe('report routes: authorization over HTTP (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
 
   /**
    * Sign in as a SEEDED user and return a bearer token.
@@ -82,28 +79,21 @@ describe('report routes: authorization over HTTP (e2e)', () => {
    * carries the very permission under test and would make the negative case impossible to express.
    */
   async function tokenFor(email: string): Promise<string> {
-    const result = await auth.devLogin(email, '127.0.0.1');
-    expect(result.accessToken, `dev-login for ${email}`).toBeTruthy();
+    const result = { accessToken: await signIn(app, email) };
+    expect(result.accessToken, `test-login for ${email}`).toBeTruthy();
     return result.accessToken;
   }
 
   function get(url: string, accessToken: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${accessToken}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: accessToken } });
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-
-    auth = app.get(AuthService);
   });
 
   afterAll(async () => {
@@ -145,18 +135,8 @@ describe('report routes: authorization over HTTP (e2e)', () => {
      * Editor is refused the project roster — dev had silently stopped being an Editor. A spec that
      * needs a grant should create the principal it grants to.
      */
-    const email = `report-reader-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`;
-    const claims: EntraClaims = {
-      oid: `report-reader-${randomUUID()}`,
-      email,
-      displayName: 'E2E Report Reader',
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const session = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    const userId = JSON.parse(
-      Buffer.from(session.accessToken.split('.')[1], 'base64url').toString(),
-    )['sub'] as string;
+    const session = await provisionUser(app, 'report-reader', 'E2E Report Reader');
+    const userId = session.userId;
 
     await grantProjectAccess(app, userId, NXP, 'admin');
 
@@ -184,17 +164,8 @@ describe('report routes: authorization over HTTP (e2e)', () => {
      * `viewer@qnsc.dev` is the negative case in the first test of this file. Granting it Admin
      * anywhere would eventually make that test meaningless.
      */
-    const claims: EntraClaims = {
-      oid: `cross-project-${randomUUID()}`,
-      email: `cross-project-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
-      displayName: 'E2E Cross-project Reader',
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    const userId = JSON.parse(Buffer.from(login.accessToken.split('.')[1], 'base64url').toString())[
-      'sub'
-    ] as string;
+    const login = await provisionUser(app, 'cross-project', 'E2E Cross-project Reader');
+    const userId = login.userId;
     await grantProjectAccess(app, userId, PAY_PROJECT_ID, 'admin');
 
     const session = login.accessToken;

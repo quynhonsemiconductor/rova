@@ -30,7 +30,6 @@
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -55,6 +54,7 @@ import {
   TEAM_ALPHA_ID,
 } from '../../db/seeds/constants';
 import { adminActor } from './support/flow-harness';
+import { signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -84,19 +84,14 @@ describe('POST /work-items/:id/split (SU-06)', () => {
   let workItemsService: WorkItemsService;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 
     db = app.get<DrizzleDB>(DRIZZLE);
-    token = (await app.get(AuthService).devLogin('admin@qnsc.dev', '127.0.0.1')).accessToken;
+    token = await signIn(app, 'admin@qnsc.dev');
     actor = adminActor();
     workItemsService = app.get(WorkItemsService);
   });
@@ -143,7 +138,7 @@ describe('POST /work-items/:id/split (SU-06)', () => {
     return app.inject({
       method: 'POST',
       url: `/work-items/${id}/split`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
       payload,
     });
   }
@@ -515,7 +510,7 @@ describe('POST /work-items/:id/split (SU-06)', () => {
     return app.inject({
       method: 'GET',
       url: `/work-items/${id}`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
     });
   }
 
@@ -573,7 +568,7 @@ describe('POST /work-items/:id/split (SU-06)', () => {
     const byKey = await app.inject({
       method: 'GET',
       url: `/work-items/by-key?itemKey=${encodeURIComponent(story.itemKey)}`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
     });
     expect(byKey.statusCode, byKey.body).toBe(200);
     const detail = JSON.parse(byKey.body) as DetailBody;
@@ -596,7 +591,7 @@ describe('POST /work-items/:id/split (SU-06)', () => {
     const list = await app.inject({
       method: 'GET',
       url: `/work-items?projectId=${NXP}&itemKey=${encodeURIComponent(story.itemKey)}`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
     });
     expect(list.statusCode, list.body).toBe(200);
     const rows = (JSON.parse(list.body) as { data: Array<Record<string, unknown>> }).data;
@@ -654,7 +649,7 @@ describe('POST /work-items/:id/split (SU-06)', () => {
     const read = await app.inject({
       method: 'GET',
       url: `/test-results/${result.id}`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
     });
     expect(read.statusCode, read.body).toBe(200);
     const dto = JSON.parse(read.body) as { workItemId: string | null };

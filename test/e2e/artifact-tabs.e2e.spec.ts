@@ -24,11 +24,11 @@
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
 import { NXP_MILESTONE_1_ID, NXP_RELEASE_1_ID, NXP_STORY_1_ID } from '../../db/seeds/constants';
+import { signIn } from './support/session';
 
 // No `/v1` prefix: `Test.createTestingModule` builds the app without the bootstrap that sets the
 // global prefix, so routes are mounted bare here.
@@ -37,19 +37,14 @@ describe('Release and Milestone Artifacts tabs (e2e)', () => {
   let token: string;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 
-    // Bearer, not the BFF cookie: `requiresCsrfProtection` exempts Bearer callers, so no CSRF dance.
-    token = (await app.get(AuthService).devLogin('admin@qnsc.dev', '127.0.0.1')).accessToken;
+    // The session cookie from test-login; this app has no CSRF hook (that is `bootstrapApp`'s), so no CSRF dance.
+    token = await signIn(app, 'admin@qnsc.dev');
   });
 
   afterAll(async () => {
@@ -57,7 +52,7 @@ describe('Release and Milestone Artifacts tabs (e2e)', () => {
   });
 
   function get(url: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: token } });
   }
 
   type ArtifactPage = {

@@ -408,6 +408,8 @@ module "stack" {
   // same value is the Pages secret EDGE_CLIENT_IP_SECRET, so the API can verify the visitor address the Pages Function
   // signs. Develop only: production sets its own key first (runbook, "PRODUCTION").
   edge_client_ip_secret_set = true
+  # identity 8. The value MUST be in the `better-auth-secret` key of rova/develop/app before this lands: see docs/runbooks/identity-v8-cutover.md.
+  better_auth_secret_set = true
 
   // Step 2 of docs/runbooks/db-role-least-privilege.md: rally/develop/db-*-password
   // are populated, so the migrator can read them and the one-off cutover task can
