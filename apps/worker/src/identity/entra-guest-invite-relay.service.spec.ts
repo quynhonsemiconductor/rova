@@ -122,8 +122,12 @@ class TestRelay extends EntraGuestInviteRelayService {
   protected override reapAbandoned(): Promise<number> {
     return Promise.resolve(0);
   }
-  protected override stampLeases(_tx: DrizzleTx, ids: string[]): Promise<Map<string, number>> {
-    return Promise.resolve(new Map(ids.map((id) => [id, 1])));
+  protected override stampLeases(
+    _tx: DrizzleTx,
+    ids: string[],
+  ): Promise<Map<string, { attempts: number; lockedUntil: Date }>> {
+    const lockedUntil = new Date(Date.now() + 180_000);
+    return Promise.resolve(new Map(ids.map((id) => [id, { attempts: 1, lockedUntil }])));
   }
   protected override renewLease(): Promise<Date | null> {
     return Promise.resolve(new Date(Date.now() + 180_000));
@@ -403,8 +407,9 @@ describe('EntraGuestInviteRelayService', () => {
       expect(outbox[0]).toMatchObject({ status: 'pending' });
       // `attempts` is spent at CLAIM time, so the failure write does not touch it.
       expect(outbox[0]).not.toHaveProperty('attempts');
-      // A retry, so scheduled_at moves forward by the base class's backoff.
-      expect(outbox[0].scheduledAt).toBeInstanceOf(Date);
+      // A retry, so scheduled_at moves forward by the base class's backoff. It is written as a database
+      // expression (now() + interval), not a host Date; test/e2e/outbox-lease.e2e.spec.ts checks the value.
+      expect(outbox[0].scheduledAt).toBeDefined();
     });
 
     it('a transient fault schedules no email and KEEPS the token for the retry', async () => {

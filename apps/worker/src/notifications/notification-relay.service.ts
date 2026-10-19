@@ -34,10 +34,10 @@
  */
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import { InjectDrizzle, Span } from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
-import { AbstractOutboxRelay } from '@platform/outbox';
+import { AbstractOutboxRelay, dbDelay } from '@platform/outbox';
 import type { Claimed, OutboxLeaseTable, PostCommitTask } from '@platform/outbox';
 import { NotificationsService, NotificationPreferencesService } from '@modules/notifications';
 import {
@@ -135,11 +135,7 @@ export class NotificationRelayService
     return NOTIFICATION_LEASE_MS;
   }
 
-  protected async selectDue(
-    tx: DrizzleTx,
-    limit: number,
-    now: Date,
-  ): Promise<NotificationOutboxRow[]> {
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<NotificationOutboxRow[]> {
     return tx
       .select({
         id: notificationOutbox.id,
@@ -157,8 +153,8 @@ export class NotificationRelayService
         and(
           eq(notificationOutbox.status, 'pending'),
           lt(notificationOutbox.attempts, this.maxAttempts),
-          lte(notificationOutbox.scheduledAt, now),
-          this.notLeased(now),
+          lte(notificationOutbox.scheduledAt, sql`now()`),
+          this.notLeased(),
         ),
       )
       .orderBy(
@@ -309,7 +305,7 @@ export class NotificationRelayService
   protected async markSent(tx: DrizzleTx, row: Claimed<NotificationOutboxRow>): Promise<void> {
     await tx
       .update(notificationOutbox)
-      .set({ status: 'sent', dispatchedAt: new Date() })
+      .set({ status: 'sent', dispatchedAt: sql`now()` })
       .where(eq(notificationOutbox.id, row.id));
   }
 
@@ -318,7 +314,7 @@ export class NotificationRelayService
     row: Claimed<NotificationOutboxRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
     // `attempts` was spent at claim time. Only a retry pushes scheduledAt forward; a terminal row keeps its
     // last one, which is fine since selectDue() never selects 'failed' rows again.
@@ -327,7 +323,7 @@ export class NotificationRelayService
       .set({
         status: newStatus,
         lastError,
-        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
       })
       .where(eq(notificationOutbox.id, row.id));
   }
