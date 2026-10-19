@@ -448,6 +448,16 @@ jobs:
           # (e.g. v1.4.2), so an infra apply never resets the task def to :latest.
           TF_VAR_image_tag:            ${{ github.ref_name }}
 
+      # TASK 0.3 / §17b: refuse a prod plan that destroys or replaces a database, secret, parameter group or target
+      # group unless the stack's .allow-data-destroy names that address with a reason. It reads the saved plan, so it
+      # judges exactly what the next step applies.
+      - name: plan-guard (tfplan-pass1)
+        if: steps.pass1.outputs.planned == 'true'
+        uses: quynhonsemiconductor/ci/actions/plan-guard@v1
+        with:
+          plan-file: tfplan-pass1
+          working-directory: infra/live/prod
+
       # Refuse a saved plan that DELETES or REPLACES a DNS, edge, mail-identity, certificate or key resource (the
       # 2026-10-09 outage) unless this run is allowed to: the PR being merged carries the label `allow-dns-destroy`
       # (ON TAG RUNS THE LOOKUP RESOLVES TO THE RELEASE PR, so a destructive prod change needs the label on the
@@ -481,6 +491,15 @@ jobs:
           # Pin the prod image to the exact release tag that triggered this apply
           # (e.g. v1.4.2), so an infra apply never resets the task def to :latest.
           TF_VAR_image_tag:            ${{ github.ref_name }}
+
+      # TASK 0.3 / §17b: refuse a prod plan that destroys or replaces a database, secret, parameter group or target
+      # group unless the stack's .allow-data-destroy names that address with a reason. It reads the saved plan, so it
+      # judges exactly what the next step applies.
+      - name: plan-guard (tfplan)
+        uses: quynhonsemiconductor/ci/actions/plan-guard@v1
+        with:
+          plan-file: tfplan
+          working-directory: infra/live/prod
 
       # Refuse a saved plan that DELETES or REPLACES a DNS, edge, mail-identity, certificate or key resource (the
       # 2026-10-09 outage) unless this run is allowed to: the PR being merged carries the label `allow-dns-destroy`
