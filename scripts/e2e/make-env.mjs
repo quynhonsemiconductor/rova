@@ -15,7 +15,7 @@ const [out = '.env.e2e'] = process.argv.slice(2);
 const TARGETS = [
   [5420, 'POSTGRES', 5460],
   [6320, 'VALKEY', 6360],
-  [4620, 'LOCALSTACK', 4660],
+  [4620, 'STORAGE', 4660],
   [4420, 'OTEL_OTLP', 4460],
   [8420, 'OTEL_METRICS', 8460],
   [1120, 'MAILPIT_SMTP', 1160],

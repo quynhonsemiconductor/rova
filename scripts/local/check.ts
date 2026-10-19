@@ -4,8 +4,8 @@
  *   1. API probes         GET /readyz on the API port answers 200 with the database and cache up.
  *   2. Worker             the worker writes a beat to Valkey every 30 s under worker:heartbeat:<host>; a fresh beat proves a live worker.
  *   3. Sign-in            POST /api/auth/test-login through the web dev server's proxy, then GET /v1/auth/me with that session.
- *   4. Storage            a marker object round-trips through the storage emulator (write, then read back). It does not claim persistence:
- *                         LocalStack does not keep data across a restart, so that is not checked until the bucket is on Garage.
+ *   4. Storage            a marker object round-trips through Garage (write, then read back). It does not restart anything, so it does not
+ *                         prove persistence across a restart; that is a separate, manual check (see README → "Local stack").
  *   5. Mail               a message sent through platform-mail's smtp transport (the one EMAIL_PROVIDER=smtp uses) lands in Mailpit.
  *
  * Writes only its own marker object and one test message. Exits 1 at the first failing step, naming it.
@@ -116,13 +116,15 @@ async function main(): Promise<void> {
   });
 
   await step('storage round trip', async () => {
+    // The client StorageService builds when STORAGE_ENDPOINT is set: the same endpoint, keys, path style and region ('auto'),
+    // so a signing mismatch shows up here and not first in a browser upload.
     const s3 = new S3Client({
-      endpoint: env('STORAGE_ENDPOINT', 'http://localhost:4620'),
-      region: env('AWS_DEFAULT_REGION', 'ap-southeast-1'),
+      endpoint: env('STORAGE_ENDPOINT'),
+      region: 'auto',
       forcePathStyle: true,
       credentials: {
-        accessKeyId: env('AWS_ACCESS_KEY_ID', 'test'),
-        secretAccessKey: env('AWS_SECRET_ACCESS_KEY', 'test'),
+        accessKeyId: env('STORAGE_ACCESS_KEY_ID'),
+        secretAccessKey: env('STORAGE_SECRET_ACCESS_KEY'),
       },
     });
     const Bucket = env('S3_ATTACHMENTS_BUCKET', 'rova-attachments');

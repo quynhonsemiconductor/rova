@@ -19,7 +19,7 @@ non-obvious tooling behaviour. Read this before changing build, auth, or DB code
 ## Local stack
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d   # postgres + valkey + localstack
+docker compose -f docker-compose.dev.yml up -d   # postgres + valkey + garage (S3) + mailpit + otel
 pnpm db:migrate                                  # applies migrations AND seeds
 pnpm start:dev                                   # API with watch
 pnpm --filter rova-web dev                      # SPA (proxies /v1 → API)
