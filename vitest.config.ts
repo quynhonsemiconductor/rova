@@ -211,10 +211,12 @@ export default defineConfig({
       // `statements` 86 -> 85 to match — a floor sitting ABOVE measured coverage fails CI on every
       // run, which is the configuration error this file's own docblock warns about, not a real
       // regression to chase.
+      // RE-MEASURED 2026-10-19 (identity v8 cutover, #718 CI): branches 82.05 — the identity-8 auth code
+      // brought well-covered branches in, so the 79 floor fell 3.05 behind and the ratchet failed. Raised to 82.
       thresholds: {
         lines: 86,
         functions: 84,
-        branches: 79,
+        branches: 82,
         statements: 85,
       },
     },
