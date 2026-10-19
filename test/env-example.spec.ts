@@ -45,7 +45,9 @@ function namedKeys(text: string): string[] {
 const example = read('.env.example');
 const env = parseEnv(example);
 const compose = read('docker-compose.dev.yml');
-const composeDoc = parseYaml(compose) as { services: Record<string, { ports?: unknown[] }> };
+const composeDoc = parseYaml(compose, { merge: true }) as {
+  services: Record<string, { ports?: unknown[] }>;
+};
 const bootstrap = read('scripts/localstack/01-bootstrap.sh');
 const vite = read('apps/web/vite.config.ts');
 
