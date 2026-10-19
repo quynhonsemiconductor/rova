@@ -49,7 +49,8 @@ export class SmtpEmailProvider implements IEmailProvider {
   }
 
   async send(payload: EmailPayload, options: EmailSendOptions = {}): Promise<EmailSendResult> {
-    if (!payload.idempotencyKey) {
+    const { idempotencyKey } = payload;
+    if (!idempotencyKey) {
       // EmailService always supplies one; a caller that does not has a bug the transport would reject as invalid anyway.
       throw new NonRetryableError('SMTP mail: no idempotency key on the message.');
     }
@@ -60,9 +61,10 @@ export class SmtpEmailProvider implements IEmailProvider {
           ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
           subject: payload.subject,
           html: payload.html,
-          text: payload.text,
+          // A caller may send no text part: the HTML with its tags removed is the fallback.
+          text: payload.text ?? payload.html.replace(/<[^>]+>/g, ' '),
           category: payload.category ?? 'transactional',
-          idempotencyKey: payload.idempotencyKey,
+          idempotencyKey,
         },
         options.signal ? { signal: options.signal } : {},
       );
