@@ -9,7 +9,9 @@
 # script's saved state: RELEASE_TAG, PRE_SNAPSHOT, TAG_BEFORE, RELEASE_PAUSED), PAGES_JSON (Pages secret names), NO_TAG=1 (no v1.2.3),
 # EXTRA_TAG (a second release tag on main), EXPECT_CREATES (snapshots the stub must have been asked to create), and stub switches
 # (MOCK_WHOAMI, MOCK_RETENTION, MOCK_PAGES_LIST_FAIL, MOCK_RDS_EXPIRED, MOCK_ACTIVITY_ROWS, MOCK_API_IMAGE_TAG, MOCK_WORKER_IMAGE_TAG,
-# MOCK_API_LIVE_REV (11 = v7, 12 = cut over), MOCK_OLD_TAG, MOCK_RELEASE_TAG) and SIDE_TAG (a tag on a commit that is not on origin/main).
+# MOCK_API_LIVE_REV (11 = v7, 12 = cut over), MOCK_OLD_TAG (the v7 image tag), MOCK_RELEASE_TAG (the landed image tag), MOCK_TAG_AFTER_PAUSE
+# (a release tag published on origin/main only after the script pauses for the release-please PR), SIDE_TAG (a tag on a commit that is not
+# on origin/main) and EXPECT_STATE (an ERE the saved prod-state.env must match).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -67,7 +69,8 @@ run_case() {
     # shellcheck disable=SC2086  # SCRIPT_ARGS is a list of words by design
     env -i HOME="$HOME" PATH="$STUBS:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin" \
       STUB_STATE="$dir/state.json" STUB_PAGES="$dir/pages.json" MOCK_SHA="$sha" MIGRATOR_MIN_COMMIT="$sha" \
-      MOCK_API_LIVE_REV="${MOCK_API_LIVE_REV:-11}" MOCK_OLD_TAG="${MOCK_OLD_TAG:-v1.2.2}" MOCK_RELEASE_TAG="${MOCK_RELEASE_TAG:-v1.2.4}" \
+      MOCK_API_LIVE_REV="${MOCK_API_LIVE_REV:-11}" MOCK_OLD_TAG="${MOCK_OLD_TAG:-v1.2.3}" MOCK_RELEASE_TAG="${MOCK_RELEASE_TAG:-v1.2.4}" \
+      MOCK_ORIGIN="$dir/origin.git" MOCK_TAG_AFTER_PAUSE="${MOCK_TAG_AFTER_PAUSE:-}" \
       MOCK_WHOAMI="${MOCK_WHOAMI:-in}" MOCK_RETENTION="${MOCK_RETENTION:-30}" \
       MOCK_PAGES_LIST_FAIL="${MOCK_PAGES_LIST_FAIL:-}" MOCK_RDS_EXPIRED="${MOCK_RDS_EXPIRED:-}" \
       MOCK_ACTIVITY_ROWS="${MOCK_ACTIVITY_ROWS:-}" MOCK_API_IMAGE_TAG="${MOCK_API_IMAGE_TAG:-}" \
@@ -83,6 +86,9 @@ run_case() {
     creates="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("creates", 0))' "$dir/state.json")"
     [ "$creates" = "$EXPECT_CREATES" ] || { ok=0; why="$why; snapshots created: $creates, wanted $EXPECT_CREATES"; }
   fi
+  if [ -n "${EXPECT_STATE:-}" ] && ! grep -Eq -- "$EXPECT_STATE" "$dir/xdg/rova-identity-v8/prod-state.env" 2>/dev/null; then
+    ok=0; why="$why; state missing: $EXPECT_STATE"
+  fi
   if [ "$ok" = 1 ]; then
     passed=$((passed + 1)); echo "ok    $name"
   else
@@ -96,7 +102,7 @@ run_case() {
 TEN=(yes yes yes yes yes yes yes yes yes yes)
 
 # 1. the full path from the top: the tag appears after the baseline (the script's state carries the baseline, the fixture the new tag)
-EXPECT_CREATES=1 SCRIPT_STATE="TAG_BEFORE=v1.2.3" EXTRA_TAG=v1.2.4 \
+EXPECT_CREATES=1 SCRIPT_STATE="TAG_BEFORE=v1.2.3" MOCK_TAG_AFTER_PAUSE=v1.2.4 EXPECT_STATE="^TAG_PRE=v1.2.3$" \
 run_case full-prod 0 "all 10 verification items passed|PASS: v1.2.4 is live" "^STOP" -- \
   yes yes rova.qnsc.vn "" yes yes yes "" yes "" yes "${TEN[@]}" yes
 
@@ -126,14 +132,14 @@ SCRIPT_STATE="$(printf 'RELEASE_TAG=v1.2.4\nPRE_SNAPSHOT=rova-prod-pre-identity-
 run_case resume-after-release-snapshot-not-available 1 "is 'creating', not available" "Take a fresh" -- ""
 
 # 6. before the release: the saved snapshot is recent, so it is reused, not replaced
-SCRIPT_ARGS="--from release" EXTRA_TAG=v1.2.4 EXPECT_CREATES=0 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
+SCRIPT_ARGS="--from release" MOCK_TAG_AFTER_PAUSE=v1.2.4 EXPECT_CREATES=0 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
 STATE_JSON="$(snaps rova-prod-pre-identity-v8-recent available 1)" \
 SCRIPT_STATE="$(printf 'PRE_SNAPSHOT=rova-prod-pre-identity-v8-recent\nTAG_BEFORE=v1.2.3')" \
 run_case pre-release-reuses-recent 0 "reusing the saved snapshot rova-prod-pre-identity-v8-recent \(taken [0-9]+ minutes ago\)" "Take a fresh" -- \
   yes yes "" yes "" yes "${TEN[@]}" yes
 
 # 6b. the same recent snapshot, reuse declined: a fresh one is taken, the old one stays in RDS
-SCRIPT_ARGS="--from release" EXTRA_TAG=v1.2.4 EXPECT_CREATES=1 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
+SCRIPT_ARGS="--from release" MOCK_TAG_AFTER_PAUSE=v1.2.4 EXPECT_CREATES=1 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
 STATE_JSON="$(snaps rova-prod-pre-identity-v8-recent available 1)" \
 SCRIPT_STATE="$(printf 'PRE_SNAPSHOT=rova-prod-pre-identity-v8-recent
 TAG_BEFORE=v1.2.3')" \
@@ -141,7 +147,7 @@ run_case pre-release-reuse-declined-takes-fresh 0 "a fresh snapshot is taken|PAS
   yes no yes "" yes "" yes "${TEN[@]}" yes
 
 # 7. before the release: the saved snapshot is two days old, so a fresh one replaces it (nothing is lost before the release)
-SCRIPT_ARGS="--from release" EXTRA_TAG=v1.2.4 EXPECT_CREATES=1 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
+SCRIPT_ARGS="--from release" MOCK_TAG_AFTER_PAUSE=v1.2.4 EXPECT_CREATES=1 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
 STATE_JSON="$(snaps rova-prod-pre-identity-v8-old available 48)" \
 SCRIPT_STATE="$(printf 'PRE_SNAPSHOT=rova-prod-pre-identity-v8-old\nTAG_BEFORE=v1.2.3')" \
 run_case pre-release-replaces-old "0" "replaces it|PASS: snapshot rova-prod-pre-identity-v8-" "" -- \
@@ -171,24 +177,34 @@ SCRIPT_STATE="$(printf 'RELEASE_TAG=v9.9.9\nPRE_SNAPSHOT=rova-prod-pre-identity-
 run_case stale-release-tag-stops 1 "RELEASE_TAG=v9.9.9 is not a tag" "PASS" --
 
 # 13. broken input: the live API runs another build than the tag
-EXTRA_TAG=v1.2.4 MOCK_API_IMAGE_TAG=v1.2.2 SCRIPT_STATE="TAG_BEFORE=v1.2.3" \
+MOCK_TAG_AFTER_PAUSE=v1.2.4 MOCK_API_IMAGE_TAG=v1.2.2 SCRIPT_STATE="TAG_BEFORE=v1.2.3" \
 run_case live-api-not-the-tag-build 1 "the live api runs .*v1.2.2, not the build of v1.2.4" "all 10 verification items passed" -- \
   yes yes rova.qnsc.vn "" yes yes yes "" yes ""
 
 # 14. broken input: the worker runs another build than the tag
-EXTRA_TAG=v1.2.4 MOCK_WORKER_IMAGE_TAG=v1.2.2 SCRIPT_STATE="TAG_BEFORE=v1.2.3" \
+MOCK_TAG_AFTER_PAUSE=v1.2.4 MOCK_WORKER_IMAGE_TAG=v1.2.2 SCRIPT_STATE="TAG_BEFORE=v1.2.3" \
 run_case live-worker-not-the-tag-build 1 "the live worker runs .* not the build of" "all 10 verification items passed" -- \
   yes yes rova.qnsc.vn "" yes yes yes "" yes ""
 
 # 15a. the live guard: the API already injects BETTER_AUTH_SECRET before the snapshot: stop, take nothing
-MOCK_API_LIVE_REV=12 SCRIPT_ARGS="--from release" EXPECT_CREATES=0 EXTRA_TAG=v1.2.4 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
+MOCK_API_LIVE_REV=12 SCRIPT_ARGS="--from release" EXPECT_CREATES=0 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
 SCRIPT_STATE="TAG_BEFORE=v1.2.3" \
 run_case live-guard-cut-over-stops 1 "already injects BETTER_AUTH_SECRET" "Downtime|Take a fresh|Reuse it" -- ""
 
 # 15b. the live guard: the API runs a tag newer than the baseline (a release already landed): stop, take nothing
-MOCK_API_IMAGE_TAG=v1.2.5 SCRIPT_ARGS="--from release" EXPECT_CREATES=0 EXTRA_TAG=v1.2.4 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
+MOCK_OLD_TAG=v1.2.5 SCRIPT_ARGS="--from release" EXPECT_CREATES=0 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
 SCRIPT_STATE="TAG_BEFORE=v1.2.3" \
-run_case live-guard-newer-tag-stops 1 "the live API runs v1.2.5, newer than the baseline v1.2.3" "Downtime|Take a fresh" -- ""
+run_case live-guard-newer-tag-stops 1 "the live API runs v1.2.5, not the newest release tag on origin/main \\(v1.2.3\\)" "Downtime|Take a fresh" -- ""
+
+# 15d. a release merged to origin/main (v1.2.4) that the API has not deployed yet: stop before any snapshot
+SCRIPT_ARGS="--from release" EXPECT_CREATES=0 EXTRA_TAG=v1.2.4 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
+SCRIPT_STATE="TAG_BEFORE=v1.2.3" \
+run_case live-guard-release-merged-stops 1 "the live API runs v1.2.3, not the newest release tag on origin/main \\(v1.2.4\\)" "Downtime|Take a fresh" -- ""
+
+# 15e. the live API image is not a release tag (a sha or a branch build): fail closed, take nothing
+MOCK_OLD_TAG=sha-deadbeef SCRIPT_ARGS="--from release" EXPECT_CREATES=0 PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' \
+SCRIPT_STATE="TAG_BEFORE=v1.2.3" \
+run_case live-guard-non-release-tag-stops 1 "the live API image tag is 'sha-deadbeef', not a release tag" "Downtime|Take a fresh" -- ""
 
 # 15c. a saved RELEASE_TAG that exists but is not on origin/main: stop, the tag is not this release
 SIDE_TAG=v1.2.5 SCRIPT_ARGS="--from release" PAGES_JSON='["EDGE_CLIENT_IP_SECRET"]' STATE_JSON="$(snaps rova-prod-pre-identity-v8-recent available 1)" \

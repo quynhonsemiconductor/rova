@@ -253,12 +253,24 @@ on merge and production on the next tag (the revert also removes the tag guard, 
 
 - The replace deletes the current `rova-prod` instance. Its automated backups and point-in-time recovery go with it (the module does not set `delete_automated_backups`, so the provider default applies). After C, the only backups are `PRE_SNAPSHOT` and the forensic snapshot from C1.
 - Every write after `PRE_SNAPSHOT` is lost, for every user, including everything written since the release started.
-- The replacement has a NEW endpoint address (the identifier stays `rova-prod`). The stack builds `DATABASE_HOST` from `module.rds`, so the services follow the apply.
+- The replacement's endpoint is not verified here. Read the plan: what is certain is that the RDS-managed master secret gets a new ARN, so the IAM policy and the task definitions that read it change too.
 - C does not roll back code. C4 and C5 do that.
+
+**After C, no new production tag until the revert (B) and `identity_v8_backfill_on_deploy = false` are both merged on `main`.** Until then, the next release re-runs migrations 0131 to 0136 and the backfill on the restored database. `main` still says `true`, because the release flow requires it.
 
 Owner-run from a local machine (the local path, C3(ii)). The Infrastructure · Apply workflow has no replace input, and it is not used for this.
 
-Module facts (`rds-v2.3.0`, `modules/rds/main.tf`): `snapshot_identifier` is read only at CREATE (`ignore_changes`), so the instance must be replaced explicitly with `-replace`. `skip_final_snapshot` defaults to `!deletion_protection`, so a final snapshot needs an explicit `skip_final_snapshot = false`; the final snapshot is named `rova-prod-final`. `image_tag` and `identity_v8_backfill_on_deploy` are root variables: pass them on the command line.
+Module facts (`rds-v2.3.0`, `modules/rds/main.tf`): `snapshot_identifier` is read only at CREATE (`ignore_changes`), so the instance must be replaced explicitly with `-replace`. `skip_final_snapshot` defaults to `!deletion_protection`. The provider deletes the instance with the PRIOR state's `skip_final_snapshot` and final identifier, so the final snapshot (`rova-prod-final`) needs `skip_final_snapshot = false` applied in its own step (C2) before the replace (C3).
+
+Root variables in `infra/live/prod`: `image_tag` and the TF inputs below. `identity_v8_backfill_on_deploy` is not a root variable: it is an argument of `module "stack"` in `main.tf`, and the restore branch sets it there.
+
+CI supplies two inputs the local plan needs too. Read them from your password manager into the shell; never echo them or write them to a file:
+
+```sh
+printf 'Cloudflare API token (CLOUDFLARE_API_TOKEN): '; read -rs TF_VAR_cloudflare_api_token; echo
+printf 'Grafana alerts token (GRAFANA_ALERTS_TOKEN): '; read -rs TF_VAR_grafana_alerting_auth; echo
+export TF_VAR_cloudflare_api_token TF_VAR_grafana_alerting_auth
+```
 
 Use a branch `restore/rova-prod-<date>` for the `infra/live/prod/main.tf` edits in C2 and C3. Open the PR after the apply, as the record.
 
@@ -266,13 +278,16 @@ Use a branch `restore/rova-prod-<date>` for the `infra/live/prod/main.tf` edits 
 
    ```sh
    export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1
-   PRE=$(grep '^PRE_SNAPSHOT=' ~/.local/state/rova-identity-v8/prod-state.env | cut -d= -f2)
-   TAG_PRE=$(grep '^TAG_BEFORE=' ~/.local/state/rova-identity-v8/prod-state.env | cut -d= -f2)
+   STATE=~/.local/state/rova-identity-v8/prod-state.env
+   PRE=$(grep '^PRE_SNAPSHOT=' "$STATE" | cut -d= -f2)
+   TAG_PRE=$(grep '^TAG_PRE=' "$STATE" | cut -d= -f2)           # the live API tag at snapshot time: the v7 build
+   CUTOVER_TAG=$(grep '^RELEASE_TAG=' "$STATE" | cut -d= -f2)   # the tag live now: the cutover build
    aws rds describe-db-snapshots --db-snapshot-identifier "$PRE" --query 'DBSnapshots[0].Status' --output text          # must print: available
    aws rds describe-db-snapshots --db-snapshot-identifier rova-prod-final --query 'DBSnapshots[0].Status' --output text  # must fail: DBSnapshotNotFound
-   echo "$TAG_PRE"                                                                                                       # the last release before the cutover (the v7 build)
+   echo "PRE=$PRE TAG_PRE=$TAG_PRE CUTOVER_TAG=$CUTOVER_TAG"
    ```
 
+   If `TAG_PRE` is empty, stop: the state predates the TAG_PRE save, and the v7 tag must be read from the ECR history or the console before anything else.
    If `rova-prod-final` exists (an earlier attempt), stop. The replace fails on the name. Rename or delete it only when the owner says so.
 
 2. **C1. A forensic snapshot of the failed state.** Do this first. It is the only copy of the state before C.
@@ -283,30 +298,30 @@ Use a branch `restore/rova-prod-<date>` for the `infra/live/prod/main.tf` edits 
    aws rds wait db-snapshot-available --db-snapshot-identifier "$FORENSICS"
    ```
 
-3. **C2. Deletion protection off, in its own apply.** On the branch, `infra/live/prod/main.tf`, the `rds` object: `deletion_protection = false` and nothing else.
+3. **C2. Deletion protection off, and the final snapshot on, in one apply.** On the branch, the `rds` object in `infra/live/prod/main.tf`: `deletion_protection = false` and `skip_final_snapshot = false`, and nothing else.
 
    ```sh
    cd infra/live/prod
-   tofu plan -out=unprotect.tfplan
-   tofu show -no-color unprotect.tfplan | grep -E '^  # '     # must list one change: the instance, in place (~ deletion_protection)
+   tofu init
+   tofu plan -var image_tag="$CUTOVER_TAG" -out=unprotect.tfplan
+   tofu show -no-color unprotect.tfplan | grep -E '^  # '
    tofu apply unprotect.tfplan
    ```
 
-   If the plan lists anything else, stop.
+   The plan must list one change to the instance, in place: `~ deletion_protection` and `final_snapshot_identifier` becoming `rova-prod-final`. Any other line: stop. Apply it before C3, because the replace deletes with the state this apply writes.
 
-4. **C3. The replace.** On the branch, the same `rds` object also gets `skip_final_snapshot = false` and `snapshot_identifier = "<PRE>"` (the value of `$PRE` from C0). Then:
+4. **C3. The replace.** On the branch, the same `rds` object also gets `snapshot_identifier = "<PRE>"` (the value of `$PRE` from C0), and `module "stack"` in `main.tf` gets `identity_v8_backfill_on_deploy = false`. Then:
 
    ```sh
    tofu plan -replace='module.stack.module.rds.aws_db_instance.this' \
      -var image_tag="$TAG_PRE" \
-     -var identity_v8_backfill_on_deploy=false \
      -out=restore.tfplan
    tofu show -no-color restore.tfplan | grep -E '^  # '
    ```
 
    The plan must show exactly these, and nothing else:
 
-   - `module.stack.module.rds.aws_db_instance.this` replaced (`-/+`), `identifier` unchanged, a new `address`;
+   - `module.stack.module.rds.aws_db_instance.this` replaced (`-/+`), `identifier` unchanged;
    - the RDS-managed master secret: a new secret ARN, and the IAM policy and the task definitions that read it;
    - the parameter group re-attached to the replacement;
    - the api, worker and migrator task definitions, as new revisions with the image tag `$TAG_PRE` (the v7 build).
@@ -315,7 +330,7 @@ Use a branch `restore/rova-prod-<date>` for the `infra/live/prod/main.tf` edits 
 
    - any change outside that list: DNS, Pages, edge, mail identity, certificate, or any other resource;
    - the instance updated in place instead of replaced, or a second replace, or a change to `identifier`;
-   - `snapshot_identifier` other than `$PRE`, or `skip_final_snapshot` other than `false`;
+   - `snapshot_identifier` other than `$PRE`, or a final snapshot identifier other than `rova-prod-final`;
    - an image with the cutover tag, or `identity_v8_backfill_on_deploy` true (the backfill must not run on the restored database).
 
    Then apply the saved plan (the replace takes minutes; the new instance is created from `$PRE`):
@@ -335,13 +350,18 @@ Use a branch `restore/rova-prod-<date>` for the `infra/live/prod/main.tf` edits 
    aws ecs wait services-stable --cluster rova-prod --services api worker
    ```
 
-   Never use the previous revisions: they point at the endpoint that no longer exists. **Never redeploy the cutover tag.** Its migrator would run 0131 to 0136 and the backfill again, on the restored database.
+   The services do not move on their own at the apply: C4 is what puts them on the v7 revisions. Never use the previous revisions for the reason the plan showed (their secret ARN is gone). **Never redeploy the cutover tag.** Its migrator would run 0131 to 0136 and the backfill again, on the restored database.
 
 6. **C5. The previous SPA.** Cloudflare Pages: Workers & Pages -> `rova-prod-web` -> Deployments -> the deployment before the cutover -> **Rollback to this
    deployment**. Do the SPA and the API together: a v8 SPA against a v7 API cannot sign anyone in.
 
-7. **C6. Deletion protection back on, own apply.** On the branch: `deletion_protection = true`, and remove `snapshot_identifier` and `skip_final_snapshot`.
-   `tofu plan` must show no replace, only the in-place `~ deletion_protection` (the module ignores `snapshot_identifier` after the create).
+7. **C6. Deletion protection back on, own apply.** On the branch: `deletion_protection = true`, and remove `snapshot_identifier` and `skip_final_snapshot`. Keep `identity_v8_backfill_on_deploy = false` in `module "stack"`.
+
+   ```sh
+   tofu plan -var image_tag="$TAG_PRE" -out=protect.tfplan
+   tofu show -no-color protect.tfplan | grep -E '^  # '     # must show only in-place changes: no replace, no delete
+   tofu apply protect.tfplan
+   ```
 
 8. **Verify.** Staff can sign in on v7 and see the data as of `$PRE`'s time. Keep the forensic snapshot and `$PRE` until the owner says otherwise; this runbook does not delete them.
 

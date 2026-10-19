@@ -95,7 +95,7 @@ if svc == "ecs":
         else:
             secrets = [{"name": "BETTER_AUTH_SECRET"}] if n >= 12 else []
             svc = family.split("-")[-1]
-            tag_override = os.environ.get(f"MOCK_{svc.upper()}_IMAGE_TAG")
+            tag_override = os.environ.get(f"MOCK_{svc.upper()}_IMAGE_TAG") if n >= 12 else None  # overrides are for the landed deploy
             # v7 (rev < 12) runs MOCK_OLD_TAG; the release runs MOCK_RELEASE_TAG (the tag the script anchors on)
             image_tag = tag_override or (os.environ.get("MOCK_RELEASE_TAG", "v1.2.4") if n >= 12 else os.environ.get("MOCK_OLD_TAG", "v1.2.2"))
             d = {"taskDefinition": {"taskDefinitionArn": t, "family": family, "containerDefinitions": [{

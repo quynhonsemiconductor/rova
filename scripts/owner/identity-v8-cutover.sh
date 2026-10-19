@@ -479,19 +479,17 @@ live_api_tag() { # the tag of the live API image (the first container)
   img="$(aws ecs describe-task-definition --task-definition "$arn" --query 'taskDefinition.containerDefinitions[0].image' --output text)" || die "cannot read the live API task definition"
   printf '%s' "${img##*:}"
 }
-live_guard() { # before ANY snapshot of the release: the live API is still v7 (no BETTER_AUTH_SECRET) and runs no tag newer than the baseline
-  local baseline live
+live_guard() { # before ANY snapshot of the release: the live API is v7 (no BETTER_AUTH_SECRET) and runs the newest release tag on origin/main. Saves that tag as TAG_PRE.
+  local newest live
   if api_live_has_secret; then
     die "the live API already injects BETTER_AUTH_SECRET: the cutover is live, so a snapshot now is not pre-cutover. Stop and read the runbook (Rollback)"
   fi
-  baseline="$(state_get TAG_BEFORE)"
-  [ -n "$baseline" ] || baseline="$(newest_release_tag)"
   live="$(live_api_tag)"
-  [[ "$live" == v[0-9]* ]] || return 0
-  if [ "$live" != "$baseline" ] && [ "$(printf '%s\n%s\n' "$baseline" "$live" | sort -V | tail -1)" = "$live" ]; then
-    die "the live API runs $live, newer than the baseline ${baseline:-none}: a release already landed, so this is not the pre-release state. No snapshot is taken"
-  fi
-  note "the live API runs ${live:-no tag}, not newer than the baseline ${baseline:-none}: the pre-release state"
+  [[ "$live" == v[0-9]* ]] || die "the live API image tag is '${live:-none}', not a release tag: no snapshot is taken. Read the runbook (Rollback)"
+  newest="$(newest_release_tag)"
+  [ "$live" = "$newest" ] || die "the live API runs $live, not the newest release tag on origin/main (${newest:-none}): a release is merged but not deployed, or a rollback is live. No snapshot is taken"
+  state_set TAG_PRE "$live"
+  note "the live API runs $live, the newest release tag: the pre-release state (TAG_PRE=$live)"
 }
 
 step_release() { # prod: the flags on main, then the snapshot and the release-please PR, then the tag's deploy (identity_v8_backfill_on_deploy commits the backfill)
