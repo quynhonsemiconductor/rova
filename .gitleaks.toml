@@ -49,4 +49,7 @@ regexes = [
   # Entra (Azure AD) OAuth identifiers — tenant ID and client ID are public in OAuth flows.
   '''entra_tenant_id\s*=\s*"dc0f2078-ac28-4ff2-b21a-d4b28df32361"''',
   '''entra_client_id\s*=\s*"45fabceb-e51c-446b-894e-af4c4b7f30f8"''',
+  # Image version tags in the dev compose files (e.g. valkey/valkey:7.2.14-alpine). The tag has enough entropy to trip
+  # generic-api-key, because "valkey" contains "key". Anchored to a bare version tag, so no secret can match.
+  '''^\d+(\.\d+){1,2}-alpine$''',
 ]
