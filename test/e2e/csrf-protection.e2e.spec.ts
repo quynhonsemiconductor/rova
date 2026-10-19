@@ -183,7 +183,7 @@ describe('CSRF protection is enforced (real AppModule + bootstrapApp)', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/sign-out',
-      headers: { cookie: session.cookie, origin: 'http://localhost:5173' },
+      headers: { cookie: session.cookie, origin: 'http://localhost:5175' },
       payload: {},
     });
 

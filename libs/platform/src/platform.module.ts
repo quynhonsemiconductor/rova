@@ -25,6 +25,7 @@ import { SesEmailProvider } from './email/providers/ses.provider';
 import { DevEmailProvider } from './email/providers/dev.provider';
 import { ResendEmailProvider } from './email/providers/resend.provider';
 import { GraphEmailProvider } from './email/providers/graph.provider';
+import { SmtpEmailProvider } from './email/providers/smtp.provider';
 import { NotificationSchedulerService } from './notifications/notification-scheduler.service';
 import { NotificationPubSubService } from './notifications/notification-pubsub.service';
 import { ExclusiveJob } from '@quynhonsemiconductor/platform-runtime';
@@ -71,7 +72,8 @@ import { StorageService } from './storage/storage.service';
     // that is imported earlier runs first, so it lives in `RateLimitModule`, imported after the identity module.
     OutboxService,
     AuditProducer,
-    // Email provider — selected via EMAIL_PROVIDER env var ('graph' | 'ses' | 'resend' | 'dev').
+    // Email provider — selected via EMAIL_PROVIDER env var ('graph' | 'smtp' | 'ses' | 'resend' | 'dev').
+    // 'smtp' is development only (Mailpit); env.schema and platform-mail both refuse it when NODE_ENV=production.
     // All providers share the same IEmailProvider interface; swap without touching business logic.
     // SES: needs MAIL_FROM_EMAIL + IAM ses:SendEmail role (cheapest at scale).
     // Resend: needs RESEND_API_KEY + verified domain (best DX, auto-DKIM, recommended for Phase 0).
@@ -90,6 +92,15 @@ import { StorageService } from './storage/storage.service';
             clientId: config.get('MAIL_GRAPH_CLIENT_ID'),
             certificate: config.get('MAIL_GRAPH_CERTIFICATE'),
             federatedTokenFile: config.get('MAIL_GRAPH_FEDERATED_TOKEN_FILE'),
+            nodeEnv: config.get('NODE_ENV'),
+          });
+        }
+        if (provider === 'smtp') {
+          // Built lazily, like graph: the worker's email relay calls `assertReady()` at start, so a missing variable stops the process.
+          return new SmtpEmailProvider({
+            host: config.get('MAIL_SMTP_HOST') ?? '',
+            port: config.get('MAIL_SMTP_PORT') ?? 1025,
+            from: config.get('MAIL_FROM_EMAIL') ?? '',
             nodeEnv: config.get('NODE_ENV'),
           });
         }

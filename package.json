@@ -40,6 +40,7 @@
     "db:identity-v8:mirror-bans": "tsx db/identity-v8/cli.ts mirror-bans",
     "db:report:custom-roles": "tsx db/report-custom-roles.ts",
     "db:studio": "drizzle-kit studio",
+    "local:check": "tsx scripts/local/check.ts",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -120,6 +121,7 @@
     "eslint": "^10.6.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.8",
+    "nodemailer": "^10.1.2",
     "pino-pretty": "^13.0.0",
     "prettier": "^3.9.4",
     "semver": "7.8.5",

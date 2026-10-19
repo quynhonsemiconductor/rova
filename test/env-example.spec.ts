@@ -112,6 +112,8 @@ describe('.env.example boots the API and the worker', () => {
       'LOCALSTACK_HOST_PORT',
       'OTEL_OTLP_HOST_PORT',
       'OTEL_METRICS_HOST_PORT',
+      'MAILPIT_SMTP_HOST_PORT',
+      'MAILPIT_UI_HOST_PORT',
       'SEED_ON_DEPLOY',
       'WEB_DEV_PORT',
       // The worker's entry point reads its own service name from process.env (apps/worker/src/worker-options.ts).
@@ -282,8 +284,9 @@ describe('.env.example holds no real secret and no foreign sender', () => {
     expect(env[key]).toBeUndefined();
   });
 
-  it('sends mail from a domain this organisation owns (and, with the dev provider, sends none)', () => {
-    expect(env['EMAIL_PROVIDER']).toBe('dev');
+  it('sends mail from a domain this organisation owns, and locally only to Mailpit on this machine', () => {
+    expect(env['EMAIL_PROVIDER']).toBe('smtp');
+    expect(env['MAIL_SMTP_HOST']).toBe('localhost');
     expect(env['MAIL_FROM_EMAIL']).toMatch(/@qnsc\.vn$/);
   });
 });
@@ -312,5 +315,34 @@ describe('the quickstart job gates the PR', () => {
     expect(read('.github/workflows/web-ci.yml')).toMatch(
       /needs: \[changes, quality, test, e2e, build, quickstart\]/,
     );
+  });
+});
+
+/**
+ * The host ports every product owns, as published in the "Local development" page of .github. Each product's compose
+ * defaults and .env.example must equal this block, so the three stacks run side by side without a clash.
+ */
+const PORT_BLOCK = {
+  POSTGRES_HOST_PORT: '5420',
+  VALKEY_HOST_PORT: '6320',
+  LOCALSTACK_HOST_PORT: '4620',
+  OTEL_OTLP_HOST_PORT: '4420',
+  OTEL_METRICS_HOST_PORT: '8420',
+  MAILPIT_SMTP_HOST_PORT: '1120',
+  MAILPIT_UI_HOST_PORT: '8120',
+  WEB_DEV_PORT: '5175',
+  PORT: '3010',
+} as const;
+
+describe('the port block is the one the .github table publishes', () => {
+  it.each(Object.entries(PORT_BLOCK))('%s defaults to %s in .env.example', (key, value) => {
+    expect(env[key]).toBe(value);
+  });
+
+  it('the compose defaults match the same block', () => {
+    for (const [key, value] of Object.entries(PORT_BLOCK)) {
+      if (key === 'PORT') continue;
+      expect(compose).toContain('${' + key + ':-' + value + '}');
+    }
   });
 });

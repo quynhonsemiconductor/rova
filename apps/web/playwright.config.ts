@@ -36,14 +36,14 @@ export default defineConfig({
   // backend rotates + reuse-protects refresh tokens, so a shared session breaks.
   // Requires the API to run with DISABLE_RATE_LIMIT=true so per-test login is OK.
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:5175',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'pnpm dev --port 5173',
-    url: 'http://localhost:5173',
+    command: 'pnpm dev --port 5175',
+    url: 'http://localhost:5175',
     reuseExistingServer: true,
     timeout: 60_000,
   },

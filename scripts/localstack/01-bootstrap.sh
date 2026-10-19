@@ -35,7 +35,7 @@ REGION="ap-southeast-1"
 PRIVATE_BUCKET="rova-attachments"
 PUBLIC_BUCKET="rova-public-assets"
 # Vite dev server origin — the SPA PUTs directly to the bucket from here.
-WEB_ORIGIN="${WEB_ORIGIN:-http://localhost:5173}"
+WEB_ORIGIN="${WEB_ORIGIN:-http://localhost:5175}"
 
 echo "[localstack-init] provisioning S3 buckets…"
 

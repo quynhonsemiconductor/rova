@@ -15,7 +15,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - '127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432'
+      - '127.0.0.1:${POSTGRES_HOST_PORT:-5420}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
@@ -28,12 +28,21 @@ services:
   valkey:
     image: valkey/valkey:7.2.14-alpine
     ports:
-      - '127.0.0.1:${VALKEY_HOST_PORT:-6379}:6379'
+      - '127.0.0.1:${VALKEY_HOST_PORT:-6320}:6379'
     healthcheck:
       test: ['CMD', 'valkey-cli', 'ping']
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # Mailpit catches the mail the API sends with EMAIL_PROVIDER=smtp. Nothing leaves the machine: SMTP accepts any message and the
+  # web UI (and its API, which the check command reads) shows it. Pinned to a full version. Development only.
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    ports:
+      # MAIL_SMTP_PORT in .env must carry the SMTP port; the UI and API are on the UI port.
+      - '127.0.0.1:${MAILPIT_SMTP_HOST_PORT:-1120}:1025'
+      - '127.0.0.1:${MAILPIT_UI_HOST_PORT:-8120}:8025'
 
   # LocalStack for AWS services (S3/Secrets) in dev.
   # Replaces real AWS for local development — no AWS account needed.
@@ -47,10 +56,10 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       # The SPA origin the buckets' CORS allows (scripts/localstack/01-bootstrap.sh). Follows WEB_DEV_PORT in .env.
-      WEB_ORIGIN: http://localhost:${WEB_DEV_PORT:-5173}
+      WEB_ORIGIN: http://localhost:${WEB_DEV_PORT:-5175}
     ports:
       # STORAGE_ENDPOINT and AWS_ENDPOINT_URL in .env must carry the same port.
-      - '127.0.0.1:${LOCALSTACK_HOST_PORT:-4566}:4566'
+      - '127.0.0.1:${LOCALSTACK_HOST_PORT:-4620}:4566'
     volumes:
       - localstack_data:/var/lib/localstack
       # Init hook: runs automatically when LocalStack is ready.
@@ -79,8 +88,8 @@ services:
       - ./scripts/otel/collector.yaml:/etc/otel/collector.yaml:ro
     ports:
       # OTEL_EXPORTER_OTLP_ENDPOINT in .env must carry the OTLP port.
-      - '127.0.0.1:${OTEL_OTLP_HOST_PORT:-4318}:4318'
-      - '127.0.0.1:${OTEL_METRICS_HOST_PORT:-8889}:8889'
+      - '127.0.0.1:${OTEL_OTLP_HOST_PORT:-4420}:4318'
+      - '127.0.0.1:${OTEL_METRICS_HOST_PORT:-8420}:8889'
     healthcheck:
       # The image has no shell and no curl, so run the binary's own subcommand instead.
       test: ['CMD', '/otelcol-contrib', 'components']

@@ -7,7 +7,7 @@ import tailwindcss from '@tailwindcss/vite'
 // here because Vite only puts VITE_-prefixed keys into `import.meta.env`. The process environment wins, as usual. The
 // defaults are this stack's own ports.
 const dotenv = { ...loadEnv('', path.resolve(__dirname, '../..'), ''), ...process.env }
-const apiOrigin = dotenv.API_TARGET || `http://localhost:${dotenv.PORT || 3000}`
+const apiOrigin = dotenv.API_TARGET || `http://localhost:${dotenv.PORT || 3010}`
 const storageOrigin = dotenv.STORAGE_ENDPOINT || 'http://localhost:4566'
 
 /**
@@ -57,7 +57,7 @@ export default defineConfig(({ mode, command }) => ({
     // 5173 (WEB_DEV_PORT in .env to change it) is the origin the rest of the stack is wired to (.env.example CORS_ORIGINS and APP_BASE_URL, whose
     // /api/auth/callback/microsoft is the Entra redirect URI, LocalStack's bucket CORS, Playwright's baseURL). strictPort: if another dev server holds it,
     // FAIL instead of silently moving to 5174, where the sign-in redirect and the upload bucket's CORS no longer match.
-    port: Number(dotenv.WEB_DEV_PORT) || 5173,
+    port: Number(dotenv.WEB_DEV_PORT) || 5175,
     strictPort: true,
     allowedHosts: ['.trycloudflare.com'],
     proxy: {

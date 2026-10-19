@@ -52,12 +52,12 @@ pnpm db:migrate                                # migrations + the RBAC catalogue
 Then one terminal per process:
 
 ```bash
-pnpm start:dev          # API    → http://localhost:3000   (/readyz, /v1/*, /api/docs)
+pnpm start:dev          # API    → http://localhost:3010   (/readyz, /v1/*, /api/docs)
 pnpm start:dev:worker   # worker → relays and cron jobs; serves no HTTP
-pnpm dev:web            # SPA    → http://localhost:5173   (proxies /v1 to :3000)
+pnpm dev:web            # SPA    → http://localhost:5175   (proxies /v1 to :3010)
 ```
 
-Check it: `curl -s localhost:3000/readyz` answers `{"status":"ok", …}` (the API's own probe), and `curl -s localhost:5173/v1/healthz` answers **through the SPA's proxy**, which is what proves Vite and the API agree on the port.
+Check it: `curl -s localhost:3010/readyz` answers `{"status":"ok", …}` (the API's own probe), and `curl -s localhost:5175/v1/healthz` answers **through the SPA's proxy**, which is what proves Vite and the API agree on the port.
 
 The API and the worker validate against one schema, so one `.env` serves both and neither refuses the other's variables. `.env.example` marks every variable `[both]`, `[API]`, `[WORKER]` or `[web]`. The repo-root `.env` also serves the SPA (Vite exposes only `VITE_`-prefixed variables), so there is no second file to create.
 
@@ -65,45 +65,40 @@ The API and the worker validate against one schema, so one `.env` serves both an
 
 The login page has a "Sign in with Microsoft" button and, because `.env.example` sets `VITE_DEV_LOGIN=true`, a passwordless **dev login**: an email field for a seeded account, backed by identity's `POST /api/auth/test-login`. It is for local and non-production use only: identity loads that route only with `IDENTITY_TEST_LOGIN=enabled` AND `NODE_ENV` of `test` or `development`, and the env schema refuses it in production. The demo users `db:migrate` seeded:
 
-| email | role |
-| --- | --- |
-| `admin@qnsc.dev` | workspace_admin (platform admin) |
-| `dev@qnsc.dev` | no workspace-wide role (0 permissions): a member of Team Alpha, assigned the sample work items |
-| `viewer@qnsc.dev` | the same, as the read-only fixture |
+| email             | role                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| `admin@qnsc.dev`  | workspace_admin (platform admin)                                                               |
+| `dev@qnsc.dev`    | no workspace-wide role (0 permissions): a member of Team Alpha, assigned the sample work items |
+| `viewer@qnsc.dev` | the same, as the read-only fixture                                                             |
 
-**In the browser:** open http://localhost:5173, type `admin@qnsc.dev` in the dev-login field and submit.
+**In the browser:** open http://localhost:5175, type `admin@qnsc.dev` in the dev-login field and submit.
 
 **With curl** (an API call without a browser; the session is an opaque `__Secure-rova.session_token` cookie; a cookie jar will not send a `Secure` cookie over http, so replay it by hand):
 
 ```bash
-cookie=$(curl -s -D - -o /dev/null -H 'content-type: application/json' -d '{"email":"admin@qnsc.dev"}' localhost:3000/api/auth/test-login \
+cookie=$(curl -s -D - -o /dev/null -H 'content-type: application/json' -d '{"email":"admin@qnsc.dev"}' localhost:3010/api/auth/test-login \
   | sed -n 's/^set-cookie: \(__Secure-rova.session_token=[^;]*\).*/\1/ip' | tr -d '\r')
-curl -s -H "cookie: $cookie" localhost:3000/v1/auth/me
+curl -s -H "cookie: $cookie" localhost:3010/v1/auth/me
 ```
 
-**With Microsoft (optional).** The env schema requires `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` in every environment, so `.env.example` carries placeholders that let the API boot and sign nobody in. To use Microsoft locally, register a **dev** app in a tenant you control, separate from production's: platform *Web*, redirect URI `http://localhost:5173/api/auth/callback/microsoft`, delegated `openid profile email`, and a client secret. Put the real tenant id, client id and secret in `.env` and restart the API. The redirect is on the SPA origin because the browser lands there and the session cookie is set on that response.
+**With Microsoft (optional).** The env schema requires `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` in every environment, so `.env.example` carries placeholders that let the API boot and sign nobody in. To use Microsoft locally, register a **dev** app in a tenant you control, separate from production's: platform _Web_, redirect URI `http://localhost:5175/api/auth/callback/microsoft`, delegated `openid profile email`, and a client secret. Put the real tenant id, client id and secret in `.env` and restart the API. The redirect is on the SPA origin because the browser lands there and the session cookie is set on that response.
 
-### Ports, and running beside opshub
+### Ports, and running beside the other products
 
-These are the defaults. opshub's stack is offset from them (API 3001, Postgres 5433, Valkey 6380, LocalStack 4567, OTel 4319/8890) so both run at once. The two SPAs are the exception: both want 5173.
+Each product owns its own block, so opshub, rova and the knowledge base all run at once. The full table is in the org's
+"Local development" page (`.github`); the defaults here are the rova column.
 
-| | rova | opshub |
-| --- | --- | --- |
-| API | 3000 | **3001** |
-| SPA (Vite) | 5173 | 5173 |
-| Postgres | 5432 | **5433** |
-| Valkey | 6379 | **6380** |
-| LocalStack (S3) | 4566 | **4567** |
-| OTel collector (OTLP / Prometheus) | 4318 / 8889 | **4319** / **8890** |
+|                                    | rova (this repo)    | opshub      | knowledge base |
+| ---------------------------------- | ------------------- | ----------- | -------------- |
+| API                                | **3010**            | 3001        | 8000           |
+| SPA (Vite)                         | **5175**            | 5174        | 5173           |
+| Postgres                           | **5420**            | 5410        | 5432           |
+| Valkey                             | **6320**            | 6310        | 6379           |
+| LocalStack (S3)                    | **4620**            | 4610        | 4570           |
+| OTel collector (OTLP / Prometheus) | **4420** / **8420** | 4410 / 8410 | (none)         |
 
-The Vite server uses `strictPort`: a second SPA fails with "Port 5173 is already in use" instead of quietly moving to 5174, where the sign-in redirect (`APP_BASE_URL`, whose `/api/auth/callback/microsoft` is the Entra redirect URI) and the upload bucket's CORS would no longer match. To run both SPAs, start one of them elsewhere and tell **its** API the new origin on the command line (a variable in the environment beats `.env`):
-
-```bash
-APP_BASE_URL=http://localhost:5174 CORS_ORIGINS=http://localhost:5174 pnpm start:dev
-pnpm dev:web --port 5174
-```
-
-(File uploads in the browser need LocalStack's bucket CORS to allow that origin too: `WEB_ORIGIN` in `scripts/localstack/01-bootstrap.sh`.)
+The Vite server uses `strictPort`: a taken port fails the start, because the Microsoft redirect (`APP_BASE_URL`) and the bucket's
+CORS are set for that origin. To use another web port, set `WEB_DEV_PORT` and the `APP_BASE_URL` and `CORS_ORIGINS` that embed it.
 
 ### Run a second copy
 
@@ -118,7 +113,7 @@ API and web ports. Every port is bound to `127.0.0.1` and read from `.env`. In t
 
 For real Microsoft sign-in on the new web port, register `http://localhost:<WEB_DEV_PORT>/api/auth/callback/microsoft` as a redirect URI on your dev app; the test login needs none of this.
 
-Then run the same commands as above. The Playwright config's `baseURL` is pinned to 5173, so `pnpm --filter rova-web test:e2e` runs in one copy at a time.
+Then run the same commands as above. The Playwright config's `baseURL` is pinned to 5175, so `pnpm --filter rova-web test:e2e` runs in one copy at a time.
 
 ### Useful
 

@@ -54,3 +54,6 @@ junit.xml
 # Spurious npm lockfiles — this repo uses pnpm only
 package-lock.json
 **/package-lock.json
+
+# Local bring-up and checks (scripts/local): logs and pids.
+.local/
