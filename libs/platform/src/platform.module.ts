@@ -1,6 +1,7 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Logger, Module } from '@nestjs/common';
 import { AppConfigModule } from './config/config.module';
 import { AppConfigService } from './config/app-config.service';
+import { valkeyUrlOf } from './config/env.schema';
 import { DatabaseModule } from './database/database.module';
 import { CacheModule } from '@quynhonsemiconductor/platform-cache';
 import { RequestContextService } from './context/request-context';
@@ -43,11 +44,21 @@ import { StorageService } from './storage/storage.service';
     // in `required` mode: a REDIS_URL must be configured for the process to boot.
     CacheModule.forRootAsync({
       inject: [AppConfigService],
-      useFactory: (config: AppConfigService) => ({
-        url: config.get('REDIS_URL'),
-        keyPrefix: config.get('REDIS_KEY_PREFIX'),
-        mode: 'required' as const,
-      }),
+      useFactory: (config: AppConfigService) => {
+        if (!config.get('VALKEY_URL') && config.get('REDIS_URL')) {
+          new Logger('PlatformModule').warn(
+            'REDIS_URL is deprecated: set VALKEY_URL instead. The REDIS_URL fallback is removed in a later release.',
+          );
+        }
+        return {
+          url: valkeyUrlOf({
+            VALKEY_URL: config.get('VALKEY_URL'),
+            REDIS_URL: config.get('REDIS_URL'),
+          }),
+          keyPrefix: config.get('REDIS_KEY_PREFIX'),
+          mode: 'required' as const,
+        };
+      },
     }),
 
     ResilienceModule,

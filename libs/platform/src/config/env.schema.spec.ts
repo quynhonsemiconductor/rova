@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { EnvSchema } from './env.schema';
+import { EnvSchema, valkeyUrlOf } from './env.schema';
 
 /** Minimum that satisfies the rest of the schema, so these tests isolate the key pair. */
 function env(overrides: Record<string, string> = {}) {
   return {
     DATABASE_URL: 'postgres://u:p@localhost:5432/rova',
-    REDIS_URL: 'redis://localhost:6379',
+    VALKEY_URL: 'redis://localhost:6379',
     CSRF_SECRET: 'x'.repeat(32),
     COOKIE_SECRET: 'y'.repeat(32),
     ENTRA_TENANT_ID: 'tenant',
@@ -54,33 +54,58 @@ describe('EnvSchema — identity 8 sign-in', () => {
   });
 });
 
-describe('EnvSchema — REDIS_URL', () => {
-  // It used to default to redis://localhost:6379. That is harmless locally and
-  // dangerous everywhere else: a deployed task missing the injection connected to
-  // nothing on its own loopback instead of failing to boot. Sessions live only in
-  // Valkey, and the token denylist and rate limiter both FAIL OPEN when it is
-  // unreachable — so the service answered healthz with 200 while revoked tokens kept
-  // working and rate limiting was off.
+describe('EnvSchema — VALKEY_URL', () => {
+  // It used to default to redis://localhost:6379. That is harmless locally and dangerous everywhere else: a deployed task
+  // missing the injection connected to nothing on its own loopback instead of failing to boot. Sessions live only in
+  // Valkey, and the denylist and rate limiter fail open without it.
   it('is required, with no localhost fallback', () => {
-    const withoutRedis = env();
-    delete (withoutRedis as Record<string, unknown>).REDIS_URL;
-    const result = EnvSchema.safeParse(withoutRedis);
+    const withoutValkey = env();
+    delete (withoutValkey as Record<string, unknown>).VALKEY_URL;
+    const result = EnvSchema.safeParse(withoutValkey);
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(JSON.stringify(result.error.issues)).toContain('REDIS_URL');
+    expect(JSON.stringify(result.error.issues)).toContain('VALKEY_URL');
   });
 
   it('rejects a value that is not a URL', () => {
-    expect(EnvSchema.safeParse(env({ REDIS_URL: 'not-a-url' })).success).toBe(false);
-    expect(EnvSchema.safeParse(env({ REDIS_URL: '' })).success).toBe(false);
+    expect(EnvSchema.safeParse(env({ VALKEY_URL: 'not-a-url' })).success).toBe(false);
+    expect(EnvSchema.safeParse(env({ VALKEY_URL: '' })).success).toBe(false);
   });
 
   it('accepts both the deployed and local schemes', () => {
     // Deployed nodes enable transit encryption, so the scheme is always rediss://.
     expect(
-      EnvSchema.safeParse(env({ REDIS_URL: 'rediss://master.x.cache.amazonaws.com:6379' })).success,
+      EnvSchema.safeParse(env({ VALKEY_URL: 'rediss://master.x.cache.amazonaws.com:6379' }))
+        .success,
     ).toBe(true);
-    expect(EnvSchema.safeParse(env({ REDIS_URL: 'redis://localhost:6379' })).success).toBe(true);
+    expect(EnvSchema.safeParse(env({ VALKEY_URL: 'redis://localhost:6379' })).success).toBe(true);
+  });
+
+  it('still accepts REDIS_URL alone for one release, and valkeyUrlOf reads it', () => {
+    const legacy = env();
+    delete (legacy as Record<string, unknown>).VALKEY_URL;
+    const result = EnvSchema.safeParse({ ...legacy, REDIS_URL: 'rediss://legacy.cache:6379' });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(valkeyUrlOf(result.data)).toBe('rediss://legacy.cache:6379');
+  });
+
+  it('prefers VALKEY_URL when both names are set', () => {
+    const result = EnvSchema.safeParse(
+      env({ VALKEY_URL: 'rediss://new.cache:6379', REDIS_URL: 'rediss://old.cache:6379' }),
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(valkeyUrlOf(result.data)).toBe('rediss://new.cache:6379');
+  });
+
+  it('refuses a deployed task with neither name, and names VALKEY_URL', () => {
+    const neither = env();
+    delete (neither as Record<string, unknown>).VALKEY_URL;
+    const result = EnvSchema.safeParse(neither);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((i) => i.path.join('.'))).toContain('VALKEY_URL');
   });
 });
 

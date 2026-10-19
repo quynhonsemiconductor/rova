@@ -21,7 +21,7 @@ export default defineConfig({
     env: {
       NODE_ENV: 'test',
       DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
-      REDIS_URL: 'redis://localhost:6379',
+      VALKEY_URL: 'redis://localhost:6379',
       REDIS_KEY_PREFIX: 'test:',
       // Test-only placeholder: identity 8 signs cookies with it. Never used for a real sign-in.
       BETTER_AUTH_SECRET: 'test-better-auth-secret-at-least-32-chars!',

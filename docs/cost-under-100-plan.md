@@ -206,6 +206,6 @@ storage but nothing autoscales the instance class.
   sound reasons, and the api is not, for equally sound ones.
 - **Containerising dev's datastore.** Superseded — Phase 4 deletes dev entirely, which
   saves more.
-- **Dropping the prod cache.** `REDIS_URL` is required with no fallback, the cache module
+- **Dropping the prod cache.** `VALKEY_URL` is required with no fallback, the cache module
   runs in `mode: 'required'`, and a `check` block forbids running tasks without it.
   Sessions live only in Valkey.

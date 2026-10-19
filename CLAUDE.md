@@ -1141,7 +1141,7 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
   module once. Relocating an existing address needs a `moved{}` block in
   `infra/live/*/moved.tf`, or Terraform destroys and recreates it.
 - **Security posture is not a per-environment knob.** The cache module always
-  enables KMS at rest and TLS in transit, which is why `REDIS_URL` is always
+  enables KMS at rest and TLS in transit, which is why `VALKEY_URL` is always
   `rediss://`. ioredis turns TLS on from that scheme alone — no client option is
   needed, and `redis://` against these nodes simply fails to connect. Develop
   cannot be configured weaker than production here; sizing is the only difference.

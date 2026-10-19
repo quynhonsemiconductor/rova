@@ -237,7 +237,7 @@ jobs:
       # Shared by migrate/seed, the API process, and the specs.
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
       DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
-      REDIS_URL: redis://localhost:6379
+      VALKEY_URL: redis://localhost:6379
       CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
       COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
       # identity 8: the secret that signs its cookies, and the passwordless sign-in the E2E helper uses (identity

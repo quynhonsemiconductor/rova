@@ -28,7 +28,7 @@ const adminUrl =
   process.env['IDENTITY_CONFORMANCE_DATABASE_URL'] ??
   process.env['DATABASE_MIGRATION_URL'] ??
   process.env['DATABASE_URL'];
-const valkeyUrl = process.env['VALKEY_URL'] ?? process.env['REDIS_URL'];
+const valkeyUrl = process.env['VALKEY_URL'] ?? process.env['VALKEY_URL'];
 
 /** The database named in a URL replaced, so one server hosts the throwaway next to the real one. */
 function withDatabase(url: string, name: string): string {

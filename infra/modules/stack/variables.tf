@@ -154,11 +154,11 @@ variable "cache" {
   validation {
     # `cache.enabled = false` deletes the node, which is the only way to stop an idled
     # environment paying for ElastiCache. But a task that cannot reach its cache does NOT
-    # fail loudly: REDIS_URL falls back to localhost and both the token denylist and the rate
+    # fail loudly: VALKEY_URL falls back to localhost and both the token denylist and the rate
     # limiter fail OPEN. So the dangerous state is not "no cache" — it is "no cache, tasks
     # running", which degrades two security controls while health checks still answer 200.
     condition     = var.cache.enabled || (var.api.min_count == 0 && var.worker.min_count == 0)
-    error_message = "cache.enabled = false requires min_count = 0 on BOTH services. Without a cache, tasks do not fail loudly — REDIS_URL falls back to localhost and the token denylist and rate limiter fail open. Set both floors to 0, or re-enable the cache."
+    error_message = "cache.enabled = false requires min_count = 0 on BOTH services. Without a cache, tasks do not fail loudly — VALKEY_URL falls back to localhost and the token denylist and rate limiter fail open. Set both floors to 0, or re-enable the cache."
   }
 
   validation {
@@ -1015,7 +1015,7 @@ variable "wake_schedule" {
     # the two settings are individually valid and jointly produce the fail-open state on a
     # timer, at 08:00, unattended.
     condition     = var.wake_schedule == null || var.cache.enabled
-    error_message = "wake_schedule is set but cache.enabled is false. Waking would start tasks with no cache to reach: REDIS_URL falls back to localhost and both the token denylist and the rate limiter fail open. Enable the cache, or remove wake_schedule."
+    error_message = "wake_schedule is set but cache.enabled is false. Waking would start tasks with no cache to reach: VALKEY_URL falls back to localhost and both the token denylist and the rate limiter fail open. Enable the cache, or remove wake_schedule."
   }
 }
 

@@ -31,6 +31,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
 import { AppConfigService } from '../config/app-config.service';
+import { valkeyUrlOf } from '../config/env.schema';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
 
 export interface NotificationPubSubPayload {
@@ -63,7 +64,10 @@ export class NotificationPubSubService implements OnModuleInit, OnModuleDestroy 
   ) {}
 
   onModuleInit(): void {
-    const url = this.config.get('REDIS_URL');
+    const url = valkeyUrlOf({
+      VALKEY_URL: this.config.get('VALKEY_URL'),
+      REDIS_URL: this.config.get('REDIS_URL'),
+    });
     this.subscriber = new Redis(url, {
       // No keyPrefix option — pub/sub channels are not key commands; we namespace
       // via ns() so every channel already includes the environment prefix.

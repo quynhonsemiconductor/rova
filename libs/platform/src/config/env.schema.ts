@@ -58,27 +58,28 @@ export const EnvSchema = z
     DATABASE_POOL_MAX: z.coerce.number().int().positive().default(20),
     DATABASE_MIGRATION_URL: z.string().url().optional(),
 
-    // Redis / Valkey
+    // Valkey (ElastiCache when deployed, the compose stack locally). The name matches opshub and the shared infra.
     //
-    // REQUIRED, with no default, and that is the whole point. It used to default to
-    // `redis://localhost:6379`, which is harmless locally and dangerous everywhere
-    // else: a deployed task whose REDIS_URL injection went missing did not fail to
-    // boot — it silently connected to nothing on its own loopback.
+    // REQUIRED, with no default, and that is the whole point. It used to default to `redis://localhost:6379`, which is
+    // harmless locally and dangerous everywhere else: a deployed task whose injection went missing did not fail to boot,
+    // it silently connected to nothing on its own loopback.
     //
-    // That is not a degraded cache. Sessions live ONLY in Valkey, so every browser
-    // session breaks; and the token denylist and the rate limiter both FAIL OPEN when
-    // it is unreachable, so a revoked token keeps working and rate limiting stops. The
-    // task meanwhile answers `/v1/healthz` with 200, because that probe deliberately
-    // touches no dependency, so the ALB keeps it registered and nothing reports it.
+    // That is not a degraded cache. Sessions live ONLY in Valkey, so every browser session breaks; and the token
+    // denylist and the rate limiter both FAIL OPEN when it is unreachable, so a revoked token keeps working and rate
+    // limiting stops. The task meanwhile answers `/v1/healthz` with 200, because that probe deliberately touches no
+    // dependency, so the ALB keeps it registered and nothing reports it.
     //
-    // `JWT_PRIVATE_KEY` has no default for the same reason: absent config should fail
-    // the deploy and roll back, not silently downgrade the service. A localhost
-    // fallback is a local-development convenience, so it belongs in `.env`, where
-    // `.env.example` already sets it — not in the schema every deployed task shares.
-    REDIS_URL: z
+    // REDIS_URL is the name this service used before. It is read as a fallback for ONE release (valkeyUrlOf logs a
+    // deprecation warning at boot). Remove the fallback once every deployed task sets VALKEY_URL.
+    //
+    // `JWT_PRIVATE_KEY` has no default for the same reason: absent config should fail the deploy and roll back, not
+    // silently downgrade the service. A localhost fallback is a local-development convenience, so it belongs in `.env`,
+    // where `.env.example` already sets it — not in the schema every deployed task shares.
+    VALKEY_URL: z
       .string()
-      .url('REDIS_URL must be a URL — rediss:// against the deployed cache, redis:// locally')
-      .min(1, 'REDIS_URL is required: there is deliberately no localhost fallback'),
+      .url('VALKEY_URL must be a URL — rediss:// against the deployed cache, redis:// locally')
+      .optional(),
+    REDIS_URL: z.string().url('REDIS_URL must be a URL').optional(),
     REDIS_KEY_PREFIX: z.string().default('rova:'),
 
     // ── Auth: identity 8 (Better Auth, the `staff` preset, Microsoft Entra) ──────────────────────────────────────────
@@ -464,6 +465,24 @@ export const EnvSchema = z
           'APP_BASE_URL must be https when NODE_ENV=production: it is the origin Entra redirects the browser to (/api/auth/callback/microsoft) and the origin of the session cookie.',
       });
     }
+  })
+  .superRefine((env, ctx) => {
+    if (!env.VALKEY_URL && !env.REDIS_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['VALKEY_URL'],
+        message: 'VALKEY_URL is required: there is deliberately no localhost fallback',
+      });
+    }
   });
+
+/**
+ * The Valkey URL the process uses: VALKEY_URL, or REDIS_URL while the fallback exists. EnvSchema requires one of them.
+ */
+export function valkeyUrlOf(env: Pick<Env, 'VALKEY_URL' | 'REDIS_URL'>): string {
+  const url = env.VALKEY_URL ?? env.REDIS_URL;
+  if (!url) throw new Error('VALKEY_URL is required: there is deliberately no localhost fallback');
+  return url;
+}
 
 export type Env = z.infer<typeof EnvSchema>;

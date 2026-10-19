@@ -112,7 +112,7 @@ export class DrizzleProvider implements OnModuleInit, OnModuleDestroy {
    * that option above for the pg-pool source that proves it. So a freshly started
    * task had an empty pool, and nothing in the admission path noticed: the ALB target
    * group health-checks `/v1/healthz`, which returns 200 without touching a
-   * dependency (deliberately — see the REDIS_URL note in env.schema.ts), so the task
+   * dependency (deliberately — see the VALKEY_URL note in env.schema.ts), so the task
    * was registered and serving before it had ever spoken to RDS. The first real
    * request then paid TCP + TLS + SCRAM authentication to RDS on a 256-CPU-unit
    * (0.25 vCPU) task. At the measured production volume of 1-4 requests/day that one

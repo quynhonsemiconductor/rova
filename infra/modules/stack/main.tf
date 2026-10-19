@@ -40,10 +40,9 @@ locals {
   # When the cache is disabled (an idled environment) this is a deliberately
   # UNRESOLVABLE address rather than an empty string or an omitted variable.
   #
-  # `env.schema.ts` declares `REDIS_URL: z.string().default('redis://localhost:6379')`,
-  # so omitting it makes a deployed task fall back to LOCALHOST — and the token denylist
-  # and rate limiter both FAIL OPEN when Valkey is unreachable. A task booted without a
-  # cache would therefore run with two security controls degraded instead of failing.
+  # `env.schema.ts` requires `VALKEY_URL` with no default, so a task without it fails the
+  # boot. Without a cache the token denylist and rate limiter would FAIL OPEN, so a cache
+  # must be there when tasks run.
   # An empty string is no better: it is a valid string, so the schema accepts it.
   #
   # `.invalid` is reserved by RFC 2606 and can never resolve, so the failure is a loud
@@ -52,7 +51,7 @@ locals {
   # THREE cases, and the middle one is the shared node in the runtime layer.
   #
   # The DATABASE INDEX is only appended when sharing. A dedicated node has nobody to
-  # collide with, and appending `/0` there would rewrite REDIS_URL on every existing
+  # collide with, and appending `/0` there would rewrite VALKEY_URL on every existing
   # environment for no behaviour change — a task-definition revision and a rolling deploy
   # to say the same thing.
   #
@@ -1929,7 +1928,7 @@ module "api" {
   environment_vars = concat(local.api_db_env, [
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "3000" },
-    { name = "REDIS_URL", value = local.redis_url },
+    { name = "VALKEY_URL", value = local.redis_url },
     { name = "AWS_REGION", value = var.region },
     # Non-secret connection parts; DATABASE_USER/PASSWORD arrive via secrets.
     { name = "DATABASE_HOST", value = module.rds.address },
@@ -2148,7 +2147,7 @@ module "worker" {
 
   environment_vars = concat(local.worker_db_env, [
     { name = "NODE_ENV", value = "production" },
-    { name = "REDIS_URL", value = local.redis_url },
+    { name = "VALKEY_URL", value = local.redis_url },
     { name = "AWS_REGION", value = var.region },
     # Non-secret connection parts; DATABASE_USER/PASSWORD arrive via secrets.
     { name = "DATABASE_HOST", value = module.rds.address },
@@ -3035,7 +3034,7 @@ resource "aws_scheduler_schedule" "rds_stop" {
 # ── Guard: an environment without a cache must run no tasks ───────────────────
 # `cache.enabled = false` deletes the node, and ElastiCache has no stopped state, so
 # this is the only way to stop an idled environment paying for one. But a task that
-# cannot reach its cache does NOT fail loudly: `env.schema.ts` defaults REDIS_URL to
+# cannot reach its cache does NOT fail loudly: `env.schema.ts` defaults VALKEY_URL to
 # localhost, and both the token denylist and the rate limiter FAIL OPEN when Valkey is
 # unreachable. So the dangerous state is not "no cache" — it is "no cache, tasks
 # running", which degrades two security controls silently.
@@ -3234,7 +3233,7 @@ resource "aws_scheduler_schedule" "ecs_scale_up" {
 # environment from RUNNING tasks without a cache; this one stops a schedule being
 # created that would START them. Without it the two settings are individually valid
 # and jointly produce the exact state the other check exists to prevent — tasks up,
-# no cache, REDIS_URL falling back to localhost, denylist and rate limiter failing
+# no cache, VALKEY_URL falling back to localhost, denylist and rate limiter failing
 # open — except on a timer, at 08:00, with nobody watching.
 
 

@@ -23,7 +23,7 @@ on:
     # manifest (root, never ignored) → prod never skipped.
     #
     # `infra/**` is deliberately NOT ignored, though it once was. Terraform owns
-    # the task definition's environment (REDIS_URL, DATABASE_*, CORS_ORIGINS, …),
+    # the task definition's environment (VALKEY_URL, DATABASE_*, CORS_ORIGINS, …),
     # but the ecs-service module sets `ignore_changes = [task_definition]` so the
     # SERVICE is never moved onto the revision Terraform registers — the deploy
     # pipeline owns that. With infra ignored here, an infra-only merge registered a

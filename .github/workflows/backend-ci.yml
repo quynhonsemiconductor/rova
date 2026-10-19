@@ -223,7 +223,7 @@ jobs:
         env:
           NODE_ENV: test
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
-          REDIS_URL: redis://localhost:6379
+          VALKEY_URL: redis://localhost:6379
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
           COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
 
@@ -278,7 +278,7 @@ jobs:
           # the same split infra/modules/stack/main.tf gets at cutover.
           DATABASE_URL: postgresql://rova_app:rova_app@localhost:5432/rova_test?sslmode=disable
           DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
-          REDIS_URL: redis://localhost:6379
+          VALKEY_URL: redis://localhost:6379
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
           COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
           # Entra — CI test-only placeholders (never used for real auth).
@@ -552,7 +552,7 @@ jobs:
           # longer piggybacks on NODE_ENV), so this job must opt in.
           SWAGGER_ENABLED: 'true'
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_openapi?sslmode=disable
-          REDIS_URL: redis://localhost:6379
+          VALKEY_URL: redis://localhost:6379
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
           COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
           OTEL_ENABLED: 'false'

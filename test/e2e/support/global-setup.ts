@@ -75,7 +75,7 @@ export default async function setup(): Promise<void> {
  * five-minute TTL, which is the situation this function improves rather than guarantees.
  */
 async function flushPermissionCache(): Promise<void> {
-  const redisUrl = process.env.REDIS_URL;
+  const redisUrl = process.env.VALKEY_URL ?? process.env.REDIS_URL;
   if (!redisUrl) return;
 
   const redis = new Redis(redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1 });

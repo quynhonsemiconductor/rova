@@ -118,7 +118,7 @@ describe('.env.example agrees with the dev tooling', () => {
 
   it('points at the host ports docker-compose.dev.yml publishes', () => {
     expect(portOf(env['DATABASE_URL'])).toBe(hostPort('rova-postgres', 5432));
-    expect(portOf(env['REDIS_URL'])).toBe(hostPort('rova-valkey', 6379));
+    expect(portOf(env['VALKEY_URL'])).toBe(hostPort('rova-valkey', 6379));
     expect(portOf(env['STORAGE_ENDPOINT'])).toBe(hostPort('rova-localstack', 4566));
     expect(portOf(env['AWS_ENDPOINT_URL'])).toBe(hostPort('rova-localstack', 4566));
     expect(portOf(env['OTEL_EXPORTER_OTLP_ENDPOINT'])).toBe(hostPort('rova-otel', 4318));
