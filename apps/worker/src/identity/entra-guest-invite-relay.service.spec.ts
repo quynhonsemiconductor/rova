@@ -51,11 +51,11 @@ const row = (o: Partial<Row> = {}): Row => ({
 });
 
 /** The invitation row the relay re-reads before it will mail a link. */
-type Invitation = { status: string; tokenHash: string; expiresAt: Date };
+type Invitation = { status: string; tokenHash: string; expiresInDays: number };
 const invitation = (o: Partial<Invitation> = {}): Invitation => ({
   status: 'pending',
   tokenHash: TOKEN_HASH,
-  expiresAt: new Date(Date.now() + 7 * 86_400_000),
+  expiresInDays: 7,
   ...o,
 });
 
@@ -250,19 +250,19 @@ describe('EntraGuestInviteRelayService', () => {
       expect(updatesTo(updates, guestInviteOutbox)[0]).toMatchObject({ inviteToken: null });
     });
 
-    it('reports the days REMAINING, not the configured TTL', async () => {
-      // The mail leaves after provisioning and possibly several backoff windows, so the configured
-      // TTL would overstate the window the invitee actually has.
+    it('forwards the days REMAINING that the database computed, not the configured TTL', async () => {
+      // The days-remaining value is computed in the invitation SELECT with the database's now(); the relay
+      // only forwards it. The SQL itself is pinned against PostgreSQL by test/e2e/invite-days-db-clock.e2e.spec.ts.
       const { relay, emailScheduler } = build(
         async () => ({ outcome: 'invited', guestObjectId: 'g1' }),
-        { invitation: invitation({ expiresAt: new Date(Date.now() + 2.2 * 86_400_000) }) },
+        { invitation: invitation({ expiresInDays: 5 }) },
       );
       relay.batch = [row()];
 
       await relay.relay();
 
       expect(emailScheduler.schedule).toHaveBeenCalledWith(
-        expect.objectContaining({ vars: expect.objectContaining({ expiresInDays: '3' }) }),
+        expect.objectContaining({ vars: expect.objectContaining({ expiresInDays: '5' }) }),
         expect.anything(),
       );
     });
