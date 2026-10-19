@@ -36,7 +36,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { createHash } from 'node:crypto';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import {
   InjectDrizzle,
   Span,
@@ -307,7 +307,8 @@ export class EntraGuestInviteRelayService
       .select({
         status: workspaceInvitations.status,
         tokenHash: workspaceInvitations.tokenHash,
-        expiresAt: workspaceInvitations.expiresAt,
+        // Days remaining, computed by the database's own now() in this statement (not the host clock).
+        expiresInDays: sql<number>`greatest(1, ceil(extract(epoch from (${workspaceInvitations.expiresAt} - now())) / 86400))::int`,
       })
       .from(workspaceInvitations)
       .where(eq(workspaceInvitations.id, row.invitationId))
@@ -339,9 +340,6 @@ export class EntraGuestInviteRelayService
      * would overstate the window the invitee actually has. Floored at 1: a "0 days" invitation reads
      * as already dead, and an invitation whose window has closed is refused at accept time anyway.
      */
-    const msRemaining = invitation.expiresAt.getTime() - Date.now();
-    const expiresInDays = Math.max(1, Math.ceil(msRemaining / 86_400_000));
-
     await this.emailScheduler.schedule(
       {
         to: row.email,
@@ -349,7 +347,7 @@ export class EntraGuestInviteRelayService
         vars: {
           inviteUrl: `${this.config.get('APP_BASE_URL')}/accept-invitation?token=${row.inviteToken}`,
           workspaceName: workspace.name,
-          expiresInDays: String(expiresInDays),
+          expiresInDays: String(invitation.expiresInDays),
           recipientEmail: row.email,
         },
         // Identical to `WorkspaceService.inviteMember`'s key, on purpose — see above.
