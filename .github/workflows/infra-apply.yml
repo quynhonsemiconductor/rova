@@ -80,7 +80,7 @@ concurrency:
   # land in the develop group and could run concurrently with a develop apply — two applies,
   # two different state files, one lock table, and the failure only shows up as a lock
   # timeout at the worst moment.
-  group: infra-apply-${{ github.repository }}-${{ (github.ref_type == 'tag' || inputs.target == 'prod') && 'prod' || 'develop' }}
+  group: infra-apply-${{ github.repository }}-${{ ((github.event_name != 'workflow_dispatch' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && inputs.target == 'prod')) && 'prod' || 'develop' }}
   cancel-in-progress: false
 
 permissions:
@@ -125,6 +125,12 @@ jobs:
           if [ "$EVENT" = workflow_dispatch ]; then
             if [ "$TARGET" = prod ]; then prod=true; fi
           elif [ "$REF_TYPE" = tag ]; then prod=true; fi
+          # Develop applies run from a branch. A dispatch from a tag with target=develop would apply _shared from that
+          # tag's code and then skip develop: refuse it before anything applies.
+          if [ "$EVENT" = workflow_dispatch ] && [ "$REF_TYPE" = tag ] && [ "$TARGET" != prod ]; then
+            echo "::error title=develop apply refused::A dispatch from tag '$REF_NAME' with target '$TARGET' would apply _shared from that tag's code and skip develop. Develop applies run from a branch. Nothing was applied. Run it from main: gh workflow run infra-apply.yml --ref main -f target=develop"
+            exit 1
+          fi
           release=false
           if [ "$REF_TYPE" = tag ] && [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then release=true; fi
           if [ "$prod" = true ] && [ "$release" = false ]; then
