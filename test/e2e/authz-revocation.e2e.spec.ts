@@ -21,7 +21,7 @@
  * (and back) across an admin action, on the SAME bearer token.
  *
  * This boots the REAL `AppModule` (real Nest DI, real Drizzle against the seeded
- * `rova-postgres`, real Valkey) and drives REAL HTTP requests through
+ * the compose `postgres` service, real Valkey) and drives REAL HTTP requests through
  * `app.inject()`, so the guard chain, the cached resolution and the route all run
  * exactly as in production. Nothing is stubbed: sessions come from identity's test-login.
  *

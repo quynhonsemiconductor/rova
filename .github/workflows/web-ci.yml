@@ -210,7 +210,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17.11-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -223,7 +223,7 @@ jobs:
           --health-retries 10
 
       redis:
-        image: redis:7-alpine
+        image: valkey/valkey:7.2.14-alpine
         ports: ['6379:6379']
         options: >-
           --health-cmd "redis-cli ping"

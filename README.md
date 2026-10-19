@@ -107,14 +107,16 @@ pnpm dev:web --port 5174
 
 ### Run a second copy
 
-Two checkouts, or a branch you want to keep running beside your main one, need their own compose project and host ports. The
-compose file binds every port to `127.0.0.1` and reads it from `.env`, so nothing else changes. In `.env`:
+Two checkouts, or a branch you want to keep running beside your main one, need their own compose project, host ports, and
+API and web ports. Every port is bound to `127.0.0.1` and read from `.env`. In the second copy's `.env`:
 
-1. `COMPOSE_PROJECT_NAME=rova-2` (any name; it prefixes the volumes).
+1. `COMPOSE_PROJECT_NAME=rova-2`: the containers, volumes and network take this prefix. Every checkout or worktree sets its own.
 2. Give each `*_HOST_PORT` a free number: `POSTGRES_HOST_PORT`, `VALKEY_HOST_PORT`, `LOCALSTACK_HOST_PORT`, `OTEL_OTLP_HOST_PORT`, `OTEL_METRICS_HOST_PORT`.
-3. Put the same Postgres, Valkey and LocalStack numbers into `DATABASE_URL`, `REDIS_URL`, `STORAGE_ENDPOINT`, `AWS_ENDPOINT_URL` and the OTLP port into `OTEL_EXPORTER_OTLP_ENDPOINT`. The app reads URLs, not the `*_HOST_PORT` values.
+3. Put the same Postgres, Valkey and LocalStack numbers into `DATABASE_URL`, `REDIS_URL`, `STORAGE_ENDPOINT`, `AWS_ENDPOINT_URL`, and the OTLP port into `OTEL_EXPORTER_OTLP_ENDPOINT`. The app reads URLs, not the `*_HOST_PORT` values.
+4. The API: `PORT`. The SPA's proxy and the dev CSP follow it (or set `API_TARGET` to point the proxy somewhere else).
+5. The web: `WEB_DEV_PORT`. LocalStack's bucket CORS follows it. Then `APP_BASE_URL=http://localhost:<WEB_DEV_PORT>` and `CORS_ORIGINS=http://localhost:<WEB_DEV_PORT>`, so sign-in redirects and the API's CORS match the new origin.
 
-Then run the same commands as above. If both copies run their SPA, follow the "Ports" section for the API and web origins.
+Then run the same commands as above. The Playwright config's `baseURL` is pinned to 5173, so `pnpm --filter rova-web test:e2e` runs in one copy at a time.
 
 ### Useful
 
@@ -123,6 +125,7 @@ Then run the same commands as above. If both copies run their SPA, follow the "P
 - Mail is `EMAIL_PROVIDER=dev`: messages are written to the API log and not sent (`LOG_DEV_EMAIL_CONTENT=true` includes the body, links included).
 - Uploads go to LocalStack's `rova-attachments` and `rova-public-assets` buckets; `aws --endpoint-url http://localhost:4566 s3 ls` (any credentials).
 - Reset everything: `docker compose -f docker-compose.dev.yml down -v`, then `up -d --wait` and `pnpm db:migrate` again.
+- Upgrading an existing checkout (before `name: rova`): the containers were named `rova-postgres`, `rova-valkey`, `rova-localstack` and `rova-otel`, outside any project. Remove them with `docker rm -f rova-postgres rova-valkey rova-localstack rova-otel`, or `docker compose -p <old project dir> down -v`. The Postgres volume itself stays 17, so no data move is needed. Do not share a project name between checkouts: `down -v` in one would wipe the other's data.
 - Least-privilege database roles locally, the way CI runs: see the comment above `DATABASE_URL` in `.env.example`.
 - Tests: `pnpm test` (unit), `pnpm test:e2e` (needs the stack and a migrated, seeded database).
 

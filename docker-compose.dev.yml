@@ -39,13 +39,15 @@ services:
   # Replaces real AWS for local development — no AWS account needed.
   # Production AWS resources live in the rova repo (Terraform).
   localstack:
-    image: localstack/localstack:4.12
+    image: localstack/localstack:4.14
     environment:
       AWS_DEFAULT_REGION: ap-southeast-1
       PERSISTENCE: 1
       # Standard fake credentials — required by AWS SDK v3 even against LocalStack
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
+      # The SPA origin the buckets' CORS allows (scripts/localstack/01-bootstrap.sh). Follows WEB_DEV_PORT in .env.
+      WEB_ORIGIN: http://localhost:${WEB_DEV_PORT:-5173}
     ports:
       # STORAGE_ENDPOINT and AWS_ENDPOINT_URL in .env must carry the same port.
       - '127.0.0.1:${LOCALSTACK_HOST_PORT:-4566}:4566'
