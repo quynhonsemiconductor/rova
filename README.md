@@ -96,6 +96,27 @@ Each product owns its own block, so opshub, rova and the knowledge base all run 
 | Valkey                             | **6320**            | 6310        | 6379           |
 | LocalStack (S3)                    | **4620**            | 4610        | 4570           |
 | OTel collector (OTLP / Prometheus) | **4420** / **8420** | 4410 / 8410 | (none)         |
+| Mailpit (SMTP / UI)                | **1120** / **8120** | 1110 / 8110 | (none)         |
+
+#### Isolated e2e stack
+
+The e2e suite needs its own stack: it truncates the database it points at, so it must never share one with a dev stack.
+It takes the **e2e block**, one step above each product's dev block, so it runs beside the dev stack on the same machine.
+
+| e2e block (rova) | Postgres | Valkey | LocalStack | OTel (OTLP / metrics) | Mailpit (SMTP / UI) | SPA  | API  |
+| ---------------- | -------- | ------ | ---------- | --------------------- | ------------------- | ---- | ---- |
+| rova e2e         | 5460     | 6360   | 4660       | 4460 / 8460           | 1160 / 8160         | 5195 | 3020 |
+
+```bash
+node scripts/e2e/make-env.mjs .env.e2e              # the dev env with the e2e block; project name rova-e2e
+scripts/e2e/run.sh                                  # up (own project), migrate, run the whole e2e suite, down (volumes kept)
+scripts/e2e/run.sh test/e2e/golden-journey.e2e.spec.ts   # or just the files you name
+E2E_KEEP=1 scripts/e2e/run.sh                       # keep the stack up for a manual look
+docker compose -p rova-e2e --env-file .env.e2e -f docker-compose.dev.yml down -v   # when done, to remove its data too
+```
+
+`.env.e2e` is generated and git-ignored. The harnesses read their ports from it (`E2E_ENV_FILE`, `WEB_DEV_PORT`), not from the
+dev defaults. A second e2e stack needs another `COMPOSE_PROJECT_NAME` and another block; do not reuse these numbers for one.
 
 The Vite server uses `strictPort`: a taken port fails the start, because the Microsoft redirect (`APP_BASE_URL`) and the bucket's
 CORS are set for that origin. To use another web port, set `WEB_DEV_PORT` and the `APP_BASE_URL` and `CORS_ORIGINS` that embed it.

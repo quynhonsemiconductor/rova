@@ -239,7 +239,8 @@ describe('.env.example agrees with the dev tooling', () => {
     expect(env['APP_BASE_URL']).toBe(origin);
     expect(bootstrap).toContain(`WEB_ORIGIN="\${WEB_ORIGIN:-${origin}}"`);
     expect(compose).toContain(`WEB_ORIGIN: http://localhost:\${WEB_DEV_PORT:-${port}}`);
-    expect(read('apps/web/playwright.config.ts')).toContain(origin);
+    // Playwright takes its web port from WEB_DEV_PORT (or the table default), so the default is what must match the table.
+    expect(read('apps/web/playwright.config.ts')).toContain("?? '5175'");
   });
 
   it('lets the SPA read the root .env, where the dev login switch lives', () => {
