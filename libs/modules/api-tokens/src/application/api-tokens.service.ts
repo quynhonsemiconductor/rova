@@ -6,7 +6,7 @@ import type { Permission } from '@shared-kernel';
 
 import {
   DEFAULT_EXPIRY_DAYS,
-  expiryFrom,
+  assertExpiryDays,
   hashesMatch,
   hashToken,
   mintToken,
@@ -77,11 +77,13 @@ export class ApiTokensService {
    * than recovered — the same contract as real Rally's API Key, and the reason `token_hash` can be a
    * one-way hash at all.
    */
-  async mint(request: MintRequest, now = new Date()): Promise<MintResult> {
+  async mint(request: MintRequest): Promise<MintResult> {
     const scopes = this.validateScopes(request.scopes);
-    const expiresAt = expiryFrom(now, request.expiresInDays ?? DEFAULT_EXPIRY_DAYS);
+    const expiresInDays = request.expiresInDays ?? DEFAULT_EXPIRY_DAYS;
+    assertExpiryDays(expiresInDays);
     const minted = mintToken();
 
+    // The expiry instant is computed by the database in the INSERT (`now()` + lifetime), not here.
     const row = await this.repo.create({
       workspaceId: request.workspaceId,
       userId: request.userId,
@@ -89,13 +91,13 @@ export class ApiTokensService {
       prefix: minted.prefix,
       tokenHash: minted.tokenHash,
       scopes,
-      expiresAt,
+      expiresInDays,
     });
 
     // Prefix, never the token: this line exists so an operator can correlate a mint with a later use,
     // and a log that carried the credential would defeat storing only its hash.
     this.logger.log(
-      { tokenId: row.id, prefix: row.prefix, userId: row.userId, expiresAt },
+      { tokenId: row.id, prefix: row.prefix, userId: row.userId, expiresAt: row.expiresAt },
       'API token minted',
     );
     return { token: toView(row), plaintext: minted.plaintext };
@@ -108,19 +110,18 @@ export class ApiTokensService {
    * caller turns that into one 401 with one message: distinguishing "expired" from "never existed"
    * tells an attacker which of their guesses was once real.
    */
-  async verify(rawToken: string, now = new Date()): Promise<VerifiedToken | null> {
+  async verify(rawToken: string): Promise<VerifiedToken | null> {
     const prefix = prefixOf(rawToken);
     if (!prefix) return null;
 
-    const row = await this.repo.findByPrefix(prefix);
+    // Expired and revoked tokens are excluded by the lookup itself, against the database clock.
+    const row = await this.repo.findLiveByPrefix(prefix);
     if (!row) return null;
     if (!hashesMatch(row.tokenHash, hashToken(rawToken))) return null;
-    if (row.revokedAt !== null) return null;
-    if (row.expiresAt.getTime() <= now.getTime()) return null;
 
     // Fire-and-forget: `last_used_at` is forensic, and making authentication wait on a throttled
     // write would put a database round trip in front of every request to buy nothing.
-    void this.repo.touch(row.workspaceId, row.id, now).catch((err: unknown) => {
+    void this.repo.touch(row.workspaceId, row.id).catch((err: unknown) => {
       this.logger.warn({ err, tokenId: row.id }, 'Failed to record API token use');
     });
 
@@ -159,7 +160,7 @@ export class ApiTokensService {
     if (!row || row.userId !== userId) {
       throw new NotFoundException('API_TOKEN_NOT_FOUND', 'API token not found');
     }
-    await this.repo.revoke(workspaceId, tokenId, new Date());
+    await this.repo.revoke(workspaceId, tokenId);
     this.logger.log({ tokenId, userId }, 'API token revoked by owner');
   }
 
@@ -169,7 +170,7 @@ export class ApiTokensService {
     if (!row) {
       throw new NotFoundException('API_TOKEN_NOT_FOUND', 'API token not found');
     }
-    await this.repo.revoke(workspaceId, tokenId, new Date());
+    await this.repo.revoke(workspaceId, tokenId);
     this.logger.log(
       { tokenId, ownerId: row.userId, actorId },
       'API token revoked by workspace administrator',
@@ -184,7 +185,7 @@ export class ApiTokensService {
    * covers the request-scale window, this write covers the rest.
    */
   async revokeAllForUser(workspaceId: string, userId: string): Promise<number> {
-    const count = await this.repo.revokeAllForUser(workspaceId, userId, new Date());
+    const count = await this.repo.revokeAllForUser(workspaceId, userId);
     if (count > 0) {
       this.logger.log({ userId, count }, 'API tokens revoked for user');
     }
