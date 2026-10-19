@@ -95,6 +95,7 @@ export default defineConfig({
         'libs/platform/src/email/email-delivery.service.ts',
         'libs/platform/src/email/email.service.ts',
         'libs/platform/src/email/providers/graph.provider.ts',
+        'libs/platform/src/email/providers/smtp.provider.ts',
         'libs/platform/src/outbox/relay-lease.ts',
         'libs/platform/src/rate-limit/rate-limit.guard.ts',
         'libs/platform/src/outbox/retry-after.ts',
@@ -160,6 +161,7 @@ export default defineConfig({
         // Both fail the ratchet with a diff full of fragments rather than a filename.
         'apps/worker/src/email/bounce-feedback.service.ts',
         'apps/worker/src/identity/entra-guest-invite-relay.service.ts',
+        'apps/worker/src/heartbeat/worker-heartbeat.service.ts',
         'libs/platform/src/context/request-context.ts',
         'libs/platform/src/http/csrf.ts',
         'libs/modules/access/src/interface/http/route-authz-audit.ts',
