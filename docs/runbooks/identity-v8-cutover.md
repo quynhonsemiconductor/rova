@@ -83,7 +83,7 @@ Rotating the value later signs everyone out (nothing else); do it the same way a
 
 ## The cutover, in order (develop first, then production)
 
-**Interactive script:** `scripts/owner/identity-v8-cutover.sh` (in #729) runs the develop steps with `develop` and the production steps with `prod` (see "Production"). The develop run covers steps 1 to 6 and the rehearsal (below), one step at a time, with a `yes` before each write. It discovers the names, checks the migrator image contains #719, writes the key (never printed), runs the dry run and the commit, checks the invariant, pauses for the #718 merge, re-runs the backfill, walks the verification checklist and the rollback rehearsal. `--from <step>` resumes (`preflight`, `secret`, `backfill-dry`, `commit`, `merge`, `verify`, `rehearsal`). Its log holds no secret values. Production is the `prod` run, with its own snapshot and release steps.
+**Interactive script:** `scripts/owner/identity-v8-cutover.sh` runs the develop steps (`develop`) and the production steps (`prod`, see "Production"), one confirmed write at a time.
 
 **The script is in #729 and is not merged yet.** Until it merges, run it from the #729 branch, in a worktree next to this checkout: `git worktree add ../wt729 owner/identity-v8-develop-cutover`, then `bash ../wt729/scripts/owner/identity-v8-cutover.sh develop`. The stub tests for the production path are `bash ../wt729/scripts/owner/test/run.sh`.
 
@@ -148,9 +148,8 @@ the reason this is done before #718, not after**: fix or remove the fixture, dry
 
 3. **Check the invariant** (both queries must return no rows): the one in identity-v8-data-model.md, "`identity.users` stays".
 
-4. **Deploy** (#718): the API, the worker and the web. On develop that is the merge; on production it is the tag (the guard above lets it through once `better_auth_secret_set = true`).
-   The API starts only if `BETTER_AUTH_SECRET` is present: a missing secret is a task that cannot start, not a silent downgrade, and the previous task keeps serving
-   until the new one is healthy.
+4. **Deploy:** the API, the worker and the web. #718 is merged: on develop the push to `main` deploys it; on production the release tag does. The tag guard refuses a tag until `infra/live/prod/main.tf` has the flags (`better_auth_secret_set`, `edge_client_ip_secret_set`) set to `true`.
+   The API starts only if `BETTER_AUTH_SECRET` is present: a missing secret is a task that cannot start, the previous task keeps serving until the new one is healthy.
 
 5. **Re-run the backfill** once the deploy has settled (idempotent): it picks up anyone v7 created while the rolling deploy overlapped, and it passes after a v8
    guest signed in. Those people would sign in again anyway; this keeps the id invariant true for them.
@@ -172,12 +171,19 @@ production today has no migration 0136, so it could not pass one. `bash scripts/
 
 ### (a) Migrations 0131-0136 and the on-deploy gate
 
-- Migrations 0131 to 0136 and the identity v8 SQL (`db/identity-v8/*.sql`, since #719) reach production in the same release tag. They are on `main`.
-- The migrator runs the migrations, then the backfill **preflight**, committed, before the API rolls (`IDENTITY_V8_BACKFILL=commit`, see (b)). A RAISE fails the
-  migrator task and the deploy stops. The v7 tasks keep serving, and nothing has changed for users.
-- The migrations are additive for data. None drops a table, a column or a row. 0132 replaces two triggers (`trg_stamp_story_lifecycle_dates`,
-  `trg_stamp_task_lifecycle_dates`), which changes no rows. Check this yourself before releasing: `git diff <the previous release tag> <the new tag> -- db/migrations`.
-- The fresh snapshot the script takes before the release is the restore point for data (Rollback, C).
+- The release carries migrations 0131 to 0136 and the identity v8 SQL (`db/identity-v8/*.sql`, since #719). There is no dry run before the release: the image on
+  production today has no migration 0136. The release's on-deploy preflight is the gate. A RAISE fails the migrator task, the deploy stops, and the v7 tasks keep
+  serving.
+- What the migrations change in data, from `db/migrations` on `main`:
+  - **0132** (story lifecycle dates) runs `work.backfill_lifecycle_dates()`. It UPDATEs `work.work_items` and `work.tasks`, dating their lifecycle columns from
+    `work.activity_logs`. It has an OPS GATE: it RAISEs when `work.activity_logs` holds more than 2,000,000 rows. The release script counts those rows first and
+    stops above 2,000,000 (`check_activity_rows`). 0132 also replaces two triggers, `trg_stamp_story_lifecycle_dates` and `trg_stamp_task_lifecycle_dates`.
+  - **0134** (`report:export`) UPDATEs `access.system_roles`. It adds the `report:export` permission to the `workspace_admin` and `project_admin` rows of every
+    workspace. Existing admins gain CSV export. Project Members do not get it.
+  - **0131, 0133, 0135, 0136** do not drop, truncate or delete data (a grep of `DROP`, `TRUNCATE`, `DELETE FROM` and `RENAME` over 0131 to 0136 finds only the two
+    trigger replacements in 0132 and a comment in 0133). 0136 creates the identity v8 tables, which the v7 image does not read. Check the diff yourself before the
+    release: `git diff <the previous release tag> <the new tag> -- db/migrations`.
+- The snapshot the release takes first is the restore point for data (Rollback, C).
 
 ### (b) The cutover tag's migrator commits the backfill itself
 
@@ -243,45 +249,68 @@ state; the **next** deploy re-registers the current definition, so follow it wit
 **B. Durable (an hour): revert the merge.** `git revert -m 1 <the #718 merge commit>` in a PR titled `revert: identity 8 cutover`, merge it; develop deploys
 on merge and production on the next tag (the revert also removes the tag guard, since the guard belongs to #718). Keep `better_auth_secret_set` as is.
 
-**C. Restore the snapshot (data; the last resort).** The release's fresh snapshot is in the script's saved state (`PRE_SNAPSHOT`, in
-`~/.local/state/rova-identity-v8/prod-state.env`) and in its log. A restore never overwrites `rova-prod`: it creates a new instance.
+**C. Restore the data from the release snapshot (the last resort).** Restoring replaces the database instance. It does not roll back code. Every write made
+after the snapshot is lost, for every user.
 
-```sh
-export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1
-SNAP=<PRE_SNAPSHOT>
-# the settings the restored instance must match: the subnet group, the security groups, the class, the parameter group
-aws rds describe-db-instances --db-instance-identifier rova-prod \
-  --query 'DBInstances[0].{subnet: DBSubnetGroup.DBSubnetGroupName, sgs: VpcSecurityGroups[].VpcSecurityGroupId, class: DBInstanceClass, pg: DBParameterGroups[0].DBParameterGroupName, endpoint: Endpoint.Address}'
-aws rds restore-db-instance-from-db-snapshot --db-instance-identifier rova-prod-restore --db-snapshot-identifier "$SNAP" \
-  --db-subnet-group-name <subnet> --vpc-security-group-ids <sg-ids> --db-instance-class <class> --no-multi-az --no-publicly-accessible
-aws rds wait db-instance-available --db-instance-identifier rova-prod-restore
-aws rds describe-db-instances --db-instance-identifier rova-prod-restore --query 'DBInstances[0].Endpoint.Address' --output text
-```
+What the module does, checked in `tf-modules` at `rds-v2.3.0` (`modules/rds/main.tf`), and what that means for the plan:
 
-Pointing the services at the restored instance is an **infra change, not a rename**. The API, the worker and the migrator read `DATABASE_HOST` from their task
-definitions, which Terraform sets from `module.rds`. A rename changes the endpoint hostname, so the tasks would still point at the old one. Set the restored
-endpoint in `infra/live/prod`, apply it, and redeploy. Keep `rova-prod` (the old instance) until the restored one is verified; delete nothing without the owner.
+- `snapshot_identifier` sits under `ignore_changes`. It is read when the instance is CREATED. Setting it on the existing instance does nothing. The instance has to be
+  replaced, and the replace must be explicit (`-replace`).
+- With `deletion_protection = false`, `skip_final_snapshot` defaults to true. A replace then takes no final snapshot of the failed state. Step C1 is therefore not
+  optional.
+- A replacement instance has a NEW endpoint address (the identifier stays `rova-prod`). The stack builds `DATABASE_HOST` from `module.rds`, so the services follow the
+  apply, not the endpoint you remember.
+- `copy_tags_to_snapshot` is on. The parameter group (`enable_parameter_group`, default on, not overridden in prod) is created by the module and attached to the
+  replacement.
 
-In both: people sign in again (v8 sessions mean nothing to v7, and the reverse) and are provisioned by v7's sign-in as before; anyone created in v8 has a profile row
-that v7's sign-in links by address; the `rly_` tokens, workspace membership and roles are shared and untouched.
+1. **C1. A forensic snapshot of the failed state.** Do this first:
 
-Do **not** run `db:identity-v8:rollback` as part of this rollback: the v8 tables are inert for the v7 image and hold the bans. It exists to undo migration 0136
-on a database where nothing has been written, and it refuses once a later migration is recorded (roll forward with a DROP migration).
+   ```sh
+   export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1
+   FORENSICS="rova-prod-forensics-$(date -u +%Y%m%d-%H%M)"
+   aws rds create-db-snapshot --db-instance-identifier rova-prod --db-snapshot-identifier "$FORENSICS"
+   aws rds wait db-snapshot-available --db-snapshot-identifier "$FORENSICS"
+   ```
 
-A fix-forward is usually better than a rollback for a problem in the product hook (`StaffSignInHandler`): its refusals are visible, per person, and carry a code.
+2. **C2. Deletion protection off, first.** Its own infra PR: `infra/live/prod/main.tf`, the `rds` object, `deletion_protection = false`. Merge it and let
+   Infrastructure · Apply target prod apply it. This is an in-place change; the plan shows `~ deletion_protection`.
 
-### Rehearsal (on develop; the script runs it; write the result here)
+3. **C3. The replace, as its own change.** The infra PR sets, in the same `rds` object, `snapshot_identifier = "<PRE_SNAPSHOT from prod-state.env>"`. The stack
+   passes it to the module (`infra/modules/stack/variables.tf`, the `rds` object). It also sets, in the same PR:
+   - `identity_v8_backfill_on_deploy = false` (the backfill must not run on the restored database);
+   - `image_tag` = the last release BEFORE the cutover (the v7 build), so the task definitions the apply registers run the v7 image.
 
-The rollback has **not been rehearsed** by the author of #718: it needs the ECS and Cloudflare permissions of an operator and a develop deploy to roll back from.
-Before the production release, on develop, with the cutover live and at least one ban placed through `setUserBanned`:
+   Leave `better_auth_secret_set` and `edge_client_ip_secret_set` as they are. The plan must show exactly these changes, and nothing else:
 
-1. note the current task definition revisions and Pages deployment id (the "after" state);
-2. run `mirror-bans` (dry run, then `--commit`), then path A; confirm: staff sign in on v7, the banned person is refused, an API token still works;
-3. roll forward again (path A back to the "after" revisions, or redeploy `main`), re-run the backfill, confirm the banned person is still banned in v8.
+   - `module.stack.module.rds.aws_db_instance.this` replaced (`-/+`), `identifier` unchanged, and a new `address`;
+   - the parameter group re-attached to the replacement;
+   - the api, worker and migrator task definitions with the v7 image.
 
-| Date | Who | Path | Time to restore service | Surprises | Result |
-| ---- | --- | ---- | ----------------------- | --------- | ------ |
-|      |     |      |                         |           |        |
+   **The apply.** The Infrastructure · Apply workflow has no replace input. Two ways to run the replace; choose one before the window (this is an owner decision):
+   - (i) a small infra PR adding a `replace_address` input to `infra-apply.yml`, dispatched with `target: prod` and `allow_destructive` (the destructive guard does
+     not cover RDS, so the flag is not needed for the database, but the plan must still be read); or
+   - (ii) from your machine, with the same state backend: `cd infra/live/prod && tofu plan -replace='module.stack.module.rds.aws_db_instance.this' -out=restore.tfplan`,
+     read it (the replace line and the task definitions only), then `tofu apply restore.tfplan`.
+
+4. **C4. Put the services back on v7 through the apply, not by hand.** The task definitions that the apply registers (C3's `image_tag`) point at the NEW endpoint.
+   The previous task revisions point at the endpoint that no longer exists: do not roll back to them.
+   **Never redeploy the cutover tag.** Its migrator would run 0131 to 0136 and the backfill again, on the restored database.
+
+5. **C5. The previous SPA.** Cloudflare Pages: Workers & Pages -> `rova-prod-web` -> Deployments -> the deployment before the cutover -> **Rollback to this
+   deployment**. Do the SPA and the API together: a v8 SPA against a v7 API cannot sign anyone in.
+
+6. **C6. Deletion protection back on.** Its own infra PR: `deletion_protection = true` and remove `snapshot_identifier`. The module ignores that argument after
+   the create, so leaving it changes nothing, but remove it.
+
+7. **Verify:** staff can sign in on v7 and see the data of the snapshot time. Keep `rova-prod`'s old instance and the forensics snapshot until the owner says otherwise.
+   Do not delete them in this runbook.
+
+## Stale release tag (prod-state.env)
+
+The script saves what it has found in `~/.local/state/rova-identity-v8/prod-state.env`: `PRE_SNAPSHOT` (the restore point), `TAG_BEFORE` (the newest release tag
+before the release-please PR), `RELEASE_PAUSED` and `RELEASE_TAG`. If `RELEASE_TAG` is wrong (a tag that is not this release), delete the `RELEASE_TAG` line and
+the `RELEASE_PAUSED` line, then run `--from release`: the release-please pause comes again and the new tag is detected and confirmed. Keep `PRE_SNAPSHOT` and
+`TAG_BEFORE`: the restore point must not change for the same release.
 
 ## Day 7 and day 30 (separate changes, not #718; tracked as rova issues; not prerequisites for the production cutover)
 

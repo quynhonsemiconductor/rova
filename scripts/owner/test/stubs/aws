@@ -89,9 +89,12 @@ if svc == "ecs":
                 "environment": [{"name": "DATABASE_NAME", "value": "rova"}, {"name": "ENTRA_TENANT_ID", "value": "tid-1234"}]}]}}
         else:
             secrets = [{"name": "BETTER_AUTH_SECRET"}] if n >= 12 else []
+            svc = family.split("-")[-1]
+            tag_override = os.environ.get(f"MOCK_{svc.upper()}_IMAGE_TAG")
+            image_tag = tag_override if tag_override else f"sha-{sha12}"
             d = {"taskDefinition": {"taskDefinitionArn": t, "family": family, "containerDefinitions": [{
-                "name": family.split("-")[-1],
-                "image": f"{ACC}.dkr.ecr.ap-southeast-1.amazonaws.com/rova-{family.split('-')[-1]}:sha-{sha12}",
+                "name": svc,
+                "image": f"{ACC}.dkr.ecr.ap-southeast-1.amazonaws.com/rova-{svc}:{image_tag}",
                 "secrets": secrets}]}}
         if q == "taskDefinition.family":
             out(family)
@@ -133,10 +136,16 @@ if svc == "rds":
     if op == "describe-db-instances":
         out(os.environ.get("MOCK_RETENTION", "30"))
     if op == "describe-db-snapshots":
+        if os.environ.get("MOCK_RDS_EXPIRED"):
+            fail("ExpiredToken: The security token included in the request is expired (stub)")
         name = arg("--db-snapshot-identifier")
         if name:
             s = st["snaps"].get(name)
-            out(s["status"] if s else "None")
+            if s is None:
+                fail(f"DBSnapshotNotFound: Snapshot {name} not found (stub)")
+            if "SnapshotCreateTime" in q:
+                out(s["created"])
+            out(s["status"])
         if "sort_by" in q:
             avail = [(v["created"], k) for k, v in st["snaps"].items() if v["status"] == "available"]
             if not avail:
@@ -173,7 +182,9 @@ if svc == "secretsmanager":
 
 if svc == "logs" and op == "filter-log-events":
     cmd = st.get("last", "")
-    if "resolveMigrationPoolConfig" in cmd:
+    if "activity_logs" in cmd:
+        msg = f"ACTIVITY_LOGS rows={os.environ.get('MOCK_ACTIVITY_ROWS') or '1000'}"
+    elif "resolveMigrationPoolConfig" in cmd:
         msg = "INVARIANT profile_without_login=0 login_without_profile=0"
     elif "mirror-bans" in cmd:
         msg = "mirror-bans DRY RUN"

@@ -8,7 +8,7 @@
 #   bash scripts/owner/identity-v8-cutover.sh prod                 # the production cutover (same release, announced downtime)
 #   bash scripts/owner/identity-v8-cutover.sh <env> --from <step>  # resume at a step (the list is printed by the script on error)
 #
-# Needs: aws CLI v2 (profile qnsc-admin, MFA), jq, python3, git, gh (prod: the provenance check), and this checkout of rova.
+# Needs: aws CLI v2 (profile qnsc-admin, MFA), jq, python3, git, openssl, wrangler (prod), and this checkout of rova.
 set -euo pipefail
 
 ENV_NAME="${1:-}"
@@ -108,7 +108,7 @@ discover() {
 
   local mig_json mig='.taskDefinition.containerDefinitions[] | select(.name=="migrator")'
   mig_json="$(aws ecs describe-task-definition --task-definition "$CLUSTER-migrator" --output json)" || die "no task definition family $CLUSTER-migrator"
-  MIG_REV_ARN="$(echo "$mig_json" | jq -r '.taskDefinition.taskDefinitionArn')"   # the revision every run uses unless the ad-hoc one is set
+  MIG_REV_ARN="$(echo "$mig_json" | jq -r '.taskDefinition.taskDefinitionArn')"   # the revision every run-task uses
   MIG_IMAGE="$(echo "$mig_json" | jq -r "$mig.image")"
   MIG_LOG_GROUP="$(echo "$mig_json" | jq -r "$mig.logConfiguration.options[\"awslogs-group\"]")"
   MIG_LOG_PREFIX="$(echo "$mig_json" | jq -r "$mig.logConfiguration.options[\"awslogs-stream-prefix\"]")"
@@ -118,11 +118,12 @@ discover() {
   if [ -z "$TENANT_ID" ]; then ask "ENTRA_TENANT_ID is not in the task environment; type the sign-in app's tenant id:"; TENANT_ID="$ANSWER"; fi
 }
 
-check_cloudflare_login() { # prod only: the edge step and the release check talk to Cloudflare. The text is checked, not the exit code.
-  local out
+check_cloudflare_login() { # prod only: the edge step and the release check talk to Cloudflare. The TEXT of `whoami` decides, not its exit code.
+  local out line
   out="$("${WRANGLER[@]}" whoami 2>&1)" || true
   if ! grep -q "You are logged in" <<< "$out"; then
-    die "not logged in to Cloudflare (wrangler whoami says: $(head -1 <<< "$out")). Run 'wrangler login' (or export CLOUDFLARE_API_TOKEN), then run this script again"
+    line="$(grep -iE 'not authenticated|not logged in|logged in' <<< "$out" | head -1 || true)"
+    die "not logged in to Cloudflare (wrangler whoami: ${line:-no answer}). Run 'wrangler login' (or export CLOUDFLARE_API_TOKEN), then run this script again"
   fi
   note "Cloudflare: logged in (wrangler whoami)"
 }
@@ -143,7 +144,7 @@ print_discovery() {
       die "the migrator image ($tag) does not contain $MIGRATOR_MIN_COMMIT (#719), or this checkout lacks it: git -C $ROVA_REPO fetch origin main"
     fi
   else
-    note "prod: the current migrator image is NOT used for the dry run; step d registers a revision from a build of main"
+    note "prod: no dry run before the release. The release's on-deploy preflight is the gate (runbook, Production (a))."
   fi
   confirm "Are these the names you expect?"
 }
@@ -360,22 +361,62 @@ step_merge() { # develop: #718 is merged; the develop deploy of main carries ide
   note "PASS: the live API injects BETTER_AUTH_SECRET and its deployment is COMPLETED"
 }
 
-take_or_reuse_snapshot() { # a FRESH manual snapshot in a full run; a resume (--from release) reuses one taken within 6 hours
-  local max_age=0 newest snap when age
-  [ "$FROM" = release ] && max_age=$((6 * 3600))
-  newest="$(aws rds describe-db-snapshots --db-instance-identifier "$RDS_ID" --snapshot-type manual \
-    --query 'sort_by(DBSnapshots[?Status==`available`], &SnapshotCreateTime)[-1].[DBSnapshotIdentifier, SnapshotCreateTime]' \
-    --output text 2>/dev/null || true)"
-  if [ "$max_age" -gt 0 ] && [ -n "$newest" ] && [ "$newest" != None ]; then
-    snap="${newest%%$'\t'*}"; when="${newest#*$'\t'}"
-    age="$(python3 -c 'import datetime, sys; t = datetime.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00")); print(int(datetime.datetime.now(datetime.timezone.utc).timestamp() - t.timestamp()))' "$when")" ||
-      die "cannot read the time of snapshot $snap"
-    if [ "$age" -lt "$max_age" ]; then
-      note "reusing snapshot $snap, taken $((age / 60)) minutes ago"
-      state_set PRE_SNAPSHOT "$snap"
-      return 0
+
+ACTIVITY_JS=$(cat <<'JS'
+const {Client}=require('pg');const {resolveMigrationPoolConfig}=require('./dist/db/pg-pool-config.js');
+(async()=>{const c=new Client(resolveMigrationPoolConfig());await c.connect();
+const r=await c.query('SELECT count(*)::bigint n FROM work.activity_logs');
+console.log('ACTIVITY_LOGS rows='+r.rows[0].n);await c.end();
+})().catch(e=>{console.error('ACTIVITY_LOGS ERROR '+(e.code||e.name));process.exit(1)});
+JS
+)
+
+# 0132's OPS GATE: the migration itself RAISEs above this many activity_logs rows. Checked before anything is announced.
+ACTIVITY_LIMIT=2000000
+check_activity_rows() { # prod, before the release: the lifecycle backfill in 0132 refuses above ACTIVITY_LIMIT rows. Fails closed.
+  local arn rows
+  arn="$(run_migrator "$(jq -Rs '["node","-e",.]' <<< "$ACTIVITY_JS")")"
+  wait_task "$arn"
+  [ "$TASK_CODE" = 0 ] || die "the activity_logs count could not run (exit $TASK_CODE): read $TASK_LOG"
+  rows="$(grep -oE 'ACTIVITY_LOGS rows=[0-9]+' "$TASK_LOG" | tail -1 | cut -d= -f2 || true)"
+  [ -n "$rows" ] || die "no activity_logs count in $TASK_LOG: refusing to release without it"
+  if [ "$rows" -gt "$ACTIVITY_LIMIT" ]; then
+    die "work.activity_logs has $rows rows (> $ACTIVITY_LIMIT): migration 0132's backfill would RAISE and the deploy would stop. Run the batched lifecycle backfill first (see the 0132 header), then release"
+  fi
+  note "PASS: work.activity_logs has $rows rows (the 0132 gate is $ACTIVITY_LIMIT)"
+}
+
+SNAP_STATUS=""
+snapshot_status() { # snapshot_status <name>: sets SNAP_STATUS (the status, or none). Any other AWS error stops the run: an expired MFA session is not "no snapshot".
+  local err="$LOG_DIR/rds-describe.err" out
+  if out="$(aws rds describe-db-snapshots --db-snapshot-identifier "$1" --query 'DBSnapshots[0].Status' --output text 2>"$err")"; then
+    SNAP_STATUS="$out"
+  elif grep -q DBSnapshotNotFound "$err"; then
+    SNAP_STATUS=none
+  else
+    tee -a "$LOG" < "$err" >&2
+    die "cannot read snapshot $1 (the AWS error is above). An expired MFA session looks like this: sign in again and run the step again"
+  fi
+}
+
+release_snapshot() { # BEFORE the release-please pause only. Leaves PRE_SNAPSHOT saved and available. Nothing else may take or replace it.
+  local saved created age snap
+  saved="$(state_get PRE_SNAPSHOT)"
+  if [ -n "$saved" ]; then
+    snapshot_status "$saved"
+    if [ "$SNAP_STATUS" = available ]; then
+      created="$(aws rds describe-db-snapshots --db-snapshot-identifier "$saved" --query 'DBSnapshots[0].SnapshotCreateTime' --output text)" ||
+        die "cannot read the time of snapshot $saved"
+      age="$(python3 -c 'import datetime, sys; t = datetime.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00")); print(int(datetime.datetime.now(datetime.timezone.utc).timestamp() - t.timestamp()))' "$created")" ||
+        die "cannot parse the time of snapshot $saved"
+      if [ "$age" -lt 21600 ]; then
+        note "reusing the saved snapshot $saved (taken $((age / 60)) minutes ago)"
+        return 0
+      fi
+      note "the saved snapshot $saved is $((age / 3600)) hours old: a fresh one replaces it (before the release, so nothing is lost)"
+    else
+      note "the saved snapshot $saved is '$SNAP_STATUS': a fresh one is taken"
     fi
-    note "the newest snapshot ($snap) is $((age / 3600)) hours old: a fresh one is needed"
   fi
   snap="$RDS_ID-pre-identity-v8-$(date -u +%Y%m%d-%H%M)"
   confirm "Take a fresh manual snapshot $snap of $RDS_ID (kept until you delete it; it costs storage)?"
@@ -386,10 +427,52 @@ take_or_reuse_snapshot() { # a FRESH manual snapshot in a full run; a resume (--
   note "PASS: snapshot $snap is available"
 }
 
-step_release() { # prod: the snapshot, the flags on main, the release-please PR, then the tag's deploy (identity_v8_backfill_on_deploy commits the backfill)
-  say "e. the release: flags on main, the fresh snapshot, the release-please PR, the tag's deploy"
+require_saved_snapshot() { # AFTER the release-please pause or a saved tag: nothing is taken or replaced. The saved snapshot must be available.
+  local saved
+  saved="$(state_get PRE_SNAPSHOT)"
+  [ -n "$saved" ] || die "no PRE_SNAPSHOT is saved for this release, and nothing may be taken after the release-please pause. Stop: see the runbook (Rollback C) before going on"
+  snapshot_status "$saved"
+  [ "$SNAP_STATUS" = available ] || die "the saved snapshot $saved is '$SNAP_STATUS', not available: check it in the console. Nothing is taken after the release"
+  note "PRE_SNAPSHOT $saved is available; no snapshot is taken after the release"
+}
+
+newest_release_tag() { # the newest v* tag reachable from origin/main (empty if none)
+  git -C "$ROVA_REPO" tag --merged origin/main --sort=-v:refname | grep -E '^v[0-9]' | head -1 || true
+}
+
+REL_TAG=""
+detect_release_tag() { # polls for a release tag newer than the baseline; the operator confirms it. Sets REL_TAG and saves RELEASE_TAG.
+  local before candidate="" tries=0 max="${TAG_POLL_TRIES:-40}" delay="${TAG_POLL_SECONDS:-30}"
+  before="$(state_get TAG_BEFORE)"
+  while [ "$tries" -lt "$max" ]; do
+    git -C "$ROVA_REPO" fetch -q origin main --tags
+    candidate="$(newest_release_tag)"
+    if [ -n "$candidate" ] && [ "$candidate" != "$before" ]; then break; fi
+    candidate=""
+    tries=$((tries + 1))
+    [ "$delay" -gt 0 ] && sleep "$delay"
+  done
+  [ -n "$candidate" ] || die "no new release tag reachable from origin/main after $max checks (the baseline was ${before:-none}). Merge the release-please PR, then run --from release"
+  note "found $candidate: the newest release tag reachable from origin/main (the baseline was ${before:-none})"
+  confirm "Is $candidate the release tag of this release?"
+  state_set RELEASE_TAG "$candidate"
+  REL_TAG="$candidate"
+}
+
+check_live_service() { # check_live_service <service> <tag> <tag sha>: the live task definition runs this release's build, on its tag or its sha tag
+  local svc="$1" tag="$2" sha="$3" td images img
+  td="$(aws ecs describe-services --cluster "$CLUSTER" --services "$svc" --query 'services[0].taskDefinition' --output text)" || die "cannot read $svc"
+  images="$(aws ecs describe-task-definition --task-definition "$td" --query 'taskDefinition.containerDefinitions[].image' --output text)" || die "cannot read the task definition of $svc"
+  while read -r img; do
+    [[ "$img" == *":$tag" || "$img" == *":sha-${sha:0:12}" ]] && { note "$svc runs $img"; return 0; }
+  done <<< "$images"
+  die "the live $svc runs ${images:-no image}, not the build of $tag ($sha): the deploy has not landed"
+}
+
+step_release() { # prod: the flags on main, then the snapshot and the release-please PR, then the tag's deploy (identity_v8_backfill_on_deploy commits the backfill)
+  say "e. the release"
   git -C "$ROVA_REPO" fetch -q origin main --tags
-  local main_sha flag
+  local main_sha flag tag tag_sha
   main_sha="$(git -C "$ROVA_REPO" rev-parse origin/main)"
   for flag in better_auth_secret_set edge_client_ip_secret_set identity_v8_backfill_on_deploy; do
     git -C "$ROVA_REPO" show "origin/main:infra/live/prod/main.tf" |
@@ -398,36 +481,42 @@ step_release() { # prod: the snapshot, the flags on main, the release-please PR,
   done
   git -C "$ROVA_REPO" merge-base --is-ancestor "$MIGRATOR_MIN_COMMIT" origin/main || die "origin/main lacks #719"
   pages_edge_secret_state
-  [ "$PAGES_EDGE" = present ] ||
-    die "$PAGES_PROJECT has no EDGE_CLIENT_IP_SECRET: run --from edge before releasing (the Function answers 500 without it)"
+  [ "$PAGES_EDGE" = present ] || die "$PAGES_PROJECT has no EDGE_CLIENT_IP_SECRET: run --from edge before releasing (the Function answers 500 without it)"
   note "origin/main $main_sha: the three flags are true and it contains #719"
-  ask "Downtime is announced to users and the window has started? (yes/no)"; [ "$ANSWER" = yes ] || die "announce it first (sign-ins break during the window)"
-  take_or_reuse_snapshot
 
-  local tag
   tag="$(state_get RELEASE_TAG)"
-  if [ -z "$tag" ]; then
+  if [ -n "$tag" ] || [ "$(state_get RELEASE_PAUSED)" = yes ]; then
+    # past the release-please pause: no downtime question, no snapshot is taken or replaced
+    require_saved_snapshot
+    if [ -z "$tag" ]; then
+      detect_release_tag
+      tag="$REL_TAG"
+    fi
+  else
+    check_activity_rows
+    ask "Downtime is announced to users and the window has started? (yes/no)"; [ "$ANSWER" = yes ] || die "announce it first (sign-ins break during the window)"
+    release_snapshot
+    [ -n "$(state_get TAG_BEFORE)" ] || state_set TAG_BEFORE "$(newest_release_tag)"
+    state_set RELEASE_PAUSED yes
     pause "SA: merge the release-please PR (owner says go release). Press Enter once it is merged."
-    git -C "$ROVA_REPO" fetch -q origin main --tags
-    tag="$(git -C "$ROVA_REPO" tag --points-at origin/main | grep -E '^v[0-9]' | sort -V | tail -1 || true)"
-    [ -n "$tag" ] || die "no release tag on origin/main: did the release-please PR merge?"
-    state_set RELEASE_TAG "$tag"
+    detect_release_tag
+    tag="$REL_TAG"
   fi
-  note "release tag: $tag (saved; a resume uses it and never asks for another)"
-  local tag_sha
-  tag_sha="$(git -C "$ROVA_REPO" rev-list -n 1 "$tag")"
+  git -C "$ROVA_REPO" fetch -q origin main --tags
+  git -C "$ROVA_REPO" rev-parse -q --verify "refs/tags/$tag" >/dev/null ||
+    die "RELEASE_TAG=$tag is not a tag reachable here: a stale saved tag. Reset it as the runbook says (Stale release tag), then run --from release"
+  tag_sha="$(git -C "$ROVA_REPO" rev-list -n 1 "$tag")" || die "cannot resolve $tag"
+  note "release tag: $tag ($tag_sha)"
 
-  pause "Wait for the tag's deploy to finish: backend (migrate, backfill commit, API roll; a raise keeps the v7 tasks serving) and web (waits for it). Press Enter when both are green."
+  pause "Wait for the tag's deploy to finish: backend (migrate, backfill commit, API and worker roll; a raise keeps the v7 tasks serving) and web (waits for it). Press Enter when all are green."
   discover
   service_primary_completed "$API_SERVICE" || die "the API's primary deployment is not COMPLETED yet: wait, then run this step again with --from release"
-  local img
-  img="$(aws ecs describe-task-definition --task-definition "$(aws ecs describe-services --cluster "$CLUSTER" --services "$API_SERVICE" --query 'services[0].taskDefinition' --output text)" \
-    --query 'taskDefinition.containerDefinitions[].image' --output text)"
-  [[ "$img" == *"$tag"* || "$img" == *"sha-${tag_sha:0:12}"* ]] ||
-    die "the live API runs ${img:-no image}, not the build of $tag ($tag_sha): the deploy has not landed"
+  service_primary_completed "$WORKER_SERVICE" || die "the worker's primary deployment is not COMPLETED yet: wait, then run this step again with --from release"
+  check_live_service "$API_SERVICE" "$tag" "$tag_sha"
+  check_live_service "$WORKER_SERVICE" "$tag" "$tag_sha"
   api_live_has_secret || die "the live API does not inject BETTER_AUTH_SECRET: the release has not landed"
   check_invariant
-  note "PASS: $tag is live, the API runs its build and injects the secret, the invariant holds"
+  note "PASS: $tag is live: the API and the worker run its build, the API injects the secret, the invariant holds"
 }
 
 step_verify() {
