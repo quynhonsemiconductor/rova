@@ -13,7 +13,7 @@
  * the workspace name the template needs. It cannot assert delivery — that is a verified identity, an
  * IAM grant and the SES sandbox, none of which exist in a unit-test database. Those are asserted by
  * `infra/` and checked by hand (`aws sesv2 get-account --query ProductionAccessEnabled`); locally,
- * `docker exec rova-localstack awslocal ses verify-email-identity` plus the worker's relay is what
+ * `docker compose exec localstack awslocal ses verify-email-identity` plus the worker's relay is what
  * makes the send observable.
  *
  * NOTE FOR THE NEXT READER: there USED to be an ORPHANED `InvitationService` in this module with its
@@ -49,13 +49,29 @@ import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { emailOutbox } from '../../db/schema/messaging';
 import { workspaceInvitations } from '../../db/schema/workspace';
-import { ssoIdentities, users } from '../../db/schema/identity';
+import { users } from '../../db/schema/identity';
+import { account as identityAccount, user as identityUser } from '../../db/schema/identity-auth';
 import { ADMIN_USER_ID, bootRallyApp, WORKSPACE_ID } from './support/flow-harness';
 
 describe('invitation email (real AppModule + seeded DB)', () => {
   let app: INestApplication;
   let workspaces: WorkspaceService;
   let db: DrizzleDB;
+
+  /** The Microsoft account identity 8 links at sign-in: the identity user plus its `account` row (`account_id` = the Entra `oid`). */
+  async function linkMicrosoft(userId: string, email: string, oid: string): Promise<void> {
+    await db
+      .insert(identityUser)
+      .values({ id: userId, name: 'Guest', email, emailVerified: false });
+    await db.insert(identityAccount).values({
+      id: randomUUID(),
+      accountId: oid,
+      providerId: 'microsoft',
+      userId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
 
   beforeAll(async () => {
     app = await bootRallyApp();
@@ -146,7 +162,7 @@ describe('invitation email (real AppModule + seeded DB)', () => {
    *
    * Against a real database because the strong binding spans two tables written by two different
    * components: the guest-invite relay writes `workspace_invitations.entra_guest_object_id` from
-   * Graph's `invitedUser.id`, and provisioning writes `sso_identities.provider_sub` from the token's
+   * Graph's `invitedUser.id`, and provisioning writes `identity.account.account_id` (the Microsoft account identity 8 links) from the token's
    * `oid`. A service-level test with both mocked proves the comparison; only this proves the two
    * values are the same thing in the schema.
    *
@@ -175,12 +191,7 @@ describe('invitation email (real AppModule + seeded DB)', () => {
       .insert(users)
       .values({ email: invitedEmail, displayName: 'Impostor', status: 'active' })
       .returning({ id: users.id });
-    await db.insert(ssoIdentities).values({
-      userId: impostor.id,
-      provider: 'entra',
-      providerSub: randomUUID(),
-      providerEmail: invitedEmail,
-    });
+    await linkMicrosoft(impostor.id, invitedEmail, randomUUID());
 
     await expect(
       workspaces.acceptInvitation(await rawTokenFor(invitation.id), impostor.id),
@@ -214,14 +225,9 @@ describe('invitation email (real AppModule + seeded DB)', () => {
       .insert(users)
       .values({ email: `renamed-${Date.now()}@gmail.com`, displayName: 'Guest', status: 'active' })
       .returning({ id: users.id });
-    await db.insert(ssoIdentities).values({
-      userId: guest.id,
-      provider: 'entra',
-      // Deliberately UPPER-CASE: `uuid` renders lower-case, `provider_sub` is a varchar holding the
-      // claim verbatim, so the comparison must not be case-sensitive.
-      providerSub: genuineOid.toUpperCase(),
-      providerEmail: invitedEmail,
-    });
+    // Deliberately UPPER-CASE: `uuid` renders lower-case, `account_id` is text holding the claim verbatim, so the comparison
+    // must not be case-sensitive.
+    await linkMicrosoft(guest.id, invitedEmail, genuineOid.toUpperCase());
 
     await workspaces.acceptInvitation(await rawTokenFor(invitation.id), guest.id);
 

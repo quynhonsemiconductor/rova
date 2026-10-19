@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, count, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { workspaces, workspaceMembers } from '../../../../../../db/schema/workspace';
-import { users, ssoIdentities } from '../../../../../../db/schema/identity';
+import { users } from '../../../../../../db/schema/identity';
+import { account as identityAccount } from '../../../../../../db/schema/identity-auth';
 import { projectMembers, projects } from '../../../../../../db/schema/work';
 import { systemRoles, userRoleAssignments } from '../../../../../../db/schema/access';
 import { teams, teamMembers } from '../../../../../../db/schema/work';
@@ -64,7 +65,14 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
         ),
       )
       .leftJoin(systemRoles, eq(systemRoles.id, userRoleAssignments.roleId))
-      .where(and(eq(workspaceMembers.userId, userId), eq(workspaceMembers.status, 'active')))
+      .where(
+        and(
+          eq(workspaceMembers.userId, userId),
+          eq(workspaceMembers.status, 'active'),
+          // a deleted workspace keeps its member rows: it is not a workspace the person can be in
+          isNull(workspaces.deletedAt),
+        ),
+      )
       .orderBy(desc(workspaceMembers.lastActiveAt), asc(workspaceMembers.id));
 
     return rows.map((r) => ({
@@ -251,10 +259,14 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
   }
 
   async findSsoSubjects(userId: string, provider: 'entra'): Promise<string[]> {
+    // identity 8: the Microsoft identity of a user is its `account` row (`provider_id = 'microsoft'`, `account_id` = the Entra `oid`).
+    // This read the v7 `sso_identities`, which nothing writes any more (a guest who signed in on v8 has no row there, so every
+    // oid-bound invitation was refused) and which is dropped at day 30.
+    const providerId = provider === 'entra' ? 'microsoft' : provider;
     const rows = await this.db
-      .select({ sub: ssoIdentities.providerSub })
-      .from(ssoIdentities)
-      .where(and(eq(ssoIdentities.userId, userId), eq(ssoIdentities.provider, provider)));
+      .select({ sub: identityAccount.accountId })
+      .from(identityAccount)
+      .where(and(eq(identityAccount.userId, userId), eq(identityAccount.providerId, providerId)));
     return rows.map((r) => r.sub);
   }
 

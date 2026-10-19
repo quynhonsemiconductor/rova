@@ -19,17 +19,17 @@
  * `server-role-matrix` and `authz-cluster` measure. This file asserts the per-row half (AC3) and the
  * picker population (AC2), both without mutating a seeded membership.
  *
- * Bearer tokens from `AuthService.devLogin`: Bearer callers are CSRF-exempt by design, and the test
+ * The session cookie from identity's test-login (`support/session.ts`). The test
  * app has no `/v1` prefix and no cookie plugin (`reply.setCookie is not a function`).
  */
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
 import { SEED_PROJECTS, TEAM_ALPHA_ID, TEAM_BETA_ID } from '../../db/seeds/constants';
+import { signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -52,16 +52,15 @@ describe('Editor Team scope (GAP-P4-RBAC-003)', () => {
     method: 'GET' | 'PATCH' | 'POST',
     url: string,
     payload?: Record<string, unknown>,
-  ) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+  ) => app.inject({ method, url, headers: { cookie: token }, payload });
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    const auth = app.get(AuthService);
-    editorToken = (await auth.devLogin(EDITOR_EMAIL)).accessToken;
-    adminToken = (await auth.devLogin(ADMIN_EMAIL)).accessToken;
+    editorToken = await signIn(app, EDITOR_EMAIL);
+    adminToken = await signIn(app, ADMIN_EMAIL);
 
     // Built by the ADMIN, so the fixture itself never depends on the rule under test.
     const alpha = await as(adminToken, 'POST', '/work-items', {

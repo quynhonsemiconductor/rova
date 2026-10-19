@@ -21,6 +21,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Client, Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { runBackfillIfRequested } from '../../db/identity-v8/on-deploy';
 import {
   runBackfill,
   runMirrorBans,
@@ -273,9 +274,10 @@ beforeAll(async () => {
   await admin.connect();
 });
 afterAll(async () => {
+  // One FORCE drop per throwaway database, in series: dozens of them outlast the 30 s default hook on a slow Docker host.
   for (const name of created) await dropDatabase(name).catch(() => undefined);
   await admin?.end();
-});
+}, 120_000);
 
 describe('migration 0136: the v8 tables', () => {
   it('is the last journal entry, ships its rollback, and the rollback forgets exactly this migration', () => {
@@ -630,6 +632,78 @@ describe('the backfill, on a seeded copy with guests and vendors', () => {
     });
   });
 
+  describe('committed by the migrator as part of a deploy (IDENTITY_V8_BACKFILL=commit): the production cutover', () => {
+    // After the migrations and before the API rolls; opt-in per environment; a raise FAILS (so the deploy fails and v7 keeps serving).
+    const env = { ENTRA_TENANT_ID: TENANT, SSO_ALLOWED_EMAIL_DOMAINS: 'qnsc.vn' };
+
+    it('does nothing without the flag, and refuses a value that is not "commit"', async () => {
+      const name = await seededCopy();
+      await withPool(name, async (pool) => {
+        expect(await runBackfillIfRequested(pool, env)).toBeNull();
+        expect(await runBackfillIfRequested(pool, { ...env, IDENTITY_V8_BACKFILL: '' })).toBeNull();
+        await expect(
+          runBackfillIfRequested(pool, { ...env, IDENTITY_V8_BACKFILL: 'dry' }),
+        ).rejects.toThrow(/must be "commit" or unset/);
+        expect((await table(pool, 'identity."user"')).length).toBe(0);
+      });
+    });
+
+    it('with the flag, commits (database name read from the connection) and reports the counts', async () => {
+      const name = await seededCopy();
+      await withPool(name, async (pool) => {
+        const infos: string[] = [];
+        const summary = await runBackfillIfRequested(
+          pool,
+          { ...env, IDENTITY_V8_BACKFILL: 'commit' },
+          { info: (m) => infos.push(m) },
+        );
+        expect(summary?.['v8 users']).toBe(7);
+        expect(infos.join(' ')).toContain('COMMITTED');
+        expect((await table(pool, 'identity."user"')).length).toBe(7);
+      });
+    });
+
+    it('FAILS and writes nothing when the preflight raises: the deploy fails, the previous tasks keep serving', async () => {
+      const name = await seededCopy(async (pool) => {
+        await pool.query(
+          `insert into identity.users (id, email, display_name) values (gen_random_uuid(), 'outsider@elsewhere.example', 'Outsider')`,
+        );
+      });
+      await withPool(name, async (pool) => {
+        await expect(
+          runBackfillIfRequested(pool, { ...env, IDENTITY_V8_BACKFILL: 'commit' }),
+        ).rejects.toThrow(/outside the staff domains/);
+        expect((await table(pool, 'identity."user"')).length).toBe(0);
+      });
+    });
+  });
+
+  it('a re-run follows v7 for a ban the backfill itself placed: un-suspended in v7 means un-banned, and mirror-bans does not re-suspend them', async () => {
+    const name = await seededCopy();
+    await backfill(name);
+    await withPool(name, async (pool) => {
+      const bannedOf = async (id: string) =>
+        (
+          (await pool.query(`select banned from identity."user" where id = $1`, [id]))
+            .rows as Array<{
+            banned: boolean;
+          }>
+        )[0].banned;
+      expect(await bannedOf(U.bob), 'suspended in v7: banned by the backfill').toBe(true);
+
+      await pool.query(`update identity.users set status = 'active' where id = $1`, [U.bob]);
+      await backfill(name);
+      expect(await bannedOf(U.bob), 'un-suspended in v7: un-banned by the re-run').toBe(false);
+
+      // and a ban the backfill placed is v7's own: mirroring it back would be circular
+      await pool.query(`update identity.users set status = 'suspended' where id = $1`, [U.bob]);
+      await backfill(name);
+      expect(await bannedOf(U.bob)).toBe(true);
+      const mirrored = await withClient(name, (c) => runMirrorBans(c));
+      expect(mirrored['v7 users changed by this run']).toBe(0);
+    });
+  });
+
   it('mirror-bans marks a v8-only ban suspended in v7 before a rollback, dry run by default, and needs --database to commit', async () => {
     const name = await seededCopy();
     await backfill(name);
@@ -658,7 +732,14 @@ describe('the backfill, on a seeded copy with guests and vendors', () => {
       expect(await statusOf(U.alice)).toBe('suspended');
       expect(await statusOf(U.bob), 'already suspended in v7: untouched').toBe('suspended');
       expect(await statusOf(U.vendor1), 'not banned: untouched').toBe('active');
-      expect(summary['v8 users banned']).toBeGreaterThanOrEqual(2);
+      expect(summary['v7 users changed by this run']).toBe(1);
+      expect(summary[`v7 user marked suspended: ${U.alice}`], 'the ids are printed').toBe(1);
+
+      // idempotent, and it says so
+      const again = await withClient(name, (c) =>
+        runMirrorBans(c, { commit: true, database: name }),
+      );
+      expect(again['v7 users changed by this run']).toBe(0);
     });
   });
 

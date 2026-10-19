@@ -49,15 +49,12 @@
  *    first SSO sign-in IS the BA's implicit No Access and needs no fixture.
  */
 import 'reflect-metadata';
-import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AccessService } from '@modules/access';
 import { AppModule } from '../../apps/api/src/app.module';
-import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import {
   PAY_PROJECT_ID,
   SEED_PROJECTS,
@@ -65,6 +62,7 @@ import {
   WORKSPACE_ID,
 } from '../../db/seeds/constants';
 import { grantProjectAccess } from './support/flow-harness';
+import { provisionUser, signIn, signInAs } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 const PAY = PAY_PROJECT_ID;
@@ -123,12 +121,11 @@ const WORKSPACE_ADMIN_ONLY_READS = [
 
 describe('project-scoped routes: authorization over HTTP (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
   let access: AccessService;
 
   async function tokenFor(email: string): Promise<string> {
-    const { accessToken } = await auth.devLogin(email, '127.0.0.1');
-    expect(accessToken, `dev-login for ${email}`).toBeTruthy();
+    const accessToken = await signIn(app, email);
+    expect(accessToken, `test-login for ${email}`).toBeTruthy();
     return accessToken;
   }
 
@@ -137,29 +134,23 @@ describe('project-scoped routes: authorization over HTTP (e2e)', () => {
    * Access, built through the real JIT path rather than by writing fixture rows.
    */
   async function noAccessToken(): Promise<{ token: string; userId: string }> {
-    const claims: EntraClaims = {
-      oid: `no-access-${randomUUID()}`,
-      email: `no-access-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
-      displayName: 'E2E No Access Principal',
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const { accessToken } = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    const payload = JSON.parse(
-      Buffer.from(accessToken.split('.')[1], 'base64url').toString('utf8'),
-    ) as { sub: string };
-    return { token: accessToken, userId: payload.sub };
+    const { accessToken, userId } = await provisionUser(
+      app,
+      'no-access',
+      'E2E No Access Principal',
+    );
+    return { token: accessToken, userId };
   }
 
   function get(url: string, token: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: token } });
   }
 
   function patch(url: string, token: string, body: Record<string, unknown>) {
     return app.inject({
       method: 'PATCH',
       url,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
       payload: body,
     });
   }
@@ -171,7 +162,7 @@ describe('project-scoped routes: authorization over HTTP (e2e)', () => {
     return app.inject({
       method: spec.method,
       url: spec.url,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
       ...(spec.payload ? { payload: spec.payload } : {}),
     });
   }
@@ -184,34 +175,17 @@ describe('project-scoped routes: authorization over HTTP (e2e)', () => {
    * exact mistake made `read-scoping.e2e.spec.ts` pass while asserting the opposite of the contract.
    */
   async function principalAt(level: 'admin' | 'editor', projectId: string): Promise<string> {
-    const claims: EntraClaims = {
-      oid: `authz-${level}-${randomUUID()}`,
-      email: `authz-${level}-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
-      displayName: `E2E ${level}`,
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const { accessToken } = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    const userId = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString())[
-      'sub'
-    ] as string;
+    const { accessToken, userId } = await provisionUser(app, `authz-${level}`, `E2E ${level}`);
     await grantProjectAccess(app, userId, projectId, level);
     return accessToken;
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-
-    auth = app.get(AuthService);
     access = app.get(AccessService);
   });
 
@@ -236,10 +210,7 @@ describe('project-scoped routes: authorization over HTTP (e2e)', () => {
      * The positive half of defect (1): the project-tier set has to be non-empty and it has to come
      * from somewhere other than the workspace baseline, which is empty for this user.
      */
-    const dev = await auth.devLogin('dev@qnsc.dev', '127.0.0.1');
-    const userId = JSON.parse(
-      Buffer.from(dev.accessToken.split('.')[1], 'base64url').toString('utf8'),
-    )['sub'] as string;
+    const { userId } = await signInAs(app, 'dev@qnsc.dev');
 
     const baseline = await access.getUserRoleAndPermissions(userId, WORKSPACE_ID);
     expect(baseline.permissions, 'the seed must not grant a workspace-scoped tier role').toEqual(

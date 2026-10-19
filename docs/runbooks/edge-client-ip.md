@@ -33,7 +33,7 @@ printf '%s' "$KEY" | wrangler pages secret put EDGE_CLIENT_IP_SECRET --project-n
 
 Do that, and confirm it is listed (`wrangler pages secret list --project-name rova-prod-web`), before saying "go release".
 The API side for production (the key in the `rova/production/app` bundle and `edge_client_ip_secret_set = true`) follows
-the same steps 3 and 4 below, after the release, in a window of its own.
+the same steps 3 and 4 below, in the production cutover release: the three identity flags go in one change, after the secret steps (`docs/runbooks/identity-v8-cutover.md`, the production section). `scripts/owner/identity-v8-cutover.sh prod` writes the Pages secret and the bundle key together, from one value (its `edge` step), before the release. The script lands with #729, after #718: until then run it from a worktree of `owner/identity-v8-develop-cutover` (see the identity runbook, "Interactive script").
 
 ## The two secrets, and what happens with each half missing
 
@@ -89,8 +89,8 @@ with nothing to say so. It is also why **step 1 comes before the merge**.
 
 5. **Check (below).**
 
-Production: the same, with `--project-name rova-prod-web` and the bundle `rova/production/app`, in a window of its own,
-with its own key.
+Production: the same, with `--project-name rova-prod-web` and the bundle `rova/production/app`, in the production cutover release,
+with its own key (the script's `edge` step writes both places from one value).
 
 ## Post-deploy check: the request log's `ip` is the tester's real address
 
@@ -116,7 +116,7 @@ Do it twice: after step 2 (expect the **old** behaviour) and after step 4 (expec
    receives. `stale` means a clock more than 60 s apart.
 5. Rate limiting is per visitor: two testers on different networks each make one request to a route with the strict
    tier and each see their own `RateLimit-Remaining`, rather than sharing one count.
-6. Sign-in still works end to end (cookie set, `GET /v1/bff/me` 200): the Function no longer sets `x-forwarded-proto`
+6. Sign-in still works end to end (cookie set, `GET /v1/auth/me` 200): the Function no longer sets `x-forwarded-proto`
    or `x-forwarded-host`, and the API reads neither.
 
 ## Rotation

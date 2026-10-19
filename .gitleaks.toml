@@ -17,18 +17,20 @@ title = "rally gitleaks config"
 [allowlist]
 description = "Known false-positives in test and dev files"
 
-# Test JWT key pairs in vitest.config.ts — placeholder keys, never used for real signing.
+# vitest.config.ts carries test-only placeholder values (BETTER_AUTH_SECRET, COOKIE_SECRET, CSRF_SECRET).
 paths = [
   '''vitest\.config\.ts''',
+  # The e2e config sets the same kind of test-only placeholder for the e2e run.
+  '''test/vitest\.e2e\.config\.ts''',
 ]
 
 # Hardcoded dev/CI service credentials intentionally public.
 # postgres/postgres is the standard docker-compose convention for ephemeral CI containers.
 regexes = [
-  # The throwaway ES256 key in .env.example (base64 of the PEM that vitest.config.ts commits and allow-lists above), so that
-  # `cp .env.example .env` boots. An EXACT value, not the file: anything else pasted into .env.example is still scanned.
-  # gitleaks base64-decodes the value, so the finding's secret is the DECODED PEM: allow-listed by the body of that exact
-  # key (the same bytes vitest.config.ts commits). Nothing else matches it, so a different key pasted here is still caught.
+  # The throwaway ES256 key that .env.example and vitest.config.ts carried under identity 7 (base64 of the PEM, which gitleaks
+  # decodes: the finding's secret is the DECODED PEM, allow-listed by the body of that exact key). Both files no longer carry
+  # it, but the scan reads the whole git history (`--log-opts=--all`), where it stays. Nothing else matches it, so a different
+  # key pasted anywhere is still caught.
   '''MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQguroUP5ujCG9PaA7F''',
   '''POSTGRES_PASSWORD:\s*postgres''',
   # CI CSRF placeholder. The literal is self-describing and exists only to satisfy
@@ -39,9 +41,15 @@ regexes = [
   # is why four findings surfaced the moment scanning was actually armed.
   # Anchored to the exact literal, so it can never suppress anything else.
   '''ci-test-csrf-secret-min-32-characters-ok''',
+  # identity 8's cookie-signing secret, same reasoning: self-describing CI and local placeholders, exact literals.
+  '''ci-test-better-auth-secret-min-32-characters-ok''',
+  '''local-dev-only-better-auth-secret-0123456789abcdef''',
   # ACM certificate ARNs — contain AWS account ID but are infrastructure references, not credentials.
   '''arn:aws:acm:[a-z0-9-]+:074487692297:certificate/[0-9a-f-]+''',
   # Entra (Azure AD) OAuth identifiers — tenant ID and client ID are public in OAuth flows.
   '''entra_tenant_id\s*=\s*"dc0f2078-ac28-4ff2-b21a-d4b28df32361"''',
   '''entra_client_id\s*=\s*"45fabceb-e51c-446b-894e-af4c4b7f30f8"''',
+  # Image version tags in the dev compose files (e.g. valkey/valkey:7.2.14-alpine). The tag has enough entropy to trip
+  # generic-api-key, because "valkey" contains "key". Anchored to a bare version tag, so no secret can match.
+  '''^\d+(\.\d+){1,2}-alpine$''',
 ]

@@ -24,7 +24,6 @@
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
@@ -35,6 +34,7 @@ import {
   SEED_PROJECTS,
   TEAM_ALPHA_ID,
 } from '../../db/seeds/constants';
+import { signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -63,16 +63,15 @@ describe('owner names come from the row, not from a picker feed', () => {
     method: 'GET' | 'POST' | 'PATCH',
     url: string,
     payload?: Record<string, unknown>,
-  ) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+  ) => app.inject({ method, url, headers: { cookie: token }, payload });
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    const auth = app.get(AuthService);
-    adminToken = (await auth.devLogin('admin@qnsc.dev')).accessToken;
-    editorToken = (await auth.devLogin('dev@qnsc.dev')).accessToken;
+    adminToken = await signIn(app, 'admin@qnsc.dev');
+    editorToken = await signIn(app, 'dev@qnsc.dev');
 
     // A story owned — Owner AND Dev Owner — by the WORKSPACE ADMIN, who by §2.1 appears in no
     // project roster. This is the row the report is about.

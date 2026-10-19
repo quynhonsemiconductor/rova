@@ -39,7 +39,8 @@ export class OutboxService {
       occurredAt: e.occurredAt,
       status: 'pending' as const,
       attempts: 0,
-      createdAt: new Date(),
+      // created_at is left to the column default (now(), the database clock): a host-stamped value would
+      // drift from the database clock the relay's due checks use.
       // Capture the producing request's trace so the relay can continue it. Null
       // when nothing is tracing, which the relay treats as "start a root span".
       traceparent: currentTraceparent(),

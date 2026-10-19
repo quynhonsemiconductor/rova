@@ -154,22 +154,24 @@ WHERE u.deleted_at IS NULL
 -- A re-run carries what v7 changed since the last run: a rename, a new avatar, a suspension. Guarded on the address matching
 -- (a clash was refused above), and a no-op when nothing differs. email_verified is NOT touched: once a user exists in v8 it is
 -- identity's.
--- A BAN IS ONE WAY HERE. v8 is where bans are placed once it serves traffic (setUserBanned: offboarding, a suspected compromise), and
--- a re-run must never lift one: banned = v8's OR v7's, and a ban that is already there keeps its reason. (The cost: a person
--- un-suspended in v7 after a previous run stays banned in v8 until someone unbans them there. Lifting a ban is a decision, not a sync.)
+-- A BAN PLACED IN v8 IS NEVER LIFTED HERE; A BAN THIS SCRIPT PLACED FOLLOWS v7. v8 is where bans are placed once it serves traffic
+-- (setUserBanned: offboarding, a suspected compromise), and a re-run must not lift one: such a ban (banned, with no reason or a reason
+-- that is not 'migrated from v7: ...') is kept with its reason. A ban whose reason is 'migrated from v7: ...' is v7's own, copied by an
+-- earlier run: it follows v7, so a person un-suspended in v7 since is un-banned here, and mirror-bans (which mirrors only v8's bans)
+-- cannot re-suspend them.
 ON CONFLICT (id) DO UPDATE
   SET name = EXCLUDED.name,
       image = EXCLUDED.image,
-      banned = coalesce(identity."user".banned, FALSE) OR EXCLUDED.banned,
-      ban_reason = CASE WHEN coalesce(identity."user".banned, FALSE) THEN identity."user".ban_reason ELSE EXCLUDED.ban_reason END,
+      banned = (coalesce(identity."user".banned, FALSE) AND (identity."user".ban_reason IS NULL OR identity."user".ban_reason NOT LIKE 'migrated from v7:%')) OR EXCLUDED.banned,
+      ban_reason = CASE WHEN (coalesce(identity."user".banned, FALSE) AND (identity."user".ban_reason IS NULL OR identity."user".ban_reason NOT LIKE 'migrated from v7:%')) THEN identity."user".ban_reason ELSE EXCLUDED.ban_reason END,
       updated_at = now()
   WHERE identity."user".email = EXCLUDED.email
     AND (identity."user".name, identity."user".image, coalesce(identity."user".banned, FALSE), identity."user".ban_reason)
         IS DISTINCT FROM (
           EXCLUDED.name,
           EXCLUDED.image,
-          coalesce(identity."user".banned, FALSE) OR EXCLUDED.banned,
-          CASE WHEN coalesce(identity."user".banned, FALSE) THEN identity."user".ban_reason ELSE EXCLUDED.ban_reason END
+          (coalesce(identity."user".banned, FALSE) AND (identity."user".ban_reason IS NULL OR identity."user".ban_reason NOT LIKE 'migrated from v7:%')) OR EXCLUDED.banned,
+          CASE WHEN (coalesce(identity."user".banned, FALSE) AND (identity."user".ban_reason IS NULL OR identity."user".ban_reason NOT LIKE 'migrated from v7:%')) THEN identity."user".ban_reason ELSE EXCLUDED.ban_reason END
         );
 
 -- A user soft-deleted in v7 since the last run keeps its v8 row (it may hold accounts and sessions) but can no longer sign in.

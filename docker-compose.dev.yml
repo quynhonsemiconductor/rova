@@ -1,13 +1,21 @@
+# Local stack for rova. Project name `rova` unless COMPOSE_PROJECT_NAME is set (in .env or the shell): that is what lets
+# a second copy of this repo run beside the first. No container_name is set on purpose, for the same reason.
+#
+# Image majors match production: RDS Postgres 17 (tf-modules rds module default) and ElastiCache Valkey 7.2
+# (tf-modules cache module default, node mode). Tags are pinned to a full version, not a moving major tag.
+#
+# Every host port is bound to 127.0.0.1 and read from .env (`*_HOST_PORT`, defaults below). `.env.example` lists them.
+name: rova
+
 services:
   postgres:
-    image: postgres:17-alpine
-    container_name: rova-postgres
+    image: postgres:17.11-alpine
     environment:
       POSTGRES_DB: rova_dev
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - '5432:5432'
+      - '127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
@@ -18,10 +26,9 @@ services:
       retries: 5
 
   valkey:
-    image: valkey/valkey:8-alpine
-    container_name: rova-valkey
+    image: valkey/valkey:7.2.14-alpine
     ports:
-      - '6379:6379'
+      - '127.0.0.1:${VALKEY_HOST_PORT:-6379}:6379'
     healthcheck:
       test: ['CMD', 'valkey-cli', 'ping']
       interval: 5s
@@ -32,16 +39,18 @@ services:
   # Replaces real AWS for local development — no AWS account needed.
   # Production AWS resources live in the rova repo (Terraform).
   localstack:
-    image: localstack/localstack:4
-    container_name: rova-localstack
+    image: localstack/localstack:4.14
     environment:
       AWS_DEFAULT_REGION: ap-southeast-1
       PERSISTENCE: 1
       # Standard fake credentials — required by AWS SDK v3 even against LocalStack
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
+      # The SPA origin the buckets' CORS allows (scripts/localstack/01-bootstrap.sh). Follows WEB_DEV_PORT in .env.
+      WEB_ORIGIN: http://localhost:${WEB_DEV_PORT:-5173}
     ports:
-      - '4566:4566'
+      # STORAGE_ENDPOINT and AWS_ENDPOINT_URL in .env must carry the same port.
+      - '127.0.0.1:${LOCALSTACK_HOST_PORT:-4566}:4566'
     volumes:
       - localstack_data:/var/lib/localstack
       # Init hook: runs automatically when LocalStack is ready.
@@ -65,14 +74,13 @@ services:
 
   otel:
     image: otel/opentelemetry-collector-contrib:0.162.0
-    container_name: rova-otel
     command: ['--config=/etc/otel/collector.yaml']
     volumes:
       - ./scripts/otel/collector.yaml:/etc/otel/collector.yaml:ro
     ports:
-      # DEFAULT ports here; opshub offsets to 4319/8890 so both stacks can run at once.
-      - '4318:4318'
-      - '8889:8889'
+      # OTEL_EXPORTER_OTLP_ENDPOINT in .env must carry the OTLP port.
+      - '127.0.0.1:${OTEL_OTLP_HOST_PORT:-4318}:4318'
+      - '127.0.0.1:${OTEL_METRICS_HOST_PORT:-8889}:8889'
     healthcheck:
       # The image has no shell and no curl, so run the binary's own subcommand instead.
       test: ['CMD', '/otelcol-contrib', 'components']

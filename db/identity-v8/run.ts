@@ -120,9 +120,11 @@ export async function runMirrorBans(
   }
   await client.query('BEGIN');
   try {
-    const results = (await client.query(sqlFile('mirror-bans.sql'))) as Array<{
-      rows: Array<{ what: string; n: number }>;
-    }>;
+    // One statement answers with a single result, several with a list: the LAST one is the summary either way.
+    const answer = (await client.query(sqlFile('mirror-bans.sql'))) as
+      | { rows: Array<{ what: string; n: number }> }
+      | Array<{ rows: Array<{ what: string; n: number }> }>;
+    const results = Array.isArray(answer) ? answer : [answer];
     const summary: BackfillSummary = {};
     for (const row of results[results.length - 1]?.rows ?? []) summary[row.what] = Number(row.n);
     await client.query(options.commit ? 'COMMIT' : 'ROLLBACK');

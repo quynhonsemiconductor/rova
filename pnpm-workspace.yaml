@@ -111,7 +111,7 @@ overrides:
   #
   # Raise this by hand again if the advisory names a later fix; there is no floor here doing
   # it automatically, and that is the trade for surviving the cooldown window.
-  "nanoid@>=3.0.0 <3.3.18": "3.3.19"
+  "nanoid@>=3.0.0 <3.3.18": "3.3.20"
   # GHSA-r28c-9q8g-f849 — postcss (line-return parsing), fixed in 8.5.18.
   # Transitive via the web build toolchain (vite / tailwind ecosystem). A newly
   # published advisory that also affects main; pinned via override.
@@ -201,7 +201,7 @@ overrides:
   # PINNED to 4.1.1 (fixed, published 2026-09-02) rather than a floor: the floor resolved 4.1.2,
   # published 2026-10-05T19:12Z — inside the 24h `minimumReleaseAge` cooldown the nanoid entry
   # above describes. Same trade as nanoid: raise by hand if the advisory names a later fix.
-  "fast-copy@>=4.0.0 <4.1.0": "4.1.1"
+  "fast-copy@>=4.0.0 <4.1.0": "4.2.0"
   # GHSA-68fv-2mgg-jv7q (CVSS 8.7) — event-loop DoS via indexed source-map section offsets, fixed
   # in 1.2.2. DEV / BUILD-ONLY: postcss, vite, tailwind, jsdom and coverage all read source maps
   # this repo generates. Every consumer declares `^1.x`; kept in 1.x.

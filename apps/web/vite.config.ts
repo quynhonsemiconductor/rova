@@ -1,7 +1,31 @@
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import path from 'node:path'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+
+// The dev server's settings come from the root `.env` (where the API's PORT and LocalStack's STORAGE_ENDPOINT live), read
+// here because Vite only puts VITE_-prefixed keys into `import.meta.env`. The process environment wins, as usual. The
+// defaults are this stack's own ports.
+const dotenv = { ...loadEnv('', path.resolve(__dirname, '../..'), ''), ...process.env }
+const apiOrigin = dotenv.API_TARGET || `http://localhost:${dotenv.PORT || 3000}`
+const storageOrigin = dotenv.STORAGE_ENDPOINT || 'http://localhost:4566'
+
+/**
+ * index.html's dev CSP and preconnect hint name the API and LocalStack by their default ports. A second copy of the stack has
+ * other ports, and the browser would block its API, so the dev server rewrites those origins to the configured ones. Served
+ * only by `vite` (apply: 'serve'), so the production build keeps the file as written.
+ */
+export function devOrigins(html: string): string {
+  return html
+    .replace(/http:\/\/localhost:3000\b/g, apiOrigin)
+    .replace(/http:\/\/localhost:4566\b/g, storageOrigin)
+}
+
+const devOriginsPlugin: Plugin = {
+  name: 'dev-origins',
+  apply: 'serve',
+  transformIndexHtml: (html) => devOrigins(html),
+}
 
 // Security headers plugin for dev server
 // (Production deployments should configure these at the CDN/reverse-proxy layer)
@@ -21,7 +45,7 @@ const securityHeadersPlugin: Plugin = {
 
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => ({
-  plugins: [react(), tailwindcss(), securityHeadersPlugin],
+  plugins: [react(), tailwindcss(), securityHeadersPlugin, devOriginsPlugin],
   // The repo-root `.env` serves the SPA too, BUT ONLY FOR THE DEV SERVER (`vite`, mode `development`): Vite exposes only
   // `VITE_`-prefixed variables to the browser, so the API's secrets in that file never reach it, and `cp .env.example
   // .env` is the whole setup (VITE_DEV_LOGIN lives there). A `vite build` (any mode) and the unit tests keep the default
@@ -30,15 +54,21 @@ export default defineConfig(({ mode, command }) => ({
     command === 'serve' && mode === 'development' ? path.resolve(__dirname, '../..') : undefined,
   server: {
     host: '0.0.0.0',
-    // 5173 is the origin the rest of the stack is wired to (.env.example CORS_ORIGINS, APP_BASE_URL and
-    // ENTRA_REDIRECT_URI, LocalStack's bucket CORS, Playwright's baseURL). strictPort: if another dev server holds it,
+    // 5173 (WEB_DEV_PORT in .env to change it) is the origin the rest of the stack is wired to (.env.example CORS_ORIGINS and APP_BASE_URL, whose
+    // /api/auth/callback/microsoft is the Entra redirect URI, LocalStack's bucket CORS, Playwright's baseURL). strictPort: if another dev server holds it,
     // FAIL instead of silently moving to 5174, where the sign-in redirect and the upload bucket's CORS no longer match.
-    port: 5173,
+    port: Number(dotenv.WEB_DEV_PORT) || 5173,
     strictPort: true,
     allowedHosts: ['.trycloudflare.com'],
     proxy: {
       '/v1': {
-        target: process.env.API_TARGET ?? 'http://localhost:3000',
+        target: apiOrigin,
+        changeOrigin: true,
+        secure: false,
+      },
+      // identity 8 (Better Auth): sign-in, the Microsoft callback and sign-out, same-origin with the SPA.
+      '/api/auth': {
+        target: apiOrigin,
         changeOrigin: true,
         secure: false,
       },

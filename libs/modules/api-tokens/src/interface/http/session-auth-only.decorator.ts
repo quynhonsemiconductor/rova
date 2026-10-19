@@ -1,7 +1,7 @@
 import { applyDecorators, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiCookieAuth } from '@nestjs/swagger';
 
-import { JwtAuthGuard } from '@platform';
+import { SessionAuthGuard } from '@platform';
 
 import { RejectApiTokenAuthGuard } from './reject-api-token-auth.guard';
 
@@ -18,4 +18,8 @@ import { RejectApiTokenAuthGuard } from './reject-api-token-auth.guard';
  * unit test, because each guard is correct on its own.
  */
 export const SessionAuthOnly = () =>
-  applyDecorators(UseGuards(JwtAuthGuard, RejectApiTokenAuthGuard), ApiBearerAuth('access-token'));
+  applyDecorators(
+    UseGuards(SessionAuthGuard, RejectApiTokenAuthGuard),
+    ApiCookieAuth('session'),
+    ApiBearerAuth('access-token'),
+  );

@@ -6,28 +6,28 @@ for 15 minutes straight.
 
 ## What this means
 
-A meaningful share of login attempts through `/bff/callback` (SSO) or
-`/bff/dev-login` (dev/E2E only) are failing. The 15-minute window (longer than
+A meaningful share of login attempts through identity's Microsoft callback
+(`/api/auth/callback/microsoft`) are failing (`sign_in.failure` events, counted
+into `auth_login_total` by the identity module's event sink). The 15-minute window (longer than
 the other rules' 5m) is deliberate — login volume is naturally low, and a
 shorter window would be noisy with few samples.
 
 ## Why this alert exists, specifically
 
-`BffController.callback` deliberately collapses every failure into one generic
-`401 AUTH_TOKEN_INVALID` — it never surfaces OIDC/internal detail to the
-browser, on purpose (never leak IdP error detail to an unauthenticated client).
-That means the HTTP error-rate panel/alert **cannot** see this: a 401 on a login
-route doesn't count toward `http_server_errors_total` the same way a 5xx does,
-and even if it did, "401" alone doesn't say WHY. `auth_login_total` is the only
+identity's callback ends a refused or failed sign-in with a redirect to the login
+page carrying a stable `?error=<CODE>` (never IdP or internal detail). A redirect
+is a 302, so the HTTP error-rate panel/alert **cannot** see it, and "302" alone
+doesn't say WHY. `auth_login_total` is the only
 signal that distinguishes "login is broken" from "normal traffic."
 
 ## First checks
 
 1. Overview dashboard, "Login success vs failure rate" panel — confirm the
    shape (a step change at a deploy vs a gradual climb vs a sudden spike).
-2. Logs Explorer / Recent errors, filtered to `rova-api` — the actual OIDC
-   exception is logged server-side even though the browser never sees it
-   (`completeLogin` catch block logs before re-throwing as the generic 401).
+2. Logs Explorer / Recent errors, filtered to `rova-api` — the reason is logged
+   server-side as a structured line: `identity.staff_sign_in_refused` (the
+   product hook refused: no profile/invitation, id mismatch), `identity.auth_handler_threw`
+   or `identity.auth_server_error` (a 5xx), `security event: sign_in.failure`.
 3. Check the Deploys annotation — did this start right after a deploy?
 4. Check Entra/Azure AD's own service health and the app registration's client
    secret expiry — an expired secret fails EVERY login, not a subset.
@@ -37,9 +37,11 @@ signal that distinguishes "login is broken" from "normal traffic."
 - Expired or rotated Entra client secret (`ENTRA_CLIENT_SECRET`)
 - Entra tenant/app registration misconfiguration (redirect URI mismatch,
   consent revoked)
-- Bad deploy to the identity module
-- State/PKCE cookie issues (`BFF_STATE_COOKIE`) — e.g. a CDN/proxy change
-  stripping cookies, or `sameSite`/`secure` misconfiguration
+- Bad deploy to the identity module, or a missing/rotated `BETTER_AUTH_SECRET`
+  (everyone is signed out, and a missing one stops the API from starting)
+- State/PKCE cookie issues (identity's `__Secure-rova.state`) — e.g. a CDN/proxy
+  change stripping cookies, a Pages Function not forwarding `/api/auth/*`, or
+  `sameSite`/`secure` misconfiguration
 - A genuine wave of user error (stale bookmarked links, expired sessions) —
   distinguishable from the above by NOT correlating with a deploy or config
   change
