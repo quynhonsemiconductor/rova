@@ -23,7 +23,12 @@ import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Client, Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NonRetryableError, RetryAfterError, MAX_RETRY_AFTER_MS } from '@platform/outbox';
+import {
+  NonRetryableError,
+  OutboxService,
+  RetryAfterError,
+  MAX_RETRY_AFTER_MS,
+} from '@platform/outbox';
 import type { DrizzleDB, DrizzleTx } from '@platform';
 import type { BackfillCounts, ScmBackfillService } from '@modules/scm';
 import * as schema from '../../db/schema';
@@ -535,6 +540,49 @@ describe('the database clock decides, not the host clock (skew)', () => {
     );
     expect(leaseSecondsAhead).toBeLessThan(leaseSeconds + 15);
     expect((await load(job.id)).status).toBe('done');
+  });
+
+  it('host 1 h AHEAD: an outbox event is stamped created_at by the DATABASE, not the host', async () => {
+    const workspaceId = (
+      await observer.query<{ id: string }>('SELECT id FROM workspace.workspaces LIMIT 1')
+    ).rows[0].id;
+    const eventId = randomUUID();
+    skewHostBy(HOUR);
+    const before = await dbNow();
+
+    await db.transaction((tx) =>
+      new OutboxService(db).writeEvents(
+        [
+          {
+            eventId,
+            eventType: 'test.created_at',
+            version: 1,
+            occurredAt: new Date(),
+            aggregateType: 'test',
+            aggregateId: randomUUID(),
+            workspaceId,
+            payload: {},
+          },
+        ],
+        tx,
+      ),
+    );
+    const after = await dbNow();
+
+    try {
+      const { rows } = await observer.query<{ created_at: Date }>(
+        'SELECT created_at FROM messaging.outbox_events WHERE event_id = $1',
+        [eventId],
+      );
+      // The host clock is an hour ahead. The database's own now() is bounded by the two reads around the write.
+      expect(
+        rows[0].created_at.getTime(),
+        'created_at was stamped from the host clock',
+      ).toBeGreaterThanOrEqual(before.getTime() - 1_000);
+      expect(rows[0].created_at.getTime()).toBeLessThanOrEqual(after.getTime() + 1_000);
+    } finally {
+      await observer.query('DELETE FROM messaging.outbox_events WHERE event_id = $1', [eventId]);
+    }
   });
 
   it('host 1 h BEHIND: a row due by the database IS claimed', async () => {
