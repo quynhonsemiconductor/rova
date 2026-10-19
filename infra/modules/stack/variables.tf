@@ -144,6 +144,11 @@ variable "cache" {
     # "0 rally" after the rename and omitted opshub, opshub's was complete, qnsc-kb's was
     # absent. A registry with three copies is not a registry.
     db_index = optional(number, 0)
+
+    # Valkey engine for the node (node mode). "7.2" keeps the existing node; "8.1" is the Valkey 8 target.
+    # apply_immediately: RELEASE WINDOW ONLY for production; the default waits for the maintenance window.
+    node_engine_version = optional(string, "7.2")
+    apply_immediately   = optional(bool, false)
   })
   default = {}
 

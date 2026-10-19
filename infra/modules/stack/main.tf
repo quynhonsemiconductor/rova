@@ -321,15 +321,17 @@ module "cache" {
   # — that is where the saving is — and issues a different endpoint, so the change is a
   # task-definition revision and a rolling deploy, not an in-place edit.
   count  = var.cache.enabled && !var.cache.shared ? 1 : 0
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/cache?ref=cache-v1.1.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/cache?ref=cache-v1.2.0"
 
   name              = "${local.name}-cache"
   subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
   security_group_id = data.terraform_remote_state.runtime.outputs.sg_cache_id
   kms_key_arn       = local.kms_key_arn
 
-  mode      = var.cache.mode
-  node_type = var.cache.node_type
+  mode                = var.cache.mode
+  node_type           = var.cache.node_type
+  node_engine_version = var.cache.node_engine_version
+  apply_immediately   = var.cache.apply_immediately
 
   tags = local.tags
 }

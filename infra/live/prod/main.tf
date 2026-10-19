@@ -287,6 +287,12 @@ module "stack" {
   // controls fail CLOSED.
   cache = {
     enabled = true
+
+    // RELEASE WINDOW ONLY. Valkey 7.2 -> 8.1 in place on the production node (rova-prod-cache-001).
+    // The Valkey 8 target is 8.1; ElastiCache "8.2" is open-source 8.1 plus valkey-search. Takes effect
+    // now (apply_immediately), so run this inside the window with the RDS change.
+    node_engine_version = "8.1"
+    apply_immediately   = true
   }
 
   // NO `idle_schedule`, deliberately, and its absence is the go-live change.
@@ -411,6 +417,13 @@ module "stack" {
     deletion_protection      = true
     backup_retention_days    = 30
     monitoring_interval      = 0
+
+    // RELEASE WINDOW ONLY. PostgreSQL 17 -> 18 in place. Manual snapshot FIRST (runbook:
+    // docs/runbooks/postgres-18-upgrade.md). Flags return to false in the follow-up PR once verified.
+    // Merge applies this change: do not merge outside the window.
+    engine_version              = "18"
+    allow_major_version_upgrade = true
+    apply_immediately           = true
   }
 
   // On-demand, not Spot: an interruption here is user-visible. Tighter autoscale
