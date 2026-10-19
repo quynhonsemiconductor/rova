@@ -253,7 +253,8 @@ on merge and production on the next tag (the revert also removes the tag guard, 
 
 - The replace deletes the current `rova-prod` instance. Its automated backups and point-in-time recovery go with it (the module does not set `delete_automated_backups`, so the provider default applies). After C, the only backups are `PRE_SNAPSHOT` and the forensic snapshot from C1.
 - Every write after `PRE_SNAPSHOT` is lost, for every user, including everything written since the release started.
-- The replacement's endpoint is not verified here. Read the plan: what is certain is that the RDS-managed master secret gets a new ARN, so the IAM policy and the task definitions that read it change too.
+- The endpoint stays the same. An RDS endpoint is `<identifier>.<suffix>.<region>.rds.amazonaws.com`, and the replace keeps the identifier `rova-prod`, so the hostname is unchanged. DNS may take a minute to point at the new instance.
+- The certain change is the RDS-managed master secret: it gets a new ARN, so the IAM policy and the task definitions that read it change too, and the previous revisions cannot be reused.
 - C does not roll back code. C4 and C5 do that.
 
 **After C, no new production tag until the revert (B) and `identity_v8_backfill_on_deploy = false` are both merged on `main`.** Until then, the next release re-runs migrations 0131 to 0136 and the backfill on the restored database. `main` still says `true`, because the release flow requires it.
