@@ -100,26 +100,20 @@ Each product owns its own block, so opshub, rova and the knowledge base all run 
 
 #### Isolated e2e stack
 
-The e2e suite needs its own stack: it truncates the database it points at, so it must never share one with a dev stack.
-It takes the **e2e block**, one step above each product's dev block, so it runs beside the dev stack on the same machine.
-
-| e2e block (rova) | Postgres | Valkey | LocalStack | OTel (OTLP / metrics) | Mailpit (SMTP / UI) | SPA  | API  |
-| ---------------- | -------- | ------ | ---------- | --------------------- | ------------------- | ---- | ---- |
-| rova e2e         | 5460     | 6360   | 4660       | 4460 / 8460           | 1160 / 8160         | 5195 | 3020 |
+The e2e suite truncates the database it points at, and several people and agents test at once, so an e2e stack never uses the
+fixed ports above. `scripts/e2e/run.sh` starts its own compose project (`rova-e2e-<random>`, or `COMPOSE_PROJECT_NAME`) with
+`docker-compose.e2e.yml`, which publishes **ephemeral loopback ports**: Docker picks them, the runner finds them with
+`docker compose port`, and writes them into `.env.e2e` for the harness. The web and API ports are free ports the OS picks for that run.
 
 ```bash
-node scripts/e2e/make-env.mjs .env.e2e              # the dev env with the e2e block; project name rova-e2e
-scripts/e2e/run.sh                                  # up (own project), migrate, run the whole e2e suite, down (volumes kept)
+scripts/e2e/run.sh                                    # migrate, run the whole e2e suite, stop the stack (volumes kept)
 scripts/e2e/run.sh test/e2e/golden-journey.e2e.spec.ts   # or just the files you name
-E2E_KEEP=1 scripts/e2e/run.sh                       # keep the stack up for a manual look
-docker compose -p rova-e2e --env-file .env.e2e -f docker-compose.dev.yml down -v   # when done, to remove its data too
+E2E_KEEP=1 scripts/e2e/run.sh                         # keep the stack up for a manual look; prints nothing, see .env.e2e
+docker compose -p <project> --env-file .env.e2e -f docker-compose.dev.yml -f docker-compose.e2e.yml down -v   # remove its data too
 ```
 
-`.env.e2e` is generated and git-ignored. The harnesses read their ports from it (`E2E_ENV_FILE`, `WEB_DEV_PORT`), not from the
-dev defaults. A second e2e stack needs another `COMPOSE_PROJECT_NAME` and another block; do not reuse these numbers for one.
-
-The Vite server uses `strictPort`: a taken port fails the start, because the Microsoft redirect (`APP_BASE_URL`) and the bucket's
-CORS are set for that origin. To use another web port, set `WEB_DEV_PORT` and the `APP_BASE_URL` and `CORS_ORIGINS` that embed it.
+`.env.e2e` is generated and git-ignored: `node scripts/e2e/make-env.mjs .env.e2e` writes it from `.env.example`. The org's
+"Local development" page (`.github`) has the dev port table and the e2e rule for every product.
 
 ### Run a second copy
 
