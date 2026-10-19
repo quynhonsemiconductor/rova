@@ -4,8 +4,8 @@ import {
   WORKER_HEARTBEAT_INTERVAL_MS,
   WORKER_HEARTBEAT_KEY_PREFIX,
   WORKER_HEARTBEAT_TTL_SECONDS,
-  WorkerHeartbeatService,
-} from './worker-heartbeat.service';
+} from './worker-heartbeat.constants';
+import { WorkerHeartbeatService } from './worker-heartbeat.service';
 
 describe('WorkerHeartbeatService', () => {
   beforeEach(() => {

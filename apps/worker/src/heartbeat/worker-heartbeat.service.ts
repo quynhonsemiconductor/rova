@@ -1,13 +1,11 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { hostname } from 'node:os';
 import { CacheService } from '@platform';
-
-/** How often a live worker writes its beat. A replica that stops beating is reported down once its key expires. */
-export const WORKER_HEARTBEAT_INTERVAL_MS = 30_000;
-/** Longer than three intervals, so one slow write does not look like a dead worker. */
-export const WORKER_HEARTBEAT_TTL_SECONDS = 90;
-/** One key per replica (`hostname` is the pod name in the cluster). The check command and the alerts read this prefix. */
-export const WORKER_HEARTBEAT_KEY_PREFIX = 'worker:heartbeat:';
+import {
+  WORKER_HEARTBEAT_INTERVAL_MS,
+  WORKER_HEARTBEAT_KEY_PREFIX,
+  WORKER_HEARTBEAT_TTL_SECONDS,
+} from './worker-heartbeat.constants';
 
 /**
  * Proves the worker process is alive and connected to the cache, from outside the process.

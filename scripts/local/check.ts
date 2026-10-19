@@ -13,6 +13,10 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createEmailSender } from '@quynhonsemiconductor/platform-mail/sender';
 import Redis from 'ioredis';
+import {
+  WORKER_HEARTBEAT_KEY_PREFIX,
+  WORKER_HEARTBEAT_TTL_SECONDS,
+} from '../../apps/worker/src/heartbeat/worker-heartbeat.constants';
 import { randomUUID } from 'node:crypto';
 
 process.loadEnvFile?.('.env');
@@ -28,10 +32,6 @@ const WEB = `http://localhost:${env('WEB_DEV_PORT', '5175')}`;
 const MAILPIT = `http://localhost:${env('MAILPIT_UI_HOST_PORT', '8120')}`;
 const TEST_LOGIN_EMAIL = 'dev@qnsc.dev'; // db/seeds/demo.ts: the local fixture account, seeded by `pnpm db:seed`.
 const MARKER_KEY = 'local-check/persistence-marker.txt';
-// Same values as apps/worker/src/heartbeat/worker-heartbeat.service.ts; this script runs outside the worker, so it repeats them.
-// The cache adds the product's namespace (rova:), so the pattern matches the prefix anywhere in the key.
-const HEARTBEAT_PREFIX = 'worker:heartbeat:';
-const HEARTBEAT_TTL_MS = 90_000;
 
 class CheckFailed extends Error {}
 
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
         const [next, batch] = await redis.scan(
           cursor,
           'MATCH',
-          `*${HEARTBEAT_PREFIX}*`,
+          `*${WORKER_HEARTBEAT_KEY_PREFIX}*`,
           'COUNT',
           100,
         );
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
       );
       const beats = await Promise.all(keys.map(async (key) => ({ key, at: await redis.get(key) })));
       const fresh = beats.filter(
-        (b) => b.at !== null && Date.now() - Date.parse(b.at) < HEARTBEAT_TTL_MS,
+        (b) => b.at !== null && Date.now() - Date.parse(b.at) < WORKER_HEARTBEAT_TTL_SECONDS * 1000,
       );
       expect(fresh.length > 0, `heartbeat keys exist but none is fresh: ${keys.join(', ')}`);
       return `${fresh.length} live replica(s): ${fresh.map((f) => f.key).join(', ')}`;
