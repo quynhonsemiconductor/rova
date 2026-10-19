@@ -105,13 +105,29 @@ pnpm dev:web --port 5174
 
 (File uploads in the browser need LocalStack's bucket CORS to allow that origin too: `WEB_ORIGIN` in `scripts/localstack/01-bootstrap.sh`.)
 
+### Run a second copy
+
+Two checkouts, or a branch you want to keep running beside your main one, need their own compose project, host ports, and
+API and web ports. Every port is bound to `127.0.0.1` and read from `.env`. In the second copy's `.env`:
+
+1. `COMPOSE_PROJECT_NAME=rova-2`: the containers, volumes and network take this prefix. Every checkout or worktree sets its own.
+2. Give each `*_HOST_PORT` a free number: `POSTGRES_HOST_PORT`, `VALKEY_HOST_PORT`, `LOCALSTACK_HOST_PORT`, `OTEL_OTLP_HOST_PORT`, `OTEL_METRICS_HOST_PORT`.
+3. Put the same Postgres, Valkey and LocalStack numbers into `DATABASE_URL`, `REDIS_URL`, `STORAGE_ENDPOINT`, `AWS_ENDPOINT_URL`, and the OTLP port into `OTEL_EXPORTER_OTLP_ENDPOINT`. The app reads URLs, not the `*_HOST_PORT` values.
+4. The API: `PORT`. The SPA's proxy and the dev CSP follow it (or set `API_TARGET` to point the proxy somewhere else).
+5. The web: `WEB_DEV_PORT`. LocalStack's bucket CORS follows it. Then `APP_BASE_URL=http://localhost:<WEB_DEV_PORT>` and `CORS_ORIGINS=http://localhost:<WEB_DEV_PORT>`, so sign-in redirects and the API's CORS match the new origin.
+
+For real Microsoft sign-in on the new web port, register `http://localhost:<WEB_DEV_PORT>/api/auth/callback/microsoft` as a redirect URI on your dev app; the test login needs none of this.
+
+Then run the same commands as above. The Playwright config's `baseURL` is pinned to 5173, so `pnpm --filter rova-web test:e2e` runs in one copy at a time.
+
 ### Useful
 
 - `pnpm db:seed` loads only the baseline (roles, workspace, the platform admin); `pnpm db:seed:test` adds the one-project demo fixture; `pnpm db:studio` opens Drizzle Studio.
-- Telemetry: `docker logs rova-otel`, or `curl -s localhost:8889/metrics | grep queue_`. No collector? `OTEL_ENABLED=false` in `.env`.
+- Telemetry: `docker compose -f docker-compose.dev.yml logs otel`, or `curl -s localhost:8889/metrics | grep queue_`. No collector? `OTEL_ENABLED=false` in `.env`.
 - Mail is `EMAIL_PROVIDER=dev`: messages are written to the API log and not sent (`LOG_DEV_EMAIL_CONTENT=true` includes the body, links included).
 - Uploads go to LocalStack's `rova-attachments` and `rova-public-assets` buckets; `aws --endpoint-url http://localhost:4566 s3 ls` (any credentials).
 - Reset everything: `docker compose -f docker-compose.dev.yml down -v`, then `up -d --wait` and `pnpm db:migrate` again.
+- Upgrading an existing checkout (before `name: rova`): the containers were named `rova-postgres`, `rova-valkey`, `rova-localstack` and `rova-otel`, outside any project. Remove the four containers by name with `docker rm -f rova-postgres rova-valkey rova-localstack rova-otel`. Do not run `docker compose down -v` against an old project name: that removes volumes in whichever checkout owns that name. The old data stays in its volume, `<dir>_postgres_data`: the old project was named after the checkout folder (for example `rovalog`, volume `rovalog_postgres_data`), so the new `rova` project does not reuse it. To keep that data, run with `COMPOSE_PROJECT_NAME=<dir>`; to start fresh, use the default. Each checkout or worktree sets its own `COMPOSE_PROJECT_NAME`; never share one.
 - Least-privilege database roles locally, the way CI runs: see the comment above `DATABASE_URL` in `.env.example`.
 - Tests: `pnpm test` (unit), `pnpm test:e2e` (needs the stack and a migrated, seeded database).
 

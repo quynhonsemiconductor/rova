@@ -161,7 +161,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17.11-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -174,7 +174,7 @@ jobs:
           --health-retries 10
 
       redis:
-        image: redis:7-alpine
+        image: valkey/valkey:7.2.14-alpine
         ports: ['6379:6379']
         options: >-
           --health-cmd "redis-cli ping"
@@ -186,7 +186,7 @@ jobs:
       # on, and identity <= 8.4.0's kit calls uuidv7(), which only PostgreSQL 18 has (app-platform#261 removes that; rova runs 17).
       # Drop this service and IDENTITY_CONFORMANCE_DATABASE_URL once the identity release that carries it is adopted.
       postgres-conformance:
-        image: postgres:18
+        image: postgres:17.11-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -342,7 +342,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17.11-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -494,7 +494,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17.11-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -502,7 +502,7 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: valkey/valkey:7.2.14-alpine
         ports: ['6379:6379']
         options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 5
 

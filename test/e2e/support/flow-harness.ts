@@ -2,7 +2,7 @@
  * Shared bootstrap + fixtures for the BA business-flow E2E suite.
  *
  * These specs boot the REAL rally `AppModule` (real Nest DI, real Drizzle
- * against the seeded `rova-postgres`) and drive the REAL application services,
+ * against the seeded compose `postgres` service) and drive the REAL application services,
  * exactly as the HTTP controllers do. Nothing is stubbed: the flows are proven
  * end-to-end against the same code and database the running server uses.
  *
