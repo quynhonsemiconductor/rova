@@ -16,7 +16,7 @@ describe('devOrigins', () => {
     vi.stubEnv('API_TARGET', '')
     vi.stubEnv('PORT', '')
     vi.stubEnv('STORAGE_ENDPOINT', '')
-    const html = 'connect-src http://localhost:3000 http://localhost:4566'
+    const html = 'connect-src http://localhost:3010 http://localhost:4566'
     expect((await loadDevOrigins())(html)).toBe(html)
   })
 

@@ -212,7 +212,11 @@ export const EnvSchema = z
      * 'ses' requires MAIL_FROM_EMAIL + IAM role with ses:SendEmail.
      * 'resend' requires RESEND_API_KEY + a verified domain in the Resend dashboard.
      */
-    EMAIL_PROVIDER: z.enum(['graph', 'ses', 'resend', 'dev']).default('dev'),
+    EMAIL_PROVIDER: z.enum(['graph', 'smtp', 'ses', 'resend', 'dev']).default('dev'),
+    /**
+     * 'smtp' sends through a plain SMTP relay: Mailpit in development (`MAIL_SMTP_HOST`/`MAIL_SMTP_PORT`, sender `MAIL_FROM_EMAIL`).
+     * Development only: refused when NODE_ENV=production here and by platform-mail's smtp-guard.
+     */
     /**
      * The shared mailbox mail goes out as (`noreply-rova@qnsc.vn`). Required for 'graph'; not a secret. Graph sends as this mailbox and no
      * other (the Exchange role assignment is scoped to it); the display name is the mailbox's own, so MAIL_FROM_NAME does not apply.
@@ -235,6 +239,10 @@ export const EnvSchema = z
      * the certificate, so the move is: mount the token, set this, delete the certificate.
      */
     MAIL_GRAPH_FEDERATED_TOKEN_FILE: emptyToUndefined(z.string().min(1).optional()),
+    /** SMTP relay host for EMAIL_PROVIDER=smtp: Mailpit's compose service name in a container, `localhost` on the host. */
+    MAIL_SMTP_HOST: emptyToUndefined(z.string().min(1).optional()),
+    /** SMTP relay port for EMAIL_PROVIDER=smtp: Mailpit's SMTP port (1025 in the container). */
+    MAIL_SMTP_PORT: emptyToUndefined(z.coerce.number().int().min(1).max(65535).optional()),
     /** Display name that appears in the From header, e.g. "Mini Rova". */
     MAIL_FROM_NAME: z.string().default('Mini Rova'),
     /** Verified sender address — used by all providers. Required when EMAIL_PROVIDER != 'dev'. */
@@ -433,6 +441,23 @@ export const EnvSchema = z
         message:
           'MAIL_GRAPH_CLIENT_ID is required when EMAIL_PROVIDER is "graph": the "Rova <Env> Service" app that holds the ' +
           'Exchange "Application Mail.Send" role for the mailbox (not the sign-in app, ENTRA_CLIENT_ID).',
+      });
+    }
+    if (env.EMAIL_PROVIDER === 'smtp' && env.NODE_ENV === 'production') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_PROVIDER'],
+        message:
+          'EMAIL_PROVIDER=smtp is for development only (Mailpit): an unauthenticated relay must never send in production. ' +
+          'Use graph in production.',
+      });
+    }
+    if (env.EMAIL_PROVIDER === 'smtp' && (!env.MAIL_SMTP_HOST || !env.MAIL_SMTP_PORT)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAIL_SMTP_HOST'],
+        message:
+          'MAIL_SMTP_HOST and MAIL_SMTP_PORT are required when EMAIL_PROVIDER is "smtp" (Mailpit: localhost and 1120 on the host, mailpit and 1025 in a container).',
       });
     }
     if (env.EMAIL_PROVIDER !== 'dev' && env.EMAIL_PROVIDER !== 'graph' && !env.MAIL_FROM_EMAIL) {

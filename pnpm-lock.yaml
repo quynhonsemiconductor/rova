@@ -244,6 +244,9 @@ importers:
       lint-staged:
         specifier: ^17.0.8
         version: 17.6.0
+      nodemailer:
+        specifier: ^10.1.2
+        version: 10.1.2
       pino-pretty:
         specifier: ^13.0.0
         version: 13.2.0
@@ -16954,8 +16957,7 @@ snapshots:
     dependencies:
       asn1: 0.2.6
 
-  nodemailer@10.1.2:
-    optional: true
+  nodemailer@10.1.2: {}
 
   non-error@0.1.0:
     optional: true

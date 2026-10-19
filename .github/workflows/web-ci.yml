@@ -56,7 +56,7 @@ permissions:
   # this change is making: nothing here needs it today (the openapi job reads
   # `github.event.pull_request.base.sha` straight off the payload, which needs no grant).
   pull-requests: read
-  packages: read       # pull @quynhonsemiconductor/* from GitHub Packages (via shared libs)
+  packages: read # pull @quynhonsemiconductor/* from GitHub Packages (via shared libs)
 
 env:
   # 24, matching .nvmrc and the Dockerfile — see backend-ci.yml for why this was 22.
@@ -108,7 +108,7 @@ jobs:
       # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -160,7 +160,7 @@ jobs:
     outputs:
       has_tests: ${{ steps.detect.outputs.has_tests }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -258,7 +258,7 @@ jobs:
       NODE_ENV: test
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -313,6 +313,10 @@ jobs:
         # adding to it, which is why the json report was missing and the flake step below had
         # nothing to read. playwright.config.ts picks `list` plus `json` when CI is set.
         run: pnpm --filter rova-web exec playwright test
+        env:
+          # The API above listens on :3000 (its PORT). The Vite proxy defaults to .env.example's PORT (3010), and this job
+          # has no .env, so point the proxy at the API that is actually running.
+          API_TARGET: http://localhost:3000
 
       # `always()`: the interesting case is a run that PASSED, because a pass hiding a retry is
       # exactly what went unnoticed. Never fails the job — see the script for why the ratchet
@@ -346,7 +350,7 @@ jobs:
       # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -393,7 +397,7 @@ jobs:
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       LOGS: ${{ github.workspace }}/quickstart-logs
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -432,14 +436,14 @@ jobs:
       - name: The API answers /readyz
         run: |
           for _ in $(seq 1 90); do
-            if body=$(curl -sf http://localhost:3000/readyz); then
+            if body=$(curl -sf http://localhost:3010/readyz); then
               echo "$body"
               echo "$body" | jq -e '.status == "ok" and .checks.database == "up" and .checks.cache == "up"'
               exit 0
             fi
             sleep 2
           done
-          echo "::error::the API did not answer /readyz on :3000 within 3 minutes. Does .env.example boot? (the schema refuses a missing JWT key or ENTRA_* at start)"
+          echo "::error::the API did not answer /readyz on :3010 within 3 minutes. Does .env.example boot? (the schema refuses a missing JWT key or ENTRA_* at start)"
           exit 1
 
       # The worker serves no HTTP, and `nest start --watch` keeps running after a config refusal, so the log is the
@@ -461,18 +465,18 @@ jobs:
       # breaks when the example's PORT and the proxy target disagree.
       - name: Sign in with the test login and make an authenticated /v1 call, through the SPA's proxy
         run: |
-          for _ in $(seq 1 30); do curl -sf http://localhost:5173/v1/healthz >/dev/null && break; sleep 2; done
-          curl -sf http://localhost:5173/v1/healthz || { echo "::error::/v1 through the Vite proxy failed: .env.example PORT must equal the proxy target in apps/web/vite.config.ts"; exit 1; }
+          for _ in $(seq 1 30); do curl -sf http://localhost:5175/v1/healthz >/dev/null && break; sleep 2; done
+          curl -sf http://localhost:5175/v1/healthz || { echo "::error::/v1 through the Vite proxy failed: .env.example PORT must equal the proxy target in apps/web/vite.config.ts"; exit 1; }
           # identity's session cookie is `__Secure-rova.session_token`: read it from the response headers and replay it by hand
           # (a cookie jar will not send a Secure cookie over http).
-          curl -sf -D "$LOGS/headers.txt" -o /dev/null -H 'content-type: application/json' -H 'origin: http://localhost:5173' \
-            -d '{"email":"admin@qnsc.dev"}' http://localhost:5173/api/auth/test-login
+          curl -sf -D "$LOGS/headers.txt" -o /dev/null -H 'content-type: application/json' -H 'origin: http://localhost:5175' \
+            -d '{"email":"admin@qnsc.dev"}' http://localhost:5175/api/auth/test-login
           cookie=$(grep -i '^set-cookie: __Secure-rova.session_token=' "$LOGS/headers.txt" | head -1 | sed -E 's/^[^:]*: ([^;]*).*/\1/' | tr -d '\r')
           test -n "$cookie" || { echo "::error::test-login set no session cookie"; exit 1; }
-          me=$(curl -sf -H "cookie: $cookie" http://localhost:5173/v1/auth/me)
+          me=$(curl -sf -H "cookie: $cookie" http://localhost:5175/v1/auth/me)
           echo "$me" | jq '{email, role}'
           echo "$me" | jq -e '.email == "admin@qnsc.dev" and .role == "workspace_admin"'
-          curl -sf -H "cookie: $cookie" -o /dev/null -w 'GET /v1/projects -> %{http_code}\n' http://localhost:5173/v1/projects
+          curl -sf -H "cookie: $cookie" -o /dev/null -w 'GET /v1/projects -> %{http_code}\n' http://localhost:5175/v1/projects
 
       - name: Logs
         if: always()
