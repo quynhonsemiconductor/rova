@@ -313,6 +313,10 @@ jobs:
         # adding to it, which is why the json report was missing and the flake step below had
         # nothing to read. playwright.config.ts picks `list` plus `json` when CI is set.
         run: pnpm --filter rova-web exec playwright test
+        env:
+          # The API above listens on :3000 (its PORT). The Vite proxy defaults to .env.example's PORT (3010), and this job
+          # has no .env, so point the proxy at the API that is actually running.
+          API_TARGET: http://localhost:3000
 
       # `always()`: the interesting case is a run that PASSED, because a pass hiding a retry is
       # exactly what went unnoticed. Never fails the job — see the script for why the ratchet
