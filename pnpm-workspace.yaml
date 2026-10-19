@@ -201,7 +201,7 @@ overrides:
   # PINNED to 4.1.1 (fixed, published 2026-09-02) rather than a floor: the floor resolved 4.1.2,
   # published 2026-10-05T19:12Z — inside the 24h `minimumReleaseAge` cooldown the nanoid entry
   # above describes. Same trade as nanoid: raise by hand if the advisory names a later fix.
-  "fast-copy@>=4.0.0 <4.1.0": "4.1.1"
+  "fast-copy@>=4.0.0 <4.1.0": "4.2.0"
   # GHSA-68fv-2mgg-jv7q (CVSS 8.7) — event-loop DoS via indexed source-map section offsets, fixed
   # in 1.2.2. DEV / BUILD-ONLY: postcss, vite, tailwind, jsdom and coverage all read source maps
   # this repo generates. Every consumer declares `^1.x`; kept in 1.x.
