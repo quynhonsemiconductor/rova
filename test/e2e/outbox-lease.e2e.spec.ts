@@ -19,12 +19,12 @@
  * Prereqs: a PostgreSQL with `pnpm db:migrate` applied (migration 0135), DATABASE_URL set.
  */
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NonRetryableError, RetryAfterError, MAX_RETRY_AFTER_MS } from '@platform/outbox';
-import type { DrizzleDB } from '@platform';
+import type { DrizzleDB, DrizzleTx } from '@platform';
 import type { BackfillCounts, ScmBackfillService } from '@modules/scm';
 import * as schema from '../../db/schema';
 import {
@@ -358,6 +358,69 @@ describe('the reaper does what markFailed does for a terminal row, against Postg
     expect(row.status).toBe('failed');
     expect(row.finishedAt).not.toBeNull();
   });
+});
+
+/** An advisory lock key. The claim takes it in beforeSelect, so a test can hold the claim up for a known time. */
+const CLAIM_LOCK_KEY = 917_341;
+
+/** The backfill relay with its claim serialized on an advisory lock, and the lease the claim stored recorded. */
+class SerializedClaimRelay extends ScmBackfillRelayService {
+  claimedUntil: Date | undefined;
+
+  protected override async beforeSelect(tx: DrizzleTx): Promise<void> {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${CLAIM_LOCK_KEY})`);
+  }
+
+  protected override async stampLeases(
+    tx: DrizzleTx,
+    ids: string[],
+    token: string,
+    leaseMs: number,
+  ): Promise<Map<string, { attempts: number; lockedUntil: Date }>> {
+    const stamped = await super.stampLeases(tx, ids, token, leaseMs);
+    this.claimedUntil = [...stamped.values()][0]?.lockedUntil;
+    return stamped;
+  }
+}
+
+describe('the lease is measured from AFTER the claim lock was acquired, against PostgreSQL', () => {
+  it('a claim that waited for its lock still holds the row a full lease from the moment it got the lock', async () => {
+    const job = await insertJob();
+    const backfill = { run: vi.fn(() => Promise.resolve(COUNTS)) } as unknown as ScmBackfillService;
+    const relay = new SerializedClaimRelay(db, backfill);
+    const holder = new Client({ connectionString: process.env['DATABASE_URL'] });
+    await holder.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT pg_advisory_xact_lock($1)', [CLAIM_LOCK_KEY]);
+      const running = relay.relay();
+      // Wait until the claim is queued behind the lock, then keep it waiting for a known time.
+      for (let i = 0; i < 100; i += 1) {
+        const { rows } = await observer.query<{ n: string }>(
+          `SELECT count(*) AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event = 'advisory'`,
+        );
+        if (Number(rows[0].n) > 0) break;
+        await sleep(50);
+      }
+      await sleep(1_500);
+      // The database's clock at the moment the lock is released. The claim cannot take the lock before this.
+      const { rows: released } = await holder.query<{ t: Date }>('SELECT clock_timestamp() AS t');
+      await holder.query('COMMIT');
+      await running;
+
+      // Counted from the claim's transaction start (now()), the 1.5 s wait would come off the hold: the lease
+      // would expire ~1.5 s early. Counted from statement_timestamp(), it runs a full lease from the lock.
+      const heldFromLock = relay.claimedUntil!.getTime() - released[0].t.getTime();
+      expect(
+        heldFromLock,
+        'the lock wait came off the lease: it was counted from the transaction start, not the lock',
+      ).toBeGreaterThanOrEqual(SCM_BACKFILL_LEASE_MS - 500);
+      expect((await load(job.id)).status).toBe('done');
+    } finally {
+      await holder.end();
+    }
+  }, 30_000);
 });
 
 /**
