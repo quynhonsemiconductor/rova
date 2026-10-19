@@ -14,7 +14,7 @@
  * A pass is now three steps, and no transaction is open during the middle one:
  *
  *   1. CLAIM  (short transaction) — select the due rows `FOR UPDATE SKIP LOCKED`, and stamp each with
- *             `attempts = attempts + 1`, a fresh `lease_token` and `locked_until = now() + lease`.
+ *             `attempts = attempts + 1`, a fresh `lease_token` and `locked_until = statement_timestamp() + lease`.
  *             Commit. The attempt is spent at claim time, so a process that dies mid-call still uses up
  *             its budget instead of looping.
  *   2. DELIVER (no transaction) — `deliver(row)` does the external work.
@@ -137,6 +137,16 @@ const passFailed = metrics.getMeter('rova-worker').createCounter('outbox.relay.p
   description: 'Outbox relay passes that threw before finishing (claim or loop failure)',
 });
 
+/**
+ * A row the claim SELECTed but its UPDATE ... RETURNING did not stamp. Every selected row is locked by the
+ * claim transaction, so this should never happen; if it does, the row was silently left out of the batch
+ * and nothing else would report it. Prometheus name `outbox_relay_claim_missing_total{relay}`.
+ */
+const claimMissing = metrics.getMeter('rova-worker').createCounter('outbox.relay.claim_missing', {
+  description:
+    'Rows selected by a relay claim that the claim did not stamp (missing from RETURNING)',
+});
+
 /** The table a relay works on and the columns the base class needs to lease, fence and dead-letter it. */
 export interface OutboxLeaseTable {
   table: PgTable;
@@ -153,16 +163,33 @@ export interface OutboxLeaseTable {
 export type Claimed<TRow> = TRow & {
   leaseToken: string;
   /**
-   * When this relay's lease on the row lapses, as of the last renewal. A delivery that is about to make
-   * a call it cannot take back (a mutation) must check that enough of the lease remains for the call to
-   * finish — see {@link remainingLeaseMs}.
+   * When this relay's lease on the row lapses, as the DATABASE stamped it (`locked_until`, on the database
+   * clock) at the last claim or renewal. Compare it only with the database's `now()`, never the host clock.
    */
   leaseExpiresAt: Date;
 };
 
-/** Milliseconds of this row's lease still ahead of `now`. */
-export function remainingLeaseMs(row: { leaseExpiresAt: Date }, now: number = Date.now()): number {
-  return row.leaseExpiresAt.getTime() - now;
+/**
+ * A stored-clock offset: `now() + delayMs`, computed by PostgreSQL in the statement that writes it.
+ *
+ * Every retry time the relay writes goes through here, so the database clock is the only clock a stored
+ * timestamp is ever set from (see the time rule in the QNSC architecture docs). The host clock is never read
+ * for a lease or a back-off, so a skewed worker cannot make a row due early or hold it late.
+ */
+export function dbDelay(delayMs: number): SQL {
+  return sql`now() + make_interval(secs => ${delayMs / 1000})`;
+}
+
+/**
+ * A lease expiry: `statement_timestamp() + leaseMs`, computed by PostgreSQL in the statement that writes it.
+ *
+ * statement_timestamp(), not now(): now() is the TRANSACTION's start, and the claim waits for its locks after
+ * that start (beforeSelect, reapAbandoned). Counted from now(), that wait would come off the lease, so a
+ * serialized relay could stamp a short lease that lapses while it still holds the row. statement_timestamp()
+ * is taken when the stamping statement runs, after those locks are held.
+ */
+export function leaseDelay(leaseMs: number): SQL {
+  return sql`statement_timestamp() + make_interval(secs => ${leaseMs / 1000})`;
 }
 
 const DEFAULT_LEASE_MS = 2 * 60_000;
@@ -218,9 +245,10 @@ export abstract class AbstractOutboxRelay<
 
   /**
    * SELECT the due rows. MUST use the provided transaction, `FOR UPDATE SKIP LOCKED`, exclude rows
-   * that are currently leased ({@link notLeased}), and order by `seq`.
+   * that are currently leased ({@link notLeased}), and order by `seq`. "Due" is `scheduled_at <= now()`
+   * in SQL: the database clock, never a host `Date`.
    */
-  protected abstract selectDue(tx: DrizzleTx, limit: number, now: Date): Promise<TRow[]>;
+  protected abstract selectDue(tx: DrizzleTx, limit: number): Promise<TRow[]>;
 
   /**
    * The external side effect. NO transaction is open. Returns whatever `settle` / `markSent` need (a
@@ -258,11 +286,11 @@ export abstract class AbstractOutboxRelay<
     newStatus: 'pending' | 'failed',
     lastError: string,
     /**
-     * When the row becomes eligible again. A relay whose table has a delay column (`scheduled_at`,
-     * `next_attempt_at`) MUST write it, or the row is re-read on the very next tick and the whole retry
-     * budget burns in seconds. A relay with its own curve names the parameter `_nextAttemptAt`.
+     * How long until the row is eligible again, counted from the DATABASE clock: write it with
+     * {@link dbDelay}. A relay whose table has a delay column (`scheduled_at`, `next_attempt_at`) MUST
+     * write it, or the row is re-read on the very next tick and the whole retry budget burns in seconds.
      */
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void>;
 
   /** How long a claimed row is hidden from other relays. Must exceed the longest `deliver` for the row. */
@@ -318,15 +346,17 @@ export abstract class AbstractOutboxRelay<
     return Promise.resolve();
   }
 
-  /** `lease is absent or has lapsed` — put this in every `selectDue` WHERE clause. */
-  protected notLeased(now: Date) {
-    return or(isNull(this.outbox.lockedUntil), lte(this.outbox.lockedUntil, now));
+  /**
+   * `lease is absent or has lapsed` — put this in every `selectDue` WHERE clause. `now()` is the database's.
+   */
+  protected notLeased() {
+    return or(isNull(this.outbox.lockedUntil), lte(this.outbox.lockedUntil, sql`now()`));
   }
 
   // ── Database steps (isolated so tests can replace them) ───────────────────
 
   /** Dead-letter rows whose attempts are spent and whose lease has lapsed: they were abandoned mid-call. */
-  protected async reapAbandoned(tx: DrizzleTx, now: Date): Promise<number> {
+  protected async reapAbandoned(tx: DrizzleTx): Promise<number> {
     const o = this.outbox;
     const own = this.reapFilter();
     const reaped = await tx
@@ -342,7 +372,7 @@ export abstract class AbstractOutboxRelay<
         and(
           sql`${o.status} = 'pending'`,
           sql`${o.attempts} >= ${this.maxAttempts}`,
-          or(isNull(o.lockedUntil), lte(o.lockedUntil, now)),
+          or(isNull(o.lockedUntil), lte(o.lockedUntil, sql`now()`)),
           ...(own ? [own] : []),
         ),
       )
@@ -350,23 +380,36 @@ export abstract class AbstractOutboxRelay<
     return (reaped as unknown[]).length;
   }
 
-  /** Stamp the rows with a lease and spend an attempt on each. Returns the new attempt counts. */
+  /**
+   * Stamp the rows with a lease that lapses `leaseMs` after the DATABASE's statement time, and spend an attempt
+   * on each. Returns, per row, the new attempt count and the lease expiry the database stored.
+   */
   protected async stampLeases(
     tx: DrizzleTx,
     ids: string[],
     token: string,
-    lockedUntil: Date,
-  ): Promise<Map<string, number>> {
+    leaseMs: number,
+  ): Promise<Map<string, { attempts: number; lockedUntil: Date }>> {
     const o = this.outbox;
+    // Measured from statement_timestamp(), not now(): see leaseDelay.
     const rows = (await tx
       .update(o.table)
-      .set({ attempts: sql`${o.attempts} + 1`, leaseToken: token, lockedUntil })
+      .set({
+        attempts: sql`${o.attempts} + 1`,
+        leaseToken: token,
+        lockedUntil: leaseDelay(leaseMs),
+      })
       .where(inArray(o.id, ids))
-      .returning({ id: o.id, attempts: o.attempts } as never)) as Array<{
+      .returning({
+        id: o.id,
+        attempts: o.attempts,
+        lockedUntil: o.lockedUntil,
+      } as never)) as Array<{
       id: string;
       attempts: number;
+      lockedUntil: Date;
     }>;
-    return new Map(rows.map((r) => [r.id, r.attempts]));
+    return new Map(rows.map((r) => [r.id, { attempts: r.attempts, lockedUntil: r.lockedUntil }]));
   }
 
   /** Re-lock the row iff this relay still holds the lease. The fence. */
@@ -382,17 +425,17 @@ export abstract class AbstractOutboxRelay<
 
   /**
    * Push the lease out before delivering: rows late in a batch have been waiting behind earlier ones.
-   * Resolves to the new expiry, or `null` if the lease was lost.
+   * The new expiry is the database's statement time plus the lease (see leaseDelay). Resolves to the expiry
+   * the database stored, or `null` if the lease was lost.
    */
   protected async renewLease(row: Claimed<TRow>): Promise<Date | null> {
     const o = this.outbox;
-    const expiresAt = new Date(Date.now() + this.leaseMsFor(row));
-    const renewed = await this.db
+    const renewed = (await this.db
       .update(o.table)
-      .set({ lockedUntil: expiresAt })
+      .set({ lockedUntil: leaseDelay(this.leaseMsFor(row)) })
       .where(and(sql`${o.id} = ${row.id}`, sql`${o.leaseToken} = ${row.leaseToken}`))
-      .returning({ id: o.id } as never);
-    return (renewed as unknown[]).length > 0 ? expiresAt : null;
+      .returning({ lockedUntil: o.lockedUntil } as never)) as Array<{ lockedUntil: Date }>;
+    return renewed.length > 0 ? renewed[0].lockedUntil : null;
   }
 
   /** Give back the attempt the claim spent (see {@link DeferError}). */
@@ -457,7 +500,7 @@ export abstract class AbstractOutboxRelay<
 
   private async claim(): Promise<Array<Claimed<TRow>>> {
     return this.db.transaction(async (tx) => {
-      const abandoned = await this.reapAbandoned(tx, new Date());
+      const abandoned = await this.reapAbandoned(tx);
       if (abandoned > 0) {
         this.logger.error(
           { abandoned, [DEAD_LETTER_FIELD]: this.reapLabel() },
@@ -466,10 +509,10 @@ export abstract class AbstractOutboxRelay<
       }
 
       await this.beforeSelect(tx);
-      // `now` is taken AFTER beforeSelect: a relay that serializes its claims may have waited for the lock,
-      // and a hold measured from before the wait would be shortened by it.
-      const now = new Date();
-      const rows = await this.selectDue(tx, this.batchSize, now);
+      // Due-ness is `now()` of this transaction (its start), one consistent database instant for the SELECT.
+      // The lease is NOT taken from that instant: it is stamped by statement_timestamp() after beforeSelect's
+      // lock wait, so the wait does not shorten the hold (see leaseDelay).
+      const rows = await this.selectDue(tx, this.batchSize);
       if (!rows.length) return [];
 
       // Backlog AGE, not just throughput: a relay falling behind looks perfectly healthy on a
@@ -491,19 +534,26 @@ export abstract class AbstractOutboxRelay<
       // right before it is delivered, so the hold only has to cover the waiting.
       const token = randomUUID();
       const holdMs = rows.reduce((total, r) => total + this.leaseMsFor(r), 0);
-      const leaseExpiresAt = new Date(now.getTime() + holdMs);
-      const attempts = await this.stampLeases(
+      const stamped = await this.stampLeases(
         tx,
         rows.map((r) => r.id),
         token,
-        leaseExpiresAt,
+        holdMs,
       );
-      return rows.map((r) => ({
-        ...r,
-        attempts: attempts.get(r.id) ?? r.attempts + 1,
-        leaseToken: token,
-        leaseExpiresAt,
-      }));
+      // Every selected row was locked by this transaction, so each one should come back stamped. One that does
+      // not is an anomaly, not a normal outcome: it is skipped for this pass, and logged and counted so it is seen.
+      return rows.flatMap((r) => {
+        const s = stamped.get(r.id);
+        if (s) {
+          return [{ ...r, attempts: s.attempts, leaseToken: token, leaseExpiresAt: s.lockedUntil }];
+        }
+        this.logger.error(
+          { rowId: r.id, relay: this.queueName },
+          'Relay selected a row the claim did not stamp (missing from RETURNING) — skipping it this pass',
+        );
+        claimMissing.add(1, { relay: this.queueName });
+        return [];
+      });
     });
   }
 
@@ -605,7 +655,6 @@ export abstract class AbstractOutboxRelay<
     const delayMs = Number.isFinite(err.delayMs)
       ? Math.min(Math.max(err.delayMs, 0), MAX_RETRY_AFTER_MS)
       : 5 * 60_000;
-    const nextAttemptAt = new Date(Date.now() + delayMs);
     try {
       const done = await this.finish(row, async (tx) => {
         await this.refundAttempt(tx, row);
@@ -614,7 +663,7 @@ export abstract class AbstractOutboxRelay<
           { ...row, attempts: Math.max(row.attempts - 1, 0) },
           'pending',
           err.message,
-          nextAttemptAt,
+          delayMs,
         );
       });
       if (done === LEASE_LOST) return 'lost';
@@ -644,11 +693,10 @@ export abstract class AbstractOutboxRelay<
         ? Math.min(Math.max(err.retryAfterMs, 0), MAX_RETRY_AFTER_MS)
         : 0;
     const delayMs = Math.max(hinted, this.backoffDelayMs(row.attempts));
-    const nextAttemptAt = new Date(Date.now() + delayMs);
 
     try {
       const recorded = await this.finish(row, (tx) =>
-        this.markFailed(tx, row, newStatus, errMsg, nextAttemptAt),
+        this.markFailed(tx, row, newStatus, errMsg, delayMs),
       );
       if (recorded === LEASE_LOST) return 'lost';
     } catch (markErr) {
