@@ -94,8 +94,9 @@ discover() {
 
   local services
   services="$(aws ecs list-services --cluster "$CLUSTER" --query 'serviceArns[]' --output text | tr '\t' '\n' | awk -F/ '{print $NF}')"
-  API_SERVICE="$(echo "$services" | awk '/-api$/' | head -1)"
-  WORKER_SERVICE="$(echo "$services" | awk '/-worker$/' | head -1)"
+  # Service names are plain `api` and `worker` (infra: service_name); task-definition FAMILIES are rova-<env>-api etc. Match both shapes.
+  API_SERVICE="$(echo "$services" | awk '/(^|-)api$/' | head -1)"
+  WORKER_SERVICE="$(echo "$services" | awk '/(^|-)worker$/' | head -1)"
   [ -n "$API_SERVICE" ] && [ -n "$WORKER_SERVICE" ] || die "api or worker service not found among: ${services//$'\n'/ }"
 
   local api_json
