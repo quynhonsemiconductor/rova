@@ -85,7 +85,7 @@ Rotating the value later signs everyone out (nothing else); do it the same way a
 
 **Interactive script:** `scripts/owner/identity-v8-cutover.sh` (in #729) runs the develop steps with `develop` and the production steps with `prod` (see "Production"). The develop run covers steps 1 to 6 and the rehearsal (below), one step at a time, with a `yes` before each write. It discovers the names, checks the migrator image contains #719, writes the key (never printed), runs the dry run and the commit, checks the invariant, pauses for the #718 merge, re-runs the backfill, walks the verification checklist and the rollback rehearsal. `--from <step>` resumes (`preflight`, `secret`, `backfill-dry`, `commit`, `merge`, `verify`, `rehearsal`). Its log holds no secret values. Production is the `prod` run, with its own snapshot and release steps.
 
-**The script lands with #729, after #718.** Until #729 merges, run its steps from the #729 branch, in a worktree next to this checkout: `git worktree add ../wt729 owner/identity-v8-develop-cutover`, then `bash ../wt729/scripts/owner/identity-v8-cutover.sh develop`. The pre-merge steps (secret, dry run, commit) need nothing from #718's merge.
+**The script is in #729 and is not merged yet.** Until it merges, run it from the #729 branch, in a worktree next to this checkout: `git worktree add ../wt729 owner/identity-v8-develop-cutover`, then `bash ../wt729/scripts/owner/identity-v8-cutover.sh develop`. The stub tests for the production path are `bash ../wt729/scripts/owner/test/run.sh`.
 
 Steps 1-3 are additive and happen **before** #718 deploys; 4-6 are the window. Production runs the same steps in one release, shortly after develop is verified, with an announced downtime and a database snapshot before any write (see "Production").
 
@@ -167,45 +167,17 @@ the reason this is done before #718, not after**: fix or remove the fixture, dry
 
 ## Production: how it differs from the develop steps above
 
-Prod's migrator image only comes from a release tag, so the dry run uses an explicit digest of a build of `main`, and the cutover tag's own migrator commits the backfill. `bash scripts/owner/identity-v8-cutover.sh prod` does both, in this order:
+Prod's migrator image only comes from a release tag. The release is therefore the gate, and there is no dry run before it: the image running on
+production today has no migration 0136, so it could not pass one. `bash scripts/owner/identity-v8-cutover.sh prod` walks the steps below.
 
-### (a) The dry run: from an explicit image digest (the script's `adhoc-dry` step)
+### (a) Migrations 0131-0136 and the on-deploy gate
 
-The ECR repositories are one account and one set of repositories for every environment, and a `main` build is `rova-migrator:sha-<full commit sha>`. A
-build of `main` that contains #719 (merge commit `4744d1b3`) therefore already holds the backfill. A one-off task names its **digest**, not a tag, so what
-runs is exactly what you inspected. A task definition's image cannot be overridden at `run-task`, so register an **ad-hoc** definition (its own family: the
-Terraform-managed `rova-prod-migrator` is never touched):
-
-```sh
-export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1
-SHA=<a commit on main that contains 4744d1b3; e.g. the newest>      # git merge-base --is-ancestor 4744d1b3 $SHA
-REPO=rova-migrator
-
-# 1. the digest of that build, and proof it is the build of that commit (the tag is immutable)
-DIGEST=$(aws ecr describe-images --repository-name "$REPO" --image-ids imageTag="sha-$SHA" --query 'imageDetails[0].imageDigest' --output text)
-REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com
-echo "$REGISTRY/$REPO@$DIGEST"
-# provenance, the same check the deploy runs on the API image (signed by the shared builder workflow, scoped to this repository):
-gh attestation verify "oci://$REGISTRY/$REPO@$DIGEST" --repo quynhonsemiconductor/rova \
-  --signer-workflow quynhonsemiconductor/ci/.github/workflows/backend-deploy.yml
-
-# 2. an ad-hoc task definition: prod's migrator definition with ONLY the image changed, under another family
-aws ecs describe-task-definition --task-definition rova-prod-migrator --query taskDefinition > /tmp/migrator.json
-jq --arg image "$REGISTRY/$REPO@$DIGEST" \
-  'del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)
-   | .family = "rova-prod-migrator-adhoc"
-   | (.containerDefinitions[] | select(.name == "migrator").image) = $image' /tmp/migrator.json > /tmp/migrator-adhoc.json
-aws ecs register-task-definition --cli-input-json file:///tmp/migrator-adhoc.json --query 'taskDefinition.taskDefinitionArn' --output text
-
-# 3. verify the SQL is in it, then dry-run (the same run_migrator helper as above, with the ad-hoc family)
-export ENV_SLUG=prod CLUSTER=rova-prod TASKDEF=rova-prod-migrator-adhoc
-TASK=$(run_migrator '["ls","dist/db/identity-v8"]')     # expect: backfill.sql cli.js ... mirror-bans.sql rollback.sql run.js
-TASK=$(run_migrator '["node","dist/db/identity-v8/cli.js","backfill","--tenant-id","'"$TENANT_ID"'","--staff-domains","qnsc.vn"]')
-```
-
-Read each task's exit code and log as in step 1. **Commit nothing from here:** a dry run rolls back, and on production the commit is (b)'s job. Deregister the
-ad-hoc revision when you are done (`aws ecs deregister-task-definition`). A `RAISE` on production data is the point of doing this a week early: fix it in v7,
-dry-run again, until it passes.
+- Migrations 0131 to 0136 and the identity v8 SQL (`db/identity-v8/*.sql`, since #719) reach production in the same release tag. They are on `main`.
+- The migrator runs the migrations, then the backfill **preflight**, committed, before the API rolls (`IDENTITY_V8_BACKFILL=commit`, see (b)). A RAISE fails the
+  migrator task and the deploy stops. The v7 tasks keep serving, and nothing has changed for users.
+- The migrations are additive for data. None drops a table, a column or a row. 0132 replaces two triggers (`trg_stamp_story_lifecycle_dates`,
+  `trg_stamp_task_lifecycle_dates`), which changes no rows. Check this yourself before releasing: `git diff <the previous release tag> <the new tag> -- db/migrations`.
+- The fresh snapshot the script takes before the release is the restore point for data (Rollback, C).
 
 ### (b) The cutover tag's migrator commits the backfill itself
 
@@ -223,15 +195,20 @@ definition carries `IDENTITY_V8_BACKFILL=commit` (`db/identity-v8/on-deploy.ts`,
 
 Cutover sequence on production, in order (the script walks it):
 
-1. **Backup:** assert automated backups (retention at least 7 days), create the manual snapshot `rova-prod-pre-identity-v8-<date>`, and wait until it is available. Nothing is written before this.
+1. **Retention:** the script asserts that automated backups keep at least 7 days.
 2. **Secret and Entra:** `better-auth-secret` into `rova/production/app`; the redirect URI and the optional claims `email` and `upn` on the production sign-in app.
-   2b. **Edge secret** (`docs/runbooks/edge-client-ip.md`): one generated value, set as the Pages secret `EDGE_CLIENT_IP_SECRET` on `rova-prod-web` and as `edge-client-ip-secret` in `rova/production/app`. The script refuses if either already exists, because the Pages value cannot be read back. It must exist before the release: the Function answers 500 without it.
-3. **Dry run** from the digest of a build of `main` (provenance verified), through an ad-hoc task definition. Writes nothing.
-4. **Release change:** `better_auth_secret_set`, `edge_client_ip_secret_set` and `identity_v8_backfill_on_deploy` all `true` in `infra/live/prod/main.tf`, merged, and `infra-apply` applied.
-5. **Announce** the downtime, then cut the tag (the script asks for the name and confirms before it pushes). Backend deploy: migrate, **backfill commit**, API roll; the web deploy waits for it.
-6. **Verify** (you and one other person). Then the follow-up change sets `identity_v8_backfill_on_deploy` back to `false`.
+3. **Edge secret** (`docs/runbooks/edge-client-ip.md`): one generated value, set as the Pages secret `EDGE_CLIENT_IP_SECRET` on `rova-prod-web` and as
+   `edge-client-ip-secret` in `rova/production/app`. The script refuses if either already exists, because the Pages value cannot be read back. It must exist
+   before the release: the Function answers 500 without it.
+4. **Flags:** `better_auth_secret_set`, `edge_client_ip_secret_set` and `identity_v8_backfill_on_deploy` all `true` in `infra/live/prod/main.tf`, merged to `main`.
+   The tag deploy waits for the prod apply, so the flags must be merged before the release.
+5. **Announce** the downtime. The script asks, then takes a **fresh manual snapshot** of `rova-prod` and waits until it is `available`. The name is saved.
+6. **Release:** the SA merges the release-please PR (the owner says go release). The script finds the release tag on `origin/main` and saves it. It then waits for
+   that tag's deploy: the backend deploy migrates, commits the backfill and rolls the API; the web deploy waits for it. The script checks that the live API runs
+   that tag's build, injects the secret, and that the invariant holds.
+7. **Verify:** the checklist, you first and then a second person. Then the follow-up change sets `identity_v8_backfill_on_deploy` back to `false`.
 
-Rollback in this window is in "Rollback" below. The snapshot is the last resort.
+Rollback is in "Rollback" below (C is the snapshot restore).
 
 ### The web deploy of a prod tag can time out waiting for the backend
 
@@ -266,6 +243,25 @@ state; the **next** deploy re-registers the current definition, so follow it wit
 **B. Durable (an hour): revert the merge.** `git revert -m 1 <the #718 merge commit>` in a PR titled `revert: identity 8 cutover`, merge it; develop deploys
 on merge and production on the next tag (the revert also removes the tag guard, since the guard belongs to #718). Keep `better_auth_secret_set` as is.
 
+**C. Restore the snapshot (data; the last resort).** The release's fresh snapshot is in the script's saved state (`PRE_SNAPSHOT`, in
+`~/.local/state/rova-identity-v8/prod-state.env`) and in its log. A restore never overwrites `rova-prod`: it creates a new instance.
+
+```sh
+export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1
+SNAP=<PRE_SNAPSHOT>
+# the settings the restored instance must match: the subnet group, the security groups, the class, the parameter group
+aws rds describe-db-instances --db-instance-identifier rova-prod \
+  --query 'DBInstances[0].{subnet: DBSubnetGroup.DBSubnetGroupName, sgs: VpcSecurityGroups[].VpcSecurityGroupId, class: DBInstanceClass, pg: DBParameterGroups[0].DBParameterGroupName, endpoint: Endpoint.Address}'
+aws rds restore-db-instance-from-db-snapshot --db-instance-identifier rova-prod-restore --db-snapshot-identifier "$SNAP" \
+  --db-subnet-group-name <subnet> --vpc-security-group-ids <sg-ids> --db-instance-class <class> --no-multi-az --no-publicly-accessible
+aws rds wait db-instance-available --db-instance-identifier rova-prod-restore
+aws rds describe-db-instances --db-instance-identifier rova-prod-restore --query 'DBInstances[0].Endpoint.Address' --output text
+```
+
+Pointing the services at the restored instance is an **infra change, not a rename**. The API, the worker and the migrator read `DATABASE_HOST` from their task
+definitions, which Terraform sets from `module.rds`. A rename changes the endpoint hostname, so the tasks would still point at the old one. Set the restored
+endpoint in `infra/live/prod`, apply it, and redeploy. Keep `rova-prod` (the old instance) until the restored one is verified; delete nothing without the owner.
+
 In both: people sign in again (v8 sessions mean nothing to v7, and the reverse) and are provisioned by v7's sign-in as before; anyone created in v8 has a profile row
 that v7's sign-in links by address; the `rly_` tokens, workspace membership and roles are shared and untouched.
 
@@ -295,8 +291,8 @@ Before the production release, on develop, with the cutover live and at least on
   connection writes (`db/seeds/bootstrap.ts`) stop at the same time; the sign-in hook already reads the home workspace from `HOME_WORKSPACE_ID` and the domains and
   the JIT flag from the environment, not from `sso_connections`.
 - **Day 30, drop:** `DROP` the v7 tables (`auth_sessions`, `sso_identities`, `sso_connections`, `sso_connection_domains`) in a migration.
-- **Done (#722, identity 8.4.1):** the PostgreSQL 18 `postgres-conformance` service and `IDENTITY_CONFORMANCE_DATABASE_URL` are gone from
-  `backend-ci.yml`; the conformance kit runs on the e2e PostgreSQL 17.
+- **Done (#728, identity 8.4.1, app-platform#261):** the PostgreSQL 18 `postgres-conformance` service and `IDENTITY_CONFORMANCE_DATABASE_URL` are gone from
+  `backend-ci.yml` (the kit then runs on the e2e PostgreSQL 17).
 
 ## Not in this change (PR 4)
 
@@ -312,4 +308,4 @@ credential and a different consent, and it must not ride on a sign-in cutover. W
 - Offboarding someone from the workspace is unchanged (members -> suspend/remove). To disable a person everywhere, ban their identity user (`setUserBanned`, service side): it
   ends every session and refuses sign-in and API tokens at once. There is no admin screen for it yet.
 - Rate limits: an address-keyed floor runs first (1,200 requests/min per address, 300/min of API-token presentations per address), the user-keyed `DEFAULT` after authentication.
-- The identity package's own checks run in CI as `test/e2e/identity-conformance.e2e.spec.ts` (against a PostgreSQL 18 service until the kit runs on 17).
+- The identity package's own checks run in CI as `test/e2e/identity-conformance.e2e.spec.ts` (against the PostgreSQL 17 e2e server: identity 8.4.1's kit uses `gen_random_uuid()`).

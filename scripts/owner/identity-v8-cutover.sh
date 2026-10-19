@@ -14,7 +14,7 @@ set -euo pipefail
 ENV_NAME="${1:-}"
 case "$ENV_NAME" in
   develop) ENV_SLUG=develop; STEPS=(preflight secret backfill-dry commit merge verify rehearsal) ;;
-  prod)    ENV_SLUG=prod;    STEPS=(preflight backup secret edge adhoc-dry release verify) ;;
+  prod)    ENV_SLUG=prod;    STEPS=(preflight retention secret edge release verify) ;;
   *) echo "usage: $0 develop|prod [--from STEP]" >&2; exit 2 ;;
 esac
 shift
@@ -34,7 +34,7 @@ else
   SECRET_ID="$PRODUCT/develop/app"
 fi
 EXPECTED_ACCOUNT=608983206583
-MIGRATOR_MIN_COMMIT=4744d1b3               # #719: a migrator image must contain the backfill SQL
+MIGRATOR_MIN_COMMIT="${MIGRATOR_MIN_COMMIT:-4744d1b3}"   # #719: a migrator image must contain the backfill SQL (overridable by the stub tests)
 ROVA_REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PAGES_PROJECT=rova-prod-web                # the Pages project the prod SPA and its Function deploy to
 if command -v wrangler >/dev/null; then WRANGLER=(wrangler); else WRANGLER=(npx --yes wrangler@4.149.0); fi
@@ -56,13 +56,13 @@ EOF
 say()  { printf '\n== %s\n' "$*" | tee -a "$LOG" >&2; }
 note() { printf '   %s\n' "$*" | tee -a "$LOG" >&2; }
 die()  { printf '\nSTOP: %s\n' "$*" | tee -a "$LOG" >&2; exit 1; }
-ask()  { read -r -p "$1 " ANSWER; }
+ask()  { read -r -p "$1 " ANSWER || die "no answer for: $1 (stdin is closed)"; }
 confirm() { # confirm "<what will happen>": anything but `yes` stops the script
   local reply
-  read -r -p "$1 Type yes to continue: " reply
+  read -r -p "$1 Type yes to continue: " reply || die "no answer for: $1 (stdin is closed)"
   [ "$reply" = yes ] || die "stopped before: $1"
 }
-pause() { read -r -p "$1 Press Enter when done (Ctrl-C stops): " _; }
+pause() { read -r -p "$1 Press Enter when done (Ctrl-C stops): " _ || die "no answer for: $1 (stdin is closed)"; }
 state_set() { # state_set KEY VALUE
   touch "$STATE" && chmod 600 "$STATE"
   { grep -v "^$1=" "$STATE" || true; printf '%s=%s\n' "$1" "$2"; } > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
@@ -73,8 +73,9 @@ mkdir -p "$LOG_DIR" && chmod 700 "$LOG_DIR"
 note "environment $ENV_NAME; log: $LOG"
 
 # ── checks ───────────────────────────────────────────────────────────────────────────────────────────────────────────
-for tool in aws jq python3 git gh; do command -v "$tool" >/dev/null || die "$tool is not installed"; done
-aws --version 2>&1 | grep -q '^aws-cli/2' || die "needs AWS CLI v2 (aws --version)"
+for tool in aws jq python3 git openssl; do command -v "$tool" >/dev/null || die "$tool is not installed"; done
+AWS_VERSION="$(aws --version 2>&1)"
+[[ "$AWS_VERSION" == aws-cli/2* ]] || die "needs AWS CLI v2 (aws --version says: $AWS_VERSION)"
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
 [ "$ACCOUNT" = "$EXPECTED_ACCOUNT" ] || die "profile qnsc-admin is account $ACCOUNT, expected $EXPECTED_ACCOUNT"
 note "account $ACCOUNT, region $AWS_REGION, cluster $CLUSTER"
@@ -107,7 +108,6 @@ discover() {
 
   local mig_json mig='.taskDefinition.containerDefinitions[] | select(.name=="migrator")'
   mig_json="$(aws ecs describe-task-definition --task-definition "$CLUSTER-migrator" --output json)" || die "no task definition family $CLUSTER-migrator"
-  MIG_TEMPLATE="$mig_json"
   MIG_REV_ARN="$(echo "$mig_json" | jq -r '.taskDefinition.taskDefinitionArn')"   # the revision every run uses unless the ad-hoc one is set
   MIG_IMAGE="$(echo "$mig_json" | jq -r "$mig.image")"
   MIG_LOG_GROUP="$(echo "$mig_json" | jq -r "$mig.logConfiguration.options[\"awslogs-group\"]")"
@@ -118,9 +118,11 @@ discover() {
   if [ -z "$TENANT_ID" ]; then ask "ENTRA_TENANT_ID is not in the task environment; type the sign-in app's tenant id:"; TENANT_ID="$ANSWER"; fi
 }
 
-check_cloudflare_login() { # prod only: the edge step and the release check talk to Cloudflare
-  if ! "${WRANGLER[@]}" whoami >/dev/null 2>&1; then
-    die "not logged in to Cloudflare, which the prod edge step and the release check need. Run 'wrangler login' (or export CLOUDFLARE_API_TOKEN), then run this script again"
+check_cloudflare_login() { # prod only: the edge step and the release check talk to Cloudflare. The text is checked, not the exit code.
+  local out
+  out="$("${WRANGLER[@]}" whoami 2>&1)" || true
+  if ! grep -q "You are logged in" <<< "$out"; then
+    die "not logged in to Cloudflare (wrangler whoami says: $(head -1 <<< "$out")). Run 'wrangler login' (or export CLOUDFLARE_API_TOKEN), then run this script again"
   fi
   note "Cloudflare: logged in (wrangler whoami)"
 }
@@ -209,7 +211,7 @@ backfill_dry_run() { # the backfill's preflight and assertions, writing nothing
      fixture from coming back is a rova PR, not a database edit.
    - more than one Entra identity for one person, or two users sharing a lower-cased address: merge or delete one in v7.
    - an sso_connections row beyond the home connection and the shared guest gate: remove it in v7.
-   Then run:  bash scripts/owner/identity-v8-cutover.sh <env> --from backfill-dry  (develop) or --from adhoc-dry (prod)
+   Then run:  bash scripts/owner/identity-v8-cutover.sh develop --from backfill-dry
 EOF
   die "dry run failed (exit $TASK_CODE)"
 }
@@ -226,27 +228,13 @@ key_ok() {
 }
 
 # ── steps ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-step_backup() { # prod only: a manual snapshot before any write
-  say "b. the backup: automated backups on, and a manual snapshot before any write"
-  local ret snap status
+step_retention() { # prod only: the retention the snapshot restore relies on
+  say "b. retention: automated backups must keep at least 7 days"
+  local ret
   ret="$(aws rds describe-db-instances --db-instance-identifier "$RDS_ID" --query 'DBInstances[0].BackupRetentionPeriod' --output text)" ||
     die "cannot describe $RDS_ID"
   [ "$ret" -ge 7 ] 2>/dev/null || die "BackupRetentionPeriod is '$ret' (need at least 7): fix it in infra before anything else"
-  note "automated backups: retention $ret days"
-  snap="$RDS_ID-pre-identity-v8-$(date -u +%Y%m%d)"
-  status="$(aws rds describe-db-snapshots --db-snapshot-identifier "$snap" --query 'DBSnapshots[0].Status' --output text 2>/dev/null || true)"
-  if [ "$status" = available ]; then
-    note "snapshot $snap is already available: reusing it"
-  elif [ -n "$status" ] && [ "$status" != None ]; then
-    die "snapshot $snap exists with status '$status': wait for it, or name another one by hand"
-  else
-    confirm "Create a manual snapshot $snap of $RDS_ID (kept until you delete it; it costs storage)?"
-    aws rds create-db-snapshot --db-instance-identifier "$RDS_ID" --db-snapshot-identifier "$snap" >/dev/null || die "create-db-snapshot failed"
-    note "waiting for the snapshot to be available (this takes minutes)"
-    aws rds wait db-snapshot-available --db-snapshot-identifier "$snap" || die "the snapshot did not become available: check it in the console"
-  fi
-  state_set PRE_SNAPSHOT "$snap"
-  note "PASS: the snapshot $snap is available. Restoring it is the last-resort rollback (runbook, Rollback)."
+  note "PASS: automated backup retention $ret days"
 }
 
 step_secret() {
@@ -310,14 +298,17 @@ step_commit() {
 }
 
 pages_edge_secret_state() { # sets PAGES_EDGE to present or absent (names only). No subshell: a die here must stop the script
-  local list
-  list="$("${WRANGLER[@]}" pages secret list --project-name "$PAGES_PROJECT" 2>/dev/null)" || die "cannot list the Pages secrets of $PAGES_PROJECT (wrangler login?)"
+  local list err="$LOG_DIR/pages-secret-list.err"
+  if ! list="$("${WRANGLER[@]}" pages secret list --project-name "$PAGES_PROJECT" 2>"$err")"; then
+    cat "$err" | tee -a "$LOG" >&2
+    die "cannot list the Pages secrets of $PAGES_PROJECT (the wrangler error is above)"
+  fi
   if grep -q EDGE_CLIENT_IP_SECRET <<< "$list"; then PAGES_EDGE=present; else PAGES_EDGE=absent; fi
 }
 
 step_edge() { # prod: the visitor-address secret, the same value in the Pages project and in the app bundle (docs/runbooks/edge-client-ip.md)
   say "edge: the edge client-IP secret, one value in the Pages project and in $SECRET_ID (never printed)"
-  "${WRANGLER[@]}" whoami >/dev/null 2>&1 || die "wrangler is not logged in: run 'wrangler login' (or set CLOUDFLARE_API_TOKEN) and run this step again"
+  check_cloudflare_login
   pages_edge_secret_state
   if [ "$PAGES_EDGE" = present ]; then
     die "$PAGES_PROJECT already has EDGE_CLIENT_IP_SECRET, and its value cannot be read back: this step will not guess. Rotate by hand (runbook, Rotation), then --from edge"
@@ -330,12 +321,11 @@ step_edge() { # prod: the visitor-address secret, the same value in the Pages pr
   confirm "Generate ONE key and set it as EDGE_CLIENT_IP_SECRET on $PAGES_PROJECT AND as edge-client-ip-secret in $SECRET_ID?"
   local KEY new_json
   KEY="$(openssl rand -base64 48)"
-  export KEY
   printf '%s' "$KEY" | "${WRANGLER[@]}" pages secret put EDGE_CLIENT_IP_SECRET --project-name "$PAGES_PROJECT" >>"$LOG" 2>&1 ||
     { unset KEY; die "the Pages secret write failed: nothing in the bundle was changed; see $LOG"; }
   note "Pages secret written"
   new_json="$(aws secretsmanager get-secret-value --secret-id "$SECRET_ID" --query SecretString --output text |
-    python3 -c '
+    KEY="$KEY" python3 -c '
 import json, os, sys
 d = json.load(sys.stdin)
 if "edge-client-ip-secret" in d:
@@ -356,82 +346,88 @@ json.dump(d, sys.stdout)
   note "PASS: one value in both places. It reaches the Function on the next web deploy, which is the release: do not release before this step."
 }
 
-step_adhoc_dry() { # prod: the dry run from a build of main, pinned by digest, with its provenance checked
-  say "d. dry run from a build of main, pinned by digest (what runs is what was inspected)"
-  local sha digest registry image tmp arn
-  git -C "$ROVA_REPO" fetch -q origin main
-  sha="$(git -C "$ROVA_REPO" rev-parse origin/main)"
-  ask "A commit on main to dry-run (Enter for origin/main, $sha):"
-  if [ -n "$ANSWER" ]; then sha="$(git -C "$ROVA_REPO" rev-parse --verify "$ANSWER^{commit}")" || die "not a commit: $ANSWER"; fi
-  git -C "$ROVA_REPO" merge-base --is-ancestor "$MIGRATOR_MIN_COMMIT" "$sha" || die "$sha does not contain #719 ($MIGRATOR_MIN_COMMIT)"
-  digest="$(aws ecr describe-images --repository-name rova-migrator --image-ids "imageTag=sha-$sha" --query 'imageDetails[0].imageDigest' --output text)" ||
-    die "no rova-migrator image tagged sha-$sha: the build of main did not run"
-  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "no digest for sha-$sha"
-  registry="$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
-  image="$registry/rova-migrator@$digest"
-  note "image: $image"
-  gh attestation verify "oci://$image" --repo quynhonsemiconductor/rova \
-    --signer-workflow quynhonsemiconductor/ci/.github/workflows/backend-deploy.yml >/dev/null 2>&1 ||
-    die "the build's provenance does not verify (signed by the shared builder, from this repository): do not use this image"
-  note "provenance verified"
-  confirm "Register an ad-hoc migrator revision (family $CLUSTER-migrator-adhoc, this digest only) and dry-run it?"
-  tmp="$LOG_DIR/adhoc-taskdef-$RUN_ID.json"
-  jq --arg image "$image" '.taskDefinition
-      | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)
-      | .family = (.family + "-adhoc")
-      | (.containerDefinitions[] | select(.name == "migrator").image) = $image' <<< "$MIG_TEMPLATE" > "$tmp"
-  MIG_REV_ARN="$(aws ecs register-task-definition --cli-input-json "file://$tmp" --query 'taskDefinition.taskDefinitionArn' --output text)" ||
-    { rm -f "$tmp"; die "register-task-definition failed"; }
-  rm -f "$tmp"
-  state_set ADHOC_REV "$MIG_REV_ARN"
-  note "ad-hoc revision: $MIG_REV_ARN"
-  backfill_dry_run
-}
 
-step_merge() { # develop
-  say "e. before the merge: the checks that must already hold"
+step_merge() { # develop: #718 is merged; the develop deploy of main carries identity 8
+  say "e. the develop deploy of main (identity 8, #718 merged)"
   read_secret
   key_ok || die "better-auth-secret is missing or short in $SECRET_ID"
   unset SECRET_JSON
   check_invariant
-  say "e. PAUSE: the SA merges #718 on your go (this script does not merge)"
-  note "After the merge, develop deploys the API, the worker and the web. Wait for the deploy to finish."
-  pause "Tell the SA: merge #718. Press Enter here once the develop deploy has finished."
-  api_live_has_secret || die "the live API task definition does not inject BETTER_AUTH_SECRET: the deploy has not landed (or it is not #718's)"
+  note "main carries identity 8. Develop deploys it on the push to main, and the deploy runs the same migrations and the backfill preflight."
+  pause "Press Enter once the develop deploy of main has finished."
+  api_live_has_secret || die "the live API task definition does not inject BETTER_AUTH_SECRET: the deploy has not landed"
   service_primary_completed "$API_SERVICE" || die "the API's primary deployment is not COMPLETED yet: wait, then run this step again with --from merge"
   note "PASS: the live API injects BETTER_AUTH_SECRET and its deployment is COMPLETED"
 }
 
-step_release() { # prod: the infra flags on main, then the tag. The tag's migrator commits the backfill (identity_v8_backfill_on_deploy).
-  say "e. the release: infra flags on main, the announcement, then the tag"
+take_or_reuse_snapshot() { # a FRESH manual snapshot in a full run; a resume (--from release) reuses one taken within 6 hours
+  local max_age=0 newest snap when age
+  [ "$FROM" = release ] && max_age=$((6 * 3600))
+  newest="$(aws rds describe-db-snapshots --db-instance-identifier "$RDS_ID" --snapshot-type manual \
+    --query 'sort_by(DBSnapshots[?Status==`available`], &SnapshotCreateTime)[-1].[DBSnapshotIdentifier, SnapshotCreateTime]' \
+    --output text 2>/dev/null || true)"
+  if [ "$max_age" -gt 0 ] && [ -n "$newest" ] && [ "$newest" != None ]; then
+    snap="${newest%%$'\t'*}"; when="${newest#*$'\t'}"
+    age="$(python3 -c 'import datetime, sys; t = datetime.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00")); print(int(datetime.datetime.now(datetime.timezone.utc).timestamp() - t.timestamp()))' "$when")" ||
+      die "cannot read the time of snapshot $snap"
+    if [ "$age" -lt "$max_age" ]; then
+      note "reusing snapshot $snap, taken $((age / 60)) minutes ago"
+      state_set PRE_SNAPSHOT "$snap"
+      return 0
+    fi
+    note "the newest snapshot ($snap) is $((age / 3600)) hours old: a fresh one is needed"
+  fi
+  snap="$RDS_ID-pre-identity-v8-$(date -u +%Y%m%d-%H%M)"
+  confirm "Take a fresh manual snapshot $snap of $RDS_ID (kept until you delete it; it costs storage)?"
+  aws rds create-db-snapshot --db-instance-identifier "$RDS_ID" --db-snapshot-identifier "$snap" >/dev/null || die "create-db-snapshot failed"
+  note "waiting for snapshot $snap to be available (minutes)"
+  aws rds wait db-snapshot-available --db-snapshot-identifier "$snap" || die "snapshot $snap did not become available: check it in the console"
+  state_set PRE_SNAPSHOT "$snap"
+  note "PASS: snapshot $snap is available"
+}
+
+step_release() { # prod: the snapshot, the flags on main, the release-please PR, then the tag's deploy (identity_v8_backfill_on_deploy commits the backfill)
+  say "e. the release: flags on main, the fresh snapshot, the release-please PR, the tag's deploy"
   git -C "$ROVA_REPO" fetch -q origin main --tags
   local main_sha flag
   main_sha="$(git -C "$ROVA_REPO" rev-parse origin/main)"
   for flag in better_auth_secret_set edge_client_ip_secret_set identity_v8_backfill_on_deploy; do
     git -C "$ROVA_REPO" show "origin/main:infra/live/prod/main.tf" |
       grep -Eq "^[[:space:]]*${flag}[[:space:]]*=[[:space:]]*true([[:space:]]|$)" ||
-      die "origin/main infra/live/prod/main.tf does not set $flag = true. Merge the infra PR (the three flags) and let infra-apply finish first."
+      die "origin/main infra/live/prod/main.tf does not set $flag = true. Merge the infra PR (the three flags) first."
   done
   git -C "$ROVA_REPO" merge-base --is-ancestor "$MIGRATOR_MIN_COMMIT" origin/main || die "origin/main lacks #719"
   pages_edge_secret_state
   [ "$PAGES_EDGE" = present ] ||
     die "$PAGES_PROJECT has no EDGE_CLIENT_IP_SECRET: run --from edge before releasing (the Function answers 500 without it)"
   note "origin/main $main_sha: the three flags are true and it contains #719"
-  ask "Has infra-apply for prod finished green? (yes/no)"; [ "$ANSWER" = yes ] || die "wait for infra-apply, then --from release"
   ask "Downtime is announced to users and the window has started? (yes/no)"; [ "$ANSWER" = yes ] || die "announce it first (sign-ins break during the window)"
-  ask "The release tag name (e.g. v1.4.0):"; local tag="$ANSWER"
-  git check-ref-format "refs/tags/$tag" || die "not a valid tag name: $tag"
-  [ -z "$(git -C "$ROVA_REPO" ls-remote --tags origin "refs/tags/$tag")" ] || die "tag $tag already exists on origin: pick another name"
-  confirm "Create and push tag $tag at $main_sha? This deploys production (api, worker, web, migrator with the backfill)."
-  git -C "$ROVA_REPO" tag -a "$tag" "$main_sha" -m "identity v8 cutover"
-  git -C "$ROVA_REPO" push -q origin "refs/tags/$tag"
-  state_set RELEASE_TAG "$tag"
-  note "pushed $tag. The release workflows run now. Watch: backend deploy (the migrator commits the backfill; a raise fails the deploy and the old tasks keep serving)."
-  pause "Wait for the release workflows to finish. Press Enter when they have."
-  api_live_has_secret || die "the live API does not inject BETTER_AUTH_SECRET: the release has not landed"
+  take_or_reuse_snapshot
+
+  local tag
+  tag="$(state_get RELEASE_TAG)"
+  if [ -z "$tag" ]; then
+    pause "SA: merge the release-please PR (owner says go release). Press Enter once it is merged."
+    git -C "$ROVA_REPO" fetch -q origin main --tags
+    tag="$(git -C "$ROVA_REPO" tag --points-at origin/main | grep -E '^v[0-9]' | sort -V | tail -1 || true)"
+    [ -n "$tag" ] || die "no release tag on origin/main: did the release-please PR merge?"
+    state_set RELEASE_TAG "$tag"
+  fi
+  note "release tag: $tag (saved; a resume uses it and never asks for another)"
+  local tag_sha
+  tag_sha="$(git -C "$ROVA_REPO" rev-list -n 1 "$tag")"
+
+  pause "Wait for the tag's deploy to finish: backend (migrate, backfill commit, API roll; a raise keeps the v7 tasks serving) and web (waits for it). Press Enter when both are green."
+  discover
   service_primary_completed "$API_SERVICE" || die "the API's primary deployment is not COMPLETED yet: wait, then run this step again with --from release"
+  local img
+  img="$(aws ecs describe-task-definition --task-definition "$(aws ecs describe-services --cluster "$CLUSTER" --services "$API_SERVICE" --query 'services[0].taskDefinition' --output text)" \
+    --query 'taskDefinition.containerDefinitions[].image' --output text)"
+  [[ "$img" == *"$tag"* || "$img" == *"sha-${tag_sha:0:12}"* ]] ||
+    die "the live API runs ${img:-no image}, not the build of $tag ($tag_sha): the deploy has not landed"
+  api_live_has_secret || die "the live API does not inject BETTER_AUTH_SECRET: the release has not landed"
   check_invariant
-  note "PASS: the release is live, the API injects the secret, the invariant holds"
+  note "PASS: $tag is live, the API runs its build and injects the secret, the invariant holds"
 }
 
 step_verify() {
@@ -452,10 +448,6 @@ step_verify() {
   if [ "$ENV_NAME" = prod ]; then
     items+=("Edge: a request through the production SPA host logs the tester's own address as ip (docs/runbooks/edge-client-ip.md, the post-deploy check), not a Cloudflare address.")
   fi
-  if [ "$ENV_NAME" = prod ]; then
-    note "prod: a second person checks at least items 1, 4 and 5 with you (the runbook: you and one other person)."
-    ask "The second person has checked them with you? (yes/no)"; [ "$ANSWER" = yes ] || die "get the second check done, then --from verify"
-  fi
   local i=0 item
   local items_count=${#items[@]}
   for item in "${items[@]}"; do
@@ -464,6 +456,10 @@ step_verify() {
     [ "$ANSWER" = yes ] || die "checklist item $i did not pass: fix it, record the time and request id, then run this step again with --from verify"
   done
   note "all $items_count verification items passed"
+  if [ "$ENV_NAME" = prod ]; then
+    note "prod: a second person checks at least items 1, 4 and 5 with you (the runbook: you and one other person)."
+    ask "The second person has checked them with you? (yes/no)"; [ "$ANSWER" = yes ] || die "get the second check done, then --from verify"
+  fi
   local since=$(( ($(date +%s) - 3600) * 1000 )) pattern
   note "log search, last hour (run as is):"
   for pattern in identity.profile_id_mismatch identity.auth_handler_threw identity.context_cache_stale; do
@@ -555,11 +551,10 @@ wait_services_on() { # <api ARN> <worker ARN>: the waiter alone also returns aft
 # ── run ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
 discover
 run_from preflight && { [ "$ENV_NAME" = prod ] && check_cloudflare_login; print_discovery; }
-run_from backup && step_backup
+run_from retention && step_retention
 run_from secret && step_secret
 run_from backfill-dry && step_backfill_dry
 run_from edge && step_edge
-run_from adhoc-dry && step_adhoc_dry
 run_from commit && step_commit
 run_from merge && step_merge
 run_from release && step_release

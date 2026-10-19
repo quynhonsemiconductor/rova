@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+# Stub of the AWS CLI v2 calls identity-v8-cutover.sh makes. State lives in $STUB_STATE (JSON). Anything not modelled fails loudly.
+import datetime, json, os, sys
+
+args = sys.argv[1:]
+SP = os.environ["STUB_STATE"]
+ACC = "608983206583"
+CLUSTER_PREFIX = "rova-prod"
+st = json.load(open(SP)) if os.path.exists(SP) else {}
+st.setdefault("key", False)
+st.setdefault("secret", {"cookie-secret": "c" * 40, "csrf-secret": "s" * 40})
+st.setdefault("snaps", {})          # name -> {"status": ..., "created": iso}
+st.setdefault("creates", 0)
+st.setdefault("runs", 0)
+st.setdefault("last", "")
+st.setdefault("puts", 0)
+st.setdefault("live", {})           # family -> revision
+st.setdefault("calls", [])
+
+
+def save():
+    json.dump(st, open(SP, "w"))
+
+
+def out(text=""):
+    print(text)
+    save()
+    sys.exit(0)
+
+
+def fail(msg):
+    print(msg, file=sys.stderr)
+    save()
+    sys.exit(254)
+
+
+def arg(name):
+    return args[args.index(name) + 1] if name in args else None
+
+
+def rev(family, n):
+    return f"arn:aws:ecs:ap-southeast-1:{ACC}:task-definition/{family}:{n}"
+
+
+def now_iso(delta_hours=0):
+    t = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=delta_hours)
+    return t.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+if args[:1] == ["--version"]:
+    out("aws-cli/2.15.0 Python/3.11.6 Darwin/25.6.0 source/arm64")
+st["calls"].append(" ".join(args[:2]))
+svc, op = args[0], (args[1] if len(args) > 1 else "")
+q = arg("--query") or ""
+sha12 = os.environ.get("MOCK_LIVE_SHA", os.environ["MOCK_SHA"])[:12]
+
+if svc == "sts":
+    out(ACC)
+
+if svc == "ecs":
+    cluster = arg("--cluster") or ""
+    if op == "list-clusters":
+        out(f"arn:aws:ecs:ap-southeast-1:{ACC}:cluster/rova-develop\tarn:aws:ecs:ap-southeast-1:{ACC}:cluster/rova-prod")
+    if op == "list-services":
+        out(f"arn:aws:ecs:ap-southeast-1:{ACC}:service/{cluster}/api\tarn:aws:ecs:ap-southeast-1:{ACC}:service/{cluster}/worker")
+    if op == "describe-services":
+        name = arg("--services")
+        if name not in ("api", "worker"):
+            fail(f"ServiceNotFoundException: service {name} not found")
+        family = f"{cluster}-{name}"
+        live = st["live"].get(family, 12 if name == "api" else 11)
+        td = rev(family, live)
+        if q == "services[0].taskDefinition":
+            out(td)
+        obj = {"taskDefinition": td,
+               "networkConfiguration": {"awsvpcConfiguration": {"subnets": ["subnet-aaa", "subnet-bbb"], "securityGroups": ["sg-xxx"], "assignPublicIp": "DISABLED"}},
+               "deployments": [{"status": "PRIMARY", "rolloutState": "COMPLETED", "taskDefinition": td}]}
+        out(json.dumps({"services": [obj]}))
+    if op == "describe-task-definition":
+        t = arg("--task-definition")
+        base = t.split("/")[-1]
+        family, n = (base.split(":") + ["0"])[:2]
+        n = int(n) if n.isdigit() else 0
+        if family.endswith("-migrator"):
+            d = {"taskDefinition": {"taskDefinitionArn": rev(family, n or 7), "family": family, "containerDefinitions": [{
+                "name": "migrator",
+                "image": f"{ACC}.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-{os.environ['MOCK_SHA'][:12]}",
+                "logConfiguration": {"options": {"awslogs-group": "/ecs/" + family, "awslogs-stream-prefix": "migrator"}},
+                "environment": [{"name": "DATABASE_NAME", "value": "rova"}, {"name": "ENTRA_TENANT_ID", "value": "tid-1234"}]}]}}
+        else:
+            secrets = [{"name": "BETTER_AUTH_SECRET"}] if n >= 12 else []
+            d = {"taskDefinition": {"taskDefinitionArn": t, "family": family, "containerDefinitions": [{
+                "name": family.split("-")[-1],
+                "image": f"{ACC}.dkr.ecr.ap-southeast-1.amazonaws.com/rova-{family.split('-')[-1]}:sha-{sha12}",
+                "secrets": secrets}]}}
+        if q == "taskDefinition.family":
+            out(family)
+        if "secrets" in q:
+            out(json.dumps([s["name"] for s in d["taskDefinition"]["containerDefinitions"][0]["secrets"]]))
+        if "image" in q:
+            out("\n".join(c["image"] for c in d["taskDefinition"]["containerDefinitions"]))
+        out(json.dumps(d))
+    if op == "run-task":
+        st["runs"] += 1
+        st["last"] = arg("--overrides") or ""
+        save()
+        out(json.dumps({"tasks": [{"taskArn": f"arn:aws:ecs:ap-southeast-1:{ACC}:task/{cluster}/t{st['runs']}"}], "failures": []}))
+    if op == "wait":
+        names = []
+        if "--services" in args:
+            names = [a for a in args[args.index("--services") + 1:] if not a.startswith("--")]
+        for name in names:
+            if name not in ("api", "worker"):
+                fail(f"ServiceNotFoundException: {name}")
+        out("")
+    if op == "describe-tasks":
+        if "exitCode" in q:
+            out("0")
+        if "stoppedReason" in q:
+            out("Essential container in task exited")
+    if op == "list-task-definitions":
+        fam = arg("--family-prefix")
+        out("\t".join(rev(fam, n) for n in (12, 11, 10)))
+    if op == "update-service":
+        target = arg("--service")
+        if target not in ("api", "worker"):
+            fail(f"ServiceNotFoundException: {target}")
+        t = arg("--task-definition")
+        st["live"][f"{cluster}-{target}"] = int(t.split(":")[-1])
+        out(json.dumps({}))
+
+if svc == "rds":
+    if op == "describe-db-instances":
+        out(os.environ.get("MOCK_RETENTION", "30"))
+    if op == "describe-db-snapshots":
+        name = arg("--db-snapshot-identifier")
+        if name:
+            s = st["snaps"].get(name)
+            out(s["status"] if s else "None")
+        if "sort_by" in q:
+            avail = [(v["created"], k) for k, v in st["snaps"].items() if v["status"] == "available"]
+            if not avail:
+                out("None")
+            created, name = sorted(avail)[-1]
+            out(f"{name}\t{created}")
+        out("None")
+    if op == "create-db-snapshot":
+        name = arg("--db-snapshot-identifier")
+        st["creates"] += 1
+        st["snaps"][name] = {"status": "creating", "created": now_iso()}
+        out(json.dumps({}))
+    if op == "wait":
+        name = arg("--db-snapshot-identifier")
+        if name not in st["snaps"]:
+            fail(f"DBSnapshotNotFound: {name}")
+        st["snaps"][name]["status"] = "available"
+        out("")
+
+if svc == "secretsmanager":
+    if op == "get-secret-value":
+        if os.environ.get("MOCK_SECRET_READ_FAIL"):
+            fail("AccessDenied (stub)")
+        d = dict(st["secret"])
+        if st["key"]:
+            d["better-auth-secret"] = "k" * 64
+        out(json.dumps(d))
+    if op == "put-secret-value":
+        new = json.loads(sys.stdin.read())
+        st["secret"] = {k: v for k, v in new.items() if k != "better-auth-secret"}
+        st["key"] = "better-auth-secret" in new
+        st["puts"] += 1
+        out("")
+
+if svc == "logs" and op == "filter-log-events":
+    cmd = st.get("last", "")
+    if "resolveMigrationPoolConfig" in cmd:
+        msg = "INVARIANT profile_without_login=0 login_without_profile=0"
+    elif "mirror-bans" in cmd:
+        msg = "mirror-bans DRY RUN"
+    elif "--commit" in cmd:
+        msg = "backfill COMMITTED"
+    else:
+        msg = "DRY RUN: every preflight check and assertion passed"
+    out(json.dumps({"events": [{"message": m} for m in msg.split("\n")]}))
+
+fail("stub aws: unmodelled call: " + " ".join(args))
