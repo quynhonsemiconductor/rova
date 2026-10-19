@@ -277,7 +277,7 @@ module "secrets" {
 
 # ── RDS PostgreSQL 17 ─────────────────────────────────────────────────────────
 module "rds" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/rds?ref=rds-v2.3.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/rds?ref=rds-v2.4.0"
 
   identifier        = local.name
   subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
@@ -291,6 +291,11 @@ module "rds" {
   deletion_protection      = var.rds.deletion_protection
   backup_retention_days    = var.rds.backup_retention_days
   monitoring_interval      = var.rds.monitoring_interval
+
+  # Major upgrade controls. Defaults keep every caller on the module default (17) unless it asks.
+  engine_version              = var.rds.engine_version
+  allow_major_version_upgrade = var.rds.allow_major_version_upgrade
+  apply_immediately           = var.rds.apply_immediately
 
   # Both null in steady state. Set only while finishing the rally->rova subnet-group
   # rename; see this variable's description and qnsc-infra

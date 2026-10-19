@@ -469,6 +469,14 @@ module "stack" {
     backup_retention_days = 0
     monitoring_interval   = 0 # Enhanced Monitoring off — saves CloudWatch cost
 
+    // PostgreSQL 17 -> 18, in place, for the one apply that performs the upgrade. Major pin "18" with
+    // auto minor upgrades on. allow_major_version_upgrade and apply_immediately are required together
+    // (a precondition in tf-modules enforces it). Set both back to false in the follow-up PR once the
+    // upgrade is verified. backup_retention_days above is unchanged by this PR.
+    engine_version              = "18"
+    allow_major_version_upgrade = true
+    apply_immediately           = true
+
     // TEMPORARY, for the rally->rova subnet-group rebuild only. AWS refuses to move a DB
     // instance between subnet groups in the same VPC, so rova-develop still sits in
     // rally-develop-db and the only way into rova-develop-db is a new instance.

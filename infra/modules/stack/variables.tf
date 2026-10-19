@@ -420,6 +420,12 @@ variable "rds" {
     backup_retention_days    = number
     monitoring_interval      = optional(number, 0)
 
+    # Major upgrade. engine_version is a major ("18") with auto minor upgrades on; the two flags are set
+    # only for the one apply that performs the upgrade. See tf-modules modules/rds.
+    engine_version              = optional(string, "17")
+    allow_major_version_upgrade = optional(bool, false)
+    apply_immediately           = optional(bool, false)
+
     # Restore FROM a snapshot instead of creating an empty database. Exists for one
     # operation: finishing the rally->rova rename, where AWS refuses to move an instance
     # between subnet groups in the same VPC (InvalidVPCNetworkStateFault), so the only way
