@@ -4,8 +4,8 @@
  *   1. API probes         GET /readyz on the API port answers 200 with the database and cache up.
  *   2. Worker             the worker writes a beat to Valkey every 30 s under worker:heartbeat:<host>; a fresh beat proves a live worker.
  *   3. Sign-in            POST /api/auth/test-login through the web dev server's proxy, then GET /v1/auth/me with that session.
- *   4. Storage            a marker object round-trips through the storage emulator, and the marker the PREVIOUS run wrote is still
- *                         there (that is the persistence claim: the bucket outlives a restart).
+ *   4. Storage            a marker object round-trips through the storage emulator (write, then read back). It does not claim persistence:
+ *                         LocalStack does not keep data across a restart, so that is not checked until the bucket is on Garage.
  *   5. Mail               a message sent through platform-mail's smtp transport (the one EMAIL_PROVIDER=smtp uses) lands in Mailpit.
  *
  * Writes only its own marker object and one test message. Exits 1 at the first failing step, naming it.
@@ -31,7 +31,7 @@ const API = `http://localhost:${env('PORT', '3010')}`;
 const WEB = `http://localhost:${env('WEB_DEV_PORT', '5175')}`;
 const MAILPIT = `http://localhost:${env('MAILPIT_UI_HOST_PORT', '8120')}`;
 const TEST_LOGIN_EMAIL = 'dev@qnsc.dev'; // db/seeds/demo.ts: the local fixture account, seeded by `pnpm db:seed`.
-const MARKER_KEY = 'local-check/persistence-marker.txt';
+const MARKER_KEY = 'local-check/round-trip-marker.txt';
 
 class CheckFailed extends Error {}
 
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
     return `signed in as ${TEST_LOGIN_EMAIL}`;
   });
 
-  await step('storage round trip and persistence', async () => {
+  await step('storage round trip', async () => {
     const s3 = new S3Client({
       endpoint: env('STORAGE_ENDPOINT', 'http://localhost:4620'),
       region: env('AWS_DEFAULT_REGION', 'ap-southeast-1'),
@@ -127,18 +127,6 @@ async function main(): Promise<void> {
     });
     const Bucket = env('S3_ATTACHMENTS_BUCKET', 'rova-attachments');
 
-    let previous = 'none (first run)';
-    try {
-      const old = await s3.send(new GetObjectCommand({ Bucket, Key: MARKER_KEY }));
-      previous = `present, written by an earlier run: ${await old.Body?.transformToString()}`;
-    } catch (err) {
-      const code = (err as { name?: string }).name;
-      expect(
-        code === 'NoSuchKey' || code === 'NotFound',
-        `reading the previous marker failed: ${String(code)}`,
-      );
-    }
-
     const marker = `${new Date().toISOString()} ${randomUUID()}`;
     await s3.send(
       new PutObjectCommand({ Bucket, Key: MARKER_KEY, Body: marker, ContentType: 'text/plain' }),
@@ -148,7 +136,7 @@ async function main(): Promise<void> {
       (await back.Body?.transformToString()) === marker,
       'the marker read back is not the marker written',
     );
-    return `wrote and read back a marker; previous run's marker: ${previous}`;
+    return 'wrote and read back a marker';
   });
 
   await step('mail lands in Mailpit', async () => {
