@@ -52,7 +52,6 @@ if args[:1] == ["--version"]:
 st["calls"].append(" ".join(args[:2]))
 svc, op = args[0], (args[1] if len(args) > 1 else "")
 q = arg("--query") or ""
-sha12 = os.environ.get("MOCK_LIVE_SHA", os.environ["MOCK_SHA"])[:12]
 
 if svc == "sts":
     out(ACC)
@@ -68,7 +67,13 @@ if svc == "ecs":
         if name not in ("api", "worker"):
             fail(f"ServiceNotFoundException: service {name} not found")
         family = f"{cluster}-{name}"
-        live = st["live"].get(family, 12 if name == "api" else 11)
+        # the stub's deploy lands on the first full read of the WORKER service: service_primary_completed reads it after the release
+        # pause (discover reads only the API at startup). Until then both services run v7 (api without the secret, image MOCK_OLD_TAG)
+        if name == "worker" and not q:
+            st["live"][f"{cluster}-api"] = 12
+            st["live"][f"{cluster}-worker"] = 12
+        default = (int(os.environ.get("MOCK_API_LIVE_REV", "11")) if name == "api" else 11)
+        live = st["live"].get(family, default)
         td = rev(family, live)
         if q == "services[0].taskDefinition":
             out(td)
@@ -84,14 +89,15 @@ if svc == "ecs":
         if family.endswith("-migrator"):
             d = {"taskDefinition": {"taskDefinitionArn": rev(family, n or 7), "family": family, "containerDefinitions": [{
                 "name": "migrator",
-                "image": f"{ACC}.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-{os.environ['MOCK_SHA'][:12]}",
+                "image": f"{ACC}.dkr.ecr.ap-southeast-1.amazonaws.com/rova-migrator:sha-{os.environ['MOCK_SHA']}",
                 "logConfiguration": {"options": {"awslogs-group": "/ecs/" + family, "awslogs-stream-prefix": "migrator"}},
                 "environment": [{"name": "DATABASE_NAME", "value": "rova"}, {"name": "ENTRA_TENANT_ID", "value": "tid-1234"}]}]}}
         else:
             secrets = [{"name": "BETTER_AUTH_SECRET"}] if n >= 12 else []
             svc = family.split("-")[-1]
             tag_override = os.environ.get(f"MOCK_{svc.upper()}_IMAGE_TAG")
-            image_tag = tag_override if tag_override else f"sha-{sha12}"
+            # v7 (rev < 12) runs MOCK_OLD_TAG; the release runs MOCK_RELEASE_TAG (the tag the script anchors on)
+            image_tag = tag_override or (os.environ.get("MOCK_RELEASE_TAG", "v1.2.4") if n >= 12 else os.environ.get("MOCK_OLD_TAG", "v1.2.2"))
             d = {"taskDefinition": {"taskDefinitionArn": t, "family": family, "containerDefinitions": [{
                 "name": svc,
                 "image": f"{ACC}.dkr.ecr.ap-southeast-1.amazonaws.com/rova-{svc}:{image_tag}",

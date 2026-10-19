@@ -410,10 +410,15 @@ release_snapshot() { # BEFORE the release-please pause only. Leaves PRE_SNAPSHOT
       age="$(python3 -c 'import datetime, sys; t = datetime.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00")); print(int(datetime.datetime.now(datetime.timezone.utc).timestamp() - t.timestamp()))' "$created")" ||
         die "cannot parse the time of snapshot $saved"
       if [ "$age" -lt 21600 ]; then
-        note "reusing the saved snapshot $saved (taken $((age / 60)) minutes ago)"
-        return 0
+        ask "The saved snapshot $saved was taken $((age / 60)) minutes ago. Reuse it? (yes = reuse, no = take a fresh one)"
+        if [ "$ANSWER" = yes ]; then
+          note "reusing the saved snapshot $saved (taken $((age / 60)) minutes ago)"
+          return 0
+        fi
+        note "a fresh snapshot is taken; $saved stays in RDS until you delete it"
+      else
+        note "the saved snapshot $saved is $((age / 3600)) hours old: a fresh one replaces it (before the release, so nothing is lost)"
       fi
-      note "the saved snapshot $saved is $((age / 3600)) hours old: a fresh one replaces it (before the release, so nothing is lost)"
     else
       note "the saved snapshot $saved is '$SNAP_STATUS': a fresh one is taken"
     fi
@@ -459,14 +464,34 @@ detect_release_tag() { # polls for a release tag newer than the baseline; the op
   REL_TAG="$candidate"
 }
 
-check_live_service() { # check_live_service <service> <tag> <tag sha>: the live task definition runs this release's build, on its tag or its sha tag
-  local svc="$1" tag="$2" sha="$3" td images img
+check_live_service() { # check_live_service <service> <tag>: the live task definition runs this release's tag (anchored: v1.2.3 is not v1.2.30)
+  local svc="$1" tag="$2" td images img
   td="$(aws ecs describe-services --cluster "$CLUSTER" --services "$svc" --query 'services[0].taskDefinition' --output text)" || die "cannot read $svc"
   images="$(aws ecs describe-task-definition --task-definition "$td" --query 'taskDefinition.containerDefinitions[].image' --output text)" || die "cannot read the task definition of $svc"
   while read -r img; do
-    [[ "$img" == *":$tag" || "$img" == *":sha-${sha:0:12}" ]] && { note "$svc runs $img"; return 0; }
+    [[ "$img" == *":$tag" ]] && { note "$svc runs $img"; return 0; }
   done <<< "$images"
-  die "the live $svc runs ${images:-no image}, not the build of $tag ($sha): the deploy has not landed"
+  die "the live $svc runs ${images:-no image}, not the build of $tag: the deploy has not landed"
+}
+live_api_tag() { # the tag of the live API image (the first container)
+  local arn img
+  arn="$(aws ecs describe-services --cluster "$CLUSTER" --services "$API_SERVICE" --query 'services[0].taskDefinition' --output text)" || die "cannot read the live API"
+  img="$(aws ecs describe-task-definition --task-definition "$arn" --query 'taskDefinition.containerDefinitions[0].image' --output text)" || die "cannot read the live API task definition"
+  printf '%s' "${img##*:}"
+}
+live_guard() { # before ANY snapshot of the release: the live API is still v7 (no BETTER_AUTH_SECRET) and runs no tag newer than the baseline
+  local baseline live
+  if api_live_has_secret; then
+    die "the live API already injects BETTER_AUTH_SECRET: the cutover is live, so a snapshot now is not pre-cutover. Stop and read the runbook (Rollback)"
+  fi
+  baseline="$(state_get TAG_BEFORE)"
+  [ -n "$baseline" ] || baseline="$(newest_release_tag)"
+  live="$(live_api_tag)"
+  [[ "$live" == v[0-9]* ]] || return 0
+  if [ "$live" != "$baseline" ] && [ "$(printf '%s\n%s\n' "$baseline" "$live" | sort -V | tail -1)" = "$live" ]; then
+    die "the live API runs $live, newer than the baseline ${baseline:-none}: a release already landed, so this is not the pre-release state. No snapshot is taken"
+  fi
+  note "the live API runs ${live:-no tag}, not newer than the baseline ${baseline:-none}: the pre-release state"
 }
 
 step_release() { # prod: the flags on main, then the snapshot and the release-please PR, then the tag's deploy (identity_v8_backfill_on_deploy commits the backfill)
@@ -493,6 +518,7 @@ step_release() { # prod: the flags on main, then the snapshot and the release-pl
       tag="$REL_TAG"
     fi
   else
+    live_guard
     check_activity_rows
     ask "Downtime is announced to users and the window has started? (yes/no)"; [ "$ANSWER" = yes ] || die "announce it first (sign-ins break during the window)"
     release_snapshot
@@ -502,9 +528,10 @@ step_release() { # prod: the flags on main, then the snapshot and the release-pl
     detect_release_tag
     tag="$REL_TAG"
   fi
-  git -C "$ROVA_REPO" fetch -q origin main --tags
-  git -C "$ROVA_REPO" rev-parse -q --verify "refs/tags/$tag" >/dev/null ||
-    die "RELEASE_TAG=$tag is not a tag reachable here: a stale saved tag. Reset it as the runbook says (Stale release tag), then run --from release"
+  git -C "$ROVA_REPO" fetch -q origin main --tags || die "git fetch origin main --tags failed: check the network and the GitHub login, then run --from release"
+  if ! git -C "$ROVA_REPO" rev-parse -q --verify "refs/tags/$tag" >/dev/null || ! git -C "$ROVA_REPO" merge-base --is-ancestor "$tag" origin/main; then
+    die "RELEASE_TAG=$tag is not a tag reachable from origin/main: a stale saved tag. Reset it as the runbook says (Stale release tag: delete only the RELEASE_TAG line), then run --from release"
+  fi
   tag_sha="$(git -C "$ROVA_REPO" rev-list -n 1 "$tag")" || die "cannot resolve $tag"
   note "release tag: $tag ($tag_sha)"
 
@@ -512,8 +539,8 @@ step_release() { # prod: the flags on main, then the snapshot and the release-pl
   discover
   service_primary_completed "$API_SERVICE" || die "the API's primary deployment is not COMPLETED yet: wait, then run this step again with --from release"
   service_primary_completed "$WORKER_SERVICE" || die "the worker's primary deployment is not COMPLETED yet: wait, then run this step again with --from release"
-  check_live_service "$API_SERVICE" "$tag" "$tag_sha"
-  check_live_service "$WORKER_SERVICE" "$tag" "$tag_sha"
+  check_live_service "$API_SERVICE" "$tag"
+  check_live_service "$WORKER_SERVICE" "$tag"
   api_live_has_secret || die "the live API does not inject BETTER_AUTH_SECRET: the release has not landed"
   check_invariant
   note "PASS: $tag is live: the API and the worker run its build, the API injects the secret, the invariant holds"

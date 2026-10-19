@@ -224,7 +224,7 @@ backend deploy is green** (Actions -> Web - Deploy -> the tag's run -> Re-run al
 
 ## Rollback
 
-Until the v7 tables are dropped (the day-30 change), nothing in the database has to be undone **except the bans** (step 1). Two paths; pick by urgency.
+Until the v7 tables are dropped (the day-30 change), nothing in the database has to be undone **except the bans** (step 1). **A is the default rollback.** The v8 tables are additive, so v7 runs on them. B makes A durable. C restores the data from the snapshot: use it **only for data corruption**, because it loses writes (see C).
 
 **Before either: mirror the bans** (v8-only bans would otherwise be silently lifted, because the v7 image reads `identity.users.status`, not identity 8's `banned`):
 
@@ -249,68 +249,108 @@ state; the **next** deploy re-registers the current definition, so follow it wit
 **B. Durable (an hour): revert the merge.** `git revert -m 1 <the #718 merge commit>` in a PR titled `revert: identity 8 cutover`, merge it; develop deploys
 on merge and production on the next tag (the revert also removes the tag guard, since the guard belongs to #718). Keep `better_auth_secret_set` as is.
 
-**C. Restore the data from the release snapshot (the last resort).** Restoring replaces the database instance. It does not roll back code. Every write made
-after the snapshot is lost, for every user.
+**C. Restore the data from the PRE snapshot. Data corruption only.** A does not touch data. C does, and it costs:
 
-What the module does, checked in `tf-modules` at `rds-v2.3.0` (`modules/rds/main.tf`), and what that means for the plan:
+- The replace deletes the current `rova-prod` instance. Its automated backups and point-in-time recovery go with it (the module does not set `delete_automated_backups`, so the provider default applies). After C, the only backups are `PRE_SNAPSHOT` and the forensic snapshot from C1.
+- Every write after `PRE_SNAPSHOT` is lost, for every user, including everything written since the release started.
+- The replacement has a NEW endpoint address (the identifier stays `rova-prod`). The stack builds `DATABASE_HOST` from `module.rds`, so the services follow the apply.
+- C does not roll back code. C4 and C5 do that.
 
-- `snapshot_identifier` sits under `ignore_changes`. It is read when the instance is CREATED. Setting it on the existing instance does nothing. The instance has to be
-  replaced, and the replace must be explicit (`-replace`).
-- With `deletion_protection = false`, `skip_final_snapshot` defaults to true. A replace then takes no final snapshot of the failed state. Step C1 is therefore not
-  optional.
-- A replacement instance has a NEW endpoint address (the identifier stays `rova-prod`). The stack builds `DATABASE_HOST` from `module.rds`, so the services follow the
-  apply, not the endpoint you remember.
-- `copy_tags_to_snapshot` is on. The parameter group (`enable_parameter_group`, default on, not overridden in prod) is created by the module and attached to the
-  replacement.
+Owner-run from a local machine (the local path, C3(ii)). The Infrastructure · Apply workflow has no replace input, and it is not used for this.
 
-1. **C1. A forensic snapshot of the failed state.** Do this first:
+Module facts (`rds-v2.3.0`, `modules/rds/main.tf`): `snapshot_identifier` is read only at CREATE (`ignore_changes`), so the instance must be replaced explicitly with `-replace`. `skip_final_snapshot` defaults to `!deletion_protection`, so a final snapshot needs an explicit `skip_final_snapshot = false`; the final snapshot is named `rova-prod-final`. `image_tag` and `identity_v8_backfill_on_deploy` are root variables: pass them on the command line.
+
+Use a branch `restore/rova-prod-<date>` for the `infra/live/prod/main.tf` edits in C2 and C3. Open the PR after the apply, as the record.
+
+1. **C0. Pre-checks. Stop if any one fails.**
 
    ```sh
    export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1
+   PRE=$(grep '^PRE_SNAPSHOT=' ~/.local/state/rova-identity-v8/prod-state.env | cut -d= -f2)
+   TAG_PRE=$(grep '^TAG_BEFORE=' ~/.local/state/rova-identity-v8/prod-state.env | cut -d= -f2)
+   aws rds describe-db-snapshots --db-snapshot-identifier "$PRE" --query 'DBSnapshots[0].Status' --output text          # must print: available
+   aws rds describe-db-snapshots --db-snapshot-identifier rova-prod-final --query 'DBSnapshots[0].Status' --output text  # must fail: DBSnapshotNotFound
+   echo "$TAG_PRE"                                                                                                       # the last release before the cutover (the v7 build)
+   ```
+
+   If `rova-prod-final` exists (an earlier attempt), stop. The replace fails on the name. Rename or delete it only when the owner says so.
+
+2. **C1. A forensic snapshot of the failed state.** Do this first. It is the only copy of the state before C.
+
+   ```sh
    FORENSICS="rova-prod-forensics-$(date -u +%Y%m%d-%H%M)"
    aws rds create-db-snapshot --db-instance-identifier rova-prod --db-snapshot-identifier "$FORENSICS"
    aws rds wait db-snapshot-available --db-snapshot-identifier "$FORENSICS"
    ```
 
-2. **C2. Deletion protection off, first.** Its own infra PR: `infra/live/prod/main.tf`, the `rds` object, `deletion_protection = false`. Merge it and let
-   Infrastructure · Apply target prod apply it. This is an in-place change; the plan shows `~ deletion_protection`.
+3. **C2. Deletion protection off, in its own apply.** On the branch, `infra/live/prod/main.tf`, the `rds` object: `deletion_protection = false` and nothing else.
 
-3. **C3. The replace, as its own change.** The infra PR sets, in the same `rds` object, `snapshot_identifier = "<PRE_SNAPSHOT from prod-state.env>"`. The stack
-   passes it to the module (`infra/modules/stack/variables.tf`, the `rds` object). It also sets, in the same PR:
-   - `identity_v8_backfill_on_deploy = false` (the backfill must not run on the restored database);
-   - `image_tag` = the last release BEFORE the cutover (the v7 build), so the task definitions the apply registers run the v7 image.
+   ```sh
+   cd infra/live/prod
+   tofu plan -out=unprotect.tfplan
+   tofu show -no-color unprotect.tfplan | grep -E '^  # '     # must list one change: the instance, in place (~ deletion_protection)
+   tofu apply unprotect.tfplan
+   ```
 
-   Leave `better_auth_secret_set` and `edge_client_ip_secret_set` as they are. The plan must show exactly these changes, and nothing else:
+   If the plan lists anything else, stop.
 
-   - `module.stack.module.rds.aws_db_instance.this` replaced (`-/+`), `identifier` unchanged, and a new `address`;
+4. **C3. The replace.** On the branch, the same `rds` object also gets `skip_final_snapshot = false` and `snapshot_identifier = "<PRE>"` (the value of `$PRE` from C0). Then:
+
+   ```sh
+   tofu plan -replace='module.stack.module.rds.aws_db_instance.this' \
+     -var image_tag="$TAG_PRE" \
+     -var identity_v8_backfill_on_deploy=false \
+     -out=restore.tfplan
+   tofu show -no-color restore.tfplan | grep -E '^  # '
+   ```
+
+   The plan must show exactly these, and nothing else:
+
+   - `module.stack.module.rds.aws_db_instance.this` replaced (`-/+`), `identifier` unchanged, a new `address`;
+   - the RDS-managed master secret: a new secret ARN, and the IAM policy and the task definitions that read it;
    - the parameter group re-attached to the replacement;
-   - the api, worker and migrator task definitions with the v7 image.
+   - the api, worker and migrator task definitions, as new revisions with the image tag `$TAG_PRE` (the v7 build).
 
-   **The apply.** The Infrastructure · Apply workflow has no replace input. Two ways to run the replace; choose one before the window (this is an owner decision):
-   - (i) a small infra PR adding a `replace_address` input to `infra-apply.yml`, dispatched with `target: prod` and `allow_destructive` (the destructive guard does
-     not cover RDS, so the flag is not needed for the database, but the plan must still be read); or
-   - (ii) from your machine, with the same state backend: `cd infra/live/prod && tofu plan -replace='module.stack.module.rds.aws_db_instance.this' -out=restore.tfplan`,
-     read it (the replace line and the task definitions only), then `tofu apply restore.tfplan`.
+   **Stop, and do not apply, if the plan shows:**
 
-4. **C4. Put the services back on v7 through the apply, not by hand.** The task definitions that the apply registers (C3's `image_tag`) point at the NEW endpoint.
-   The previous task revisions point at the endpoint that no longer exists: do not roll back to them.
-   **Never redeploy the cutover tag.** Its migrator would run 0131 to 0136 and the backfill again, on the restored database.
+   - any change outside that list: DNS, Pages, edge, mail identity, certificate, or any other resource;
+   - the instance updated in place instead of replaced, or a second replace, or a change to `identifier`;
+   - `snapshot_identifier` other than `$PRE`, or `skip_final_snapshot` other than `false`;
+   - an image with the cutover tag, or `identity_v8_backfill_on_deploy` true (the backfill must not run on the restored database).
 
-5. **C5. The previous SPA.** Cloudflare Pages: Workers & Pages -> `rova-prod-web` -> Deployments -> the deployment before the cutover -> **Rollback to this
+   Then apply the saved plan (the replace takes minutes; the new instance is created from `$PRE`):
+
+   ```sh
+   tofu apply restore.tfplan
+   ```
+
+   If the apply fails part-way, stop. Do not re-run it blind: read the state (`tofu state show module.stack.module.rds.aws_db_instance.this`) and the console first.
+
+5. **C4. The services back on v7, through the apply's revisions.** Read the revision numbers the apply registered for `api` and `worker` (the v7 image), and check their image:
+
+   ```sh
+   aws ecs describe-task-definition --task-definition rova-prod-api:<rev> --query 'taskDefinition.containerDefinitions[0].image' --output text   # ends with :$TAG_PRE
+   aws ecs update-service --cluster rova-prod --service api    --task-definition rova-prod-api:<rev>    --force-new-deployment
+   aws ecs update-service --cluster rova-prod --service worker --task-definition rova-prod-worker:<rev> --force-new-deployment
+   aws ecs wait services-stable --cluster rova-prod --services api worker
+   ```
+
+   Never use the previous revisions: they point at the endpoint that no longer exists. **Never redeploy the cutover tag.** Its migrator would run 0131 to 0136 and the backfill again, on the restored database.
+
+6. **C5. The previous SPA.** Cloudflare Pages: Workers & Pages -> `rova-prod-web` -> Deployments -> the deployment before the cutover -> **Rollback to this
    deployment**. Do the SPA and the API together: a v8 SPA against a v7 API cannot sign anyone in.
 
-6. **C6. Deletion protection back on.** Its own infra PR: `deletion_protection = true` and remove `snapshot_identifier`. The module ignores that argument after
-   the create, so leaving it changes nothing, but remove it.
+7. **C6. Deletion protection back on, own apply.** On the branch: `deletion_protection = true`, and remove `snapshot_identifier` and `skip_final_snapshot`.
+   `tofu plan` must show no replace, only the in-place `~ deletion_protection` (the module ignores `snapshot_identifier` after the create).
 
-7. **Verify:** staff can sign in on v7 and see the data of the snapshot time. Keep `rova-prod`'s old instance and the forensics snapshot until the owner says otherwise.
-   Do not delete them in this runbook.
+8. **Verify.** Staff can sign in on v7 and see the data as of `$PRE`'s time. Keep the forensic snapshot and `$PRE` until the owner says otherwise; this runbook does not delete them.
 
 ## Stale release tag (prod-state.env)
 
 The script saves what it has found in `~/.local/state/rova-identity-v8/prod-state.env`: `PRE_SNAPSHOT` (the restore point), `TAG_BEFORE` (the newest release tag
-before the release-please PR), `RELEASE_PAUSED` and `RELEASE_TAG`. If `RELEASE_TAG` is wrong (a tag that is not this release), delete the `RELEASE_TAG` line and
-the `RELEASE_PAUSED` line, then run `--from release`: the release-please pause comes again and the new tag is detected and confirmed. Keep `PRE_SNAPSHOT` and
-`TAG_BEFORE`: the restore point must not change for the same release.
+before the release-please PR), `RELEASE_PAUSED` and `RELEASE_TAG`. If `RELEASE_TAG` is wrong (a tag that is not this release, or one the script refuses as not
+reachable from origin/main), delete **only the `RELEASE_TAG` line**, then run `--from release`. `RELEASE_PAUSED` stays: the release-please pause is already past, so the
+script detects the new tag against `TAG_BEFORE` and asks you to confirm it. Keep `PRE_SNAPSHOT` and `TAG_BEFORE`: the restore point must not change for the same release.
 
 ## Day 7 and day 30 (separate changes, not #718; tracked as rova issues; not prerequisites for the production cutover)
 
