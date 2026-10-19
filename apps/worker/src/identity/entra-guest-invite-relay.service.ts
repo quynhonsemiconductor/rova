@@ -36,7 +36,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { createHash } from 'node:crypto';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import {
   InjectDrizzle,
   Span,
@@ -47,7 +47,7 @@ import {
 import type { DrizzleDB, DrizzleTx } from '@platform';
 import { EmailSchedulerService } from '@platform/email';
 import { NotificationPubSubService } from '@platform/notifications';
-import { AbstractOutboxRelay, NonRetryableError } from '@platform/outbox';
+import { AbstractOutboxRelay, NonRetryableError, dbDelay } from '@platform/outbox';
 import type { Claimed, OutboxLeaseTable } from '@platform/outbox';
 import { EntraGuestInviteClient, PermanentGuestInviteError } from '@modules/workspace';
 import type { GuestInviteOutcome } from '@modules/workspace';
@@ -156,7 +156,7 @@ export class EntraGuestInviteRelayService
     return { inviteToken: null };
   }
 
-  protected async selectDue(tx: DrizzleTx, limit: number, now: Date): Promise<GuestInviteRow[]> {
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<GuestInviteRow[]> {
     return tx
       .select({
         id: guestInviteOutbox.id,
@@ -172,8 +172,8 @@ export class EntraGuestInviteRelayService
         and(
           eq(guestInviteOutbox.status, 'pending'),
           lt(guestInviteOutbox.attempts, this.maxAttempts),
-          lte(guestInviteOutbox.scheduledAt, now),
-          this.notLeased(now),
+          lte(guestInviteOutbox.scheduledAt, sql`now()`),
+          this.notLeased(),
         ),
       )
       .orderBy(
@@ -235,7 +235,7 @@ export class EntraGuestInviteRelayService
        */
       await tx
         .update(workspaceInvitations)
-        .set({ entraGuestObjectId: outcome.guestObjectId, updatedAt: new Date() })
+        .set({ entraGuestObjectId: outcome.guestObjectId, updatedAt: sql`now()` })
         .where(eq(workspaceInvitations.id, row.invitationId));
     }
 
@@ -262,7 +262,7 @@ export class EntraGuestInviteRelayService
       .update(guestInviteOutbox)
       .set({
         status: 'sent',
-        sentAt: new Date(),
+        sentAt: sql`now()`,
         /**
          * A non-fatal explanation on a SENT row: without it, "sent, yet the invitation carries no
          * guest id" has no answer on the row itself, and that is the ordinary outcome for a staff
@@ -380,7 +380,7 @@ export class EntraGuestInviteRelayService
     row: Claimed<GuestInviteRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
     // `attempts` was spent at claim time.
     await tx
@@ -390,7 +390,7 @@ export class EntraGuestInviteRelayService
         lastError,
         // Only a retry moves scheduledAt forward; a terminal row keeps its last one, and
         // selectDue never selects 'failed' again.
-        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
         // A retry still needs the token to build the email it may yet send; a terminal row never
         // will, so it must not keep a live credential (migration 0124).
         ...(newStatus === 'failed' ? { inviteToken: null } : {}),

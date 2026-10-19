@@ -19,7 +19,7 @@ import { Cron } from '@nestjs/schedule';
 import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import { InjectDrizzle, Span } from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
-import { AbstractOutboxRelay, LEASE_MARGIN_MS } from '@platform/outbox';
+import { AbstractOutboxRelay, LEASE_MARGIN_MS, dbDelay } from '@platform/outbox';
 import type { Claimed, OutboxLeaseTable } from '@platform/outbox';
 import { BACKFILL_RUN_BUDGET_MS, GITHUB_CALL_TIMEOUT_MS, ScmBackfillService } from '@modules/scm';
 import type { BackfillCounts } from '@modules/scm';
@@ -73,7 +73,7 @@ export class ScmBackfillRelayService extends AbstractOutboxRelay<BackfillJobRow,
     return { finishedAt: sql`now()` };
   }
 
-  protected async selectDue(tx: DrizzleTx, limit: number, now: Date): Promise<BackfillJobRow[]> {
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<BackfillJobRow[]> {
     return tx
       .select({
         id: scmBackfillJobs.id,
@@ -85,8 +85,8 @@ export class ScmBackfillRelayService extends AbstractOutboxRelay<BackfillJobRow,
         and(
           eq(scmBackfillJobs.status, 'pending'),
           lt(scmBackfillJobs.attempts, this.maxAttempts),
-          lte(scmBackfillJobs.scheduledAt, now),
-          this.notLeased(now),
+          lte(scmBackfillJobs.scheduledAt, sql`now()`),
+          this.notLeased(),
         ),
       )
       .orderBy(asc(scmBackfillJobs.scheduledAt), asc(scmBackfillJobs.seq), asc(scmBackfillJobs.id))
@@ -107,7 +107,7 @@ export class ScmBackfillRelayService extends AbstractOutboxRelay<BackfillJobRow,
   ): Promise<void> {
     await tx
       .update(scmBackfillJobs)
-      .set({ status: 'done', counts, finishedAt: new Date() })
+      .set({ status: 'done', counts, finishedAt: sql`now()` })
       .where(eq(scmBackfillJobs.id, row.id));
   }
 
@@ -116,7 +116,7 @@ export class ScmBackfillRelayService extends AbstractOutboxRelay<BackfillJobRow,
     row: Claimed<BackfillJobRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
     // `attempts` was spent at claim time.
     await tx
@@ -124,8 +124,8 @@ export class ScmBackfillRelayService extends AbstractOutboxRelay<BackfillJobRow,
       .set({
         status: newStatus,
         lastError,
-        ...(newStatus === 'failed' ? { finishedAt: new Date() } : {}),
-        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+        ...(newStatus === 'failed' ? { finishedAt: sql`now()` } : {}),
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
       })
       .where(eq(scmBackfillJobs.id, row.id));
   }
