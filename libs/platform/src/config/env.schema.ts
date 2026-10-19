@@ -133,8 +133,8 @@ export const EnvSchema = z
     AWS_REGION: z.string().default('ap-southeast-1'),
     /**
      * Custom AWS service endpoint. Set ONLY in local dev / CI to target an
-     * emulator such as LocalStack (e.g. http://localhost:4566). Leave UNSET in
-     * real AWS environments so the SDK uses the default regional endpoints.
+     * AWS emulator (none ships with the local stack; S3 is Garage via STORAGE_ENDPOINT).
+     * Leave UNSET in real AWS environments so the SDK uses the default regional endpoints.
      */
     AWS_ENDPOINT_URL: z.string().url().optional(),
     /**
