@@ -11,14 +11,23 @@
 import { describe, expect, it, vi } from 'vitest';
 
 // The counter is created when the module loads, so the mock must be in place before the import below.
-const { passFailedAdd } = vi.hoisted(() => ({ passFailedAdd: vi.fn() }));
+const { passFailedAdd, claimMissingAdd } = vi.hoisted(() => ({
+  passFailedAdd: vi.fn(),
+  claimMissingAdd: vi.fn(),
+}));
 vi.mock('@opentelemetry/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@opentelemetry/api')>();
+  const add: Record<string, ReturnType<typeof vi.fn>> = {
+    'outbox.relay.pass_failed': passFailedAdd,
+    'outbox.relay.claim_missing': claimMissingAdd,
+  };
   return {
     ...actual,
     metrics: {
       ...actual.metrics,
-      getMeter: () => ({ createCounter: () => ({ add: passFailedAdd }) }),
+      getMeter: () => ({
+        createCounter: (name: string) => ({ add: add[name] ?? vi.fn() }),
+      }),
     },
   };
 });
@@ -105,6 +114,9 @@ class TestRelay extends AbstractOutboxRelay<TestRow, string> {
 
   protected readonly outbox = {} as OutboxLeaseTable;
 
+  /** Ids the claim SELECTs but whose UPDATE ... RETURNING does not stamp (missing from RETURNING). */
+  unstamped = new Set<string>();
+
   /** Queue rows for the next claim. */
   load(rows: TestRow[]): void {
     for (const r of rows) this.byId.set(r.id, r);
@@ -142,7 +154,11 @@ class TestRelay extends AbstractOutboxRelay<TestRow, string> {
     const lockedUntil = new Date(Date.now() + leaseMs);
     this.heldUntil.push(lockedUntil);
     return Promise.resolve(
-      new Map(ids.map((id) => [id, { attempts: attempts.get(id)!, lockedUntil }])),
+      new Map(
+        ids
+          .filter((id) => !this.unstamped.has(id))
+          .map((id) => [id, { attempts: attempts.get(id)!, lockedUntil }]),
+      ),
     );
   }
 
@@ -283,6 +299,29 @@ describe('AbstractOutboxRelay — no transaction across the external call', () =
     relay.load([{ id: 'a', attempts: 0 }]);
     await relay.relay();
     expect(relay.sent).toEqual([{ id: 'a', result: 'msg-a' }]);
+  });
+});
+
+describe('AbstractOutboxRelay — a row the claim did not stamp is not dropped silently', () => {
+  it('logs the row id and the relay name, counts it, and skips delivering it', async () => {
+    const { relay } = make();
+    relay.unstamped.add('b');
+    relay.load([
+      { id: 'a', attempts: 0 },
+      { id: 'b', attempts: 0 },
+    ]);
+    const errorLog = vi.spyOn(relay['logger'], 'error');
+    claimMissingAdd.mockClear();
+
+    await relay.relay();
+
+    expect(relay.delivered).toEqual(['a']);
+    expect(errorLog).toHaveBeenCalledWith(
+      { rowId: 'b', relay: 'TestRelay' },
+      expect.stringContaining('missing from RETURNING'),
+    );
+    expect(claimMissingAdd).toHaveBeenCalledTimes(1);
+    expect(claimMissingAdd).toHaveBeenCalledWith(1, { relay: 'TestRelay' });
   });
 });
 

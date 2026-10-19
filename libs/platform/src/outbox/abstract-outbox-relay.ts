@@ -137,6 +137,16 @@ const passFailed = metrics.getMeter('rova-worker').createCounter('outbox.relay.p
   description: 'Outbox relay passes that threw before finishing (claim or loop failure)',
 });
 
+/**
+ * A row the claim SELECTed but its UPDATE ... RETURNING did not stamp. Every selected row is locked by the
+ * claim transaction, so this should never happen; if it does, the row was silently left out of the batch
+ * and nothing else would report it. Prometheus name `outbox_relay_claim_missing_total{relay}`.
+ */
+const claimMissing = metrics.getMeter('rova-worker').createCounter('outbox.relay.claim_missing', {
+  description:
+    'Rows selected by a relay claim that the claim did not stamp (missing from RETURNING)',
+});
+
 /** The table a relay works on and the columns the base class needs to lease, fence and dead-letter it. */
 export interface OutboxLeaseTable {
   table: PgTable;
@@ -530,12 +540,19 @@ export abstract class AbstractOutboxRelay<
         token,
         holdMs,
       );
-      // Every selected row was locked by this transaction, so each one comes back stamped.
+      // Every selected row was locked by this transaction, so each one should come back stamped. One that does
+      // not is an anomaly, not a normal outcome: it is skipped for this pass, and logged and counted so it is seen.
       return rows.flatMap((r) => {
         const s = stamped.get(r.id);
-        return s
-          ? [{ ...r, attempts: s.attempts, leaseToken: token, leaseExpiresAt: s.lockedUntil }]
-          : [];
+        if (s) {
+          return [{ ...r, attempts: s.attempts, leaseToken: token, leaseExpiresAt: s.lockedUntil }];
+        }
+        this.logger.error(
+          { rowId: r.id, relay: this.queueName },
+          'Relay selected a row the claim did not stamp (missing from RETURNING) — skipping it this pass',
+        );
+        claimMissing.add(1, { relay: this.queueName });
+        return [];
       });
     });
   }
