@@ -307,7 +307,9 @@ export class EntraGuestInviteRelayService
       .select({
         status: workspaceInvitations.status,
         tokenHash: workspaceInvitations.tokenHash,
-        // Days remaining, computed by the database's own now() in this statement (not the host clock).
+        // Days remaining, computed by the database's own now() in this statement (not the host clock). Floored at 1: a
+        // "0 days" invitation reads as already dead, and an invitation whose window has closed is refused at accept time
+        // anyway.
         expiresInDays: sql<number>`greatest(1, ceil(extract(epoch from (${workspaceInvitations.expiresAt} - now())) / 86400))::int`,
       })
       .from(workspaceInvitations)
@@ -337,8 +339,7 @@ export class EntraGuestInviteRelayService
     /**
      * Days REMAINING, from the invitation's own `expires_at` — not `INVITATION_TTL_DAYS`. The mail
      * leaves after provisioning and possibly after several backoff windows, so the configured TTL
-     * would overstate the window the invitee actually has. Floored at 1: a "0 days" invitation reads
-     * as already dead, and an invitation whose window has closed is refused at accept time anyway.
+     * would overstate the window the invitee actually has.
      */
     await this.emailScheduler.schedule(
       {

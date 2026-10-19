@@ -173,14 +173,8 @@ class TestRelay extends AbstractOutboxRelay<TestRow, string> {
     return this.leaseMs;
   }
 
-  /** How long the claim lock takes to acquire. */
-  beforeSelectWaitMs = 0;
-
   protected async beforeSelect(): Promise<void> {
     this.beforeSelectCalls += 1;
-    if (this.beforeSelectWaitMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, this.beforeSelectWaitMs));
-    }
   }
 
   protected renewLease(row: Claimed<TestRow>): Promise<Date | null> {

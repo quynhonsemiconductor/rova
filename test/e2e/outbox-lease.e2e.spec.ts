@@ -63,9 +63,9 @@ async function insertJob(extra: Partial<typeof scmBackfillJobs.$inferInsert> = {
     .values({
       workspaceId: randomUUID(),
       repositoryId: randomUUID(),
-      // Due a few seconds ago, by the TEST's clock: the column default is the DATABASE's now(), and a container
-      // whose clock runs ahead of the host's would make the row "not yet due" to a relay that reads Date.now().
-      scheduledAt: new Date(Date.now() - 5_000),
+      // Due a few seconds ago, by the DATABASE's clock: the relay selects due rows with now(), so a host clock
+      // that runs behind the container's would otherwise make the row "not yet due" to it.
+      scheduledAt: sql`now() - interval '5 seconds'`,
       ...extra,
     })
     .returning();
