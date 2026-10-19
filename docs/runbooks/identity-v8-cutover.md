@@ -98,7 +98,7 @@ Steps 1-3 are additive and happen **before** #718 deploys; 4-6 are the window. P
    # -> .../rova-migrator:<tag>. On develop the tag is the commit it was built from: `git merge-base --is-ancestor 4744d1b3 <that commit>` must succeed.
    ```
 
-Names below are `rova-<env_slug>`. They come from `infra/modules/stack` (`name = "${product}-${env_slug}"`: cluster `rova-develop`, services `rova-develop-api` and `rova-develop-worker`, migrator family `rova-develop-migrator`, API log group `/ecs/rova-develop-api`). The owner script confirms them against the account before any write.
+Names below are `rova-<env_slug>`. They come from `infra/modules/stack` (`name = "${product}-${env_slug}"`: cluster `rova-develop`, services `api` and `worker` (their task-definition families are `rova-develop-api` and `rova-develop-worker`), migrator family `rova-develop-migrator`, API log group `/ecs/rova-develop-api`). The owner script confirms them against the account before any write.
 
 ```sh
 export AWS_PROFILE=qnsc-admin AWS_REGION=ap-southeast-1 ENV_SLUG=develop        # production: prod
@@ -108,7 +108,7 @@ CLUSTER=rova-$ENV_SLUG TASKDEF=rova-$ENV_SLUG-migrator
 # that can reach the database, i.e. the API's)
 aws ecs list-clusters --query 'clusterArns' --output text
 aws ecs list-services --cluster "$CLUSTER" --output text
-aws ecs describe-services --cluster "$CLUSTER" --services "$(aws ecs list-services --cluster "$CLUSTER" --query 'serviceArns[?contains(@, `-api`)]|[0]' --output text)" \
+aws ecs describe-services --cluster "$CLUSTER" --services "$(aws ecs list-services --cluster "$CLUSTER" --query 'serviceArns[?ends_with(@, `/api`)]|[0]' --output text)" \
   --query 'services[0].networkConfiguration.awsvpcConfiguration' --output json   # -> subnets, securityGroups
 ```
 
@@ -253,9 +253,9 @@ TASK=$(run_migrator '["node","dist/db/identity-v8/cli.js","mirror-bans","--commi
 **A. Fast (minutes): put the previous task definitions back, and the previous SPA.** For the API and the worker (replace `<prev>` with the revision that was live before the cutover; read it from `aws ecs list-task-definitions --family-prefix rova-$ENV_SLUG-api --sort DESC`):
 
 ```sh
-aws ecs update-service --cluster "$CLUSTER" --service rova-$ENV_SLUG-api    --task-definition rova-$ENV_SLUG-api:<prev>    --force-new-deployment
-aws ecs update-service --cluster "$CLUSTER" --service rova-$ENV_SLUG-worker --task-definition rova-$ENV_SLUG-worker:<prev> --force-new-deployment
-aws ecs wait services-stable --cluster "$CLUSTER" --services rova-$ENV_SLUG-api rova-$ENV_SLUG-worker
+aws ecs update-service --cluster "$CLUSTER" --service api    --task-definition rova-$ENV_SLUG-api:<prev>    --force-new-deployment
+aws ecs update-service --cluster "$CLUSTER" --service worker --task-definition rova-$ENV_SLUG-worker:<prev> --force-new-deployment
+aws ecs wait services-stable --cluster "$CLUSTER" --services api worker
 ```
 
 then Cloudflare Pages: Workers & Pages -> `rova-<env>-web` -> Deployments -> the deployment before the cutover -> **Rollback to this deployment**. Do the SPA
