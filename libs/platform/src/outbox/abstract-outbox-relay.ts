@@ -14,7 +14,7 @@
  * A pass is now three steps, and no transaction is open during the middle one:
  *
  *   1. CLAIM  (short transaction) — select the due rows `FOR UPDATE SKIP LOCKED`, and stamp each with
- *             `attempts = attempts + 1`, a fresh `lease_token` and `locked_until = now() + lease`.
+ *             `attempts = attempts + 1`, a fresh `lease_token` and `locked_until = statement_timestamp() + lease`.
  *             Commit. The attempt is spent at claim time, so a process that dies mid-call still uses up
  *             its budget instead of looping.
  *   2. DELIVER (no transaction) — `deliver(row)` does the external work.
@@ -162,12 +162,24 @@ export type Claimed<TRow> = TRow & {
 /**
  * A stored-clock offset: `now() + delayMs`, computed by PostgreSQL in the statement that writes it.
  *
- * Every lease expiry and retry time the relay writes goes through here, so the database clock is the only
- * clock a stored timestamp is ever set from (see the time rule in the QNSC architecture docs). The host clock
- * is never read for a lease or a back-off, so a skewed worker cannot make a row due early or hold it late.
+ * Every retry time the relay writes goes through here, so the database clock is the only clock a stored
+ * timestamp is ever set from (see the time rule in the QNSC architecture docs). The host clock is never read
+ * for a lease or a back-off, so a skewed worker cannot make a row due early or hold it late.
  */
 export function dbDelay(delayMs: number): SQL {
   return sql`now() + make_interval(secs => ${delayMs / 1000})`;
+}
+
+/**
+ * A lease expiry: `statement_timestamp() + leaseMs`, computed by PostgreSQL in the statement that writes it.
+ *
+ * statement_timestamp(), not now(): now() is the TRANSACTION's start, and the claim waits for its locks after
+ * that start (beforeSelect, reapAbandoned). Counted from now(), that wait would come off the lease, so a
+ * serialized relay could stamp a short lease that lapses while it still holds the row. statement_timestamp()
+ * is taken when the stamping statement runs, after those locks are held.
+ */
+export function leaseDelay(leaseMs: number): SQL {
+  return sql`statement_timestamp() + make_interval(secs => ${leaseMs / 1000})`;
 }
 
 const DEFAULT_LEASE_MS = 2 * 60_000;
@@ -359,8 +371,8 @@ export abstract class AbstractOutboxRelay<
   }
 
   /**
-   * Stamp the rows with a lease that lapses `leaseMs` after the DATABASE's now(), and spend an attempt on
-   * each. Returns, per row, the new attempt count and the lease expiry the database stored.
+   * Stamp the rows with a lease that lapses `leaseMs` after the DATABASE's statement time, and spend an attempt
+   * on each. Returns, per row, the new attempt count and the lease expiry the database stored.
    */
   protected async stampLeases(
     tx: DrizzleTx,
@@ -369,9 +381,14 @@ export abstract class AbstractOutboxRelay<
     leaseMs: number,
   ): Promise<Map<string, { attempts: number; lockedUntil: Date }>> {
     const o = this.outbox;
+    // Measured from statement_timestamp(), not now(): see leaseDelay.
     const rows = (await tx
       .update(o.table)
-      .set({ attempts: sql`${o.attempts} + 1`, leaseToken: token, lockedUntil: dbDelay(leaseMs) })
+      .set({
+        attempts: sql`${o.attempts} + 1`,
+        leaseToken: token,
+        lockedUntil: leaseDelay(leaseMs),
+      })
       .where(inArray(o.id, ids))
       .returning({
         id: o.id,
@@ -398,14 +415,14 @@ export abstract class AbstractOutboxRelay<
 
   /**
    * Push the lease out before delivering: rows late in a batch have been waiting behind earlier ones.
-   * The new expiry is `now()` in the database plus the lease. Resolves to the expiry the database stored,
-   * or `null` if the lease was lost.
+   * The new expiry is the database's statement time plus the lease (see leaseDelay). Resolves to the expiry
+   * the database stored, or `null` if the lease was lost.
    */
   protected async renewLease(row: Claimed<TRow>): Promise<Date | null> {
     const o = this.outbox;
     const renewed = (await this.db
       .update(o.table)
-      .set({ lockedUntil: dbDelay(this.leaseMsFor(row)) })
+      .set({ lockedUntil: leaseDelay(this.leaseMsFor(row)) })
       .where(and(sql`${o.id} = ${row.id}`, sql`${o.leaseToken} = ${row.leaseToken}`))
       .returning({ lockedUntil: o.lockedUntil } as never)) as Array<{ lockedUntil: Date }>;
     return renewed.length > 0 ? renewed[0].lockedUntil : null;
@@ -482,9 +499,9 @@ export abstract class AbstractOutboxRelay<
       }
 
       await this.beforeSelect(tx);
-      // Due-ness and the lease are both `now()` of this transaction (PostgreSQL's now() is the transaction's
-      // start), so the claim is one consistent database instant. A relay that serializes its claims waits in
-      // beforeSelect before this instant is read by the SELECT; that shortens the hold, never lengthens it.
+      // Due-ness is `now()` of this transaction (its start), one consistent database instant for the SELECT.
+      // The lease is NOT taken from that instant: it is stamped by statement_timestamp() after beforeSelect's
+      // lock wait, so the wait does not shorten the hold (see leaseDelay).
       const rows = await this.selectDue(tx, this.batchSize);
       if (!rows.length) return [];
 
