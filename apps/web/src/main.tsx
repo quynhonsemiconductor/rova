@@ -4,7 +4,6 @@ import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './app/styles/globals.css'
 import './shared/i18n/i18n'
-import { registerPreloadErrorReload } from './shared/lib/preload-error'
 import App from './App'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -27,8 +26,6 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     return this.props.children
   }
 }
-
-registerPreloadErrorReload()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
