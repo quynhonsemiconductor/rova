@@ -296,6 +296,7 @@ module "rds" {
   engine_version              = var.rds.engine_version
   allow_major_version_upgrade = var.rds.allow_major_version_upgrade
   apply_immediately           = var.rds.apply_immediately
+  auto_minor_version_upgrade  = var.rds.auto_minor_version_upgrade
 
   # Both null in steady state. Set only while finishing the rally->rova subnet-group
   # rename; see this variable's description and qnsc-infra
