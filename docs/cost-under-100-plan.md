@@ -82,7 +82,7 @@ it launches. This is the change with the largest blast radius outside rally.
 ### 2. Delete the persistent develop environment — −$63.08
 
 Removes dev's ALB, IPv4, RDS, cache, Fargate and NAT. Local development already works:
-`docker-compose.dev.yml` runs `postgres:17-alpine`, `valkey/valkey:8-alpine` and
+`docker-compose.dev.yml` runs `postgres:18.6`, `valkey/valkey:8.1.10-alpine` and
 localstack, and `pnpm db:migrate` seeds.
 
 **What is given up:** the shared `rally-dev.qnsc.vn` URL, the deploy-to-dev CI path, and
