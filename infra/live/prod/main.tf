@@ -1,4 +1,4 @@
-// rally · production
+// rova · production
 //
 // Structurally identical to ../develop by construction: the entire stack lives in
 // ../../modules/stack and only the values below differ. Production takes the
@@ -126,7 +126,8 @@ module "stack" {
   secrets_recovery_window_days = 30
 
   // ── Secret bundling · COMPLETE ──────────────────────────────────────────────
-  // Every app secret lives in ONE container, rally/production/app, read per key by ECS
+  // Every app secret lives in ONE container, rally/production/app (legacy physical
+  // name, do not rename — recreated as rova/production/app in the on-prem move), read per key by ECS
   // via the `<arn>:<key>::` form of valueFrom. Secrets Manager bills per SECRET
   // regardless of size, so this is 12 containers' worth of material for one fee.
   //
@@ -150,7 +151,8 @@ module "stack" {
   //
   // RECOVERABLE FOR 30 DAYS, unlike develop: recovery_window_days = 30 above, so the
   // destroyed containers are scheduled rather than gone. Restore with
-  // `aws secretsmanager restore-secret --secret-id rally/production/<name>` inside that
+  // `aws secretsmanager restore-secret --secret-id rally/production/<name>` (legacy
+  // physical path, do not rename — recreated as rova/production/<name> in the on-prem move) inside that
   // window; after it, they must be recreated and re-pasted by hand.
   //
   // AT GO-LIVE, treat any boot failure mentioning secrets as this change first. Rollback
@@ -171,7 +173,8 @@ module "stack" {
   // MONITORING MOVED, it did not disappear. `monitor_target_health` cannot exist
   // without a target group, so the Route 53 health check created by this module
   // (aws_route53_health_check.api_ingress) is what catches an outage producing no
-  // load. It probes rally-api.qnsc.vn/v1/healthz from outside AWS, so it exercises the
+  // load. It probes rally-api.qnsc.vn/v1/healthz (legacy physical hostname, do not
+  // rename — recreated as rova-api.qnsc.vn in the on-prem move) from outside AWS, so it exercises the
   // whole user path rather than any one component's opinion of itself.
   //
   // THAT CHECK IS ON as of go-live — see `monitor_ingress` below. It was off while
@@ -301,7 +304,8 @@ module "stack" {
   // stopped instance before every deploy either way, so it stays a no-op on a running
   // database.
 
-  // Both halves of rally/production/r2-public-* are populated, so the public-bucket
+  // Both halves of rally/production/r2-public-* (legacy physical names, do not rename —
+  // recreated as rova-* in the on-prem move) are populated, so the public-bucket
   // credential can be injected. Same fix as develop: `rally-production-r2-app` is scoped
   // to `rally-prod-attachments` alone, so public-asset writes had no grant. Production
   // has had no users, so nothing has hit it yet — this lands before it can.
@@ -325,7 +329,8 @@ module "stack" {
   // now fails if RLS ever returns, and this database reports zero RLS-enabled tables.
   //
   // The cutover task ran here on 2026-07-29 (task
-  // 747f5e5183c046d6afb399b3810f007e on rally-prod-migrator:15, exit 0). Verified
+  // 747f5e5183c046d6afb399b3810f007e on rally-prod-migrator:15 (legacy physical image
+  // name, do not rename), exit 0). Verified
   // independently afterwards against this database: rova_app and rova_worker both
   // have rolcanlogin=true with rolsuper/rolbypassrls/rolcreatedb/rolcreaterole all
   // false, and a real connection as rova_app succeeded.
@@ -448,7 +453,8 @@ module "stack" {
   // SIZED FROM MEASUREMENT. 1024/2048 originally, then 512/1024, now 256/1024 — and
   // this last step is the only one of the three taken with data rather than judgement.
   //
-  // THE DATA, AWS/ECS on rally-develop, 14 days to 2026-08-17, same image and same
+  // THE DATA, AWS/ECS on rally-develop (legacy physical environment name, do not
+  // rename — recreated as rova-develop in the on-prem move), 14 days to 2026-08-17, same image and same
   // workload as production will run:
   //
   //     api  512/1024   CPU avg 0.8%, peak 100%   Memory avg 14.2%, PEAK 25.9%

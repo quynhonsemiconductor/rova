@@ -25,8 +25,9 @@ variable "env_slug" {
   description = <<-EOT
     Short environment token used in RESOURCE NAMES (`<product>-<env_slug>`).
     Deliberately separate from `env`: existing resources are named `rally-prod`
-    while the environment is called `production`, and renaming them would force
-    replacement of the cluster, RDS instance and log groups.
+    (legacy physical name, do not rename — recreated as rova-prod in the
+    on-prem move) while the environment is called `production`, and renaming
+    them would force replacement of the cluster, RDS instance and log groups.
   EOT
   type        = string
 }
@@ -48,12 +49,12 @@ variable "api_domain" {
 }
 
 variable "web_record" {
-  description = "Cloudflare CNAME label for the SPA (e.g. `rally-dev`, `rally`)."
+  description = "Cloudflare CNAME label for the SPA (e.g. `rova-dev`, `rova`)."
   type        = string
 }
 
 variable "api_record" {
-  description = "Cloudflare CNAME label for the API (e.g. `rally-api-dev`, `rally-api`)."
+  description = "Cloudflare CNAME label for the API (e.g. `rova-api-dev`, `rova-api`)."
   type        = string
 }
 
@@ -617,11 +618,12 @@ variable "grafana_alerting" {
     `product_dashboards_folder_uid` are THREE DIFFERENT folders in the same
     shared Grafana stack — do not collapse them. A real bug caught before
     merge: the dashboard resource briefly reused `alerts_folder_uid`, which
-    would have filed rally's dashboard under the Alerts folder. A second
+    would have filed rova's dashboard under the Alerts folder. A second
     real bug, caught in production: `product_dashboards_folder_uid` used to
     be a `grafana_folder` resource created HERE, once per environment —
     since develop and prod are separate Terraform root modules with
-    separate state, that created two real, separate "Rally" folders. It is
+    separate state, that created two real, separate "Rally" folders (legacy
+    physical folder titles, do not rename). It is
     now qnsc-infra/live/observability's `rally_dashboards_folder_uid`
     output — a plain UID, created once, centrally, same as the other two.
   EOT
@@ -896,7 +898,8 @@ variable "idle_schedule" {
     The 7-day window bounds when AWS force-STARTS the instance, not how long it then runs.
     Stop it on Sunday, AWS starts it the following Sunday, and the next weekly pass is up
     to seven days after that. So a weekly re-stop bounds the exposure at seven days rather
-    than one. Measured on rally-prod under exactly that expression: 59 of 168 hours in a
+    than one. Measured on rally-prod (legacy physical instance name, do not
+    rename) under exactly that expression: 59 of 168 hours in a
     week published CloudWatch datapoints — a pre-launch database with no users, no tasks
     and no cache node running 35% of the time, roughly $4/mo for nothing.
 
@@ -1057,7 +1060,7 @@ variable "tunnel_routing_managed" {
     mapping), instead of leaving them to whatever was configured by hand.
 
     WHY THIS IS OPT-IN RATHER THAN THE DEFAULT. A tunnel with no ingress rule is inert:
-    it connects, reports healthy, and 503s every request — which is exactly how rally
+    it connects, reports healthy, and 503s every request — which is exactly how rova
     production went live. But turning routing on for a tunnel that is ALREADY SERVING is
     the dangerous direction: Cloudflare's tunnel-configuration API is a whole-document
     PUT, so a partial rule set silently discards anything the live configuration holds
@@ -1138,7 +1141,7 @@ variable "cpu_architecture" {
     an x86 runner multiplies build minutes by enough to outweigh the Fargate saving.
 
     NOT EVERY PRODUCT CAN TAKE THIS. It depends on every image in the task having an
-    arm64 build — including sidecars. rally qualifies: the app is `node:alpine`
+    arm64 build — including sidecars. rova qualifies: the app is `node:alpine`
     (multi-arch), and both sidecars publish arm64 (`cloudflare/cloudflared` and
     `amazon/aws-otel-collector`, checked 2026-08-17). qnsc-kb does NOT: `clamav/clamav`
     is amd64-only on every published tag.
