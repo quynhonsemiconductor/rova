@@ -39,7 +39,7 @@ const GRAPH_CONFIG = {
   sender: 'noreply-rova-dev@qnsc.vn',
   tenantId: '11111111-1111-1111-1111-111111111111',
   clientId: '22222222-2222-2222-2222-222222222222',
-  certificate: undefined,
+  certificatePath: undefined,
   federatedTokenFile: undefined,
   nodeEnv: 'production',
 };
