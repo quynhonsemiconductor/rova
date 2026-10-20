@@ -12,74 +12,14 @@
     <!-- Security: referrer policy — don't leak URL to third-party resources -->
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
-    <!-- Security: Content Security Policy (tightened at CDN/server for prod; meta tag as baseline) -->
-    <!-- NOTE: frame-ancestors and X-Frame-Options MUST be set as HTTP headers — not meta tags.    -->
-    <!-- In production, configure these at the reverse-proxy / CDN layer.                          -->
-    <!--                                                                                            -->
-    <!-- *.r2.cloudflarestorage.com is required for attachments. Uploads go DIRECTLY from the       -->
-    <!-- browser to the bucket via a presigned PUT (bytes never touch the API), and downloads       -->
-    <!-- follow a 302 from /v1/.../content to a presigned GET on that same host. Without it,        -->
-    <!-- every upload fails with an opaque "Failed to fetch" — the request is blocked before        -->
-    <!-- dispatch, so nothing reaches the network tab and the server logs stay clean.               -->
-    <!-- Listed in img-src too: a redirect target is re-checked, so inline <img> rendering of an    -->
-    <!-- attachment needs it as well.                                                               -->
-    <!--                                                                                            -->
-    <!-- rova-assets{-dev}.qnsc.vn are the PUBLIC-asset origins (avatars, workspace logos) —        -->
-    <!-- the R2 custom domains fronting rova-{develop,prod}-public-assets. img-src ONLY; these      -->
-    <!-- are rendered, never fetched, so they are deliberately absent from connect-src.              -->
-    <!--                                                                                            -->
-    <!-- They are NOT covered by *.r2.cloudflarestorage.com: a custom domain replaces that host      -->
-    <!-- entirely, and CDN_PUBLIC_ASSETS_BASE_URL hands the SPA a rova-assets URL. Missing them     -->
-    <!-- fails LOUDER than the attachment case above but later — the upload succeeds end to end,     -->
-    <!-- the row is written, and only the <img> is refused, so the avatar appears broken while       -->
-    <!-- every server log stays clean.                                                               -->
-    <!--                                                                                            -->
-    <!-- Both environments are listed because this meta tag is static and one build serves each;     -->
-    <!-- there is no _headers file or Pages-layer CSP to specialise per environment. A               -->
-    <!-- https://*.qnsc.vn wildcard would cover both (connect-src already uses one) but would also   -->
-    <!-- let any subdomain, including a future untrusted one, serve images into the app.             -->
-    <!--                                                                                            -->
-    <!-- connect-src needs blob: too, for the SAME "opaque Failed to fetch" reason: pasting an      -->
-    <!-- image into a rich-text field creates a local URL.createObjectURL() preview (no network     -->
-    <!-- call), and uploading it for real on Save does `fetch(blobUrl)` to read those bytes back     -->
-    <!-- out before POSTing them through the normal attachment pipeline. Without this, that fetch    -->
-    <!-- is blocked before dispatch — the Save button just silently never clears.                    -->
-    <!--                                                                                            -->
-    <!-- localhost:4620 is Garage, the local dev stand-in for R2 (see docker-compose.dev.yml /       -->
-    <!-- STORAGE_ENDPOINT). STORAGE_FORCE_PATH_STYLE=true makes presigned PUT/GET URLs use           -->
-    <!-- path-style addressing (localhost:4620/bucket/key, bare host, no subdomain) rather than       -->
-    <!-- virtual-hosted-style, so the CSP names this one host and no wildcard.                         -->
-    <!-- This is dev-only baseline — prod tightens the policy at the CDN and never talks to Garage.     -->
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="
-        default-src 'self';
-        script-src 'self' 'unsafe-inline';
-        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-        font-src 'self' https://fonts.gstatic.com data:;
-        img-src 'self' data: blob: https://*.r2.cloudflarestorage.com http://localhost:4620
-          https://rova-assets-dev.qnsc.vn
-          https://rova-assets.qnsc.vn;
-        connect-src 'self'
-          blob:
-          http://localhost:3000
-          http://localhost:4620
-          https://*.qnsc.vn
-          https://*.r2.cloudflarestorage.com
-          https://login.microsoftonline.com
-          https://login.microsoft.com
-          https://graph.microsoft.com;
-        worker-src blob:;
-        base-uri 'self';
-        form-action 'self' https://login.microsoftonline.com;
-      "
-    />
+    <!-- Security: Content-Security-Policy — served as an HTTP header from public/_headers     -->
+    <!-- (Pages today, Workers Static Assets after the on-prem move). A <meta> CSP here was    -->
+    <!-- the dev-only baseline; it is gone because the header file carries the real policy     -->
+    <!-- and multiple CSPs intersect, so a stale meta could only ever tighten it wrongly.      -->
+    <!-- Local `pnpm dev` runs without a CSP; the header file documents every origin there.    -->
 
     <!-- Branding: theme color for browser chrome -->
     <meta name="theme-color" content="#1d3f73" />
-
-    <!-- Performance: preconnect to API origin -->
-    <link rel="preconnect" href="http://localhost:3000" />
   </head>
   <body>
     <!-- Accessibility: skip-to-content landmark (styled via globals.css) -->
