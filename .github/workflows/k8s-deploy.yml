@@ -80,13 +80,14 @@ jobs:
     # top-level default — GitHub validates a reusable call's whole permission
     # chain at trigger time, so an under-grant here is a startup_failure before
     # any job runs, not a runtime denial. id-token is the AWS OIDC for the build
-    # job's ECR login; attestations is build provenance; packages:read lets
-    # build-push-ecr pull the private @quynhonsemiconductor/* actions.
+    # job's ECR login; attestations is build provenance; packages:write pushes
+    # the image to ghcr.io (ci P0-20) and covers the private
+    # @quynhonsemiconductor/* pulls the Dockerfile makes.
     permissions:
       contents: read
       id-token: write
       attestations: write
-      packages: read
+      packages: write
     uses: quynhonsemiconductor/ci/.github/workflows/k8s-deploy.yml@v1
     with:
       product: rova
