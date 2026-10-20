@@ -151,7 +151,7 @@ async function seedProject(project: {
   if (!actualId) return; // should never happen
 
   // 2. Initialise the WORKSPACE-wide item-key counter per type (FormattedID-style,
-  //    per the reference ALM product;
+  //    per Rally;
   //    mirrors ProjectsService.createProject). Runs per project but the workspace
   //    counter rows are shared — onConflictDoNothing makes later projects no-op.
   const counterTypes = ['story', 'task', 'defect'] as const;

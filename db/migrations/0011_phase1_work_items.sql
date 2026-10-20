@@ -2,14 +2,14 @@
 -- Migration 0011: Phase 1 — Core Work Item Management
 -- ============================================================================
 -- Adds the Phase 1 fields to work.work_items, remaps the priority enum to the
--- agile ALM tool's vocabulary, introduces the schedule_state dimension, and creates the
+-- Rally vocabulary, introduces the schedule_state dimension, and creates the
 -- work.activity_logs revision-history table (synchronous, same-transaction).
 --
 -- Online-safe: all new columns are nullable or have safe defaults; the enum
 -- swap uses an explicit USING remap so existing rows convert deterministically.
 -- ============================================================================
 
--- ── 1. Priority enum → agile ALM vocabulary (none/low/normal/high/urgent) ────
+-- ── 1. Priority enum → Rally vocabulary (none/low/normal/high/urgent) ────────
 -- Legacy values (critical/high/medium/low) are remapped: critical→urgent,
 -- medium→normal. Full type swap keeps the enum clean (no orphan values).
 

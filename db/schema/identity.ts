@@ -93,7 +93,7 @@ import { sql } from 'drizzle-orm';
 // ── api_tokens ────────────────────────────────────────────────────────────
 //
 // Long-lived credentials for MACHINE clients (CI, scripts, the agent platform).
-// The reference ALM product's equivalent is the API Key a user mints in My Settings; this follows
+// Real Rally's equivalent is the API Key a user mints in My Settings; this follows
 // that shape with the three things that model lacks and every current product has
 // converged on — mandatory expiry, an optional scope narrowing, and an audit trail.
 //
@@ -122,7 +122,7 @@ export const apiTokens = identitySchema.table(
     tokenHash: text('token_hash').notNull(),
     /** Narrowing only; NULL means "inherit the user's permissions unchanged". */
     scopes: text('scopes').array(),
-    /** Mandatory, unlike the reference ALM product's never-expiring keys. Capped in the service. */
+    /** Mandatory, unlike Rally's never-expiring keys. Capped in the service. */
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     /**
      * Touched on use, throttled to once a minute in the repository: a write on every

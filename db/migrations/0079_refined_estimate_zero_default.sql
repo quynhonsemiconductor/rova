@@ -1,8 +1,8 @@
--- Refined Estimate becomes NOT NULL DEFAULT 0, matching the reference ALM product.
+-- Refined Estimate becomes NOT NULL DEFAULT 0, matching real Rally.
 --
 -- 0071 added `ck_portfolio_refined_positive` (`IS NULL OR > 0`) on the reasoning that
 -- "zero would be indistinguishable from 'not forecast'". That is true, and it is also
--- exactly what we want: the reference ALM product shows these fields as 0 rather than blank, and lets a
+-- exactly what we want: real Rally shows these fields as 0 rather than blank, and lets a
 -- planner type 0. Broadcom documents no rule either way, so the observed product wins.
 --
 -- Making 0 the ABSENT state instead of NULL keeps every downstream rule intact, because

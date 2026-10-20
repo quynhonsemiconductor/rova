@@ -1,6 +1,6 @@
 -- Capacity plans get a human key, as every other planning entity already has.
 --
--- The agile ALM tool's Capacity Planning list leads with an ID column (`PN1915`) that links to the plan, and
+-- Rally's Capacity Planning list leads with an ID column (`PN1915`) that links to the plan, and
 -- ours had no key at all: the list keyed rows on a UUID, so a plan could not be cited in a
 -- conversation or a ticket. `CP-<n>` follows the family already in use (IT-/RE-/MS-/PR-), minted
 -- per project like `iterations.iteration_key`.

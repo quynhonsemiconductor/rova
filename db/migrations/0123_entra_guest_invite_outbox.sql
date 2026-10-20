@@ -1,9 +1,9 @@
 -- An invited external collaborator is provisioned as a Microsoft Entra B2B GUEST, through a
 -- transactional outbox.
 --
--- Rova's invitation is the authorization gate and stays exactly that. What was missing is the
+-- Rally's invitation is the authorization gate and stays exactly that. What was missing is the
 -- IDENTITY half: a collaborator on a non-staff mailbox has no object in our tenant, so the BFF
--- login they are sent to cannot authenticate them at all. Entra B2B fixes that without rova
+-- login they are sent to cannot authenticate them at all. Entra B2B fixes that without Rally
 -- holding a password — the guest proves the mailbox through their own Microsoft work account,
 -- Google federation, or an emailed one-time passcode — and their `oid` in OUR tenant is what
 -- every later login carries.
@@ -12,7 +12,7 @@
 -- `libs/modules/attachments/src/application/entity-attachments.service.ts:106-110` states this
 -- repo's rule for exactly this shape: "holding a Postgres transaction open across a network
 -- round-trip to object storage is worse than the gap it would close". A fire-and-forget call after
--- commit is not the alternative either — a failure there leaves a rova invitation whose Entra
+-- commit is not the alternative either — a failure there leaves a Rally invitation whose Entra
 -- guest was never created, and the only symptom is the invitee's login being refused as
 -- `AUTH_TOKEN_INVALID`, which names nothing. So the INTENT is written in the invite transaction
 -- (it cannot exist without the invitation, and cannot be lost if the invitation rolls back) and a

@@ -12,7 +12,6 @@
 --
 -- Set on the ROLE rather than in the parameter group on purpose. A cluster-wide
 -- `statement_timeout` would also apply to `rally_migrate`, and DDL on a large
--- (rally_migrate: legacy physical name, do not rename — recreated as rova-* in the on-prem move)
 -- table legitimately runs for minutes — a migration killed halfway is a far worse
 -- failure than a slow request. Per-role settings are applied by Postgres at
 -- connection time, so the migrator keeps no limit while the two application

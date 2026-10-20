@@ -1,8 +1,8 @@
--- An allocation's value becomes OPTIONAL, which is how the agile ALM tool models assignment vs allocation.
+-- An allocation's value becomes OPTIONAL, which is how Rally models assignment vs allocation.
 --
--- That tool assigns a portfolio item to ONE primary project and only then "allocates points to the
+-- Rally assigns a portfolio item to ONE primary project and only then "allocates points to the
 -- additional teams". The primary assignment carries no allocated number of its own — the item's own
--- estimate (Refined, else Preliminary) is what the plan charges to that team, which is why the tool's
+-- estimate (Refined, else Preliminary) is what the plan charges to that team, which is why Rally's
 -- `Allocation` column is blank on a singly-assigned item and filled only where a planner typed a
 -- slice.
 --

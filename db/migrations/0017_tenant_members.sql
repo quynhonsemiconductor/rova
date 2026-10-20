@@ -1,7 +1,6 @@
 -- Migration: 0017_tenant_members
--- Adds tenancy.tenant_members — the "keycard" table for the reference ALM
--- product's global-identity model. A global user (identity.users) is ATTACHED
--- to one or many tenants via
+-- Adds tenancy.tenant_members — the "keycard" table for the real-Rally identity
+-- model. A global user (identity.users) is ATTACHED to one or many tenants via
 -- these rows, replacing the old users.tenant_id 1:1 ownership. This is the
 -- additive first phase: the table is created and backfilled from existing
 -- users.tenant_id, but no application code reads it yet (no behaviour change).

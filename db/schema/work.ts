@@ -95,7 +95,7 @@ export const projects = workSchema.table(
 );
 
 // ── workspace_item_counters (item_key seq) ─────────────────────────────────
-// Per-WORKSPACE, per-type sequential counter (FormattedID model, per the reference ALM product): a
+// Per-WORKSPACE, per-type sequential counter (FormattedID model, per Rally): a
 // work-item key like US-42 is unique across the whole workspace, not per
 // project. Composite PK (workspaceId, itemType) gives each type its own
 // workspace-wide sequence (US-*, DE-*, TA-* …).
@@ -140,7 +140,7 @@ export const workItems = workSchema.table(
     /**
      * Scheduling links, both `ON DELETE SET NULL` (migration 0114).
      *
-     * Deleting a timebox UNSCHEDULES its work rather than orphaning it — the reference ALM product: "If you delete an
+     * Deleting a timebox UNSCHEDULES its work rather than orphaning it — Rally: "If you delete an
      * iteration that stories and defects are scheduled in, they will all be updated to unscheduled."
      * Neither column had a key until 0114, and the three delete services are bare `repo.delete(id)`,
      * so every scheduled item was left pointing at a row that no longer existed.
@@ -325,9 +325,9 @@ export const workflowTransitions = workSchema.table(
   }),
 );
 
-// ── iterations (agile ALM timeboxes) ─────────────────────────────────────
+// ── iterations (Rally-style timeboxes) ─────────────────────────────────────
 // A date-bounded planning timebox scoped to a project (and optionally a team).
-// State follows the agile ALM vocabulary: planning → committed → accepted.
+// State follows the Rally vocabulary: planning → committed → accepted.
 
 export const iterations = workSchema.table(
   'iterations',
@@ -552,7 +552,7 @@ export const releases = workSchema.table(
 //
 // No stored progress. Percent Done and the Estimated Progress indicators are
 // aggregated from linked work items on read (see the portfolio module's
-// repository). The reference ALM product stores its rollups and consequently ships a "Correct rollup
+// repository). Rally stores its rollups and consequently ships a "Correct rollup
 // discrepancy" action to repair drift; computing on read means that cannot happen.
 export const portfolioItems = workSchema.table(
   'portfolio_items',
@@ -581,7 +581,7 @@ export const portfolioItems = workSchema.table(
     // its children, which is what makes the rollups authoritative.
     //
     // NOT NULL DEFAULT 0, unlike every other typed estimate in this schema, and unlike
-    // what the general rule below would suggest. The reference ALM product shows these as 0 rather than
+    // what the general rule below would suggest. Rally shows these as 0 rather than
     // blank and lets a planner type 0, so 0 — not NULL — is the absent state here (0081).
     // Nothing downstream needed changing: the tier chain already selects the refined
     // forecast only `if > 0`, so 0 falls through to the Preliminary Estimate mapping,
@@ -593,13 +593,13 @@ export const portfolioItems = workSchema.table(
     parentId: uuid('parent_id'),
     // Feature only. Epic is project-level and has no Team (BA spec §11.1).
     teamId: uuid('team_id'),
-    // Feature only — the reference ALM product likewise allows Release on the lowest portfolio level
+    // Feature only — Rally likewise allows Release on the lowest portfolio level
     // only, to schedule a feature into a roadmap timeframe.
     // Feature only, and `ON DELETE SET NULL` (migration 0114): deleting a Release unschedules the
     // Features planned into it rather than leaving them pointing at a missing row.
     releaseId: uuid('release_id').references(() => releases.id, { onDelete: 'set null' }),
     ownerId: uuid('owner_id'),
-    // Both nullable dates. The reference ALM product allows a portfolio item with no planned dates (it
+    // Both nullable dates. Rally allows a portfolio item with no planned dates (it
     // simply drops off the timeline), and health is only computable once they exist.
     plannedStartDate: date('planned_start_date'),
     plannedEndDate: date('planned_end_date'),
@@ -716,7 +716,7 @@ export const capacityPlanTeams = workSchema.table(
 // It is also why "Total Allocated" counts only rows WHERE team_id IS NOT NULL — an
 // unallocated placeholder must not outrank a Refined or Preliminary estimate.
 //
-// One Feature may hold several rows (the agile ALM tool calls this sharing a feature between
+// One Feature may hold several rows (Rally calls this sharing a feature between
 // teams; each allocated team appears as its own row under the feature).
 export const capacityPlanAllocations = workSchema.table(
   'capacity_plan_allocations',
@@ -728,7 +728,7 @@ export const capacityPlanAllocations = workSchema.table(
     // slice of a Feature, which is what RESTRICT says.
     teamId: uuid('team_id').references(() => teams.id, { onDelete: 'restrict' }),
     /**
-     * The agile ALM tool's PRIMARY team assignment for this Feature in this plan.
+     * Rally's PRIMARY team assignment for this Feature in this plan.
      *
      * Per its docs: "you can assign the portfolio item to one primary team and then allocate points or
      * story counts to the additional teams that will contribute to the work." One team owns the
@@ -1330,7 +1330,7 @@ export const milestoneTeams = workSchema.table(
  * work item OR to a portfolio item (SRS §5.1 and §11.4 both require the selector).
  *
  * The table name did NOT change when the column did — "artifact" is already the
- * entity-agnostic word, and the agile ALM tool itself calls the things a milestone tracks its artifacts.
+ * entity-agnostic word, and Rally itself calls the things a milestone tracks its artifacts.
  *
  * No FK on `entity_id`: it cannot point at two tables, which is the standing cost of this
  * shape here and in `activity_logs`. The owning service handles cleanup.
@@ -1410,7 +1410,7 @@ export const projectSettings = workSchema.table(
 
 // ── P7 test_case_types (per-project Type catalog, modelled on `labels`) ─────
 // SRS §3: Test Case Type is a per-PROJECT, admin-editable catalog (a declared divergence
-// from the reference ALM product's workspace-level dropdown). `archived_at` soft-hides a removed Type rather
+// from Rally's workspace-level dropdown). `archived_at` soft-hides a removed Type rather
 // than deleting it — a historical Test Case keeps its snapshot `type` value regardless
 // (BR2, BR17), so nothing here needs to cascade on archive.
 
@@ -1495,7 +1495,7 @@ export const testCases = workSchema.table(
 
 // ── P7 test_results ──────────────────────────────────────────────────────────
 // Append-only (BR12): adding a Result never replaces an earlier one. `work_item_id` is a
-// SNAPSHOT of the Test Case's Work Product at result-entry time (the reference ALM product: "the work product
+// SNAPSHOT of the Test Case's Work Product at result-entry time (Rally: "the work product
 // to which the test case result was associated when you entered the result") — not
 // editable, and not re-derived from the Test Case's current link.
 

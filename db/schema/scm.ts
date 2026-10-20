@@ -78,7 +78,7 @@ export const scmRepositories = scmSchema.table(
 );
 
 // A repo maps to a WORKSPACE (not to specific projects): work-item keys are
-// workspace-unique (FormattedID-style, per the reference ALM product), so any key in a PR/commit resolves
+// workspace-unique (FormattedID-style, per Rally), so any key in a PR/commit resolves
 // workspace-wide. This makes SCM linking org-level — no per-project mapping.
 
 // ── webhook_inbox — durable raw events (async ingestion) ─────────────────────

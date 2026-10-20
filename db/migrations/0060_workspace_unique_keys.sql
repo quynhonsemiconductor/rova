@@ -1,4 +1,4 @@
--- 0060: workspace-unique work-item keys (FormattedID-style, per the reference ALM product).
+-- 0060: workspace-unique work-item keys (Rally FormattedID).
 --
 -- Move item_key uniqueness + the numbering sequence from per-PROJECT to
 -- per-WORKSPACE, so a key like US-42 is unique across the whole workspace. This

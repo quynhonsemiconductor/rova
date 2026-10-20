@@ -1,7 +1,7 @@
 -- 0061: SCM installations — bind a GitHub App installation to a workspace.
 --
 -- Org-level auto-discovery: an admin connects a GitHub App installation to a
--- workspace; rova then auto-registers that installation's repos and resolves
+-- workspace; Rally then auto-registers that installation's repos and resolves
 -- inbound installation/installation_repositories webhooks to the workspace — no
 -- per-repo typing. installation_id is GitHub's numeric id stored as text.
 

@@ -614,7 +614,7 @@ ON CONFLICT (id) DO NOTHING;
 -- read, and `source` is what makes a fixed value honest — `manual` because every
 -- number here was chosen, not copied from a Feature forecast.
 --
--- `is_primary` is the agile ALM tool's Planned Team Assignment and is UNIQUE per (plan,
+-- `is_primary` is Rally's Planned Team Assignment and is UNIQUE per (plan,
 -- item), so exactly one row per split Feature carries it; the CHECK
 -- `ck_capacity_primary_has_team` also means a primary row must name a team.
 INSERT INTO work.capacity_plan_allocations (id, plan_id, portfolio_item_id, team_id, value, is_primary, source)

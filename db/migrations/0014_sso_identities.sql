@@ -1,8 +1,8 @@
 -- Migration: 0014_sso_identities
 -- Adds identity.sso_identities table to support Microsoft Entra ID SSO (OIDC).
 -- Each row links one external provider identity (provider + providerSub) to one
--- rova user. The unique constraint on (provider, provider_sub) means a single
--- Entra OID can only map to one rova user across all tenants.
+-- Rally user. The unique constraint on (provider, provider_sub) means a single
+-- Entra OID can only map to one Rally user across all tenants.
 
 CREATE TABLE IF NOT EXISTS "identity"."sso_identities" (
   "id"             uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

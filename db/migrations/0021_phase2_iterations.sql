@@ -1,19 +1,19 @@
 -- ============================================================================
 -- Migration 0021: Phase 2 — Iterations (rename sprints → iterations)
 -- ============================================================================
--- Adopts the agile ALM tool's "Iteration" ubiquitous language as the canonical domain term.
+-- Adopts the Rally "Iteration" ubiquitous language as the canonical domain term.
 -- Renames work.sprints → work.iterations and the sprint_status enum → the
--- agile ALM iteration State vocabulary (Planning / Committed / Accepted), and adds
+-- Rally iteration State vocabulary (Planning / Committed / Accepted), and adds
 -- the Phase 2 planning fields: team_id, theme, notes, planned_velocity and the
 -- per-project display key (iteration_key).
 --
 -- Dev-phase rename (no production data contract to preserve): a full big-bang
 -- rename keeps the schema domain-correct with a single, deterministic USING
--- remap of the old lifecycle states onto agile ALM iteration states.
+-- remap of the old lifecycle states onto Rally states.
 -- ============================================================================
 
--- ── 1. State enum → agile ALM Iteration vocabulary ──────────────────────────
--- Old sprint lifecycle (planned/active/completed) maps onto agile ALM iteration
+-- ── 1. State enum → Rally Iteration vocabulary ──────────────────────────────
+-- Old sprint lifecycle (planned/active/completed) maps onto Rally iteration
 -- State: planned→planning, active→committed, completed→accepted.
 
 -- Drop the partial index first: its predicate (status = 'active') references the
@@ -52,7 +52,7 @@ ALTER TABLE "work"."sprints"
   ADD COLUMN "planned_velocity" integer,
   ADD COLUMN "iteration_key"    varchar(30);
 
--- Rename the domain field goal → theme is unnecessary: the agile ALM tool keeps both.
+-- Rename the domain field goal → theme is unnecessary: Rally keeps both.
 -- (goal stays as the short objective; theme is the rich planning context.)
 
 -- ── 3. Rename table + state column to Iteration vocabulary ──────────────────
@@ -68,7 +68,7 @@ ALTER TABLE "work"."sprint_daily_snapshots" RENAME TO "iteration_daily_snapshots
 
 ALTER INDEX "work"."ix_sprints_tenant"  RENAME TO "ix_iterations_tenant";
 ALTER INDEX "work"."ix_sprints_project" RENAME TO "ix_iterations_project";
--- Committed iteration is the "active" one per project (agile ALM tool: one committed at a time is optional; keep partial index on committed).
+-- Committed iteration is the "active" one per project (Rally: one committed at a time is optional; keep partial index on committed).
 -- (ix_sprints_active was dropped in step 1, before the enum retype.)
 CREATE INDEX "ix_iterations_committed"
   ON "work"."iterations" ("project_id", "state")
