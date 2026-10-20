@@ -4,7 +4,6 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyCsrf from '@fastify/csrf-protection';
 import fastifyCompress from '@fastify/compress';
 import fastifyHelmet from '@fastify/helmet';
-import fastifyMultipart from '@fastify/multipart';
 import { AppConfigService } from '@platform/config';
 import { CSRF_HEADER, CSRF_SECRET_COOKIE, requiresCsrfProtection } from '@platform/http/csrf';
 import { enableHealth, registerRequestTiming } from '@quynhonsemiconductor/platform-runtime';
@@ -128,11 +127,6 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   fastify.addHook('onRequest', function csrfGate(req, reply, done) {
     if (!requiresCsrfProtection(req)) return done();
     fastify.csrfProtection(req, reply, done);
-  });
-
-  // Multipart / file upload — 10 MB limit per file
-  await app.register(fastifyMultipart, {
-    limits: { fileSize: 10 * 1024 * 1024 /* 10 MB */, files: 1 },
   });
 
   // CORS
