@@ -70,6 +70,7 @@ export default defineConfig({
       include: [
         'db/database-url.ts',
         'db/pg-pool-config.ts',
+        'db/pg-ssl.ts',
         'db/stranded-migrations.ts',
         'libs/shared-kernel/src/health.ts',
         'libs/modules/portfolio/src/domain/portfolio-rollup.ts',
