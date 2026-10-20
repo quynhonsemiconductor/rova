@@ -60,7 +60,7 @@ export const projectMemberStatusEnum = pgEnum('project_member_status', ['active'
 export const projectTeamStatusEnum = pgEnum('project_team_status', ['active', 'unlinked']);
 
 // `initiative` and `feature` were removed in migration 0072. A Feature is a
-// PORTFOLIO ITEM (work.portfolio_items), not a schedulable work item — Rally keeps
+// PORTFOLIO ITEM (work.portfolio_items), not a schedulable work item — the agile ALM tool keeps
 // PortfolioItem and HierarchicalRequirement as separate object families joined by a
 // field, and the BA spec gives a Feature an 11-value portfolio state, its own
 // estimates and rollups FROM linked stories. Keeping the value meant two tables both
@@ -71,7 +71,7 @@ export const projectTeamStatusEnum = pgEnum('project_team_status', ['active', 'u
 // (`mapTaskRow`), so the value is load-bearing even though nothing inserts one here.
 export const workItemTypeEnum = pgEnum('work_item_type', ['story', 'task', 'defect']);
 
-// Defect priority (Rally vocabulary). Story items carry 'none' (UI shows —).
+// Defect priority (agile ALM vocabulary). Story items carry 'none' (UI shows —).
 // Migration 0011 remaps legacy critical→urgent, medium→normal.
 export const workItemPriorityEnum = pgEnum('work_item_priority', [
   'none',
@@ -81,9 +81,9 @@ export const workItemPriorityEnum = pgEnum('work_item_priority', [
   'urgent',
 ]);
 
-// Rally-style ScheduleState: orthogonal business-maturity dimension, separate
+// Agile-ALM-style ScheduleState: orthogonal business-maturity dimension, separate
 // from the per-project workflow engine (status_id → workflow_statuses).
-// Aligned to BA flow-state vocabulary (mini-rally): 6 states, no 'ready',
+// Aligned to BA flow-state vocabulary (the BA design): 6 states, no 'ready',
 // terminal state spelled 'release'. Migration 0041 backfills 'ready'→'defined'
 // and renames 'released'→'release'.
 export const workItemScheduleStateEnum = pgEnum('work_item_schedule_state', [
@@ -101,7 +101,7 @@ export const workflowStatusCategoryEnum = pgEnum('workflow_status_category', [
   'done',
 ]);
 
-// Rally Iteration State — a planning-maturity dimension on the timebox itself:
+// Agile ALM Iteration State — a planning-maturity dimension on the timebox itself:
 // Planning (being shaped) → Committed (team committed) → Accepted (completed).
 export const iterationStateEnum = pgEnum('iteration_state', ['planning', 'committed', 'accepted']);
 
@@ -232,7 +232,7 @@ export const scmInboxStatusEnum = pgEnum('scm_inbox_status', [
 export const scmBackfillStatusEnum = pgEnum('scm_backfill_status', ['pending', 'done', 'failed']);
 
 // P3.4 — Defect severity (separate from priority). Aligned to BA taxonomy
-// (mini-rally): tokens now equal labels (Critical / Major / Minor / Trivial /
+// (the BA design): tokens now equal labels (Critical / Major / Minor / Trivial /
 // None). Migration 0040 renames high→major, medium→minor, low→trivial.
 export const defectSeverityEnum = pgEnum('defect_severity', [
   'critical',
@@ -250,7 +250,7 @@ export const defectEnvironmentEnum = pgEnum('defect_environment', [
   'testing',
 ]);
 
-// P3.4 — Defect root cause categories (Rally-aligned).
+// P3.4 — Defect root cause categories (aligned to the reference ALM product).
 export const defectRootCauseEnum = pgEnum('defect_root_cause', [
   'requirements',
   'design',
@@ -260,7 +260,7 @@ export const defectRootCauseEnum = pgEnum('defect_root_cause', [
   'other',
 ]);
 
-// P3.4 — Defect resolution status (Rally-aligned).
+// P3.4 — Defect resolution status (aligned to the reference ALM product).
 export const defectResolutionEnum = pgEnum('defect_resolution', [
   'fixed',
   'wont_fix',
@@ -307,19 +307,19 @@ export const milestoneStatusEnum = pgEnum('milestone_status', [
 // this type, because the BA spec gives them one list, one state enum, one create
 // template, one rank column and one archive rule. Their only differences are
 // three nullable columns (parent/team/release) and which rollup applies — see the
-// CHECK constraints on the table. Rally models every portfolio item type in one
-// collection too, so this also matches the reference product.
+// CHECK constraints on the table. The reference ALM product models every portfolio item type in one
+// collection too, and this mirrors that.
 //
-// Mini Rally's `epic` is Rally's `Initiative` level, renamed by BA decision
-// 2026-07-28. Rally's own hierarchy is Feature → Initiative → Theme and has no
-// "Epic"; keep that mapping in mind before aligning anything with Rally docs.
+// The BA design's `epic` is the reference ALM product's `Initiative` level, renamed by BA
+// decision 2026-07-28. The ALM tool's own hierarchy is Feature → Initiative → Theme and has no
+// "Epic"; keep that mapping in mind before aligning anything with its docs.
 export const portfolioItemTypeEnum = pgEnum('portfolio_item_type', ['epic', 'feature']);
 
 // Portfolio Item State — 11 values, BA-confirmed (Portfolio Items SRS §7).
 //
 // Deliberately NOT `workItemScheduleStateEnum`. A portfolio item's lifecycle is a
 // funnel (intake → discovery → prioritisation → developing → measuring), while a
-// story's is a delivery flow. Rally likewise defines portfolio state per item type
+// story's is a delivery flow. The reference ALM product likewise defines portfolio state per item type
 // at workspace level, separately from schedule state. Conflating the two is the
 // same class of mistake the D1/D2 note above warns about.
 export const portfolioItemStateEnum = pgEnum('portfolio_item_state', [
@@ -336,12 +336,12 @@ export const portfolioItemStateEnum = pgEnum('portfolio_item_state', [
   'cancelled',
 ]);
 
-// Top-down t-shirt sizing on a portfolio item (Rally's `PreliminaryEstimate`).
+// Top-down t-shirt sizing on a portfolio item (the reference ALM product's `PreliminaryEstimate`).
 //
 // The size→points/count MAPPING is NOT here: it is per-project configuration
 // (`work.project_settings`, SRS §6.2), because the BA spec
 // calls the mockup's XS=1/S=3/M=5/L=8/XL=13 table "temporary mockup data" and
-// defers the real values to Settings > Workspace > Project Management. Rally also
+// defers the real values to Settings > Workspace > Project Management. The agile ALM tool also
 // makes it a workspace-admin setting. Hard-coding it here would turn that later
 // slice into a data migration plus a silent behaviour change.
 export const preliminaryEstimateSizeEnum = pgEnum('preliminary_estimate_size', [
@@ -361,7 +361,7 @@ export const capacityPlanStatusEnum = pgEnum('capacity_plan_status', ['draft', '
 // ("View Work Items By" — Capacity Planning SRS §5). Every metric on the plan —
 // Complete, Rollup, Estimated, Capacity and each allocation value — is expressed
 // in this unit, which is why it cannot change once demand has been committed.
-// Matches Rally, where the same choice is made when the plan is created.
+// Matches the agile ALM tool, where the same choice is made when the plan is created.
 export const capacityPlanUnitEnum = pgEnum('capacity_plan_unit', ['points', 'count']);
 
 /**
@@ -559,17 +559,17 @@ export type PreliminaryEstimateMap = Record<PreliminaryEstimateSize, Preliminary
  * SEED DEFAULT ONLY — not a product rule.
  *
  * The BA spec calls these values "temporary mockup data" and defers the real scale
- * to `Settings > Workspace > Project Management`; Rally makes the equivalent mapping
+ * to `Settings > Workspace > Project Management`; the agile ALM tool makes the equivalent mapping
  * a workspace-admin setting. They are the DEFAULT for a new project row, and every
  * read must go through `work.project_settings` (per-project, SRS §6.2) so an operator's
  * change is honoured. Do not import this constant to compute an estimate.
  */
 export const DEFAULT_PRELIMINARY_ESTIMATE_MAP: PreliminaryEstimateMap = {
   /**
-   * The unsized state, and the one entry with NO Rally counterpart.
+   * The unsized state, and the one entry with NO reference-ALM counterpart.
    *
-   * Rally's Preliminary Estimate has no "None" option and no zero-valued size — each size
-   * must carry a name and a whole-number value, and Rally expresses "not sized" by leaving
+   * The reference ALM product's Preliminary Estimate has no "None" option and no zero-valued size — each size
+   * must carry a name and a whole-number value, and the tool expresses "not sized" by leaving
    * the FIELD unset. Our column is a NOT NULL enum, so the absent state has to be a member,
    * and it maps to 0.
    *
@@ -584,23 +584,23 @@ export const DEFAULT_PRELIMINARY_ESTIMATE_MAP: PreliminaryEstimateMap = {
   // (`04_Developement_tracking/Phase 5/01_Portfolio_Items/SRS.md:170-177`), which that doc
   // itself calls temporary mockup data pending Settings > Workspace > Project Management.
   //
-  // DELIBERATE DIVERGENCE FROM RALLY — do not "correct" these back.
-  // Rally ships XS=13 / S=20 / M=40 / L=100 / XL=250, unitless, one number per size:
+  // DELIBERATE DIVERGENCE FROM THE REFERENCE ALM PRODUCT — do not "correct" these back.
+  // That tool ships XS=13 / S=20 / M=40 / L=100 / XL=250, unitless, one number per size:
   // https://techdocs.broadcom.com/us/en/ca-enterprise-software/valueops/rally/rally-help/administration/managing-your-workspace/customizing-portfolio-item-types/customizing-fields-for-portfolio-item-types/customizing-the-portfolio-item-preliminary-estimate-field.html
   // An earlier version of this comment cited Broadcom KB 94797 as proof that 1/3/5/8/13
-  // "matches Rally's documented defaults exactly". The KB does say that, but it is undated,
+  // "matches the reference ALM product's documented defaults exactly". The KB does say that, but it is undated,
   // describes the retired Plan Progression page, and uses the values in a worked example —
   // the version-selectable product doc above supersedes it.
   //
-  // We keep the BA scale anyway, on two grounds: Rally makes this a per-workspace admin
+  // We keep the BA scale anyway, on two grounds: the reference ALM product makes this a per-workspace admin
   // setting with no cross-workspace guarantee, so any seed value is legal; and the approved
-  // mockups were designed against these numbers. Rally has no `count` dimension at all —
+  // mockups were designed against these numbers. The tool has no `count` dimension at all —
   // that half is ours.
   //
   // Re-scaling is NOT a constant edit. `db/migrations/0101_capacity_allocation_fixed_value.sql:66`
   // hard-codes this map as the freeze basis for existing allocation values, so changing the
   // constant alone would leave pre-0101 allocations on the old scale and new ones on the new —
-  // two scales inside one plan total. Adopting Rally's scale needs its own re-basing migration.
+  // two scales inside one plan total. Adopting the reference ALM product's scale needs its own re-basing migration.
   // Decided 2026-08-04. See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#0-B
   xs: { points: 1, count: 1 },
   s: { points: 3, count: 2 },

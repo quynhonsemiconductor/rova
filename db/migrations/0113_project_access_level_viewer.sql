@@ -4,7 +4,7 @@
 -- `CHECK (access_level IS NULL OR access_level IN ('admin', 'editor'))`, matching the BA's
 -- three-level model. The BA then removed `Viewer` outright (product-docs `55e7dbb`, 2026-08-14) and
 -- an architect ruling on the same day RESTORED it, against that removal and in line with the product
--- being cloned: real Rally's `ProjectPermission.Role` is No Access / Viewer / Editor / Project
+-- being cloned: the reference ALM product's `ProjectPermission.Role` is No Access / Viewer / Editor / Project
 -- Admin, and its Viewer is the documented way to make a user read-only, the provisioning default
 -- for a new user, a filter toggle on the admin permission grid, the demotion target in team
 -- membership, and a full-licence consumer whose only purpose is access control. Without it a

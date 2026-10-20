@@ -19,7 +19,7 @@
 --
 -- The 2026-08-04 full-stack audit called this its highest-value fix (§1.1) and it was still open.
 --
--- WHAT IT SHOULD DO. Rally documents the target behaviour, and it is not "refuse": "If you delete an
+-- WHAT IT SHOULD DO. The reference ALM product documents the target behaviour, and it is not "refuse": "If you delete an
 -- iteration that stories and defects are scheduled in, **they will all be updated to unscheduled**."
 -- The same holds for a release. For a milestone, deletion "removes the association from each work
 -- item… The work item itself is not deleted" — so the LINK goes and the artifact stays.

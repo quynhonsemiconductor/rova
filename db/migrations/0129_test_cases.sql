@@ -109,7 +109,7 @@ CREATE TABLE "work"."test_results" (
   "workspace_id" uuid NOT NULL,
   "project_id" uuid NOT NULL,
   "test_case_id" uuid NOT NULL REFERENCES "work"."test_cases"("id") ON DELETE CASCADE,
-  -- SNAPSHOT of the Test Case's Work Product at result-entry time (Rally: "the work
+  -- SNAPSHOT of the Test Case's Work Product at result-entry time (the reference ALM product: "the work
   -- product to which the test case result was associated when you entered the
   -- result") — not editable, and not re-derived from the Test Case's current link.
   "work_item_id" uuid,

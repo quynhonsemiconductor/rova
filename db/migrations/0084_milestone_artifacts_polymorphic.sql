@@ -10,7 +10,7 @@
 -- exists to list the things that own child records; a milestone assignment is one.
 --
 -- The table KEEPS its name, unlike 0083's rename of `work_item_attachments`. "Artifact" is
--- already the entity-agnostic word — Rally itself calls the things a milestone tracks its
+-- already the entity-agnostic word — the agile ALM tool itself calls the things a milestone tracks its
 -- artifacts — so the name was never work-item-specific. Only the column was.
 --
 -- Statement order IS the safety argument, as in 0082 and 0083: the backfill runs while

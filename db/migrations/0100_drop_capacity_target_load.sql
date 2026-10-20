@@ -2,11 +2,11 @@
 --
 -- `capacity_plans.target_load_pct` (NOT NULL DEFAULT 80) existed for exactly one rule:
 -- `load_above_target`, raised when a team's committed demand passed `capacity * target/100` while still
--- inside capacity. It was ours, not the BA's — the specified advisory set is the three comparisons Rally
--- raises by name plus the missing-estimate rule, and none of them rations headroom.
+-- inside capacity. It was ours, not the BA's — the specified advisory set is the three comparisons the
+-- agile ALM tool raises by name plus the missing-estimate rule, and none of them rations headroom.
 --
 -- It also could not be read. Every surface drew warnings with the same red `AlertTriangle`, so a team at
--- 85% of capacity — healthy, and the state Rally's own guidance recommends — was indistinguishable from
+-- 85% of capacity — healthy, and the state the agile ALM tool's own guidance recommends — was indistinguishable from
 -- one that had blown through its ceiling. A warning that cannot be told apart from a breach spends the
 -- planner's attention without directing it.
 --

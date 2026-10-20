@@ -8,7 +8,7 @@
 --     and has NO INDEPENDENT ITERATION SELECTOR."              (P1-TASK-011, marked Pass)
 --   • "All child Tasks contribute to the new Iteration metrics WITHOUT AN INDEPENDENT
 --     TASK ITERATION ASSIGNMENT."                              (P2-IS-024)
--- Real Rally agrees: a Task's Iteration is read-only and shown from its parent.
+-- The reference ALM product agrees: a Task's Iteration is read-only and shown from its parent.
 --
 -- That is stronger than "cascade the value when the parent moves". A cascade implies the
 -- Task owns a value that is kept in step; the contract is that it owns no value at all.

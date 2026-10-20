@@ -21,6 +21,7 @@
 --   exist but are NOT enforced until you switch to a non-superuser role.
 --   Before tenant #2 goes live:
 --     1. Create / use a non-superuser role for DATABASE_URL (e.g. rally_app)
+--        (rally_app: legacy physical name, do not rename — recreated as rova-* in the on-prem move)
 --     2. Grant that role table privileges (SELECT/INSERT/UPDATE/DELETE on all
 --        tables in all schemas below)
 --     3. Remove BYPASSRLS from that role

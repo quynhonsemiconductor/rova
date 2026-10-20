@@ -1,7 +1,7 @@
 -- Migration: 0015_sso_connections
 -- Adds identity.sso_connections — the per-tenant SSO/IdP registry that maps an
 -- external identity provider (Entra `tid`, or SAML/OIDC issuer) to exactly one
--- Rally tenant. This is the authoritative, enterprise-grade mechanism for
+-- rova tenant. This is the authoritative, enterprise-grade mechanism for
 -- resolving which tenant a federated user belongs to during SSO login.
 
 DO $$ BEGIN

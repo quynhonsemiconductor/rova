@@ -4,11 +4,11 @@
 -- driven by someone's personal session cookie — which is exactly the arrangement API keys exist to
 -- replace.
 --
--- SHAPE, AND WHY IT IS NOT REAL RALLY'S. Broadcom Rally mints an API Key in My Settings, sends it in
+-- SHAPE, AND WHY IT IS NOT THE REFERENCE ALM PRODUCT'S. Broadcom's tool mints an API Key in My Settings, sends it in
 -- `zsessionid`, inherits the creating user's permissions, and NEVER EXPIRES. The first two are right
 -- and are kept. The last two are the 2010 model, and both GitHub and Atlassian have since moved off
 -- it: GitHub's fine-grained tokens carry per-resource permissions and a mandatory expiry, Atlassian
--- capped API tokens at one year. So this table keeps Rally's ergonomics and adds the three things its
+-- capped API tokens at one year. So this table keeps the reference ALM product's ergonomics and adds the three things its
 -- model cannot express:
 --   * `expires_at` is NOT NULL. A credential with no expiry is a credential nobody ever rotates.
 --   * `scopes` NARROWS the principal's permissions (see below).
@@ -47,7 +47,7 @@
 --     revokes their sessions; the user-level denylist covers the window before that write lands.
 --   - The plaintext exists in exactly one place for one moment: the mint response. It is never logged
 --     (the log redactor drops `token`), never stored, and cannot be re-read — a lost token is reset,
---     not recovered, which is also real Rally's behaviour.
+--     not recovered, which is also the reference ALM product's behaviour.
 CREATE TABLE IF NOT EXISTS identity.api_tokens (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id  UUID NOT NULL,

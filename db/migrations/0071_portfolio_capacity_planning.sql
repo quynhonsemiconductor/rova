@@ -21,7 +21,7 @@
 --   2. The Preliminary Estimate size→points/count mapping is workspace
 --      CONFIGURATION, not a constant. The BA spec calls the mockup values
 --      "temporary mockup data" and defers the real scale to
---      Settings > Workspace > Project Management; Rally makes the equivalent
+--      Settings > Workspace > Project Management; the agile ALM tool makes the equivalent
 --      mapping a workspace-admin setting.
 -- ============================================================================
 
@@ -139,7 +139,7 @@ CREATE TABLE "work"."capacity_plans" (
   "updated_at"         timestamptz DEFAULT now() NOT NULL
 );--> statement-breakpoint
 
--- Advisory ceiling below 100%, so a team at 95% still warns. Rally's guidance is
+-- Advisory ceiling below 100%, so a team at 95% still warns. The agile ALM tool's guidance is
 -- to leave roughly 20% of a team's capacity for unplanned work. 100 is allowed —
 -- it disables the extra warning without disabling the over-capacity ones.
 ALTER TABLE "work"."capacity_plans"

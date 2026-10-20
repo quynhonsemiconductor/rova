@@ -6,7 +6,7 @@
 -- minting `FE-` keys and both meaning "Feature" — a collision waiting for the first
 -- duplicate key.
 --
--- Both Rally and the BA spec model it the same way. Rally keeps `PortfolioItem` and
+-- Both the agile ALM tool and the BA spec model it the same way. The ALM tool keeps `PortfolioItem` and
 -- `HierarchicalRequirement` (User Story) as SEPARATE object families joined by a
 -- field, where only the lowest portfolio level attaches to the story hierarchy; the
 -- BA spec gives a Feature an 11-value portfolio state, its own Preliminary/Refined

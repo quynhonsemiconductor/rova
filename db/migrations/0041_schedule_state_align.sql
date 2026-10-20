@@ -1,13 +1,14 @@
 -- 0041: Align work_item_schedule_state enum to the BA flow-state vocabulary.
--- BA (mini-rally) defines 6 states with the terminal state spelled 'release':
+-- BA (the BA design) defines 6 states with the terminal state spelled 'release':
 --   idea, defined, in_progress, completed, accepted, release
--- Rally had drifted to 7 states (extra 'ready') with terminal 'released'.
+-- The reference ALM product had drifted to 7 states (extra 'ready') with terminal 'released'.
 --
 -- Step 1 — rename the terminal value 'released' → 'release' (in place, safe).
 ALTER TYPE "public"."work_item_schedule_state" RENAME VALUE 'released' TO 'release';
 --> statement-breakpoint
 -- Step 2 — collapse the removed 'ready' state onto 'defined' so no row uses it
--- before we drop the value. 'ready' was a Rally-only intermediate that BA does
+-- before we drop the value. 'ready' was an intermediate found only in the
+-- reference ALM product that BA does
 -- not model; 'defined' is its nearest BA equivalent.
 --
 -- Compares via ::text rather than the enum value directly: on a from-scratch DB,

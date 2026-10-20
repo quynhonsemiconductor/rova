@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Drop the three hours columns from work.work_items.
 --
--- Story/Defect hours are DERIVED from child tasks, which is what both Rally and the
+-- Story/Defect hours are DERIVED from child tasks, which is what both the agile ALM tool and the
 -- BA SRS specify (P1-TASK-01: "Actual is a manual per-task input"). Two facts made
 -- these columns safe to remove rather than backfill:
 --

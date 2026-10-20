@@ -5,8 +5,8 @@
 -- 2026-08-14: the BA's three-level model stands, so the access levels are `admin` | `editor`, plus
 -- implicit No Access when no active `project_members` row exists.
 --
--- The disagreement is recorded rather than erased, because it will come up again. Real Rally's
--- `ProjectPermission.Role` IS No Access / Viewer / Editor / Project Admin, and its Viewer is the
+-- The disagreement is recorded rather than erased, because it will come up again. The reference ALM
+-- product's `ProjectPermission.Role` IS No Access / Viewer / Editor / Project Admin, and its Viewer is the
 -- documented way to make a user read-only, the provisioning default for a new user, one of four
 -- filter toggles on the admin permission grid, the demotion target in team membership, and a
 -- full-licence consumer whose only purpose is access control. With `admin`/`editor`/absent alone, a

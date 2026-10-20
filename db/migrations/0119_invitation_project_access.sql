@@ -25,7 +25,7 @@
 -- applies when a read path changes meaning, and here it does not.
 --
 -- `access_level varchar(10)` with the same CHECK values as `work.project_members.access_level`
--- (migration 0115 dropped `viewer`; see `db/permissions.catalog.ts` for why real Rally's Viewer
+-- (migration 0115 dropped `viewer`; see `db/permissions.catalog.ts` for why the reference ALM product's Viewer
 -- is a declared divergence). NOT NULL: an invitation row that names a project but no level would
 -- have to be resolved to something at accept time, and a defaulted grant is the failure mode the
 -- fixed-allocation work (0101) was written to remove. If the inviter has no level in mind they

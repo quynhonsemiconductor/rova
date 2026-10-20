@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Migration 0028: Drop password-based authentication
 -- ============================================================================
--- Rally is now SSO-only (Microsoft Entra ID), matching OpsHub. Email/password
+-- Rova is now SSO-only (Microsoft Entra ID), matching OpsHub. Email/password
 -- login, self-serve signup, and the forgot/reset-password flow have all been
 -- removed from the application. This migration drops the now-unused persistence:
 --

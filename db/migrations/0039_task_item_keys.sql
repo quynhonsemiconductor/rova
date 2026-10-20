@@ -1,4 +1,5 @@
--- 0039: Give tasks a real-Rally TA-prefixed FormattedID (item_key).
+-- 0039: Give tasks a TA-prefixed FormattedID (item_key), as the reference ALM
+-- product does for its tasks.
 -- Tasks live in their own table (work.tasks) and previously had no item_key,
 -- so the grid showed empty IDs for child tasks. This mirrors the work_items
 -- keying model: type prefix (TA) + zero-padded sequential number, unique per project.

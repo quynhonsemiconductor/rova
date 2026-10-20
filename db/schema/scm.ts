@@ -3,7 +3,7 @@
  * (commits) linked to work items, plus the repo→project mapping and a durable
  * webhook inbox.
  *
- * Link model (Rally-faithful): the work-item formatted key (e.g. US-1) embedded
+ * Link model (reference-ALM-faithful): the work-item formatted key (e.g. US-1) embedded
  * in a PR title / branch name / commit message is what associates an SCM
  * artifact to a work item. A webhook carries the repository, so `repositories`
  * maps a repo to the project(s) whose keys it may reference; resolution is then
@@ -78,7 +78,7 @@ export const scmRepositories = scmSchema.table(
 );
 
 // A repo maps to a WORKSPACE (not to specific projects): work-item keys are
-// workspace-unique (Rally FormattedID), so any key in a PR/commit resolves
+// workspace-unique (FormattedID-style, per the reference ALM product), so any key in a PR/commit resolves
 // workspace-wide. This makes SCM linking org-level — no per-project mapping.
 
 // ── webhook_inbox — durable raw events (async ingestion) ─────────────────────
@@ -198,7 +198,7 @@ export const scmBackfillJobs = scmSchema.table(
 );
 
 // ── installations — a GitHub App installation bound to a workspace ───────────
-// Org-level auto-discovery: binding an installation to a workspace lets Rally
+// Org-level auto-discovery: binding an installation to a workspace lets rova
 // auto-register that installation's repos (via installation_repositories
 // webhooks + the REST discovery) and resolve inbound events to the workspace —
 // no per-repo typing. installation_id is GitHub's numeric id (as text).

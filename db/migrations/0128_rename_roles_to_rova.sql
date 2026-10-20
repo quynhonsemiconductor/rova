@@ -10,6 +10,7 @@
 -- created the roles under the new name via an updated 0068) is a no-op.
 --
 -- ORDERING: the application's DATABASE_USER flips from rally_app/rally_worker to
+-- (rally_*: legacy physical names, do not rename here — this migration is the rename to rova-*)
 -- rova_app/rova_worker in the SAME deploy that ships this migration. The migrator
 -- runs before the api/worker roll, so by the time a task connects as rova_app the
 -- role already exists under that name. The old login password carries over with

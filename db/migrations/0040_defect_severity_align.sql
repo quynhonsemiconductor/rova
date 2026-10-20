@@ -1,4 +1,4 @@
--- 0040: Align defect_severity enum to the BA taxonomy (mini-rally).
+-- 0040: Align defect_severity enum to the BA taxonomy (the BA design).
 -- Previously the tokens were priority-flavoured (high/medium/low) while the app
 -- layer remapped labels (high→"Major Problem", etc.). We now make the DB tokens
 -- equal the business vocabulary so there is a single source of truth and no

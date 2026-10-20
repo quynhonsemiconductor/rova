@@ -24,6 +24,7 @@
 --
 -- `db/migrate.ts` already reads DATABASE_MIGRATION_URL in preference to
 -- DATABASE_URL, and `.env.example` already names `rally_app` / `rally_migrate`,
+-- (legacy physical names, do not rename — recreated as rova-* in the on-prem move)
 -- so the application side of the split needs no code change — only the two
 -- credentials it is handed.
 --

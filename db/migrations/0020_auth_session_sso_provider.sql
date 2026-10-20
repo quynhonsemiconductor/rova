@@ -3,7 +3,7 @@
 -- re-derive authMethod ('password' | 'sso') without decoding the old JWT.
 -- Null = password session. 'entra' = Microsoft Entra ID SSO session.
 -- This enables enterprise SSO refresh: the frontend re-validates with Entra
--- on every proactive refresh cycle instead of using Rally-only token rotation.
+-- on every proactive refresh cycle instead of using rova-only token rotation.
 
 ALTER TABLE identity.auth_sessions
   ADD COLUMN sso_provider VARCHAR(32) NULL;

@@ -5,7 +5,7 @@
 -- breaking storage.
 --
 -- `docs/superpowers/specs/2026-07-09-drop-multi-tenant-merge-into-workspace-design.md`
--- records the business decision — "Rally is single-tenant only. No SaaS
+-- records the business decision — "rova is single-tenant only. No SaaS
 -- multi-tenancy" — and states the consequence explicitly: "with no multi-tenant
 -- isolation requirement, the entire RLS apparatus is deleted rather than fixed",
 -- with "No RLS / DB-level isolation. Workspace scoping is enforced in the app
@@ -24,6 +24,7 @@
 -- They were harmless only while the application connected as the table OWNER,
 -- because Postgres exempts the owner from row-level security. `db_least_privilege`
 -- moved api and worker onto `rally_app` / `rally_worker`, which are not owners, so
+-- (legacy physical names, do not rename — recreated as rova-* in the on-prem move)
 -- the policies executed for the first time. Nothing in the application sets
 -- `app.workspace_id` — both `file.repository.ts` and `attachment.repository.ts`
 -- say so in their docblocks — so the check compared against NULL and denied

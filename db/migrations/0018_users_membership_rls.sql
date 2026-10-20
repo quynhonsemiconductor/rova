@@ -1,7 +1,7 @@
 -- Migration: 0018_users_membership_rls
 -- Updates the RLS policy on identity.users to allow cross-tenant visibility via
 -- tenancy.tenant_members ("keycards"). This is the database enforcement of the
--- real-Rally global-identity model.
+-- the reference ALM product's global-identity model.
 --
 -- Before: a user row was only visible in the tenant that OWNS them (users.tenant_id).
 --         A member from tenant A was invisible to tenant B even after being invited,

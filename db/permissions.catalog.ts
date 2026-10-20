@@ -52,7 +52,7 @@ export const PERMISSION = {
   //
   // ONE code, and it is the ADMIN one. Minting, listing and revoking your OWN tokens
   // needs no permission at all — it is `me/*` surface, self-scoped by the principal,
-  // exactly like `me/avatar`. Real Rally works this way too: any user may create an
+  // exactly like `me/avatar`. The reference ALM product works this way too: any user may create an
   // API Key, and only a subscription administrator can see or reset everyone's.
   //
   // What this code grants is the administrator's view: every token in the workspace,
@@ -599,7 +599,7 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
  * three-level model is the BA's and it stands.
  *
  * The disagreement is recorded because it will come up again, and because the next person to read
- * Rally's docs will reach for it. Real Rally's `ProjectPermission.Role` is No Access / Viewer /
+ * the reference ALM product's docs will reach for it. Its `ProjectPermission.Role` is No Access / Viewer /
  * Editor / Project Admin, and its Viewer is load-bearing five ways: the documented answer to "make
  * this user read-only", the PROVISIONING DEFAULT for a new user, one of four Quick Filter Toggles on
  * the admin permission grid, the demotion target in the team-membership state machine, and a
