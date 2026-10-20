@@ -418,12 +418,13 @@ module "stack" {
     backup_retention_days    = 30
     monitoring_interval      = 0
 
-    // RELEASE WINDOW ONLY. PostgreSQL 17 -> 18 in place. Manual snapshot FIRST (runbook:
+    // RELEASE WINDOW ONLY. PostgreSQL 17 -> 18.6 in place (full-minor pin: auto minor upgrades off). Manual snapshot FIRST (runbook:
     // docs/runbooks/postgres-18-upgrade.md). Flags return to false in the follow-up PR once verified.
     // Merge applies this change: do not merge outside the window.
-    engine_version              = "18"
+    engine_version              = "18.6"
     allow_major_version_upgrade = true
     apply_immediately           = true
+    auto_minor_version_upgrade  = false
   }
 
   // On-demand, not Spot: an interruption here is user-visible. Tighter autoscale
