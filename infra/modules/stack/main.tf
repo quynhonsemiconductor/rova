@@ -2472,7 +2472,7 @@ module "dns_api" {
 # gone — two topics per environment meant two subscriptions to confirm and two
 # places to look. The fail-open alarm below publishes to this module's topic.
 module "observability" {
-  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability?ref=observability-v4.3.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability?ref=observability-v4.4.0"
 
   create_dashboard = var.create_dashboard
 
@@ -2519,6 +2519,7 @@ module "observability" {
   thresholds = {
     rds_cpu_credit_min     = 72
     rds_freeable_memory_mb = 100
+    rds_free_storage_pct   = var.rds_free_storage_pct
   }
 
   name              = local.name
@@ -2548,6 +2549,9 @@ module "observability" {
   # observability-v3.0.0 now rejects a resource id outright, so this cannot regress
   # silently — it fails the plan instead.
   rds_instance_id = module.rds.identifier
+
+  # Storage the free-space floor is a percent of; the value is the one the rds module allocates.
+  rds_allocated_storage_gb = var.rds.allocated_storage_gb
 
   # Drives BOTH per-target-group alarms: response latency and UnHealthyHostCount.
   # Scoped by target group because the ALB is shared with other products — a

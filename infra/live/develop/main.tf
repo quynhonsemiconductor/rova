@@ -442,6 +442,10 @@ module "stack" {
   // and the app holds no state tied to the role it connected as.
   db_least_privilege = true
 
+  # Free-space alarm at 20% of allocated storage (fires at 4 GiB free of 20 GiB). Keep
+  # allocated_storage_gb in step with growth: the alarm reads the value above.
+  rds_free_storage_pct = 20
+
   rds = {
     instance_class           = "db.t4g.micro"
     allocated_storage_gb     = 20
