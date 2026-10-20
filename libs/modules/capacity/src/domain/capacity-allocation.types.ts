@@ -22,7 +22,7 @@ export interface CapacityAllocation {
   portfolioItemId: string;
   teamId: string | null;
   /**
-   * This allocation's team is the Feature's PRIMARY assignment on this plan — Rally's "Planned
+   * This allocation's team is the Feature's PRIMARY assignment on this plan — the agile ALM tool's "Planned
    * Project Assignment". At most one per (plan, Feature), enforced by a partial unique index, and
    * never true for an Unallocated row.
    */
@@ -51,9 +51,9 @@ export interface CapacityAllocation {
 /**
  * The four numbers every capacity row shows, plus the advisory warnings derived from them.
  *
- * `rollup` and `complete` follow RALLY's definition: a child story counts only when its
+ * `rollup` and `complete` follow the agile ALM tool's definition: a child story counts only when its
  * Project AND Release match the plan (Broadcom TechDocs, "View Capacity Plan Details").
- * Rally's model treats Project as the team, so the per-team split translates here to
+ * The agile ALM tool's model treats Project as the team, so the per-team split translates here to
  * `work_items.team_id`. Without the release filter a Feature whose children span releases
  * would inflate every plan that touches it.
  *
@@ -89,9 +89,9 @@ export interface CapacityAllocationRow extends CapacityAllocation {
   preliminarySize: PreliminaryEstimateSize;
   rollup: number;
   complete: number;
-  /** The Feature's LexoRank — the order Rally's cutline accumulates down. */
+  /** The Feature's LexoRank — the order the agile ALM tool's cutline accumulates down. */
   rank: string;
-  /** The Feature's own workflow state — Rally's `State` column on the nested table. */
+  /** The Feature's own workflow state — the agile ALM tool's `State` column on the nested table. */
   state: PortfolioItemState;
   /** The Feature's own rollup/complete across every team, for the item-level row. */
   itemRollup: number;
@@ -126,14 +126,14 @@ export interface CapacityAllocationView extends CapacityAllocation {
   name: string;
   /**
    * The Feature's LexoRank, so the nested table can show the same `Rank` column the plan's item
-   * list does. Rally's sub-table leads with it: a planner reading one team's Features still wants
+   * list does. The agile ALM tool's sub-table leads with it: a planner reading one team's Features still wants
    * to know where each sits in the plan's priority order.
    */
   rank: string;
-  /** The Feature's own workflow state (Rally's `State` column on the sub-table). */
+  /** The Feature's own workflow state (the agile ALM tool's `State` column on the sub-table). */
   state: PortfolioItemState;
   /**
-   * The Feature's OWN project, for Rally's `Allocation` column: it prints `← from <project>` when
+   * The Feature's OWN project, for the agile ALM tool's `Allocation` column: it prints `← from <project>` when
    * the Feature belongs somewhere other than the plan's project, and nothing when it is native.
    */
   projectId: string;
@@ -147,12 +147,12 @@ export interface CapacityAllocationView extends CapacityAllocation {
    */
   archived: boolean;
   /**
-   * Which of the three candidates this row's number came from — Rally's `Estimate` tooltip ticks it.
+   * Which of the three candidates this row's number came from — the agile ALM tool's `Estimate` tooltip ticks it.
    *
    * `allocated` whenever the row commits a positive value, else the Feature's Refined forecast, else
    * its Preliminary mapping, else `none`. Distinct from {@link CapacityAllocation.source}, which says
    * how the stored value was PRODUCED (typed, or copied from the Feature); this says which candidate it
-   * corresponds to, which is the vocabulary Rally's panel uses.
+   * corresponds to, which is the vocabulary the agile ALM tool's panel uses.
    */
   tier: EstimateTier;
   /**

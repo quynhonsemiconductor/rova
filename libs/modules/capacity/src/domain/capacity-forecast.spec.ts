@@ -106,12 +106,12 @@ describe('forecastCapacity', () => {
   });
 
   it('scales by team availability', () => {
-    // Rally: 100% for a stable team, 200% if it doubled, 50% if it halved.
+    // The agile ALM tool: 100% for a stable team, 200% if it doubled, 50% if it halved.
     expect(forecastCapacity(input({ availabilityPct: 50 })).median).toBe(40);
     expect(forecastCapacity(input({ availabilityPct: 200 })).median).toBe(160);
   });
 
-  it("applies Rally's complexity adjustments exactly", () => {
+  it("applies the agile ALM tool's complexity adjustments exactly", () => {
     expect(FORECAST_COMPLEXITY).toEqual({
       well_understood: 10,
       typical: 0,
@@ -150,7 +150,7 @@ describe('forecastCapacity', () => {
       expect(r.median).toBe(0);
     });
 
-    it("reports too little history below Rally's 14-day minimum", () => {
+    it("reports too little history below the agile ALM tool's 14-day minimum", () => {
       // Sampling one short iteration 20,000 times returns that iteration dressed up as a
       // distribution.
       const r = forecastCapacity(input({ samples: [sample(20, { days: 7 })] }));

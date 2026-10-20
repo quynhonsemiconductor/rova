@@ -50,7 +50,7 @@ export function hashToken(plaintext: string): string {
   return createHash('sha256').update(plaintext, 'utf8').digest('hex');
 }
 
-/** The prefix a raw token would have been stored under, or null when it is not a Rally token. */
+/** The prefix a raw token would have been stored under, or null when it is not a Rova token. */
 export function prefixOf(plaintext: string): string | null {
   if (!plaintext.startsWith(API_TOKEN_PREFIX)) return null;
   const body = plaintext.slice(API_TOKEN_PREFIX.length);
@@ -73,7 +73,7 @@ export function hashesMatch(a: string, b: string): boolean {
 /**
  * Expiry bounds.
  *
- * A default rather than an unbounded choice, and a cap rather than a suggestion: real Rally's keys
+ * A default rather than an unbounded choice, and a cap rather than a suggestion: the real agile ALM tool's keys
  * never expire, which is why nobody rotates them, and Atlassian settled on one year as the outer limit
  * for the same class of credential. 90 days is short enough that an abandoned token disappears on its
  * own and long enough that a quarterly rotation is not a weekly chore.

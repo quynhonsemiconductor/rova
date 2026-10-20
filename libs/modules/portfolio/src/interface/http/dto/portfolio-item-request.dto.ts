@@ -76,7 +76,7 @@ const portfolioWritableFields = {
   /**
    * Top-down forecasts. NON-NEGATIVE and never null — 0 IS the "not forecast" value.
    *
-   * Real Rally shows these as 0 rather than blank and accepts a typed 0; Broadcom
+   * The real agile ALM tool shows these as 0 rather than blank and accepts a typed 0; Broadcom
    * documents no rule either way. So 0 is the absent state (migration 0081) and the tier
    * chain already reads it that way: "Refined Estimate = Feature.refinedEstimate |
    * refinedWorkItemCountEstimate -> if > 0" (Capacity Planning SRS), so 0 falls through to
@@ -123,7 +123,7 @@ export class CreatePortfolioItemDto extends createZodDto(CreatePortfolioItemSche
  * Every field optional: omitted means "leave alone", explicit `null` means "clear".
  *
  * `type` is absent deliberately: changing it would have to re-key the item, move its
- * child links and re-rank it into the other scope. Rally does not offer that.
+ * child links and re-rank it into the other scope. The agile ALM tool does not offer that.
  *
  * `projectId` IS ABSENT — a record's Project is chosen once, at creation, and never again
  * (`P5-PI-003`, BA DEV Handoff retest 2026-08-17, Confirmed Fail). `WID-FR-017` and the
@@ -134,7 +134,7 @@ export class CreatePortfolioItemDto extends createZodDto(CreatePortfolioItemSche
  *
  * This field was writable on the opposite reading, and the note here argued for it from
  * Broadcom's project-hierarchy guide ("Rally recommends you update the project field to
- * reflect which team is handling the work"). Recorded rather than deleted: real Rally DOES
+ * reflect which team is handling the work"). Recorded rather than deleted: the real agile ALM tool DOES
  * offer the move, so this is a declared divergence and the next person to read those docs
  * will reach for it again. `applyProjectMove` and the three cross-project references it
  * reconciled (Team reset, Release clear, cross-project Epic unlink) are gone with it.

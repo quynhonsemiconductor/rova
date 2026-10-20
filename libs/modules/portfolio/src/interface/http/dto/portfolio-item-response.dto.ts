@@ -17,7 +17,7 @@ const PRIORITIES = workItemPriorityEnum.enumValues;
  *
  * Each is `null` when its denominator is zero, NOT 0. "No work linked" and "none of the
  * work is done" both render as an empty meter, but only the first is a data-entry gap —
- * the client needs to tell them apart to warn about missing estimates the way Rally's
+ * the client needs to tell them apart to warn about missing estimates the way the agile ALM tool's
  * hover callout does.
  */
 const ProgressSchema = z.object({
@@ -77,9 +77,9 @@ const RollupSchema = z.object({
 });
 
 /**
- * Rally's portfolio-item status colour, computed against the planned window.
+ * The agile ALM tool's portfolio-item status colour, computed against the planned window.
  *
- * `indeterminate` says WHY no verdict was possible, which Rally surfaces as a
+ * `indeterminate` says WHY no verdict was possible, which the agile ALM tool surfaces as a
  * "missing estimates or dates" hover note rather than a misleading green.
  */
 const HealthSchema = z.object({
@@ -136,7 +136,7 @@ const PortfolioItemSchema = z.object({
 export class PortfolioItemResponseDto extends createZodDto(PortfolioItemSchema) {}
 
 /**
- * "Total Accepted Children" — the detail page's panel, which Rally shows where this app
+ * "Total Accepted Children" — the detail page's panel, which the agile ALM tool shows where this app
  * previously listed four bare progress meters.
  *
  * Both metrics travel together rather than the client picking one, because the panel's unit

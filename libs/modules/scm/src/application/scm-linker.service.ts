@@ -8,7 +8,7 @@ export type LinkOutcome = 'processed' | 'ignored';
 /**
  * Turns a raw webhook event into linked connections/changesets. Called by the
  * worker relay (once per inbox row). Resolution: repo→workspace, then
- * key → work item (keys are workspace-unique, Rally FormattedID), so linking is
+ * key → work item (keys are workspace-unique, agile ALM FormattedID), so linking is
  * org-level — no per-project mapping. Upserts are idempotent (unique
  * constraints), so redelivery/retries never duplicate. Workspace is derived from
  * the registered repo, never trusted from the payload.

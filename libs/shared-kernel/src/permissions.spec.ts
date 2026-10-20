@@ -103,7 +103,7 @@ describe('per-Project access levels', () => {
      * the BA's instruction (migrations 0113 then 0115), so this asserts the DECISION rather than
      * merely the current contents — a re-add has to change this line and argue for it.
      *
-     * Real Rally does have Viewer, and the reasons are in `permissions.catalog.ts`. That is a known
+     * The real agile ALM tool does have Viewer, and the reasons are in `permissions.catalog.ts`. That is a known
      * divergence, not a gap to close quietly.
      */
     expect([...PROJECT_ACCESS_LEVEL]).toEqual(['admin', 'editor']);

@@ -31,7 +31,7 @@ export function inList(ids: readonly string[]): SQL {
  * Which iterations a TEAM-scoped report may draw on: the team's own, plus the SHARED ones.
  *
  * `iterations.team_id` is optional in this schema — an iteration needs a project and may name a
- * team (real Rally collapses the two, we do not) — so a project can run one timebox per sprint
+ * team (the real agile ALM tool collapses the two, we do not) — so a project can run one timebox per sprint
  * that every team works inside. Matching `team_id = :team` alone therefore returned NOTHING for
  * such a project: 195 of 206 iterations in the local database are team-less, so a selected Team
  * showed `iterationCount: 0`, empty Velocity bars and zero capacity while Team Status showed the

@@ -438,7 +438,7 @@ export class WorkItemsController {
   /**
    * No `@RequirePermission`: the check cannot be expressed as one, and the service does it properly.
    *
-   * Item keys are workspace-unique (Rally FormattedID), so the owning project is unknown until the
+   * Item keys are workspace-unique (agile ALM FormattedID), so the owning project is unknown until the
    * row is loaded — which is why `getWorkItemByKey` resolves the row and then calls
    * `assertProjectPermission(actor, item.projectId, WORK_ITEM_VIEW)`. The same shape as
    * `PATCH /work-items/reorder`.

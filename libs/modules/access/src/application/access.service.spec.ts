@@ -333,12 +333,12 @@ describe('AccessService — scope-aware permission resolution', () => {
   });
 
   describe('listReadableProjectIds — the boundary behind every cross-project list', () => {
-    // Mirrors Rally, where access to an artifact follows from permission on its PROJECT
+    // Mirrors the agile ALM tool, where access to an artifact follows from permission on its PROJECT
     // rather than any per-artifact grant. Getting this wrong leaks another project's data,
     // so each source and each degenerate case is asserted separately.
 
     it('returns null (unrestricted) for a workspace-wide wildcard', () => {
-      // `workspace:*` is Rally's Workspace Admin — every project, no filter.
+      // `workspace:*` is the agile ALM tool's Workspace Admin — every project, no filter.
       // null, not "every id": enumerating projects would race with project creation.
       return expect(
         service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view'),

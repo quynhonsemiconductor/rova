@@ -18,7 +18,7 @@ const PORTFOLIO_ITEM_STATES = portfolioItemStateEnum.enumValues;
  * row (it has none of its own) and on a team that has not entered one.
  *
  * Rollup/Complete follow `P5-CAP-AC-016`: EVERY linked Story/Defect counts, with no Project or
- * Release qualifier (the BA reversed Rally's qualifier on 2026-08-17 — see `capacity-metrics.sql.ts`).
+ * Release qualifier (the BA reversed the agile ALM tool's qualifier on 2026-08-17 — see `capacity-metrics.sql.ts`).
  * A team row's numbers are the SUM of its own allocation rows, so the tabs reconcile by construction.
  */
 /**
@@ -52,10 +52,10 @@ const CapacityAllocationSchema = z.object({
   /** Null = the Unallocated bucket. */
   teamId: z.string().uuid().nullable(),
   /**
-   * This team is the Feature's PRIMARY assignment on this plan — Rally's Planned Team Assignment.
+   * This team is the Feature's PRIMARY assignment on this plan — the agile ALM tool's Planned Team Assignment.
    *
    * At most one per Feature, and never true for an Unallocated row. The other allocations are
-   * contributors: Rally assigns the item to one team, then allocates points to the rest.
+   * contributors: the agile ALM tool assigns the item to one team, then allocates points to the rest.
    */
   isPrimary: z.boolean(),
   value: z
@@ -69,7 +69,7 @@ const CapacityAllocationSchema = z.object({
   tier: z
     .enum(['allocated', 'refined', 'preliminary', 'none'])
     .describe(
-      "Which of Rally's three Estimate candidates this row's number corresponds to — the tooltip ticks it and strikes the other two",
+      "Which of the agile ALM tool's three Estimate candidates this row's number corresponds to — the tooltip ticks it and strikes the other two",
     ),
   rank: z.string().describe("The Feature's LexoRank — the nested table shows the plan's Rank too"),
   state: z.enum(PORTFOLIO_ITEM_STATES).describe("The Feature's own workflow state"),
@@ -78,7 +78,7 @@ const CapacityAllocationSchema = z.object({
     .string()
     .nullable()
     .describe(
-      "The Feature's own project — Rally prints `← from <project>` when it is not the plan's",
+      "The Feature's own project — the agile ALM tool prints `← from <project>` when it is not the plan's",
     ),
   archived: z
     .boolean()
@@ -109,10 +109,10 @@ const CapacityPlanTeamSchema = z.object({
 });
 
 /**
- * One Feature on the plan — Rally's Items tab row.
+ * One Feature on the plan — the agile ALM tool's Items tab row.
  *
  * A Feature shared between teams appears ONCE here with its allocations summed, and is listed
- * per team in `allocations`. Rally's Items tab does the same: one row, nested allocation rows.
+ * per team in `allocations`. The agile ALM tool's Items tab does the same: one row, nested allocation rows.
  */
 const CapacityPlanItemSchema = z.object({
   portfolioItemId: z.string().uuid(),
@@ -170,8 +170,12 @@ const CapacityPlanItemSchema = z.object({
     .string()
     .uuid()
     .nullable()
-    .describe("Rally's Planned Team Assignment — the team that owns this Feature in the plan"),
-  unallocated: z.boolean().describe('Any allocation has no team — Rally’s unassigned warning'),
+    .describe(
+      "The agile ALM tool's Planned Team Assignment — the team that owns this Feature in the plan",
+    ),
+  unallocated: z
+    .boolean()
+    .describe('Any allocation has no team — the agile ALM tool’s unassigned warning'),
 });
 
 export const CapacityPlanSchema = z.object({
@@ -200,11 +204,11 @@ export const CapacityPlanSchema = z.object({
   /**
    * The Capacity Cutline: the index of the last ITEM that FITS inside the plan's total capacity.
    *
-   * Rally's rule, from the capacity plan's Items tab: "Items above the cutline fit within the defined
+   * The agile ALM tool's rule, from the capacity plan's Items tab: "Items above the cutline fit within the defined
    * plan capacity. Items below the line exceed the capacity of the plan." A declared divergence from SRS
    * §189, which puts the overflowing Feature above the line — see `computeCutlineIndex`.
    *
-   * Plan-wide and on the item list, which is where Rally draws it. An index rather than a per-row
+   * Plan-wide and on the item list, which is where the agile ALM tool draws it. An index rather than a per-row
    * boolean, because the line sits BETWEEN two rows and a per-row flag would let a client render a
    * "fits" row below a "does not fit" one.
    */
@@ -241,7 +245,7 @@ export class CapacityPlanResponseDto extends createZodDto(CapacityPlanSchema) {}
 /**
  * A capacity forecast for one team.
  *
- * Three numbers rather than one, because that is the answer: Rally reports the amount
+ * Three numbers rather than one, because that is the answer: The agile ALM tool reports the amount
  * delivered 85% of the time (Min), 50% (Median) and 15% (Max), and a planner choosing a
  * commitment needs the spread. A single number would hide whether the team is steady or
  * erratic — the whole reason the forecast samples history instead of averaging it.
@@ -277,7 +281,9 @@ export class CapacityForecastResponseDto extends createZodDto(ForecastSchema) {}
  */
 const PublishResultSchema = z.object({
   plan: CapacityPlanSchema,
-  fieldsUpdated: z.boolean().describe('False for Rally\'s "Publish Without Updating Fields"'),
+  fieldsUpdated: z
+    .boolean()
+    .describe('False for the agile ALM tool\'s "Publish Without Updating Fields"'),
   featuresUpdated: z.number().int().describe('Features whose planned dates were written'),
   skipped: z.array(
     z.object({
@@ -309,7 +315,9 @@ const MoveItemResultSchema = z.object({
     .number()
     .int()
     .describe('1 when teams missing from the target were collapsed into one unassigned row'),
-  releaseUpdated: z.boolean().describe("Rally's `Update the Release to match the selected plan`"),
+  releaseUpdated: z
+    .boolean()
+    .describe("The agile ALM tool's `Update the Release to match the selected plan`"),
   targetUnpublished: z.boolean().describe('The move reverted a published target to draft'),
   targetRepublished: z.boolean().describe('`Move and Republish the Plan` published it again'),
 });
@@ -318,7 +326,7 @@ export class MoveItemResultResponseDto extends createZodDto(MoveItemResultSchema
 /**
  * The result of a revert.
  *
- * `fieldsRolledBack` is always false and is returned ANYWAY: Rally makes "no changes to the
+ * `fieldsRolledBack` is always false and is returned ANYWAY: The agile ALM tool makes "no changes to the
  * field values in the portfolio items" when a plan reverts, so the Release and dates a publish
  * wrote stay on the Features. "Revert" reads like an undo, and this is the field that says it
  * is not one.

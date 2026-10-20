@@ -2,7 +2,7 @@
  * Team Status domain types — P3.1
  *
  * Dense grouped table of task-level rows per iteration, grouped by
- * owner/member. Sourced from Mini_Rally_pj Phase 3 SRS §8.2.
+ * owner/member. Sourced from Mini_Rally_pj Phase 3 SRS §8.2 (legacy physical path, do not rename).
  */
 
 /** Normalized task-state values used in Team Status UI. */
@@ -52,7 +52,7 @@ export interface TeamStatusTaskRow {
 /**
  * Roster member identity — every active member of the iteration's team (or the
  * project when the iteration is not team-scoped). Used to render zero-task
- * members alongside members who have tasks (Rally parity).
+ * members alongside members who have tasks (agile ALM parity).
  */
 export interface TeamStatusRosterMember {
   id: string;

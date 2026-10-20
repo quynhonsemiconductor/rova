@@ -48,7 +48,7 @@ describe('prefixOf', () => {
     expect(prefixOf(minted.plaintext)).toBe(minted.prefix);
   });
 
-  it('rejects anything that is not a Rally token', () => {
+  it('rejects anything that is not a Rova token', () => {
     expect(prefixOf('eyJhbGciOiJFUzI1NiJ9.e30.sig')).toBeNull();
     expect(prefixOf('rly_short')).toBeNull();
     expect(prefixOf('')).toBeNull();
@@ -78,7 +78,7 @@ describe('assertExpiryDays', () => {
   });
 
   it('refuses a lifetime past the cap, zero, negative or fractional', () => {
-    // The cap is the whole point of having expiry at all: real Rally's keys never expire, which is why
+    // The cap is the whole point of having expiry at all: the real agile ALM tool's keys never expire, which is why
     // nobody rotates them. An unbounded `expiresInDays` would reproduce that.
     for (const days of [0, -1, 1.5, MAX_EXPIRY_DAYS + 1, Number.NaN]) {
       expect(() => assertExpiryDays(days)).toThrow(RangeError);

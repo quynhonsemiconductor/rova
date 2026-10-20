@@ -921,7 +921,7 @@ describe('WorkItemsService', () => {
       );
     });
 
-    // ── Real Rally: Estimate is an independent planned value (client-set), not
+    // ── The real agile ALM tool: Estimate is an independent planned value (client-set), not
     //    derived. To Do / Actuals are independent too. ──
     it('persists the client-supplied Estimate independently of To Do / Actual', async () => {
       workItemRepo.findById.mockResolvedValue(
@@ -942,7 +942,7 @@ describe('WorkItemsService', () => {
       );
     });
 
-    // ── Real Rally: To Do defaults to the Estimate on create when not given ──
+    // ── The real agile ALM tool: To Do defaults to the Estimate on create when not given ──
     it('defaults To Do to the Estimate when To Do is not provided', async () => {
       workItemRepo.findById.mockResolvedValue(
         mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),
@@ -1187,7 +1187,7 @@ describe('WorkItemsService', () => {
       });
 
       it('refuses an EPIC', async () => {
-        // Rally attaches the story hierarchy to the LOWEST portfolio level. Our rollup counts an
+        // The agile ALM tool attaches the story hierarchy to the LOWEST portfolio level. Our rollup counts an
         // Epic's children through its Features, so a story pointed straight at an Epic would be
         // counted by the Epic and by nothing else.
         workItemRepo.findPortfolioItemLinkTarget.mockResolvedValue({
@@ -1228,8 +1228,8 @@ describe('WorkItemsService', () => {
       });
 
       it('does NOT require the Feature to be in the same project', async () => {
-        // Rally lets a team project's Story roll up to a portfolio project's Feature, and the
-        // portfolio rollup matches on `feature_id` alone — the project+release filter is Rally's
+        // The agile ALM tool lets a team project's Story roll up to a portfolio project's Feature, and the
+        // portfolio rollup matches on `feature_id` alone — the project+release filter is the agile ALM tool's
         // CAPACITY rule, not its portfolio rule.
         await expect(
           service.updateWorkItem(mockActor, 'wi-1', { featureId: 'fe-elsewhere' }),
@@ -1238,7 +1238,7 @@ describe('WorkItemsService', () => {
     });
 
     describe('unblocking clears the Blocked Reason', () => {
-      // Rally: "When a blocked status is removed, the Blocked Reason field is cleared."
+      // The agile ALM tool: "When a blocked status is removed, the Blocked Reason field is cleared."
       // A reason that outlives its block claims the item is blocked for that reason, right
       // next to a flag saying it is not — and the inline cell is only editable WHILE blocked,
       // so the stale text could be read and never removed.
@@ -1422,7 +1422,7 @@ describe('WorkItemsService', () => {
       );
     });
 
-    // ── Real Rally: Estimate is independent — never derived/overwritten on update ──
+    // ── The real agile ALM tool: Estimate is independent — never derived/overwritten on update ──
     it('does NOT derive or overwrite the Estimate on update', async () => {
       const task = mockWorkItem({
         id: 'task-1',
@@ -1492,7 +1492,7 @@ describe('WorkItemsService', () => {
       expect(call?.[1]).toMatchObject({ estimateHours: '8', todoHours: '3' });
     });
 
-    // ── Real Rally: completing a task auto-zeroes To Do; Estimate untouched ──
+    // ── The real agile ALM tool: completing a task auto-zeroes To Do; Estimate untouched ──
     it('auto-zeroes To Do when a task is completed, leaving Estimate untouched', async () => {
       const task = mockWorkItem({
         id: 'task-1',

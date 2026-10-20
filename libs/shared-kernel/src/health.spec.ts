@@ -23,7 +23,7 @@ const base = (over: Partial<HealthInput> = {}): HealthInput => ({
 });
 
 describe('computeHealth', () => {
-  describe('Rally thresholds — 20% at risk, 40% late', () => {
+  describe('Agile ALM thresholds — 20% at risk, 40% late', () => {
     it('is on track when progress keeps pace with the window', () => {
       // 50% elapsed, 50% accepted — 0 points behind.
       const r = computeHealth(base({ accepted: 50 }));
@@ -62,11 +62,11 @@ describe('computeHealth', () => {
   });
 
   /**
-   * Rally's BLUE needs BOTH conditions: "current date is after the Planned End Date and
+   * The agile ALM tool's BLUE needs BOTH conditions: "current date is after the Planned End Date and
    * the artifacts in the portfolio item are 100% done" (Broadcom TechDocs, "Using the
    * Portfolio Items Page"). Finishing early therefore does NOT turn an item blue.
    */
-  describe('complete is Rally blue — 100% done AND past the planned end', () => {
+  describe('complete is agile ALM blue — 100% done AND past the planned end', () => {
     it('is complete once the planned end has passed and all work is accepted', () => {
       const r = computeHealth(base({ accepted: 100, today: dayN(200) }));
       expect(r.state).toBe('complete');
@@ -74,7 +74,7 @@ describe('computeHealth', () => {
     });
 
     it('stays ON TRACK when finished EARLY, because the end date has not passed', () => {
-      // Ahead of schedule is still green in Rally; blue is reserved for "done and the
+      // Ahead of schedule is still green in the agile ALM tool; blue is reserved for "done and the
       // window has closed". Reporting complete here would be friendlier but wrong.
       const r = computeHealth(base({ accepted: 100, today: dayN(50) }));
       expect(r.state).toBe('on_track');
@@ -89,7 +89,7 @@ describe('computeHealth', () => {
     });
 
     it('is INDETERMINATE when finished but there are no planned dates', () => {
-      // Rally's blue is defined against the Planned End Date, so without one there is
+      // The agile ALM tool's blue is defined against the Planned End Date, so without one there is
       // nothing to compare against — it warns about the missing dates instead.
       const r = computeHealth(base({ accepted: 100, start: null, end: null }));
       expect(r.state).toBe('not_started');
@@ -110,7 +110,7 @@ describe('computeHealth', () => {
     });
 
     it('reports no_dates when the planned window is missing', () => {
-      // Rally allows a portfolio item with no dates; it warns rather than assuming.
+      // The agile ALM tool allows a portfolio item with no dates; it warns rather than assuming.
       const r = computeHealth(base({ accepted: 10, start: null, end: null }));
       expect(r.state).toBe('not_started');
       expect(r.indeterminate).toBe('no_dates');
@@ -140,7 +140,7 @@ describe('computeHealth', () => {
 
   describe('window boundaries', () => {
     it('is not_started before the planned start', () => {
-      // Rally's gray "future start date" case.
+      // The agile ALM tool's gray "future start date" case.
       const r = computeHealth(base({ accepted: 0, today: dayN(-10) }));
       expect(r.state).toBe('not_started');
       expect(r.percentElapsed).toBe(0);
@@ -174,7 +174,7 @@ describe('computeHealth', () => {
   });
 
   describe('thresholds are a parameter, not a constant', () => {
-    // The whole reason this lives in shared-kernel: Rally uses a different scheme per
+    // The whole reason this lives in shared-kernel: the agile ALM tool uses a different scheme per
     // surface (Portfolio 20/40, Release Tracking 90/70, Milestone confidence a third).
     // A second surface must not need a second copy of this algorithm.
     const strict: HealthThresholds = { atRiskPctBehind: 5, latePctBehind: 10 };
@@ -193,8 +193,8 @@ describe('computeHealth', () => {
       expect(computeHealth({ ...input, thresholds: strict }).state).toBe('late');
     });
 
-    it('exposes Rally portfolio thresholds as 20 and 40', () => {
-      // Pinned: these are quoted from Rally's documented behaviour, so a silent
+    it('exposes agile ALM portfolio thresholds as 20 and 40', () => {
+      // Pinned: these are quoted from the agile ALM tool's documented behaviour, so a silent
       // edit here would silently change what "At Risk" means.
       expect(PORTFOLIO_HEALTH_THRESHOLDS).toEqual({ atRiskPctBehind: 20, latePctBehind: 40 });
     });

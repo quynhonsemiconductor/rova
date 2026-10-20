@@ -195,7 +195,7 @@ export const ErrorCodes = {
   /**
    * Nothing to publish: no teams, no allocations, and never published before.
    *
-   * All three conditions, per Rally — a plan that HAS been published may be re-published even
+   * All three conditions, per the agile ALM tool — a plan that HAS been published may be re-published even
    * once emptied, which is how a planner undoes an over-eager clear-out.
    */
   CAPACITY_PLAN_EMPTY: 'CAPACITY_PLAN_EMPTY',
@@ -209,7 +209,7 @@ export const ErrorCodes = {
   CAPACITY_ALLOCATION_ARCHIVED: 'CAPACITY_ALLOCATION_ARCHIVED',
   CAPACITY_ALLOCATION_CANCELLED: 'CAPACITY_ALLOCATION_CANCELLED',
   CAPACITY_ALLOCATION_OTHER_RELEASE: 'CAPACITY_ALLOCATION_OTHER_RELEASE',
-  /** Rally's `Move To Another Plan` refuses these four. */
+  /** The agile ALM tool's `Move To Another Plan` refuses these four. */
   CAPACITY_MOVE_SAME_PLAN: 'CAPACITY_MOVE_SAME_PLAN',
   CAPACITY_MOVE_OTHER_PROJECT: 'CAPACITY_MOVE_OTHER_PROJECT',
   CAPACITY_MOVE_ALREADY_ON_TARGET: 'CAPACITY_MOVE_ALREADY_ON_TARGET',
@@ -231,7 +231,7 @@ export const ErrorCodes = {
 
   /** A task inherits its Feature from its work product. */
   WORK_ITEM_FEATURE_LINK_NOT_ALLOWED: 'WORK_ITEM_FEATURE_LINK_NOT_ALLOWED',
-  /** Rally attaches the story hierarchy to the LOWEST portfolio level — a Feature, not an Epic. */
+  /** The agile ALM tool attaches the story hierarchy to the LOWEST portfolio level — a Feature, not an Epic. */
   WORK_ITEM_FEATURE_LINK_NOT_FEATURE: 'WORK_ITEM_FEATURE_LINK_NOT_FEATURE',
   /** An archived Feature is invisible on every portfolio surface, so nothing may roll into it. */
   WORK_ITEM_FEATURE_LINK_ARCHIVED: 'WORK_ITEM_FEATURE_LINK_ARCHIVED',
@@ -240,7 +240,7 @@ export const ErrorCodes = {
   WORKFLOW_STATUS_NOT_FOUND: 'WORKFLOW_STATUS_NOT_FOUND',
   WORKFLOW_TRANSITION_NOT_ALLOWED: 'WORKFLOW_TRANSITION_NOT_ALLOWED',
 
-  // Iteration (Rally timeboxes — Phase 2)
+  // Iteration (agile ALM timeboxes — Phase 2)
   ITERATION_NOT_FOUND: 'ITERATION_NOT_FOUND',
   ITERATION_NOT_PLANNING: 'ITERATION_NOT_PLANNING',
   ITERATION_NOT_COMMITTED: 'ITERATION_NOT_COMMITTED',

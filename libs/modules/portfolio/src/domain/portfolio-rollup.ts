@@ -146,9 +146,9 @@ export function defaultAllocationEstimate(
 /**
  * Advisory warnings. Never block a planning action — they inform, they do not gate.
  *
- * The first three mirror the errors Rally's Capacity Planning page raises by name:
+ * The first three mirror the errors the agile ALM tool's Capacity Planning page raises by name:
  * "Feature Missing Estimate Error", "Feature Rollup Exceeds Estimate Error" and "Team
- * Estimate Exceeds Team Capacity", plus the missing-team-capacity case that Rally
+ * Estimate Exceeds Team Capacity", plus the missing-team-capacity case that the agile ALM tool
  * describes as cascading into the others. `rollup_exceeds_capacity` is ours, because a
  * team's live children can outgrow the ceiling even when the commitment did not.
  *
@@ -156,7 +156,7 @@ export function defaultAllocationEstimate(
  * `capacity_plans.target_load_pct` (default 80) while still inside capacity. It is gone with the
  * column: the BA's advisory set is these comparisons plus the missing-estimate rule, and nothing in
  * it rations headroom. Worse, every surface drew it with the SAME red triangle as a real breach, so
- * a plan at 85% of capacity — healthy, and the state Rally's own guidance recommends — was
+ * a plan at 85% of capacity — healthy, and the state the agile ALM tool's own guidance recommends — was
  * indistinguishable from one that had blown through its ceiling.
  */
 export type CapacityWarning =
@@ -172,7 +172,7 @@ export interface CapacityWarningInput {
    *
    * `capacity: null` used to carry two different meanings — "a Feature has no ceiling of
    * its own" and "nobody has entered this team's capacity yet" — and the second is the one
-   * Rally raises an error for. Inferring the row kind from the ceiling made that error
+   * The agile ALM tool raises an error for. Inferring the row kind from the ceiling made that error
    * unexpressible, so the kind is now explicit.
    */
   kind: 'team' | 'feature';
@@ -190,14 +190,14 @@ export interface CapacityWarningInput {
 export function computeCapacityWarnings(input: CapacityWarningInput): CapacityWarning[] {
   const warnings: CapacityWarning[] = [];
 
-  // Rally's "Feature Missing Estimate Error": no tier produced a number, so this Feature
+  // The agile ALM tool's "Feature Missing Estimate Error": no tier produced a number, so this Feature
   // cannot be planned against a capacity at all. Reported ahead of the comparison rules
   // because it is the CAUSE — a zero estimate is why the rollup exceeds it.
   if (input.kind === 'feature' && input.tier === 'none') {
     warnings.push('feature_missing_estimate');
   }
 
-  // Rally: missing team capacity is itself an error, and every capacity comparison below
+  // The agile ALM tool: missing team capacity is itself an error, and every capacity comparison below
   // is unevaluable until it is entered. Reported instead of them, not alongside — a row
   // that silently skipped its checks reads as "all clear", which is the opposite of true.
   if (input.kind === 'team' && (input.capacity === null || input.capacity <= 0)) {
@@ -220,7 +220,7 @@ export function computeCapacityWarnings(input: CapacityWarningInput): CapacityWa
 /**
  * Where the Capacity Cutline is drawn: after the last Feature that FITS inside the plan's capacity.
  *
- * RALLY'S RULE, quoted from the capacity plan's Items tab (Broadcom TechDocs, "Items Tab" —
+ * THE AGILE ALM TOOL'S RULE, quoted from the capacity plan's Items tab (Broadcom TechDocs, "Items Tab" —
  * techdocs.broadcom.com/.../capacity-plan-items-tab.html):
  *
  *   "Items above the cutline fit within the defined plan capacity. Items below the line exceed the
@@ -235,7 +235,7 @@ export function computeCapacityWarnings(input: CapacityWarningInput): CapacityWa
  * where cumulative planning Estimated reaches or exceeds Plan total Capacity" — that puts the
  * overflowing Feature above the line. The two readings differ by exactly one row, and it is the row a
  * planner argues about: capacity 100 against estimates 90, 20, 5 puts the 20 below the line here and
- * above it under §189. Ruled in Rally's favour — the product's documented behaviour wins where the SRS
+ * above it under §189. Ruled in the agile ALM tool's favour — the product's documented behaviour wins where the SRS
  * restates it differently, and "above the line fits" is the sentence the whole feature exists to
  * communicate.
  *

@@ -717,9 +717,9 @@ export class WorkItemsService {
               iterationId: opts.iterationId,
               releaseId: opts.releaseId,
               storyPoints: opts.storyPoints,
-              // Real-Rally task time: Estimate is an independent planned value
+              // Real-agile-ALM task time: Estimate is an independent planned value
               // (client-set, never derived). To Do defaults to the Estimate on
-              // create until edited (Rally: remaining = planned before work
+              // create until edited (the agile ALM tool: remaining = planned before work
               // starts). Actuals is a separate manual input. To Do auto-zeroes
               // on completion (see updateWorkItem).
               estimateHours: opts.estimateHours,
@@ -774,7 +774,7 @@ export class WorkItemsService {
           await this.notifyAssignment(actor, created, created.devOwnerId, tx);
 
           /**
-           * A new task changes the SET the parent is derived from, and Rally says so in its own
+           * A new task changes the SET the parent is derived from, and the agile ALM tool says so in its own
            * examples: "adding a task to a story in Idea will make the story Defined" and "adding a
            * task to a story in Completed will make the story In Progress". No trigger covered either,
            * because both are CREATES and every trigger keyed on a state transition.
@@ -1068,7 +1068,7 @@ export class WorkItemsService {
    * the work_items search used previously.
    */
   async getWorkItemByKey(actor: JwtPayload, itemKey: string): Promise<WorkItem> {
-    // Keys are workspace-unique (Rally FormattedID): resolve across the workspace,
+    // Keys are workspace-unique (agile ALM FormattedID): resolve across the workspace,
     // then enforce view permission on the item's OWN project below.
     const item = await this.workItemRepo.findByKey(itemKey, actor.workspaceId);
     if (!item) {
@@ -2413,7 +2413,7 @@ export class WorkItemsService {
     /**
      * A Task has NO Iteration of its own to set (P1-TASK-011, P2-IS-024).
      *
-     * The BA says it three times and real Rally shows the field read-only: a Task inherits its
+     * The BA says it three times and the real agile ALM tool shows the field read-only: a Task inherits its
      * Iteration through its parent Story/Defect, and has "no independent Iteration selector". The
      * value is maintained by `trg_task_iteration_from_parent`, so this patch could not take effect
      * anyway — which is precisely why it REFUSES rather than ignores. An endpoint that accepts a
@@ -2539,10 +2539,10 @@ export class WorkItemsService {
     // The parent's own state is reconciled from the whole task set after the write (see
     // `reconcileParentScheduleState`); no per-transition flag decides it any more.
 
-    // Real-Rally task time: Estimate and Actuals are independent, user-owned
+    // Real-agile-ALM task time: Estimate and Actuals are independent, user-owned
     // values — never derived/overwritten. A task reaching a done state has no
     // remaining work, so To Do auto-zeroes (unless the same patch sets it
-    // explicitly). Reopening does NOT restore To Do (Rally parity).
+    // explicitly). Reopening does NOT restore To Do (agile ALM parity).
     if (isTask) {
       const completing =
         input.scheduleState !== undefined && isCompletedScheduleState(input.scheduleState);
@@ -2733,7 +2733,7 @@ export class WorkItemsService {
   /**
    * Reconcile a parent Story/Defect's Schedule State from the CURRENT state of its live tasks.
    *
-   * Rally derives the parent from the whole task SET, not from whichever transition just happened
+   * The agile ALM tool derives the parent from the whole task SET, not from whichever transition just happened
    * (Broadcom, "Task State Updates Parent Schedule State"):
    *
    *   • all tasks `Defined`   → parent `Defined`
@@ -2742,9 +2742,9 @@ export class WorkItemsService {
    *
    * WHY A RECOMPUTE AND NOT MORE TRIGGERS. This replaced three per-event branches — all-complete,
    * task-reopened, task-started — and that shape is the defect: `TASK-FR-016` states the first two, the
-   * third was only ever a comment quoting Rally, and a Story sat at `Defined` with a task under it
+   * third was only ever a comment quoting the agile ALM tool, and a Story sat at `Defined` with a task under it
    * In-Progress for as long as the code existed. A set-derived rule has no third trigger to forget, and
-   * it picks up the two cases no trigger covered at all: Rally's own examples "adding a task to a story
+   * it picks up the two cases no trigger covered at all: The agile ALM tool's own examples "adding a task to a story
    * in Idea will make the story Defined" and "adding a task to a story in Completed will make the story
    * In Progress" are task CREATES, and deleting the last open task is a DELETE.
    *
@@ -2757,7 +2757,7 @@ export class WorkItemsService {
    * a confirmed rule and its own test, so the set-derived form keeps the ruling instead of quietly
    * narrowing it. Reversing it later means exempting those states HERE and retiring that case.
    *
-   * ONE DELIBERATE DIVERGENCE FROM RALLY, recorded in CLAUDE.md and put to the BA: Rally gates the
+   * ONE DELIBERATE DIVERGENCE FROM THE AGILE ALM TOOL, recorded in CLAUDE.md and put to the BA: the agile ALM tool gates the
    * whole behaviour behind a project/subscription `Auto State Updates` setting, which is how it
    * reconciles automation with `TASK-FR-016`'s "user may still change the parent status manually". We
    * have no such switch, so a manual parent state survives only until the next task write. If the BA
@@ -3566,15 +3566,15 @@ export class WorkItemsService {
    * Three refusals, each for a different reason:
    *   • a TASK carries no portfolio link — its Work Product does, and letting a Task hold one
    *     would double-count it in every rollup that walks `feature_id`;
-   *   • an EPIC is not a link target. Rally attaches the story hierarchy to the LOWEST portfolio
+   *   • an EPIC is not a link target. The agile ALM tool attaches the story hierarchy to the LOWEST portfolio
    *     level only, and our rollup counts an Epic's children through its Features — a story
    *     pointed straight at an Epic would be counted by the Epic and by nothing else;
    *   • an ARCHIVED Feature is hidden from every portfolio surface, so work linked to it would
    *     roll up into a row nobody can see.
    *
-   * The Feature does NOT have to be in the same project. Rally lets a team project's Story roll up
+   * The Feature does NOT have to be in the same project. The agile ALM tool lets a team project's Story roll up
    * to a portfolio project's Feature, and `rollupSubqueries` matches on `feature_id` alone; the
-   * project+release filter is Rally's CAPACITY rule, not its portfolio rule.
+   * project+release filter is the agile ALM tool's CAPACITY rule, not its portfolio rule.
    */
   private async assertFeatureLinkable(
     workspaceId: string,
@@ -4044,7 +4044,7 @@ export class WorkItemsService {
 /**
  * Unblocking an item clears its Blocked Reason.
  *
- * Rally: "When a blocked status is removed, the Blocked Reason field is cleared"
+ * The agile ALM tool: "When a blocked status is removed, the Blocked Reason field is cleared"
  * (Broadcom TechDocs, Task Board app). A reason that outlives its block is not history — it
  * is a claim that the item is blocked for that reason, sitting next to a flag that says it is
  * not. The UI made this visible: the reason cell is only editable WHILE blocked, so a stale

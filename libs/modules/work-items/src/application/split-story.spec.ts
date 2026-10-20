@@ -355,7 +355,7 @@ describe('DEFAULT_RELATED_SIDE (BR-15)', () => {
 
 describe('the fixture matches the seeded database', () => {
   it('mirrors Sprint 26.1 → Sprint 26.2, verified live on 2026-09-16', () => {
-    // Verified with psql against `rally_dev`: Sprint 26.1 = committed, Team Alpha, 2026-06-16 →
+    // Verified with psql against `rally_dev` (legacy physical name, do not rename): Sprint 26.1 = committed, Team Alpha, 2026-06-16 →
     // 2026-06-27; Sprint 26.2 = planning, team_id NULL, 2026-06-29 → 2026-07-10. If the seed moves,
     // this test is the first thing that should say so — the e2e asserts the same pair over HTTP.
     const targets = filterSplitTargets(

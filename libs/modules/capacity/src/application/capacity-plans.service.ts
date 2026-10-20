@@ -65,7 +65,7 @@ export interface CapacityPlanTeamWithMetrics extends CapacityPlanTeamView {
  * an unallocated placeholder must not outrank a Refined or Preliminary forecast, which is
  * the same reason `totalAllocatedFor` counts team-assigned rows only.
  */
-/** One Feature on the plan, aggregated over its allocations — Rally's Items tab row. */
+/** One Feature on the plan, aggregated over its allocations — the agile ALM tool's Items tab row. */
 export interface CapacityPlanItem {
   portfolioItemId: string;
   itemKey: string;
@@ -78,7 +78,7 @@ export interface CapacityPlanItem {
   projectId: string;
   projectName: string | null;
   /**
-   * The team that OWNS the Feature — the BA's `Team` column, which replaced Rally's `Project`.
+   * The team that OWNS the Feature — the BA's `Team` column, which replaced the agile ALM tool's `Project`.
    *
    * NOT `primaryTeamId`: that is who owns the Feature inside THIS plan. This is its ownership outside
    * the plan, and the two diverge the moment a planner assigns the work elsewhere — which is exactly
@@ -109,9 +109,9 @@ export interface CapacityPlanItem {
   /** Teams this Feature is allocated to; empty when it sits only in the Unallocated bucket. */
   teamIds: string[];
   /**
-   * The team that OWNS this Feature in the plan — Rally's Planned Team Assignment.
+   * The team that OWNS this Feature in the plan — the agile ALM tool's Planned Team Assignment.
    *
-   * Null when only unallocated rows exist, which is Rally's unassigned state.
+   * Null when only unallocated rows exist, which is the agile ALM tool's unassigned state.
    */
   primaryTeamId: string | null;
   /**
@@ -135,7 +135,7 @@ export interface CapacityPlanItem {
     refined: number | null;
     preliminary: number | null;
   };
-  /** True when any of its allocations has no team — Rally's unassigned warning. */
+  /** True when any of its allocations has no team — the agile ALM tool's unassigned warning. */
   unallocated: boolean;
 }
 
@@ -143,7 +143,7 @@ export interface CapacityPlanDetail extends Omit<CapacityPlanView, 'teams'> {
   teams: CapacityPlanTeamWithMetrics[];
   items: CapacityPlanItem[];
   /**
-   * Index of the last ITEM (in rank order) that FITS inside the plan's total capacity — Rally's rule,
+   * Index of the last ITEM (in rank order) that FITS inside the plan's total capacity — the agile ALM tool's rule,
    * "items above the cutline fit within the defined plan capacity".
    *
    * `-1` when the first item already exceeds it; `null` when no team has entered a capacity, so there
@@ -179,7 +179,7 @@ export interface PublishSkip {
    * the Release field, which leaves this publish with no field it is allowed to touch. Reported per
    * Feature like `release_span_mismatch` (also a plan-level fact) because the rows are what the
    * planner is looking at — but the fix is on the PLAN, in `Edit Plan Details`.
-   * `release_span_mismatch` — the plan's window does not EXACTLY match its release's, so Rally writes
+   * `release_span_mismatch` — the plan's window does not EXACTLY match its release's, so the agile ALM tool writes
    * the dates but not the Release field. Not containment: a plan narrower than its release does not
    * reach outside it and still reports this, which is what AC-019 asks for.
    * `other_release` — the Feature is already committed to a DIFFERENT release. §226 lets the Team
@@ -194,14 +194,14 @@ export interface PublishSkip {
 
 export interface PublishResult {
   plan: CapacityPlanDetail;
-  /** False for Rally's "Publish Without Updating Fields". */
+  /** False for the agile ALM tool's "Publish Without Updating Fields". */
   fieldsUpdated: boolean;
   featuresUpdated: number;
   skipped: PublishSkip[];
 }
 
 /**
- * What Rally's `Move To Another Plan` did.
+ * What the agile ALM tool's `Move To Another Plan` did.
  *
  * More than the source plan, because a move is not one write: rows can land on the target's teams,
  * rows whose team is not on the target have to be parked, the Feature's Release may have moved, and
@@ -222,9 +222,9 @@ export interface MoveItemResult {
    * has no team on this plan yet. Silently deleting it would make a move look like a removal.
    */
   parked: number;
-  /** Rally's `Update the Release to match the selected plan` actually wrote the Feature's Release. */
+  /** The agile ALM tool's `Update the Release to match the selected plan` actually wrote the Feature's Release. */
   releaseUpdated: boolean;
-  /** The target was published and the move reverted it to draft, as Rally does. */
+  /** The target was published and the move reverted it to draft, as the agile ALM tool does. */
   targetUnpublished: boolean;
   /** `Move and Republish the Plan` published it again afterwards. */
   targetRepublished: boolean;
@@ -233,7 +233,7 @@ export interface MoveItemResult {
 export interface RevertResult {
   plan: CapacityPlanDetail;
   /**
-   * Always false, and returned rather than implied: Rally makes "no changes to the field
+   * Always false, and returned rather than implied: The agile ALM tool makes "no changes to the field
    * values in the portfolio items" on revert, so the Release and dates a publish wrote stay
    * put. "Revert" reads like an undo; this says plainly that it is not one.
    */
@@ -366,8 +366,8 @@ export class CapacityPlansService {
    * Hard delete — a PUBLISHED plan too, which is the one write on this service that a published
    * state does not block.
    *
-   * Rally is explicit: "you can delete an existing plan, even if the plan is published". It is the
-   * same reasoning Rally gives for unpublish not clearing field values — the plan is the planning
+   * The agile ALM tool is explicit: "you can delete an existing plan, even if the plan is published". It is the
+   * same reasoning the agile ALM tool gives for unpublish not clearing field values — the plan is the planning
    * artefact, and the Release and planned dates it wrote onto Features are now those Features'
    * own data. Deleting the plan abandons the explanation, not the values, and a planner who wants
    * them undone reverts first (which is what revert is for).
@@ -384,7 +384,7 @@ export class CapacityPlansService {
     /**
      * Guarded, even though this is the one write a PUBLISHED state does not block.
      *
-     * The two conditions are unrelated: `requireDraft` is skipped because Rally lets a planner
+     * The two conditions are unrelated: `requireDraft` is skipped because the agile ALM tool lets a planner
      * delete a published plan, not because deleting is exempt from the project's read-only rule.
      * A plan is the project's planning artefact, so destroying it is a content change (PRJ-FR-010),
      * and nothing needs it deleted in order to restore the project — restoring is a
@@ -450,7 +450,7 @@ export class CapacityPlansService {
   /**
    * Publish a plan: make it visible to everyone, and write the plan back onto its Features.
    *
-   * Rally: publishing "updates the Release, Planned Start Date, and Planned End Date for all
+   * The agile ALM tool: publishing "updates the Release, Planned Start Date, and Planned End Date for all
    * assigned and allocated portfolio items", and a planner may instead choose "Publish
    * Without Updating Fields" to publish while leaving those fields alone. Both are here as
    * `updateFields`.
@@ -462,9 +462,9 @@ export class CapacityPlansService {
    *     window onto it would assert a schedule nobody agreed.
    *   • The Release field is written only when the plan's window MATCHES the release's, which
    *     is AC-019 stated three times in the BA's spec. A plan whose window differs at either end
-   *     writes the DATES ONLY and reports why — the consequence still follows Rally (a skip is
+   *     writes the DATES ONLY and reports why — the consequence still follows the agile ALM tool (a skip is
    *     reported, the rest of the publish stands), but the CONDITION is the BA's equality, not
-   *     Rally's containment. This was containment until it was ruled on: a two-week plan inside a
+   *     The agile ALM tool's containment. This was containment until it was ruled on: a two-week plan inside a
    *     quarter-long release wrote the Release field where the BA expects a reported skip.
    *   • Everything runs in ONE transaction with the status flip, so a partial publish cannot
    *     leave some Features carrying a plan that is still a draft.
@@ -482,7 +482,7 @@ export class CapacityPlansService {
     const rows = await this.repo.listAllocations(plan);
     const teams = await this.repo.findViewById(id, actor.workspaceId);
 
-    // Rally blocks a publish only when ALL THREE hold: never published, no items, no
+    // The agile ALM tool blocks a publish only when ALL THREE hold: never published, no items, no
     // projects. A plan that has been published before may be re-published even when empty —
     // that is how a planner undoes an over-eager clear-out.
     const neverPublished = plan.publishedAt === null;
@@ -623,7 +623,7 @@ export class CapacityPlansService {
   /**
    * Revert to draft so the plan can be edited again.
    *
-   * Rally: "No changes are made to the field values in the portfolio items" — the Release and
+   * The agile ALM tool: "No changes are made to the field values in the portfolio items" — the Release and
    * planned dates a publish wrote STAY on the Features, and clearing them is manual. That is
    * stated in the response rather than left for a planner to discover, because "revert" reads
    * like an undo and here it is not one.
@@ -638,7 +638,7 @@ export class CapacityPlansService {
     /**
      * Guarded, and it is worth saying why this is NOT an "undo" that has to stay open.
      *
-     * Revert unpublishes so the plan can be EDITED again, and Rally is explicit that it rolls back
+     * Revert unpublishes so the plan can be EDITED again, and the agile ALM tool is explicit that it rolls back
      * nothing — "No changes are made to the field values in the portfolio items". So it does not
      * undo the writes a publish made, and on an archived project the editing it exists to unlock is
      * refused anyway. Restoring the project is the one action that reopens all of this.
@@ -657,12 +657,12 @@ export class CapacityPlansService {
   }
 
   /**
-   * Rally's Calculate Capacity Forecast, for ONE team.
+   * The agile ALM tool's Calculate Capacity Forecast, for ONE team.
    *
-   * Rally's tool "produces estimates for a single team and does not respect the Parent/Child
+   * The agile ALM tool "produces estimates for a single team and does not respect the Parent/Child
    * hierarchy", so this is scoped per team rather than proposing capacities for a whole plan
    * at once — a departure from the API sketch in the Phase 5 spec, which had one plan-wide
-   * `POST /:id/forecast`. Per team is both what Rally does and what the planner needs: the
+   * `POST /:id/forecast`. Per team is both what the agile ALM tool does and what the planner needs: the
    * availability and complexity inputs describe one team's next window, not every team's.
    *
    * READ-ONLY. It computes a number and returns it; the planner still commits it through the
@@ -685,7 +685,7 @@ export class CapacityPlansService {
       /**
        * The BA's supplied velocity, per iteration, in the plan's unit — "proposes capacities
        * from a supplied historic velocity" (`02_Capacity_Planning/SRS.md:142`). Optional: with
-       * nothing supplied this is Rally's forecast, sampled from the team's own history.
+       * nothing supplied this is the agile ALM tool's forecast, sampled from the team's own history.
        */
       velocityPerIteration?: number | null;
     },
@@ -789,7 +789,7 @@ export class CapacityPlansService {
    * Commit demand: this much of this Feature, to this Team (or to the Unallocated bucket).
    *
    * SETS the row for an existing (plan, Feature, team) triple rather than creating a second one, and
-   * rather than adding to it: Rally models sharing as one row PER TEAM under a Feature, so two rows
+   * rather than adding to it: The agile ALM tool models sharing as one row PER TEAM under a Feature, so two rows
    * for the same pair would double-count that team's demand, and adding meant re-applying the same
    * dialog doubled it instead.
    */
@@ -830,7 +830,7 @@ export class CapacityPlansService {
     /**
      * Assigning a team CONSUMES the Feature's unallocated placeholder rather than adding beside it.
      *
-     * Rally and the BA both describe it as a move: "choosing a Team assigns the existing unallocated
+     * The agile ALM tool and the BA both describe it as a move: "choosing a Team assigns the existing unallocated
      * row to that Team". Keeping both would count the Feature twice — once as parked demand and once
      * as the team's commitment — which is exactly what happened when adding and allocating became
      * two steps: `Add Features` leaves an unassigned row, and the first allocation then doubled it.
@@ -866,7 +866,7 @@ export class CapacityPlansService {
        * SETS this team's slice, it does not add to it.
        *
        * The BA is explicit — "Re-applying allocation replaces the Feature's Team allocation rows" —
-       * and so is Rally's dialog, which asks for "the number of story points or count to allocate for
+       * and so is the agile ALM tool's dialog, which asks for "the number of story points or count to allocate for
        * this team". Adding meant applying the same dialog twice doubled committed demand, and there
        * was no way to correct a slice downwards through this path at all.
        *
@@ -881,7 +881,7 @@ export class CapacityPlansService {
       /**
        * The FIRST team to receive work on a Feature becomes its primary.
        *
-       * Rally's order of operations is assign-then-allocate: "assign the portfolio item to one
+       * The agile ALM tool's order of operations is assign-then-allocate: "assign the portfolio item to one
        * primary team and then allocate points... to the additional teams". Inferring it from the
        * first allocation matches that without making the planner answer a second question, and
        * leaves the choice changeable afterwards.
@@ -1010,7 +1010,7 @@ export class CapacityPlansService {
   /**
    * Make one allocation the Feature's primary team assignment.
    *
-   * Rally's Items tab shows exactly one team per Feature in "Planned Project Assignment", so
+   * The agile ALM tool's Items tab shows exactly one team per Feature in "Planned Project Assignment", so
    * this clears the previous primary in the SAME transaction. Two statements outside one would
    * briefly leave the Feature with two owners or none, and `uq_capacity_allocation_primary`
    * would reject the first ordering outright.
@@ -1044,7 +1044,7 @@ export class CapacityPlansService {
   }
 
   /**
-   * Rally's `Remove From Plan`: take a Feature off the plan entirely.
+   * The agile ALM tool's `Remove From Plan`: take a Feature off the plan entirely.
    *
    * ONE call, ONE transaction. The client used to do this by looping a DELETE per allocation — a split
    * Feature meant one request per team — so a failure midway left the Feature half-removed: still on
@@ -1098,7 +1098,7 @@ export class CapacityPlansService {
        * Removing the primary PROMOTES the next remaining team allocation.
        *
        * A Feature with allocations but no primary would read as unassigned on the Items tab —
-       * Rally shows a warning icon for that — while teams are demonstrably working on it. The
+       * The agile ALM tool shows a warning icon for that — while teams are demonstrably working on it. The
        * oldest remaining allocation inherits, for the same reason the first one was chosen.
        */
       if (allocation.isPrimary) {
@@ -1117,9 +1117,9 @@ export class CapacityPlansService {
    * numbers, this decides what they mean.
    */
   /**
-   * Rally's `Move To Another Plan`: relocate one Feature's planning from this plan to another.
+   * The agile ALM tool's `Move To Another Plan`: relocate one Feature's planning from this plan to another.
    *
-   * Rally reaches it from the item's gear "in Projects By Total, Projects By Release, or Items tabs",
+   * The agile ALM tool reaches it from the item's gear "in Projects By Total, Projects By Release, or Items tabs",
    * offers a searchable list of eligible plans, an `Update the Release to match the selected plan`
    * checkbox, and two buttons — `Move` and `Move and Republish the Plan`. All of that is honoured
    * here, including the rule that decides the second button exists at all: "if the new plan is in a
@@ -1187,7 +1187,7 @@ export class CapacityPlansService {
     }
 
     /**
-     * Rally shows a message and offers `Remove Only` when the target already holds the item.
+     * The agile ALM tool shows a message and offers `Remove Only` when the target already holds the item.
      *
      * Refused rather than merged: the target's rows carry their own allocated values, and folding
      * this plan's numbers into them would change a commitment the planner never looked at.
@@ -1292,7 +1292,7 @@ export class CapacityPlansService {
         );
       }
 
-      // Rally: the move itself unpublishes the target. Its published numbers described a plan that
+      // The agile ALM tool: the move itself unpublishes the target. Its published numbers described a plan that
       // did not carry this Feature, so leaving it published would publish a claim nobody made.
       if (targetUnpublished) {
         await this.repo.setStatus(input.targetPlanId, actor.workspaceId, 'draft', null, tx);
@@ -1354,9 +1354,9 @@ export class CapacityPlansService {
        */
       const archived = row.itemArchivedAt !== null;
       /**
-       * Which of Rally's three candidates this row's number came from, for the `Estimate` tooltip.
+       * Which of the agile ALM tool's three candidates this row's number came from, for the `Estimate` tooltip.
        *
-       * Rally's panel on the team tab lists Allocated / Refined / Preliminary with the one in force
+       * The agile ALM tool's panel on the team tab lists Allocated / Refined / Preliminary with the one in force
        * ticked and the other two struck through, so the client needs the winner named. Resolved here
        * rather than in the browser for the usual reason: `resolveEstimate` is the rule, and a second
        * copy of it in TypeScript would be free to disagree with the arithmetic beside it.
@@ -1408,7 +1408,7 @@ export class CapacityPlansService {
             estimated: committed,
             capacity: null,
             /**
-             * Rally's "Feature Missing Estimate Error" on a row that commits nothing.
+             * The agile ALM tool's "Feature Missing Estimate Error" on a row that commits nothing.
              *
              * A zero commitment is what a Feature added through the Team picker starts at (§246), and
              * what a blank Estimate copies when the Feature has neither a Refined forecast nor a
@@ -1462,10 +1462,10 @@ export class CapacityPlansService {
     });
 
     /**
-     * Rally's Items tab: ONE row per Feature, in rank order, with its own totals.
+     * The agile ALM tool's Items tab: ONE row per Feature, in rank order, with its own totals.
      *
      * Distinct by Feature because a Feature shared between two teams is one item with two
-     * allocations — Rally lists it once and nests the allocations underneath.
+     * allocations — the agile ALM tool lists it once and nests the allocations underneath.
      */
     // Built from the REPOSITORY rows, not the client view: `rank` and the Feature's own totals
     // are inputs to this aggregation, not fields any client needs on an allocation. `rows` and
@@ -1532,7 +1532,7 @@ export class CapacityPlansService {
             preliminary: inUnit(row.preliminarySize) || null,
           },
           teamIds: row.teamId === null ? [] : [row.teamId],
-          // Rally's Planned Team Assignment shows the team that OWNS the Feature, not a count.
+          // The agile ALM tool's Planned Team Assignment shows the team that OWNS the Feature, not a count.
           primaryTeamId: row.isPrimary ? row.teamId : null,
           unallocated: row.teamId === null,
         });
@@ -1564,7 +1564,7 @@ export class CapacityPlansService {
      * commitment's tier while showing neither number.
      *
      * The warnings follow the same aggregate, `kind: 'feature'` — a Feature has no capacity of its
-     * own, so the capacity comparisons cannot fire, and `tier: 'none'` is Rally's "Feature Missing
+     * own, so the capacity comparisons cannot fire, and `tier: 'none'` is the agile ALM tool's "Feature Missing
      * Estimate Error".
      */
     for (const item of items) {
@@ -1591,9 +1591,9 @@ export class CapacityPlansService {
     items.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
 
     /**
-     * Rally's cutline: "Items above the cutline fit within the defined plan capacity."
+     * The agile ALM tool's cutline: "Items above the cutline fit within the defined plan capacity."
      *
-     * PLAN-wide, on the item list, in rank order — the shape Rally documents, on the plan's Items tab.
+     * PLAN-wide, on the item list, in rank order — the shape the agile ALM tool documents, on the plan's Items tab.
      * An earlier version drew it per team on the team grid; that answered a different question (what one
      * team drops) than the one the line answers (what this PLAN drops).
      */
@@ -2044,7 +2044,7 @@ function dateOnly(value: string): string {
  * AC-019 is explicit, and says so three times (SRS §3.12, AC-019, `BUSINESS_FLOW:205`): the
  * Release field is written "only when the Plan planned start/end dates MATCH the selected Release
  * start/end dates". This used to test containment (`ps >= rs && pe <= re`), reasoning from
- * Broadcom's "do not span releases" wording — defensible for Rally, but it is a deviation from the
+ * Broadcom's "do not span releases" wording — defensible for the agile ALM tool, but it is a deviation from the
  * BA's own acceptance criterion that no ruling covered, so a two-week plan inside a quarter-long
  * release wrote the Release field where the BA expects a reported skip. Ruled in favour of the BA.
  *

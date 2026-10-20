@@ -308,7 +308,7 @@ describe('PortfolioItemsService', () => {
   });
 
   /**
-   * Rally's status colour for a portfolio item: "Both of the Percent Done fields are
+   * The agile ALM tool's status colour for a portfolio item: "Both of the Percent Done fields are
    * colored based on the status of the work needed to complete the portfolio item"
    * (Broadcom TechDocs, "Using the Portfolio Items Page").
    *
@@ -380,7 +380,7 @@ describe('PortfolioItemsService', () => {
     it('is COMPLETE only once the planned end has passed as well', async () => {
       const base = { rollup: { ...view().rollup, acceptedPoints: 40, rollupPoints: 40 } };
 
-      // Rally's blue: "the current date is after the Planned End Date AND the artifacts
+      // The agile ALM tool's blue: "the current date is after the Planned End Date AND the artifacts
       // are 100% done".
       expect(
         (
@@ -693,7 +693,7 @@ describe('PortfolioItemsService', () => {
      * destination's first linked team, a cleared Release, a cleared cross-project Epic, surviving
      * Milestones, and permission on both projects. `WID-FR-017` and the report's rule 4 say the move
      * "is not supported", §3.1 says "Project is read-only for both types", and AC5 forbids changing it
-     * from detail or inline edit. Real Rally DOES offer the move, so this is a declared divergence —
+     * from detail or inline edit. The real agile ALM tool DOES offer the move, so this is a declared divergence —
      * see the note on `UpdatePortfolioItemSchema` for the Broadcom wording that argued the other way.
      *
      * `PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION` did NOT go with it: that rule also guards the

@@ -242,9 +242,9 @@ describe('computeCapacityWarnings', () => {
     expect(team({ rollup: 20, estimated: 30 })).toEqual([]);
   });
 
-  describe("Rally's missing-data errors, which are the CAUSE of the comparison ones", () => {
+  describe("The agile ALM tool's missing-data errors, which are the CAUSE of the comparison ones", () => {
     it('warns that a team has no capacity entered', () => {
-      // Rally raises this by itself and describes it as cascading into the capacity
+      // The agile ALM tool raises this by itself and describes it as cascading into the capacity
       // comparisons. Silence here would read as "all clear" on a row whose checks were
       // skipped entirely.
       expect(team({ capacity: null })).toContain('team_missing_capacity');
@@ -258,7 +258,7 @@ describe('computeCapacityWarnings', () => {
       expect(w).toEqual(['team_missing_capacity', 'rollup_exceeds_estimated']);
     });
 
-    it("warns that a Feature has no estimate at all — Rally's Missing Estimate Error", () => {
+    it("warns that a Feature has no estimate at all — the agile ALM tool's Missing Estimate Error", () => {
       // Tier `none` means no allocation, no refined forecast, no preliminary mapping.
       expect(feature({ tier: 'none', estimated: 0 })).toContain('feature_missing_estimate');
     });
@@ -300,7 +300,7 @@ describe('computeCapacityWarnings', () => {
      * There used to be a `load_above_target` rule: committed demand past
      * `capacity_plans.target_load_pct` (default 80) while still under capacity. Nothing in the BA's
      * advisory set rations headroom, and every surface drew it with the SAME red triangle as a real
-     * breach — so a team at 85%, healthy and exactly where Rally's guidance suggests, looked
+     * breach — so a team at 85%, healthy and exactly where the agile ALM tool's guidance suggests, looked
      * identical to one that had blown its ceiling.
      */
     it('says nothing about a team at 85% of capacity', () => {
@@ -322,14 +322,14 @@ describe('computeCapacityWarnings', () => {
 
   it('treats a zero capacity as missing rather than as a ceiling of zero', () => {
     // Dividing a target by zero is meaningless, and a planner who typed 0 has not yet
-    // stated a real ceiling — Rally's missing-capacity error is the honest report.
+    // stated a real ceiling — The agile ALM tool's missing-capacity error is the honest report.
     expect(team({ rollup: 5, estimated: 5, capacity: 0 })).toEqual(['team_missing_capacity']);
   });
 });
 
 describe('computeCutlineIndex', () => {
   /**
-   * Rally's rule, verbatim from the Items tab doc: "Items above the cutline fit within the defined plan
+   * The agile ALM tool's rule, verbatim from the Items tab doc: "Items above the cutline fit within the defined plan
    * capacity. Items below the line exceed the capacity of the plan" — and it "only displays when you
    * sort portfolio items by rank in ascending order", because in any other order a running total means
    * nothing.
@@ -350,7 +350,7 @@ describe('computeCutlineIndex', () => {
   it('keeps the TIPPING Feature BELOW the line — it does not fit', () => {
     /**
      * The one row §189 disagrees about. 90 + 20 = 110 against 100, so the 20 does not fit and belongs
-     * below the line; §189 would keep it above. Rally's sentence is what settles it: above the line
+     * below the line; §189 would keep it above. The agile ALM tool's sentence is what settles it: above the line
      * means fits.
      *
      * Also NOT a bin-packing optimisation: the 5 would fit in the 10 the plan has left, and still stays

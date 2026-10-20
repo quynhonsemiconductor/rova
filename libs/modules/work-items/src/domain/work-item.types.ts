@@ -45,7 +45,7 @@ export interface WorkItem {
   iterationId: string | null;
   releaseId: string | null;
   /**
-   * The Feature this Story/Defect rolls up to — Rally's portfolio link.
+   * The Feature this Story/Defect rolls up to — the agile ALM tool's portfolio link.
    *
    * Every portfolio rollup and capacity metric aggregates by this column, and until now nothing
    * but the demo seed could set it: the field was readable through the Iteration Status read model

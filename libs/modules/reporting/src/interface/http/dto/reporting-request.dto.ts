@@ -41,7 +41,7 @@ export const VelocityQuerySchema = z.object({
   // meaningful against one of them.
   //
   // No default HERE, deliberately — it lives in `DEFAULT_VELOCITY_WINDOW`, which carries the
-  // reasoning for why it is 10 (Rally's window) rather than §6's 5. Declaring one in the schema
+  // reasoning for why it is 10 (the agile ALM tool's window) rather than §6's 5. Declaring one in the schema
   // too would put the same decision in two places and change the OpenAPI contract.
   window: z.coerce
     .number()
@@ -102,7 +102,7 @@ export const ReleaseTrackingQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
   /**
    * `"<field>[:asc|:desc]"` over the whole bucket — `rank`, `id`, `team` or `name`
-   * (RT-AC-05, plus the `name` Rally-parity divergence). Parsed by the shared `parseSort`
+   * (RT-AC-05, plus the `name` agile-ALM-parity divergence). Parsed by the shared `parseSort`
    * against `RELEASE_TRACKING_SORT_FIELDS`, so an unknown field falls back to rank order
    * instead of failing the request.
    */

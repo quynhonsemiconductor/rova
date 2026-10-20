@@ -174,7 +174,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
    * rows live in `work.tasks` since the Phase 3 split) are reachable by key.
    */
   async findByKey(itemKey: string, workspaceId: string): Promise<WorkItem | null> {
-    // Keys are workspace-unique (Rally FormattedID), so (itemKey, workspaceId)
+    // Keys are workspace-unique (agile ALM FormattedID), so (itemKey, workspaceId)
     // resolves a single artifact — no projectId needed.
     const rows = await this.db
       .select()
@@ -485,7 +485,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
   /**
    * A portfolio item's type and archived state, for validating a Story's Feature link.
    *
-   * Deliberately NOT the project: Rally lets a Story in a team project roll up to a Feature in a
+   * Deliberately NOT the project: the agile ALM tool lets a Story in a team project roll up to a Feature in a
    * portfolio project, and the portfolio rollup matches on `feature_id` alone. Requiring the same
    * project here would forbid links the rollup would happily count.
    */
@@ -589,7 +589,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     //
     // Whitelisted columns only — each value is a bound parameter, never
     // interpolated. `itemKey`/`title` are substring matches so the text inputs
-    // behave like the Rally column filters they mirror; `planEstimate` is an
+    // behave like the agile ALM column filters they mirror; `planEstimate` is an
     // exact numeric match (the SRS calls Est a number input, not a range).
     //
     // These are ANDed with `q`, not folded into it: P2-BL-TS-015 makes quick
@@ -714,10 +714,10 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
      * `RECONCILED_SOURCE_OF_TRUTH.md:42`: "Plan > Backlog shows only Story/Defect items whose
      * Iteration is `Unscheduled`. Assigning a Story/Defect to an Iteration removes it from Backlog
      * and makes it visible in that Iteration's execution/status views; moving it back to
-     * `Unscheduled` returns it to Backlog." Rally says the same: "Once the item is scheduled into a
+     * `Unscheduled` returns it to Backlog." The agile ALM tool says the same: "Once the item is scheduled into a
      * release or iteration, it is removed from the Backlog page."
      *
-     * ITERATION ONLY, deliberately — not release. Rally's sentence names both; the reconciled BA
+     * ITERATION ONLY, deliberately — not release. The agile ALM tool's sentence names both; the reconciled BA
      * layer names only the iteration, and it is the newer and more specific decision, so a Story
      * targeted at a Release but not yet pulled into a sprint stays in the Backlog. That is also the
      * behaviour the screen needs: a release is a months-long container, and hiding everything

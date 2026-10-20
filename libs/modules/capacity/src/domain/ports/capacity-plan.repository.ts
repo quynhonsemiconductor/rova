@@ -183,7 +183,7 @@ export interface ICapacityPlanRepository {
    * Write the plan's window — and optionally its release — onto one Feature.
    *
    * EVERY key here is "present means write it, absent means leave the column ALONE". `releaseId`
-   * omitted is Rally's behaviour when the plan's window does not match its release's: the dates are
+   * omitted is the agile ALM tool's behaviour when the plan's window does not match its release's: the dates are
    * still written, only the Release field is skipped. `window` omitted is the same instruction about
    * the dates, and it is why neither field is nullable — publish used to pass the plan's own
    * `plannedStartDate` / `plannedEndDate` straight through, so publishing a plan with no window (the
@@ -206,7 +206,7 @@ export interface ICapacityPlanRepository {
    * Point one Feature at a release, touching NOTHING else.
    *
    * `applyPlanToFeature` writes the planned dates alongside the release, which is right for a publish
-   * and wrong for Rally's `Update the Release to match the selected plan` — that option moves the
+   * and wrong for the agile ALM tool's `Update the Release to match the selected plan` — that option moves the
    * Feature's release and leaves its dates to the target plan's own publish.
    */
   setFeatureRelease(

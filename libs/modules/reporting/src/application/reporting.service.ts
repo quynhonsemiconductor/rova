@@ -795,7 +795,7 @@ export class ReportingService {
  * counts inside every scope, see `inScope`), so this is the common case, not a rare one.
  *
  * Matches the SPA's `EMPTY_VALUE`, whose own docblock is emphatic that `'--'` and not an em-dash is
- * what real Rally renders. Declared here rather than imported because `libs/shared-kernel` carries no
+ * what the real agile ALM tool renders. Declared here rather than imported because `libs/shared-kernel` carries no
  * display constants and a report string is not a domain fact.
  */
 const NO_TEAM_LABEL = '--';
