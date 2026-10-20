@@ -16,6 +16,12 @@ const booleanish = (defaultValue: boolean) =>
     .transform((v) => v === 'true');
 
 /**
+ * A documented placeholder such as `<ROVA_PROD_SERVICE_APP_ID>`: a value a release template leaves for the owner to replace. It is
+ * refused for the Graph mail settings so that an unreplaced template fails closed at start-up instead of reaching Entra.
+ */
+export const PLACEHOLDER_VALUE = /^<[^<>\s]+>$/;
+
+/**
  * Validated environment schema.
  * Process refuses to start if any required variable is missing or malformed.
  */
@@ -459,6 +465,20 @@ export const EnvSchema = z
         message:
           'MAIL_SMTP_HOST and MAIL_SMTP_PORT are required when EMAIL_PROVIDER is "smtp" (Mailpit: localhost and 1120 on the host, mailpit and 1025 in a container).',
       });
+    }
+    if (env.EMAIL_PROVIDER === 'graph') {
+      for (const key of ['ENTRA_TENANT_ID', 'MAIL_GRAPH_SENDER', 'MAIL_GRAPH_CLIENT_ID'] as const) {
+        const value = env[key];
+        if (value !== undefined && PLACEHOLDER_VALUE.test(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message:
+              `${key} is still the placeholder "${value}" from the release template: replace it with the real value ` +
+              'before EMAIL_PROVIDER=graph can start.',
+          });
+        }
+      }
     }
     if (env.EMAIL_PROVIDER !== 'dev' && env.EMAIL_PROVIDER !== 'graph' && !env.MAIL_FROM_EMAIL) {
       ctx.addIssue({
