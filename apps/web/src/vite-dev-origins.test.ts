@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-// The dev server rewrites index.html's default API and LocalStack origins to the ones the root .env configures. The
+// The dev server rewrites index.html's default API and storage origins to the ones the root .env configures. The
 // config reads the environment at load, so each case loads it fresh.
 async function loadDevOrigins() {
   vi.resetModules()
@@ -16,17 +16,17 @@ describe('devOrigins', () => {
     vi.stubEnv('API_TARGET', '')
     vi.stubEnv('PORT', '')
     vi.stubEnv('STORAGE_ENDPOINT', '')
-    const html = 'connect-src http://localhost:3010 http://localhost:4566'
+    const html = 'connect-src http://localhost:3010 http://localhost:4620'
     expect((await loadDevOrigins())(html)).toBe(html)
   })
 
-  it('rewrites the API and LocalStack origins to the configured ones, and no other port', async () => {
+  it('rewrites the API and storage origins to the configured ones, and no other port', async () => {
     vi.stubEnv('API_TARGET', 'http://localhost:23000')
-    vi.stubEnv('STORAGE_ENDPOINT', 'http://localhost:24566')
+    vi.stubEnv('STORAGE_ENDPOINT', 'http://localhost:24620')
     const html =
-      'connect-src http://localhost:3000 http://localhost:4566 http://localhost:30000 https://x.qnsc.vn:3000'
+      'connect-src http://localhost:3000 http://localhost:4620 http://localhost:30000 https://x.qnsc.vn:3000'
     expect((await loadDevOrigins())(html)).toBe(
-      'connect-src http://localhost:23000 http://localhost:24566 http://localhost:30000 https://x.qnsc.vn:3000',
+      'connect-src http://localhost:23000 http://localhost:24620 http://localhost:30000 https://x.qnsc.vn:3000',
     )
   })
 })

@@ -411,9 +411,16 @@ jobs:
           cp .env.example .env
           mkdir -p "$LOGS"
 
-      # `--wait` returns when every healthcheck passes; LocalStack's means the init hook has created both buckets.
+      # `--wait` returns when every healthcheck passes. The bucket setup is a one-shot (garage-init), so its exit status is read
+      # on the next step: 0 means both buckets, their lifecycle and CORS for localhost and 127.0.0.1 are set and each preflight passed.
       - name: docker compose -f docker-compose.dev.yml up -d --wait
         run: docker compose -f docker-compose.dev.yml up -d --wait --wait-timeout 240
+
+      - name: The bucket setup exited 0 (garage-init)
+        run: |
+          code=$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose -f docker-compose.dev.yml ps -aq garage-init)")
+          echo "garage-init exit code: $code"
+          test "$code" = 0 || { docker compose -f docker-compose.dev.yml logs garage-init; exit 1; }
 
       - name: pnpm db:migrate
         run: pnpm db:migrate

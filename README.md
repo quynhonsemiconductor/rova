@@ -44,7 +44,7 @@ grep -qs 'npm.pkg.github.com/:_authToken' ~/.npmrc || echo '//npm.pkg.github.com
 
 export NODE_AUTH_TOKEN="$(gh auth token)"      # per shell (or wire via direnv)
 cp .env.example .env                           # every value is already wired, secrets are local placeholders
-docker compose -f docker-compose.dev.yml up -d --wait    # Postgres, Valkey, LocalStack (S3), OTel collector
+docker compose -f docker-compose.dev.yml up -d --wait    # Postgres, Valkey, Garage (S3), Mailpit, OTel collector, and the bucket setup (garage-init)
 pnpm install                                   # root (backend) + apps/web
 pnpm db:migrate                                # migrations + the RBAC catalogue + the demo users (SEED_ON_DEPLOY=true in .env)
 ```
@@ -94,7 +94,7 @@ Each product owns its own block, so opshub, rova and the knowledge base all run 
 | SPA (Vite)                         | **5175**            | 5174        | 5173           |
 | Postgres                           | **5420**            | 5410        | 5432           |
 | Valkey                             | **6320**            | 6310        | 6379           |
-| LocalStack (S3)                    | **4620**            | 4610        | 4570           |
+| Object storage (S3)                | **4620** (Garage)   | 4610        | 4570 (Garage)  |
 | OTel collector (OTLP / Prometheus) | **4420** / **8420** | 4410 / 8410 | (none)         |
 | Mailpit (SMTP / UI)                | **1120** / **8120** | 1110 / 8110 | (none)         |
 
@@ -121,10 +121,10 @@ Two checkouts, or a branch you want to keep running beside your main one, need t
 API and web ports. Every port is bound to `127.0.0.1` and read from `.env`. In the second copy's `.env`:
 
 1. `COMPOSE_PROJECT_NAME=rova-2`: the containers, volumes and network take this prefix. Every checkout or worktree sets its own.
-2. Give each `*_HOST_PORT` a free number: `POSTGRES_HOST_PORT`, `VALKEY_HOST_PORT`, `LOCALSTACK_HOST_PORT`, `OTEL_OTLP_HOST_PORT`, `OTEL_METRICS_HOST_PORT`.
-3. Put the same Postgres, Valkey and LocalStack numbers into `DATABASE_URL`, `REDIS_URL`, `STORAGE_ENDPOINT`, `AWS_ENDPOINT_URL`, and the OTLP port into `OTEL_EXPORTER_OTLP_ENDPOINT`. The app reads URLs, not the `*_HOST_PORT` values.
+2. Give each `*_HOST_PORT` a free number: `POSTGRES_HOST_PORT`, `VALKEY_HOST_PORT`, `STORAGE_HOST_PORT`, `OTEL_OTLP_HOST_PORT`, `OTEL_METRICS_HOST_PORT`, `MAILPIT_SMTP_HOST_PORT`, `MAILPIT_UI_HOST_PORT`.
+3. Put the same Postgres, Valkey and storage numbers into `DATABASE_URL`, `REDIS_URL` and `STORAGE_ENDPOINT`, and the OTLP port into `OTEL_EXPORTER_OTLP_ENDPOINT`. The app reads URLs, not the `*_HOST_PORT` values.
 4. The API: `PORT`. The SPA's proxy and the dev CSP follow it (or set `API_TARGET` to point the proxy somewhere else).
-5. The web: `WEB_DEV_PORT`. LocalStack's bucket CORS follows it. Then `APP_BASE_URL=http://localhost:<WEB_DEV_PORT>` and `CORS_ORIGINS=http://localhost:<WEB_DEV_PORT>`, so sign-in redirects and the API's CORS match the new origin.
+5. The web: `WEB_DEV_PORT`. Garage's bucket CORS follows it (the `garage-init` job reads it). Then `APP_BASE_URL=http://localhost:<WEB_DEV_PORT>` and `CORS_ORIGINS=http://localhost:<WEB_DEV_PORT>`, so sign-in redirects and the API's CORS match the new origin.
 
 For real Microsoft sign-in on the new web port, register `http://localhost:<WEB_DEV_PORT>/api/auth/callback/microsoft` as a redirect URI on your dev app; the test login needs none of this.
 
@@ -135,7 +135,9 @@ Then run the same commands as above. The Playwright config's `baseURL` is pinned
 - `pnpm db:seed` loads only the baseline (roles, workspace, the platform admin); `pnpm db:seed:test` adds the one-project demo fixture; `pnpm db:studio` opens Drizzle Studio.
 - Telemetry: `docker compose -f docker-compose.dev.yml logs otel`, or `curl -s localhost:8889/metrics | grep queue_`. No collector? `OTEL_ENABLED=false` in `.env`.
 - Mail is `EMAIL_PROVIDER=dev`: messages are written to the API log and not sent (`LOG_DEV_EMAIL_CONTENT=true` includes the body, links included).
-- Uploads go to LocalStack's `rova-attachments` and `rova-public-assets` buckets; `aws --endpoint-url http://localhost:4566 s3 ls` (any credentials).
+- Uploads go to Garage's `rova-attachments` and `rova-public-assets` buckets. List them with `aws`, `AWS_DEFAULT_REGION=auto`, `--endpoint-url http://localhost:4620`, and the `STORAGE_ACCESS_KEY_ID` and `STORAGE_SECRET_ACCESS_KEY` values from `.env` as the credentials (the keys are local-only and public, see `.env.example`).
+- The bucket setup is a one-shot job: `docker compose -f docker-compose.dev.yml ps -a garage-init` shows `Exited (0)` when the buckets, their lifecycle and CORS for both loopback origins were set and each preflight was checked. A non-zero exit is the failure; the job's log names the step.
+- Uploads survive a restart of the storage node. To check it: upload with the stack up, run `docker compose -f docker-compose.dev.yml restart garage`, and list the bucket again. Garage keeps its data in the `garagedata` volume. `make check` does not restart anything, so it does not run this check.
 - Reset everything: `docker compose -f docker-compose.dev.yml down -v`, then `up -d --wait` and `pnpm db:migrate` again.
 - Upgrading an existing checkout to PostgreSQL 18: a 17 data directory will not start on the 18.6 image. The container stops with `Error: in 18+, these Docker images are configured to store database data in a format which is compatible with "pg_ctlcluster" (specifically, using major-version-specific directory names).`. Run `docker compose -f docker-compose.dev.yml down -v` once in that checkout, which **drops that checkout's local data** (its own project volumes only). To keep the data, first run `pg_dumpall` against the 17 container, then restore it into the 18 container. Then `up -d --wait` starts a fresh 18.6 database.
 - Upgrading an existing checkout (before `name: rova`): the containers were named `rova-postgres`, `rova-valkey`, `rova-localstack` and `rova-otel`, outside any project. Remove the four containers by name with `docker rm -f rova-postgres rova-valkey rova-localstack rova-otel`. Do not run `docker compose down -v` against an old project name: that removes volumes in whichever checkout owns that name. The old data stays in its volume, `<dir>_postgres_data`: the old project was named after the checkout folder (for example `rovalog`, volume `rovalog_postgres_data`), so the new `rova` project does not reuse it. To keep that data, run with `COMPOSE_PROJECT_NAME=<dir>`; to start fresh, use the default. Each checkout or worktree sets its own `COMPOSE_PROJECT_NAME`; never share one.

@@ -27,12 +27,12 @@ import { EnvSchema } from '@platform/config/env.schema';
 const ROOT = join(__dirname, '..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 
-/** `KEY=value` lines, as `process.loadEnvFile` reads them: no quoting in this file, split at the first `=`. */
+/** `KEY=value` lines, as `process.loadEnvFile` reads them: split at the first `=`, and a double-quoted value loses its quotes. */
 function parseEnv(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of text.split('\n')) {
     const m = /^([A-Z][A-Z0-9_]*)=(.*)$/.exec(line);
-    if (m) out[m[1]] = m[2];
+    if (m) out[m[1]] = m[2].replace(/^"(.*)"$/, '$1');
   }
   return out;
 }
@@ -46,9 +46,10 @@ const example = read('.env.example');
 const env = parseEnv(example);
 const compose = read('docker-compose.dev.yml');
 const composeDoc = parseYaml(compose, { merge: true }) as {
-  services: Record<string, { ports?: unknown[] }>;
+  services: Record<string, { ports?: unknown[]; environment?: Record<string, string> }>;
 };
-const bootstrap = read('scripts/localstack/01-bootstrap.sh');
+const storageInit = read('scripts/garage/init.sh');
+const garageInit = composeDoc.services['garage-init']?.environment ?? {};
 const vite = read('apps/web/vite.config.ts');
 
 /**
@@ -109,7 +110,7 @@ describe('.env.example boots the API and the worker', () => {
       'COMPOSE_PROJECT_NAME',
       'POSTGRES_HOST_PORT',
       'VALKEY_HOST_PORT',
-      'LOCALSTACK_HOST_PORT',
+      'STORAGE_HOST_PORT',
       'OTEL_OTLP_HOST_PORT',
       'OTEL_METRICS_HOST_PORT',
       'MAILPIT_SMTP_HOST_PORT',
@@ -155,16 +156,15 @@ describe('.env.example agrees with the dev tooling', () => {
   it('points at the host ports docker-compose.dev.yml publishes, through the .env variable that sets each', () => {
     const postgres = publishedPort('postgres', 5432);
     const valkey = publishedPort('valkey', 6379);
-    const localstack = publishedPort('localstack', 4566);
+    const garage = publishedPort('garage', 3900);
     const otel = publishedPort('otel', 4318);
-    for (const published of [postgres, valkey, localstack, otel]) {
+    for (const published of [postgres, valkey, garage, otel]) {
       expect(published, 'a compose service publishes no 127.0.0.1-bound host port').toBeDefined();
       expect(env[published?.variable ?? '']).toBe(published?.port);
     }
     expect(portOf(env['DATABASE_URL'])).toBe(env['POSTGRES_HOST_PORT']);
     expect(portOf(env['REDIS_URL'])).toBe(env['VALKEY_HOST_PORT']);
-    expect(portOf(env['STORAGE_ENDPOINT'])).toBe(env['LOCALSTACK_HOST_PORT']);
-    expect(portOf(env['AWS_ENDPOINT_URL'])).toBe(env['LOCALSTACK_HOST_PORT']);
+    expect(portOf(env['STORAGE_ENDPOINT'])).toBe(env['STORAGE_HOST_PORT']);
     expect(portOf(env['OTEL_EXPORTER_OTLP_ENDPOINT'])).toBe(env['OTEL_OTLP_HOST_PORT']);
     expect(publishedPort('otel', 8889)?.variable).toBe('OTEL_METRICS_HOST_PORT');
   });
@@ -207,38 +207,41 @@ describe('.env.example agrees with the dev tooling', () => {
         .filter((f) => statSync(join(ROOT, 'scripts', f)).isFile())
         .map((f) => `scripts/${f}`),
     ];
-    const named = /\brova-(postgres|valkey|localstack|otel)\b/;
+    const named = /\brova-(postgres|valkey|garage|otel)\b/;
     for (const file of files)
       expect(read(file), `${file} names a fixed container`).not.toMatch(named);
   });
 
-  it('uses the buckets the LocalStack init hook creates and the compose healthcheck waits for', () => {
-    const priv = /^PRIVATE_BUCKET="([^"]+)"/m.exec(bootstrap)?.[1];
-    const pub = /^PUBLIC_BUCKET="([^"]+)"/m.exec(bootstrap)?.[1];
-    expect(priv, 'PRIVATE_BUCKET not found in scripts/localstack/01-bootstrap.sh').toBeDefined();
-    expect(pub, 'PUBLIC_BUCKET not found in scripts/localstack/01-bootstrap.sh').toBeDefined();
+  it('uses the buckets the Garage init job creates, and the job checks each one', () => {
+    const priv = garageInit['PRIVATE_BUCKET'];
+    const pub = garageInit['PUBLIC_BUCKET'];
+    expect(priv, 'garage-init has no PRIVATE_BUCKET in docker-compose.dev.yml').toBeDefined();
+    expect(pub, 'garage-init has no PUBLIC_BUCKET in docker-compose.dev.yml').toBeDefined();
     expect(env['S3_ATTACHMENTS_BUCKET']).toBe(priv);
     expect(env['S3_PUBLIC_ASSETS_BUCKET']).toBe(pub);
-    expect(compose).toContain(`--bucket ${priv}`);
-    expect(compose).toContain(`--bucket ${pub}`);
+    expect(storageInit).toContain('for bucket in "$PRIVATE_BUCKET" "$PUBLIC_BUCKET"');
+    expect(storageInit).toContain('Access-Control-Request-Method: PUT');
   });
 
-  it('sends uploads to LocalStack with static credentials, never to the real AWS S3', () => {
+  it('sends uploads to Garage with its fixed local key, never to the real AWS S3', () => {
     expect(env['STORAGE_ENDPOINT'], 'unset STORAGE_ENDPOINT selects real AWS S3').toBeTruthy();
-    expect(env['STORAGE_ACCESS_KEY_ID']).toBeTruthy();
-    expect(env['STORAGE_SECRET_ACCESS_KEY']).toBeTruthy();
+    expect(env['STORAGE_ACCESS_KEY_ID']).toBe(garageInit['STORAGE_ACCESS_KEY_ID']);
+    expect(env['STORAGE_SECRET_ACCESS_KEY']).toBe(garageInit['STORAGE_SECRET_ACCESS_KEY']);
+    expect(env['STORAGE_ACCESS_KEY_ID']).toMatch(/^GK[0-9a-f]{24}$/);
+    expect(env['STORAGE_SECRET_ACCESS_KEY']).toMatch(/^[0-9a-f]{64}$/);
     expect(env['STORAGE_FORCE_PATH_STYLE']).toBe('true');
   });
 
-  it('allows the browser origin the Vite server, LocalStack CORS and Playwright all use', () => {
+  it('allows the browser origin the Vite server, Garage CORS and Playwright all use', () => {
     const port = /WEB_DEV_PORT\)\s*\|\|\s*(\d+)/.exec(vite)?.[1];
     expect(port, 'apps/web/vite.config.ts does not default its port').toBeDefined();
     const origin = `http://localhost:${port}`;
     expect(vite).toContain('strictPort: true');
     expect(env['CORS_ORIGINS']).toBe(origin);
     expect(env['APP_BASE_URL']).toBe(origin);
-    expect(bootstrap).toContain(`WEB_ORIGIN="\${WEB_ORIGIN:-${origin}}"`);
-    expect(compose).toContain(`WEB_ORIGIN: http://localhost:\${WEB_DEV_PORT:-${port}}`);
+    expect(garageInit['WEB_ORIGINS']).toBe(
+      `http://localhost:\${WEB_DEV_PORT:-${port}},http://127.0.0.1:\${WEB_DEV_PORT:-${port}}`,
+    );
     // Playwright takes its web port from WEB_DEV_PORT (or the table default), so the default is what must match the table.
     expect(read('apps/web/playwright.config.ts')).toContain("?? '5175'");
   });
@@ -326,7 +329,7 @@ describe('the quickstart job gates the PR', () => {
 const PORT_BLOCK = {
   POSTGRES_HOST_PORT: '5420',
   VALKEY_HOST_PORT: '6320',
-  LOCALSTACK_HOST_PORT: '4620',
+  STORAGE_HOST_PORT: '4620',
   OTEL_OTLP_HOST_PORT: '4420',
   OTEL_METRICS_HOST_PORT: '8420',
   MAILPIT_SMTP_HOST_PORT: '1120',
