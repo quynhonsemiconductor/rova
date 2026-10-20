@@ -9,9 +9,6 @@
     <!-- Security: prevent search-engine indexing of this internal app -->
     <meta name="robots" content="noindex, nofollow" />
 
-    <!-- Security: referrer policy — don't leak URL to third-party resources -->
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
-
     <!-- Security: Content-Security-Policy — served as an HTTP header from public/_headers     -->
     <!-- (Pages today, Workers Static Assets after the on-prem move). A <meta> CSP here was    -->
     <!-- the dev-only baseline; it is gone because the header file carries the real policy     -->
