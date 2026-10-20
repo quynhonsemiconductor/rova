@@ -206,7 +206,8 @@ export const EnvSchema = z
     /**
      * Which email transport to use. Defaults to 'dev' (logs to stdout).
      * 'graph' sends through Microsoft 365 (Graph sendMail) from the environment's shared mailbox: needs MAIL_GRAPH_SENDER and
-     * MAIL_GRAPH_CLIENT_ID (the "Rova <Env> Service" app, NOT the sign-in app), and in the WORKER its certificate MAIL_GRAPH_CERTIFICATE.
+     * MAIL_GRAPH_CLIENT_ID (the "Rova <Env> Service" app, NOT the sign-in app), and in the WORKER the file at
+     * AZURE_CLIENT_CERTIFICATE_PATH (the ONE Graph credential mechanism, ONPREM-PLAN §7.3).
      * See docs/runbooks/mail-graph.md.
      * 'ses' and 'resend' are the transports it replaces and stay only until the cut-over is done.
      * 'ses' requires MAIL_FROM_EMAIL + IAM role with ses:SendEmail.
@@ -229,11 +230,12 @@ export const EnvSchema = z
      */
     MAIL_GRAPH_CLIENT_ID: emptyToUndefined(z.string().uuid().optional()),
     /**
-     * Credential for the 'graph' provider, ECS (now): a PEM holding the private key AND the certificate of the Service app (MAIL_GRAPH_CLIENT_ID),
-     * raw or base64, from the standalone secret `rova/<env>/mail-graph-certificate` (NOT the app bundle: the API's task role reads the bundle).
-     * READ BY THE WORKER ONLY (the API never sends; only the worker's execution role is granted the secret).
+     * Credential for the 'graph' provider: PATH of the worker-only file holding the Service app's ONE PEM (private key first, then the
+     * certificate, `cat mail.key mail.crt`), synced from the standalone secret `rova-<env>-graph-cert` and mounted INTO THE WORKER only
+     * (the API never sends; the API task is never given the file). platform-mail reads it under its standard name
+     * AZURE_CLIENT_CERTIFICATE_PATH (ONPREM-PLAN §7.3) — a path, never a PEM env value.
      */
-    MAIL_GRAPH_CERTIFICATE: emptyToUndefined(z.string().min(1).optional()),
+    AZURE_CLIENT_CERTIFICATE_PATH: emptyToUndefined(z.string().min(1).optional()),
     /**
      * Credential for the 'graph' provider, k3s (later): the projected ServiceAccount token a federated credential on the app exchanges. Wins over
      * the certificate, so the move is: mount the token, set this, delete the certificate.
@@ -311,9 +313,9 @@ export const EnvSchema = z
      *
      * When true, `WorkspaceService.inviteMember` writes a `messaging.guest_invite_outbox` row in
      * the invite transaction and the worker relay calls
-     * `POST https://graph.microsoft.com/v1.0/invitations` app-only, reusing the SAME app
-     * registration and secret as the BFF (`ENTRA_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`) —
-     * no new secret and no infra change.
+     * `POST https://graph.microsoft.com/v1.0/invitations` app-only, on the "Rova <Env> Service"
+     * app's certificate (`MAIL_GRAPH_CLIENT_ID` + the worker-only file
+     * `AZURE_CLIENT_CERTIFICATE_PATH`) — no client secret anywhere (ONPREM-PLAN §7.3).
      *
      * DEFAULT FALSE, and load-bearing. The registration needs the `User.Invite.All` APPLICATION
      * permission with admin consent before any of it can work; without it every Graph call is a

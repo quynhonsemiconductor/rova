@@ -73,7 +73,7 @@ New-ManagementScope -Name "Rova mail develop" `
 Entra admin center > App registrations > New registration: name `Rova Dev Service` / `Rova Prod Service`,
 **single tenant**, no redirect URI. The sign-in apps (`45fabceb-…` develop, `503133fe-…` production) stay as they are. Then:
 
-- **API permissions:** add **nothing** for mail. Rova's Service app holds **no application permission at all** for now (the guest-invite `User.Invite.All` is still on the sign-in app: see Follow-ups). Do not add Microsoft Graph `Mail.Send` or grant admin consent for mail. Remove the default `User.Read` delegated entry (unused).
+- **API permissions:** add **Microsoft Graph > Application > `User.Invite.All`** (the guest invite; admin consent required) and **nothing for mail**. Do not add Microsoft Graph `Mail.Send` (mail is authorised by the Exchange RBAC role, step above/below). Remove the default `User.Read` delegated entry (unused).
 - Record three IDs: **Application (client) ID** and **Directory (tenant) ID** from the app's Overview, and the **Object ID of the enterprise
   application** (Enterprise applications > the app > Object ID). Do **not** use the Object ID on the _App registrations_ page; it is a different
   object and Exchange rejects it. If the enterprise application does not exist: `az ad sp create --id <client-id>`.
@@ -112,7 +112,7 @@ aws secretsmanager get-secret-value --secret-id rova/develop/mail-graph-certific
 ```
 
 Expected: `starts: -----BEGIN  | key block: True | certificate block: True`. The library also parses the PEM when the worker starts, so a malformed value fails
-the deploy with an error naming `MAIL_GRAPH_CERTIFICATE`, never its content. Raw or base64 both work; the raw form above is what to store.
+the deploy with an error naming `AZURE_CLIENT_CERTIFICATE_PATH`, never its content. The file holds ONE PEM, private key first, then the certificate (`cat mail.key mail.crt`).
 
 Keep `mail.key` only until the verification in step 8 has passed, then delete it from the workstation; the secret is then its only copy. Keep
 `mail.crt` and the expiry date.
@@ -151,7 +151,7 @@ $sp = Get-MgServicePrincipal -Filter "appId eq '<client-id>'"
 Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id | Select-Object AppRoleId, ResourceDisplayName
 ```
 
-Check the **sign-in apps** the same way (`45fabceb-…` develop, `503133fe-…` production): they hold `User.Invite.All` and nothing under `Mail.*`.
+Check the **sign-in apps** the same way (`45fabceb-…` develop, `503133fe-…` production): once the Service app holds `User.Invite.All`, the sign-in apps must hold NO application permissions (no `User.Invite.All`, nothing under `Mail.*`).
 
 If a Microsoft Graph `Mail.*` role is listed on any of them (especially `Mail.Send`), **remove it**. This is the step people skip, and it is what makes the 403
 negative test fail in step 8.
@@ -272,8 +272,9 @@ The relay and the provider split the answers by **whose fault it is**:
 
 ## Follow-ups (not in this change)
 
-- **`User.Invite.All` stays on the sign-in app in this change.** Rova's Entra B2B guest invitation (worker, develop) uses the sign-in app's application
-  permission today. It moves to the Service app with Phase 4 (D), together with its credential; until then the sign-in app is not yet delegated-only.
+- **The guest invite's `User.Invite.All` moves OFF the sign-in app.** Once the Service app has `User.Invite.All` (admin consent) and the worker reads
+  `AZURE_CLIENT_CERTIFICATE_PATH`, the permission is REMOVED from the sign-in apps (they become delegated-only) and `ENTRA_GUEST_INVITE_ENABLED` is the
+  only switch. `User.Invite.All` is tenant-wide; accepted because only the worker holds the Service certificate (ONPREM-PLAN §7.3).
 - **Remove SES and Resend** (tracked: quynhonsemiconductor/rova#717) (the `ses`/`resend` providers, `SES_*` and `MAIL_FROM_*` variables, the `ses:SendEmail` grants, the SES configuration set, SNS topic and
   SQS bounce queue with their alarms) in one cleanup PR **after both environments are proven on Graph**: removing them earlier stops the API at boot, because the
   deployed task definitions still name `ses`. SES identity and DNS stay in infra/edge until all three products are off SES.

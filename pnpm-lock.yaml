@@ -133,8 +133,8 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0(889371ebd3a33d59bf2c957bc5c61947)
       '@quynhonsemiconductor/platform-mail':
-        specifier: ^0.1.5
-        version: 0.1.5(ed548c28dca67d40bb79a7d49258e4b5)
+        specifier: ^0.1.6
+        version: 0.1.6(ed548c28dca67d40bb79a7d49258e4b5)
       '@quynhonsemiconductor/platform-runtime':
         specifier: ^0.3.1
         version: 0.3.1(3a7191cb01ba95b4e0776a26e6cb746d)
@@ -3307,8 +3307,8 @@ packages:
       drizzle-orm: '>=0.45 <1'
       pg: '>=8.11'
 
-  '@quynhonsemiconductor/platform-mail@0.1.5':
-    resolution: {integrity: sha512-MAwbCh8XFc+yKDGUz91oR3Lj78svjPLiqpXxG9J9BCEdAP+FQM3SjGH/jYtcLtfwCNVon2NJz9PiXk1oXKTjvA==, tarball: https://npm.pkg.github.com/download/@quynhonsemiconductor/platform-mail/0.1.5/40e3080c55f06f5808cfe403167fafde7fc08fd3}
+  '@quynhonsemiconductor/platform-mail@0.1.6':
+    resolution: {integrity: sha512-i63+tao5eGHhrIhnzXD9xUGZR1QkACMpwQDY2Tnc74dzS+2Y8/IutN6nEA0vTwsHWW7mr5ySN7f/jjDl5E0fkQ==, tarball: https://npm.pkg.github.com/download/@quynhonsemiconductor/platform-mail/0.1.6/45911140ab84e0712f1ec3601eb56ad0721f176c}
     hasBin: true
     peerDependencies:
       '@azure/identity': '>=4.4'
@@ -3317,17 +3317,6 @@ packages:
       '@quynhonsemiconductor/observability': '>=0.2.0'
       '@quynhonsemiconductor/platform-jobs': '>=0.1.2'
       nodemailer: '>=6.9'
-    peerDependenciesMeta:
-      '@azure/identity':
-        optional: true
-      '@nestjs/common':
-        optional: true
-      '@nestjs/core':
-        optional: true
-      '@quynhonsemiconductor/platform-jobs':
-        optional: true
-      nodemailer:
-        optional: true
 
   '@quynhonsemiconductor/platform-runtime@0.3.1':
     resolution: {integrity: sha512-y29DBBUUt+8sz/2CQLcYjqqe76vPX5Ht6W/ndV4vef8cmIPlAm3/bkBEJxn3iVDAQFM3bEUQZVP7CgrPZQrmVA==, tarball: https://npm.pkg.github.com/download/@quynhonsemiconductor/platform-runtime/0.3.1/a1cb54e040353624e3c458a551fd7fce2eda02e8}
@@ -12671,15 +12660,13 @@ snapshots:
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - pg-native
-    optional: true
 
-  '@quynhonsemiconductor/platform-mail@0.1.5(ed548c28dca67d40bb79a7d49258e4b5)':
+  '@quynhonsemiconductor/platform-mail@0.1.6(ed548c28dca67d40bb79a7d49258e4b5)':
     dependencies:
-      '@quynhonsemiconductor/observability': 0.6.0(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.9.1)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.9.1))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/resources@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.9.1)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2))(pino@10.3.1)
-    optionalDependencies:
       '@azure/identity': 4.14.0(supports-color@10.2.2)
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
       '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@quynhonsemiconductor/observability': 0.6.0(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.9.1)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.9.1))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/resources@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.9.1)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2))(pino@10.3.1)
       '@quynhonsemiconductor/platform-jobs': 0.1.2(4e77294ad35ab3b9381f4cb80a85c1eb)
       nodemailer: 10.1.2
 
@@ -15343,7 +15330,6 @@ snapshots:
   cron-parser@5.10.2:
     dependencies:
       luxon: 3.7.2
-    optional: true
 
   cron@4.4.0:
     dependencies:
@@ -16959,8 +16945,7 @@ snapshots:
 
   nodemailer@10.1.2: {}
 
-  non-error@0.1.0:
-    optional: true
+  non-error@0.1.0: {}
 
   normalize-path@3.0.0: {}
 
@@ -17129,7 +17114,6 @@ snapshots:
       serialize-error: 13.0.2
     transitivePeerDependencies:
       - pg-native
-    optional: true
 
   pg-cloudflare@1.4.0:
     optional: true
@@ -17139,8 +17123,7 @@ snapshots:
 
   pg-connection-string@2.14.0: {}
 
-  pg-connection-string@2.14.1:
-    optional: true
+  pg-connection-string@2.14.1: {}
 
   pg-int8@1.0.1: {}
 
@@ -17151,12 +17134,10 @@ snapshots:
   pg-pool@3.14.0(pg@8.23.1):
     dependencies:
       pg: 8.23.1
-    optional: true
 
   pg-protocol@1.15.0: {}
 
-  pg-protocol@1.16.1:
-    optional: true
+  pg-protocol@1.16.1: {}
 
   pg-types@2.2.0:
     dependencies:
@@ -17185,7 +17166,6 @@ snapshots:
       pgpass: 1.0.5
     optionalDependencies:
       pg-cloudflare: 1.4.1
-    optional: true
 
   pgpass@1.0.5:
     dependencies:
@@ -17709,7 +17689,6 @@ snapshots:
   rrule-temporal@2.2.8:
     dependencies:
       temporal-spec: 1.0.1
-    optional: true
 
   run-applescript@7.1.0: {}
 
@@ -17782,7 +17761,6 @@ snapshots:
     dependencies:
       non-error: 0.1.0
       type-fest: 5.7.0
-    optional: true
 
   seroval-plugins@1.5.4(seroval@1.6.7):
     dependencies:
@@ -18157,8 +18135,7 @@ snapshots:
       - bare-abort-controller
       - react-native-b4a
 
-  temporal-spec@1.0.1:
-    optional: true
+  temporal-spec@1.0.1: {}
 
   terser-webpack-plugin@5.6.1(@swc/core@1.16.13(@swc/helpers@0.5.23))(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3)(webpack@5.106.2(@swc/core@1.16.13(@swc/helpers@0.5.23))(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(uglify-js@3.19.3)):
     dependencies:

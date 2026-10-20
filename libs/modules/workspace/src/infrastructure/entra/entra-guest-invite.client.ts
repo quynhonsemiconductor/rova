@@ -4,20 +4,23 @@
  * authorization gate. Entra does the mailbox verification (their Microsoft work account, Google
  * federation, or an emailed one-time passcode); Rally never holds a credential for them.
  *
- * Flow, app-only (no user in the loop):
- *   1. Client-credentials token — POST {authority}/{tenant}/oauth2/v2.0/token with
- *      `scope=https://graph.microsoft.com/.default`.
+ * Flow, app-only (no user in the loop), on the "Rova <Env> Service" app's CERTIFICATE
+ * (ONPREM-PLAN §7.3):
+ *   1. Client-credentials token via `@azure/identity`'s `ClientCertificateCredential`, signing the
+ *      client assertion with the key in the worker-only file `AZURE_CLIENT_CERTIFICATE_PATH` —
+ *      the SAME credential the Graph mail transport reads; no client secret anywhere.
  *   2. POST https://graph.microsoft.com/v1.0/invitations, whose response carries `invitedUser.id`
  *      — the guest's `oid` in OUR tenant.
  *
- * Reuses the SAME app registration and secret as the BFF (`ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`,
- * `ENTRA_CLIENT_SECRET`), which is why this needed no new secret, no `secret_names` entry and no
- * `infra/live/*` change. It does need the `User.Invite.All` APPLICATION permission with admin
- * consent on that registration — hence `ENTRA_GUEST_INVITE_ENABLED` defaulting to false.
+ * The Service app needs the `User.Invite.All` APPLICATION permission with admin consent — hence
+ * `ENTRA_GUEST_INVITE_ENABLED` defaulting to false. Unlike Exchange RBAC's `Mail.Send` (scoped to
+ * one mailbox), `User.Invite.All` is TENANT-WIDE: accepted deliberately, because only the worker
+ * ever holds the certificate and the sign-in app keeps no application permissions.
  *
  * Native `fetch`, deliberately: this repo has no HTTP client dependency and
  * `GithubAppAuthService` (the precedent for an app-only token cache) uses `fetch` too.
  */
+import { ClientCertificateCredential, type TokenCredential } from '@azure/identity';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   AppConfigService,
@@ -37,10 +40,7 @@ import {
  */
 export const GRAPH_CALL_TIMEOUT_MS = 30_000;
 
-/** Refresh a cached app token this long before it actually expires. */
-const TOKEN_REFRESH_BUFFER_MS = 60_000;
 /** Microsoft identity platform authority. Same host the bootstrap seed writes as the authority. */
-const LOGIN_HOST = 'https://login.microsoftonline.com';
 const GRAPH_BASE_URL = 'https://graph.microsoft.com/v1.0';
 /** App-only Graph scope — the `.default` form is what client-credentials requires. */
 const GRAPH_DEFAULT_SCOPE = 'https://graph.microsoft.com/.default';
@@ -86,26 +86,37 @@ interface GraphInvitationResponse {
   invitedUser?: { id?: string } | null;
 }
 
-interface TokenResponse {
-  access_token?: string;
-  expires_in?: number;
-}
-
-/** The BFF's own app registration credentials, borrowed for the app-only Graph call. */
-interface EntraAppCredentials {
+/** The "Rova <Env> Service" app credentials: a certificate FILE, never a client secret. */
+interface EntraServiceCredentials {
   tenantId: string;
   clientId: string;
-  clientSecret: string;
+  /** Path of the worker-only combined PEM (private key first, then the certificate). */
+  certificatePath: string;
 }
+
+/** What a credential must do — `TokenCredential` narrowed to the one call this client makes. */
+type AppTokenSource = Pick<TokenCredential, 'getToken'>;
+
+/** Builds the Service app credential. Overridden only in tests; production is {@link defaultGuestCredentialFactory}. */
+export type EntraGuestCredentialFactory = (c: EntraServiceCredentials) => AppTokenSource;
+
+/** The production credential: the Service app's certificate from the worker-only file. */
+export const defaultGuestCredentialFactory: EntraGuestCredentialFactory = (c) =>
+  new ClientCertificateCredential(c.tenantId, c.clientId, { certificatePath: c.certificatePath });
 
 @Injectable()
 export class EntraGuestInviteClient {
   private readonly logger = new Logger(EntraGuestInviteClient.name);
+  /** Built lazily on the first invite: reading the certificate file must not happen at boot. */
+  private credential: AppTokenSource | null = null;
+
   /**
-   * In-process app token cache with a refresh buffer, the same shape as
-   * `GithubAppAuthService.tokenCache`. One entry, because there is one tenant.
+   * The credential factory is a FIELD, not a third constructor parameter: a constructor parameter
+   * of bare function type is recorded as design:paramtypes `Function`, and Nest would try to
+   * resolve `Function` at boot and fail the worker's module. Tests assign this field; the worker
+   * registers the class as a PLAIN provider with only its two DI dependencies.
    */
-  private cachedToken: { token: string; expiresAt: number } | null = null;
+  makeCredential: EntraGuestCredentialFactory = defaultGuestCredentialFactory;
 
   constructor(
     private readonly config: AppConfigService,
@@ -113,17 +124,17 @@ export class EntraGuestInviteClient {
   ) {}
 
   /**
-   * True when the feature is on AND the credentials it borrows from the BFF are present.
+   * True when the feature is on AND the Service app's certificate configuration is present.
    *
-   * Both halves matter: the flag is the tenant-consent gate, and the credentials are mandatory for
-   * the API to boot but not for the worker to have been configured correctly.
+   * Both halves matter: the flag is the tenant-consent gate (`User.Invite.All`), and the
+   * credential variables are mandatory for the worker to have been configured correctly.
    */
   isConfigured(): boolean {
     return (
       this.config.get('ENTRA_GUEST_INVITE_ENABLED') === true &&
       !!this.config.get('ENTRA_TENANT_ID') &&
-      !!this.config.get('ENTRA_CLIENT_ID') &&
-      !!this.config.get('ENTRA_CLIENT_SECRET')
+      !!this.config.get('MAIL_GRAPH_CLIENT_ID') &&
+      !!this.config.get('AZURE_CLIENT_CERTIFICATE_PATH')
     );
   }
 
@@ -138,10 +149,10 @@ export class EntraGuestInviteClient {
    * for a minute. `PermanentGuestInviteError` is therefore thrown OUTSIDE `execute`.
    */
   async invite(request: GuestInviteRequest): Promise<GuestInviteOutcome> {
-    // Resolved BEFORE the resilience wrapper: missing credentials are permanent, and throwing
-    // them from inside `execute` would burn three retries and count three breaker failures for a
+    // Resolved BEFORE the resilience wrapper: a missing configuration is permanent, and throwing
+    // it from inside `execute` would burn three retries and count three breaker failures for a
     // condition no retry can change.
-    const credentials = this.requireCredentials();
+    const credentials = this.requireServiceCredentials();
 
     const result = await this.resilience.execute(
       'entra.graph.createInvitation',
@@ -158,22 +169,22 @@ export class EntraGuestInviteClient {
 
   // ── internals ──────────────────────────────────────────────────────────────
 
-  private requireCredentials(): EntraAppCredentials {
+  private requireServiceCredentials(): EntraServiceCredentials {
     const tenantId = this.config.get('ENTRA_TENANT_ID');
-    const clientId = this.config.get('ENTRA_CLIENT_ID');
-    const clientSecret = this.config.get('ENTRA_CLIENT_SECRET');
-    if (!tenantId || !clientId || !clientSecret) {
+    const clientId = this.config.get('MAIL_GRAPH_CLIENT_ID');
+    const certificatePath = this.config.get('AZURE_CLIENT_CERTIFICATE_PATH');
+    if (!tenantId || !clientId || !certificatePath) {
       throw new PermanentGuestInviteError(
-        'Entra guest provisioning is enabled but ENTRA_TENANT_ID / ENTRA_CLIENT_ID / ' +
-          'ENTRA_CLIENT_SECRET are not all set',
+        'Entra guest provisioning is enabled but ENTRA_TENANT_ID / MAIL_GRAPH_CLIENT_ID / ' +
+          'AZURE_CLIENT_CERTIFICATE_PATH are not all set',
       );
     }
-    return { tenantId, clientId, clientSecret };
+    return { tenantId, clientId, certificatePath };
   }
 
   private async postInvitation(
     request: GuestInviteRequest,
-    credentials: EntraAppCredentials,
+    credentials: EntraServiceCredentials,
   ): Promise<
     | { kind: 'ok'; outcome: GuestInviteOutcome }
     | { kind: 'refused'; detail: string }
@@ -272,63 +283,30 @@ export class EntraGuestInviteClient {
   }
 
   /**
-   * Cached app-only access token. Mirrors `GithubAppAuthService.getInstallationToken`: serve the
-   * cached value while it is more than `TOKEN_REFRESH_BUFFER_MS` from expiry, else mint a new one.
+   * App-only access token from the Service app's certificate, via `@azure/identity`. The
+   * credential is built once (it reads and parses the certificate file) and MSAL caches the
+   * token internally, refreshing it inside its expiry window.
    *
    * Not wrapped in the resilience policy: it runs INSIDE the wrapped operation, so a token failure
    * already gets that call's retry and breaker accounting. Wrapping it separately would count one
    * outage twice.
    */
   private async getAppToken(
-    credentials: EntraAppCredentials,
+    credentials: EntraServiceCredentials,
     signal: AbortSignal,
   ): Promise<string> {
-    const hit = this.cachedToken;
-    if (hit && hit.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) return hit.token;
-
-    const { tenantId, clientId, clientSecret } = credentials;
-
-    const res = await fetch(`${LOGIN_HOST}/${tenantId}/oauth2/v2.0/token`, {
-      signal,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'client_credentials',
-        client_id: clientId,
-        client_secret: clientSecret,
-        scope: GRAPH_DEFAULT_SCOPE,
-      }).toString(),
-    });
-
-    if (!res.ok) {
-      const raw = await res.text().catch(() => '');
-      // Never echo the body verbatim: a failed client-credentials response can quote the request,
-      // and the request carries the client secret.
-      throw new Error(
-        `Entra client-credentials token request failed (${res.status}): ${this.tokenErrorSummary(raw)}`,
-      );
-    }
-
-    const body = (await res.json()) as TokenResponse;
-    if (!body.access_token) {
-      throw new Error('Entra client-credentials response carried no access_token');
-    }
-    // Absent expires_in is not a licence to cache forever — fall back to one minute, which the
-    // refresh buffer then treats as already stale.
-    const ttlSeconds = typeof body.expires_in === 'number' ? body.expires_in : 60;
-    this.cachedToken = { token: body.access_token, expiresAt: Date.now() + ttlSeconds * 1000 };
-    this.logger.debug({ ttlSeconds }, 'Minted app-only Graph token');
-    return body.access_token;
-  }
-
-  /** The OAuth error code only (`invalid_client`, …) — never the raw body. */
-  private tokenErrorSummary(raw: string): string {
+    this.credential ??= this.makeCredential(credentials);
     try {
-      const parsed = JSON.parse(raw) as { error?: string; error_codes?: number[] };
-      const codes = parsed.error_codes?.join(',') ?? '';
-      return `${parsed.error ?? 'unknown_error'}${codes ? ` [${codes}]` : ''}`;
-    } catch {
-      return 'unparseable error response';
+      const result = await this.credential.getToken(GRAPH_DEFAULT_SCOPE, { abortSignal: signal });
+      if (!result?.token) throw new Error('the credential returned no access_token');
+      return result.token;
+    } catch (err) {
+      // Summarise, never echo: an MSAL failure can quote request URLs and assertion claims.
+      const summary =
+        err instanceof Error
+          ? `${err.name}: ${err.message.split('\n')[0].slice(0, 300)}`
+          : String(err);
+      throw new Error(`Entra app-token request failed: ${summary}`, { cause: err });
     }
   }
 
