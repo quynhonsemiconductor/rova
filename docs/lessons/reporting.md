@@ -29,7 +29,7 @@ difference is the whole design. Read this before changing a report or the snapsh
   already has a timestamp, and a row with no such history is REPORTED and left NULL rather than dated on
   no evidence.
 - **The timebox says WHICH window; the WORK says whose it is.** `iterations.team_id` is optional
-  here (the reference ALM product collapses project and team, we do not), so a project may run one shared sprint
+  here (Rally collapses project and team, we do not), so a project may run one shared sprint
   every team works inside — 195 of 206 local iterations name no team. Filtering reports on
   `iterations.team_id` therefore returned NOTHING for a selected Team while Team Status showed the
   hours, and Velocity, which had no team predicate on the work at all, credited every point in a
@@ -116,7 +116,7 @@ difference is the whole design. Read this before changing a report or the snapsh
   exhaustively (Start Date, Release Date, Project, State, Planned Velocity, Plan Estimate, Version),
   FR-023 forbids "Task Roll-up, Burndown or another Release progress widget", FR-024 puts
   accepted/progress totals in `Portfolio > Release Tracking` alone, and `P3-REL-DC-009` is Decided.
-  The reference ALM product shows a roll-up there; the BA report wins. **The API still SERVES `taskRollup`** — the
+  Rally shows a roll-up there; the BA report wins. **The API still SERVES `taskRollup`** — the
   BA's own §7.4 detail DTO carries it, and its `estimateHours` is the list's `taskEstimate` column
   (FR-004) — so this is a display rule, not a contract change: the SPA's `Release` mirror does not
   declare the field, which is what stops a Phase 3 screen rendering it again.

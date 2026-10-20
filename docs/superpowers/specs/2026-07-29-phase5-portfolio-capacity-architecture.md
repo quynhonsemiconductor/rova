@@ -4,7 +4,7 @@
 **Date:** 2026-07-29
 **Status:** Proposal for review
 **Inputs:** BA SRS `04_Developement_tracking/Phase 5/{01_Portfolio_Items,02_Capacity_Planning}/SRS.md`
-(BA-closed 2026-07-28), verified against the reference ALM product's TechDocs.
+(BA-closed 2026-07-28), verified against Rally's TechDocs.
 
 ---
 
@@ -24,7 +24,7 @@
 - **The one genuinely new backend concept** is the Capacity Plan's *fixed allocation*:
   a value frozen at planning time that must not drift when child estimates change.
   That is a real column, not a rollup.
-- **Two SRS gaps to settle with the BA before build:** the reference ALM product's **cutline** and
+- **Two SRS gaps to settle with the BA before build:** Rally's **cutline** and
   Feature **planned start/end + status colour**. Both are cheap now and expensive later.
 
 ---
@@ -100,7 +100,7 @@ state, the same create template, the same rank column, the same archive semantic
 the same owner/project fields. The differences are three *nullable* columns
 (`team_id`, `release_id`, `parent_id`) and which rollup formula applies. Two tables
 would duplicate the rank scope logic, the key generator, the RBAC surface and the list
-query, and would make the SRS's single `Type` selector a union query. The reference ALM product itself
+query, and would make the SRS's single `Type` selector a union query. Rally itself
 models all portfolio item types in one collection with a `TypeDefinition` level — this
 matches the reference product.
 
@@ -175,7 +175,7 @@ capacityPlanStatusEnum     = ['draft','published']
 ```
 
 `portfolio_item_state` deliberately does **not** reuse `workItemScheduleStateEnum`.
-They are different lifecycles — the reference ALM product defines portfolio state per type at workspace
+They are different lifecycles — Rally defines portfolio state per type at workspace
 level. Conflating them is the mistake `enums.ts` D1/D2 already warns about.
 
 ---
@@ -183,7 +183,7 @@ level. Conflating them is the mistake `enums.ts` D1/D2 already warns about.
 ## 4. The estimate mapping — do not hard-code
 
 The SRS calls `XS=1, S=3, M=5, L=8, XL=13` **temporary mockup data** and defers the real
-configuration to `Settings > Workspace > Project Management`. The reference ALM product makes this a
+configuration to `Settings > Workspace > Project Management`. Rally makes this a
 workspace-admin setting.
 
 **Therefore: ship it as configuration from day one, even without the UI.**
@@ -440,16 +440,16 @@ configurable estimate map). Get those reviewed before slice 2.
 
 ## 10. Open questions for the BA
 
-Three, in priority order. The first two are gaps against the reference ALM product that are cheap now.
+Three, in priority order. The first two are gaps against Rally that are cheap now.
 
-1. **Cutline.** The reference ALM product's Capacity Plan Items tab draws a cutline: sort by rank ascending
+1. **Cutline.** Rally's Capacity Plan Items tab draws a cutline: sort by rank ascending
    and a line marks where cumulative estimate exhausts capacity — above it fits, below
    it does not. The SRS references a "Capacity Cutline" in §11 but never defines the
    row/marker, and §14 excludes only the *Breakdown chart*. Every input already exists
    (rank + resolved estimate + team capacity). Dropped deliberately, or lost between
    drafts?
 
-2. **Feature planned start/end + status colour.** The reference ALM product derives a blue/green/yellow/red
+2. **Feature planned start/end + status colour.** Rally derives a blue/green/yellow/red
    health indicator from accepted rate against planned end date (≥20% behind → yellow,
    ≥40% → red). The SRS has the two Percent Done bars but no planned dates on
    Feature/Epic, so health cannot be computed. §2 states the goal as leadership
@@ -461,8 +461,8 @@ Three, in priority order. The first two are gaps against the reference ALM produ
    `Project Management` UI exists — the alternative is Phase 5 shipping with no usable
    estimate fallback at all.
 
-Also worth noting, not blocking: the SRS labels the reference ALM product's `Initiative` level as **Epic**.
-The reference ALM product has no "Epic" in its portfolio hierarchy (`Feature → Initiative → Theme`); Epic is
+Also worth noting, not blocking: the SRS labels Rally's `Initiative` level as **Epic**.
+Rally has no "Epic" in its portfolio hierarchy (`Feature → Initiative → Theme`); Epic is
 Jira vocabulary. The SRS says the relabel is deliberate. Keep the mapping visible in
 code comments and API docs so a future ALM-alignment effort does not have to rediscover
 it.

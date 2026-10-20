@@ -4,23 +4,23 @@ Extracted from `CLAUDE.md` so the rule stays in the always-loaded notes and the
 incidents behind it stay one click away.
 
 Three rulings made on 2026-08-14, after an eight-slice audit cross-checked the code against BA main
-(`product-docs` `55e7dbb`) and against the reference ALM product. None is drift; none should be "fixed" on
+(`product-docs` `55e7dbb`) and against Rally. None is drift; none should be "fixed" on
 sight. The audit and its sourced ALM research are in
 `product-docs/projects/mini-rally/09_Gap_Audit/`.
 
-- **There is NO `Viewer` level, and the reference ALM product disagrees.** The BA removed it (`product-docs` `55e7dbb`,
+- **There is NO `Viewer` level, and Rally disagrees.** The BA removed it (`product-docs` `55e7dbb`,
   2026-08-14). It was restored by architect ruling the same day and **removed again on the BA's
   instruction** — migrations 0113 then 0115. The model is Workspace Admin plus per-Project `admin` or
   `editor`, with **No Access implicit** when no active `project_members` row exists; `No Access` is
   never a stored value or a dropdown choice, only the absence of a row reached through `Remove`.
 
   Recorded because it will come up again, and because the next person to read Broadcom's docs will
-  reach for it. The reference ALM product's `ProjectPermission.Role` is No Access / Viewer / Editor / Project Admin,
+  reach for it. Rally's `ProjectPermission.Role` is No Access / Viewer / Editor / Project Admin,
   and its Viewer is load-bearing five ways: the documented answer to "make this user read-only", the
   **provisioning default** for a new user, one of four Quick Filter Toggles on the admin permission
   grid, the demotion target in the team-membership state machine, and a full-licence consumer whose
   only purpose is access control. So with `admin`/`editor`/absent alone, a read-only stakeholder or
-  auditor is either invisible or a full Editor — the two configurations the agile ALM tool's customers most often
+  auditor is either invisible or a full Editor — the two configurations Rally's customers most often
   need to avoid. If that becomes a real problem it needs a **new ruling**, not a quiet re-add: the
   CHECK constraint, `ACCESS_LEVEL_PERMISSIONS`, the DTO enums, the SPA's `access-levels.ts` mirror and
   the generated client all have to move together, and the last attempt showed what happens when one of
@@ -32,12 +32,12 @@ sight. The audit and its sourced ALM research are in
 - **Team-scoped Editor is DROPPED as an authorization scope** (ruling 2026-08-14, reversing the
   earlier "KEPT" ruling of the same day — recorded rather than deleted, because the next person to read
   the BA's §2.2 will reach for it again). The BA scopes an Editor's writes to their assigned Teams
-  (§2.2, §3.2 "in assigned Teams"), and the reference ALM product has **no `Team` object and no team authorization scope**
+  (§2.2, §3.2 "in assigned Teams"), and Rally has **no `Team` object and no team authorization scope**
   at all — `POST /user/<OID>/teammemberships/add` takes **project** refs, and "Team Member" is a
   presentational checkbox with auto-promotion to Editor. Our own research file said "do not build a
   team scope"; it was kept anyway because the BA models Teams as first-class.
 
-  **What reversed it was our own schema, not the ALM tool's docs.** A team scope can only restrict rows that
+  **What reversed it was our own schema, not Rally's docs.** A team scope can only restrict rows that
   CARRY a team, and `portfolio_items.team_id` and `work_items.team_id` are both nullable and mostly
   unset (195 of 206 local iterations name no team). `assertTeamScoped` therefore admitted every
   `teamId === null` row *by design* — so the boundary admitted the ordinary case, which makes it a
@@ -142,12 +142,12 @@ sight. The audit and its sourced ALM research are in
 
   Everything else about Teams is unchanged: **delivery-model data, and a display filter.** Team
   membership, `team_members`, Team Status, Team Capacity and every report's team scoping are untouched
-  — and note `RBE-06` grants `editor` from a team roster row, which IS the reference ALM product's model arrived at from
+  — and note `RBE-06` grants `editor` from a team roster row, which IS Rally's model arrived at from
   the other direction.
-- **A per-Project `Admin` has NO structural authority**, following the BA over the reference ALM product. §3.1 marks
+- **A per-Project `Admin` has NO structural authority**, following the BA over Rally. §3.1 marks
   every structural row Hidden for Admin — create/edit/archive/restore/delete Project, create/edit/
   deactivate/restore Team, assign Project access and Team membership — and gives it Read-only on
-  "View Project Details and Teams". The reference ALM product's Project Admin *does* configure its project and edit
+  "View Project Details and Teams". Rally's Project Admin *does* configure its project and edit
   viewer/editor/team-member permissions, so this is deliberate. In code: `PATCH /projects/:id` and
   the two `:id/teams` link/unlink routes carry **`workspace:edit`** (workspace-tier, WA-only), not
   `project:edit`.

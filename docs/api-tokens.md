@@ -49,7 +49,7 @@ curl -sX POST https://rova.example/v1/me/api-tokens \
 ```
 
 `token` appears **once**. It is stored only as a sha256 hash, so it cannot be shown again — a lost
-token is revoked and replaced, not recovered. That is also the reference ALM product's behaviour.
+token is revoked and replaced, not recovered. That is also Rally's behaviour.
 
 ## Use it
 
@@ -102,7 +102,7 @@ working immediately rather than at expiry.
 
 ## Recommendations for a long-lived integration
 
-1. **Use a dedicated service account**, not a person's login. In the reference ALM product, API keys are deleted with
+1. **Use a dedicated service account**, not a person's login. In Rally, API keys are deleted with
    the user — tie an unattended integration to an individual and it breaks the day their account
    changes. A service principal also makes the audit trail name the integration rather than a colleague.
 2. **Scope it to what it does.** A reader gets `work_item:view`; nothing else needs to be possible.

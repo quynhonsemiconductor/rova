@@ -6,7 +6,7 @@
 | Author | Solution Architect (with BA SRS + approved mockup) |
 | Created | 2026-09-07 |
 | Sources of truth | `Mini_Rally_pj/04_Developement_tracking/Phase 7 (After MVP)/Test Case/SRS.md`; mockup `03_Mockup Design/src/app/pages/WorkItemDetailPage.tsx`, `WorkspaceProjectsPanel.tsx`, `model.ts`; the User Story AC1–AC4 |
-| Reference-ALM parity checked against | `techdocs.broadcom.com/.../testing/managing-tests/manage-test-cases/test-case-fields.html`, `.../test-case-results/test-case-result-fields.html` |
+| Rally parity checked against | `techdocs.broadcom.com/.../testing/managing-tests/manage-test-cases/test-case-fields.html`, `.../test-case-results/test-case-result-fields.html` |
 
 The User Story covers AC1–AC4 only (tab, list, empty state, open detail). The SRS covers eight
 surfaces. **Decision: build the full SRS, phased.** Phase A is exactly the User Story; each later
@@ -19,7 +19,7 @@ phase is independently mergeable and its own PR.
 | # | Decision | Reason | Reversal cost |
 |---|---|---|---|
 | D1 | Full SRS, delivered in 7 phases (A–G). Phase A = the US. | AC3's `Add New` needs a destination, so Create + Detail must land soon after; Results and Type config are separable. | none — phases are additive |
-| D2 | `test_cases.work_item_id` is **NULLABLE**; only work-item-scoped routes are exposed in Phase 7. | The reference ALM product's Test Case is a project artifact with an OPTIONAL Work Product. A future `Quality > Test Cases` standalone surface, or Test Folder / Test Set support, then needs **no migration**. Declared divergence: our UI has no standalone list yet. | one route + one page, no schema change |
+| D2 | `test_cases.work_item_id` is **NULLABLE**; only work-item-scoped routes are exposed in Phase 7. | Rally's Test Case is a project artifact with an OPTIONAL Work Product. A future `Quality > Test Cases` standalone surface, or Test Folder / Test Set support, then needs **no migration**. Declared divergence: our UI has no standalone list yet. | one route + one page, no schema change |
 | D3 | New **`test_case:*` and `test_result:*` permission namespaces**, with a backfill migration. | Quality reuses `work_item:*`, but that makes `work_item:edit` imply editing every Test Case. A later "QA writes tests, not stories" ruling needs the split anyway. CLAUDE.md: *"a new permission needs a backfill migration"*. | catalogue edit + migration |
 | D4 | TC-/TR- keys minted **`MAX(existing)+1` + unique index + retry**, following Portfolio. | `workspace_item_counters.item_type` is the `work_item_type` enum, narrowed by 0072 to story/task/defect. `portfolio-item.repository.ts:111` states this exact trade-off; releases/iterations/milestones make it too. | a migration on the counter table |
 | D5 | Tab order: `Details | Tasks | Test Cases | Connections | Revision History`. | AC1: "immediately after Tasks", literally. `Connections` (SCM) does not exist in the mockup and shifts right. | one array reorder |
@@ -29,16 +29,16 @@ phase is independently mergeable and its own PR.
 
 ### Declared divergences to record in `docs/DIVERGENCE.md`
 
-1. **No standalone Test Case surface** (D2). The reference ALM product has `Quality > Test Cases`, Test Folders and Test
+1. **No standalone Test Case surface** (D2). Rally has `Quality > Test Cases`, Test Folders and Test
    Sets. Our Phase 7 exposes Test Cases only through a Work Item. Schema is ready; UI is not built.
-2. **No Test Folder, Test Set, Last Build, Tags, Color, Expedite fields.** The reference ALM product's Test Case carries
+2. **No Test Folder, Test Set, Last Build, Tags, Color, Expedite fields.** Rally's Test Case carries
    all of them (`test-case-fields.html`). The SRS §6.3 field list is exhaustive and names none, and
    §1 says technical design not visible in the mockup is unspecified. Do not add them on sight.
-3. **`Validation Input` is NOT required here.** The reference ALM product marks it required; the SRS §5 makes `Name` the
+3. **`Validation Input` is NOT required here.** Rally marks it required; the SRS §5 makes `Name` the
    only required create field and §5 says every content field "starts blank". Our Create modal
    therefore cannot require it.
-4. **The reference ALM product's Test Case Result has a `Test Set` field**; we have none, because we have no Test Sets.
-5. **Test Case Type is per-PROJECT and admin-editable** (SRS §3). The reference ALM product's is a workspace-level
+4. **Rally's Test Case Result has a `Test Set` field**; we have none, because we have no Test Sets.
+5. **Test Case Type is per-PROJECT and admin-editable** (SRS §3). Rally's is a workspace-level
    customisable dropdown. Per-project is the BA's model.
 
 ---
@@ -169,7 +169,7 @@ apps/web/src/
 | `id` | uuid pk | |
 | `workspace_id` / `project_id` | uuid not null | |
 | `test_case_id` | uuid not null | FK → `test_cases(id)` `ON DELETE cascade` |
-| `work_item_id` | uuid | SNAPSHOT of the Test Case's Work Product at result time — the reference ALM product: "the work product to which the test case result was associated **when you entered** the result", not editable |
+| `work_item_id` | uuid | SNAPSHOT of the Test Case's Work Product at result time — Rally: "the work product to which the test case result was associated **when you entered** the result", not editable |
 | `test_result_key` | varchar(30) not null | `TR-<n>`, workspace-unique, `uq_test_result_key` |
 | `build` | varchar(255) not null | required |
 | `run_date` | date not null | required; named `run_date` not `date` (reserved-word hygiene) |
@@ -345,7 +345,7 @@ TEST_CASE_DELETE: 'test_case:delete'  TEST_RESULT_DELETE: 'test_result:delete'
 | BR10 | A Test Case with no Result shows `Not Run` / `Not run yet` — **never `--`, never `0`** | FE render | SRS §10. Note this is the second declared exception to `EMPTY_VALUE`, alongside Capacity's `Dependencies` `0` |
 | BR11 | Result `Build`, `run_date`, `tester_id` required; `duration_minutes >= 0` | zod + CHECK | SRS §8, AC9 |
 | BR12 | Adding a Result never replaces earlier Results | append-only insert | SRS §8, AC10 |
-| BR13 | Result `Test Case` and `Work Product` are read-only; `work_item_id` is a snapshot taken at create | PATCH schema omits both | SRS §9.3, AC12; the reference ALM product's own wording |
+| BR13 | Result `Test Case` and `Work Product` are read-only; `work_item_id` is a snapshot taken at create | PATCH schema omits both | SRS §9.3, AC12; Rally's own wording |
 | BR14 | Results list ordered `run_date desc, created_at desc` | repository | SRS §7, AC8 |
 | BR15 | **No separate Test Steps list** anywhere | absence, asserted by an FE test | SRS §1, AC7 |
 | BR16 | Type name: required, trimmed, ≤60 chars, case-insensitively unique per project | service + `uq_test_case_types_name` on `lower(name)` | SRS §3.3, AC15 |
@@ -1508,7 +1508,7 @@ None of these blocks Phase A. Each is asked at the phase that needs it.
    ruling; F4 has no separate design decision left, only the implementation.
 2. **Comments on a Test Case / Test Result.** The SRS names none, so we refuse them (§2.6). Confirm
    that is intended, since the enum now technically admits them.
-3. **`Last Build`** — The reference ALM product's Test Case has it beside Last Verdict / Last Run, from the same latest
+3. **`Last Build`** — Rally's Test Case has it beside Last Verdict / Last Run, from the same latest
    Result. The SRS §6.3 field list omits it. Add (one more trigger column, no new data) or leave?
 4. **Duplicate Test Case names** within one Work Item — permitted? The SRS is silent; we permit.
 5. **Bulk actions on the tab.** AC2 lists a `Select` checkbox column but the SRS names no bulk verb.

@@ -87,8 +87,8 @@ uninstalled → all its repos deactivated. **Disconnect** clears the org's repos
 from the dashboard (reconnect re-adds the active ones).
 
 Linking needs no repo→project mapping: work-item keys are unique per **workspace**
-(FormattedID, the reference ALM product's key format), so any `US-42` in a PR title / branch / commit resolves
-workspace-wide — the reference ALM product's org-scoped model.
+(FormattedID, Rally's key format), so any `US-42` in a PR title / branch / commit resolves
+workspace-wide — Rally's org-scoped model.
 
 **Add manually** (fallback) — for a repo outside a connected installation, add it
 as `owner/name`; same backfill-on-add behaviour.

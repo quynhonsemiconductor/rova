@@ -10,7 +10,7 @@
 ## 1. TL;DR
 
 - The **decorator approach is not the problem** — declaring authz as route metadata read by a guard is the correct, idiomatic NestJS pattern. The real problem is there are **three parallel enforcement mechanisms** (`PermissionGuard`, `ProjectPermissionGuard`, service-level `assertProjectPermission`) applied inconsistently, which has already produced **real read-enforcement gaps** (releases / milestones / reports readable across projects in the same workspace).
-- **Model:** keep **RBAC + per-scope assignment** (which the DB already supports) with a **thin ABAC scope layer**. Do **not** build the SRS's user-editable Screen×Action×Role matrix — it is *more complex than the reference ALM product* (which uses fixed per-project levels) and is over-engineering for a single-product, small-company MVP.
+- **Model:** keep **RBAC + per-scope assignment** (which the DB already supports) with a **thin ABAC scope layer**. Do **not** build the SRS's user-editable Screen×Action×Role matrix — it is *more complex than Rally* (which uses fixed per-project levels) and is over-engineering for a single-product, small-company MVP.
 - **Converge onto `opshub`'s authorization design** (one `PolicyGuard` + `scopeFrom` resolver, resolve-and-cache per request, fail-closed, attribute scopes). The two repos are meant to stay in lockstep and opshub is already the better pattern. This is the DRY, long-term win.
 - **Flip fail-open → fail-closed** for authz decisions (security).
 
@@ -42,7 +42,7 @@ Guard order is safely bundled in one `@UseGuards` via `@AuthProjectScoped()` / `
 - **Expiring grants** (`expiresAt`) + delegation / access-requests (PIM-style).
 - Normalized `role_permissions` table (not a jsonb array).
 
-### 2.4 The reference ALM product (Broadcom) — for product fidelity
+### 2.4 Broadcom Rally — for product fidelity
 - Fixed **per-project levels**: No Access · Viewer · Editor · Team Member (=Editor+flag) · Project Admin; workspace tier No Access · User · Workspace Admin (+ Subscription Admin).
 - Permissions assigned **per project**; what each level can do is **fixed by the product, not editable per company**. → classic RBAC + per-scope assignment, **not** an editable matrix.
 
@@ -72,12 +72,12 @@ RBAC base → add ABAC conditions when context creeps in → ReBAC (Zanzibar/Ope
 ## 4. Target architecture
 
 ### 4.1 Model — RBAC + scope (keep it boring)
-- **Fixed roles** = the SRS 3 (`workspace_admin`, `project_admin`, `project_member`). Drop `project_viewer`, `workspace_member`, and the 4 persona presets. (Optionally keep a per-project **Viewer** if BA wants reference-ALM parity — cheap.)
+- **Fixed roles** = the SRS 3 (`workspace_admin`, `project_admin`, `project_member`). Drop `project_viewer`, `workspace_member`, and the 4 persona presets. (Optionally keep a per-project **Viewer** if BA wants Rally parity — cheap.)
 - **Permission catalog = data**, one code per (surface, action), plural surfaces, no `*:manage`, no wildcard-as-gate.
-- **Assignment is the editable thing**, not the role's permission set. WA assigns a role to a user **per project** (`scopeType:'project'`). This is exactly the reference ALM product's model + what the DB already models.
+- **Assignment is the editable thing**, not the role's permission set. WA assigns a role to a user **per project** (`scopeType:'project'`). This is exactly Rally's model + what the DB already models.
 - **Matrix screen = read-only inspector** rendering the fixed catalog (documentation, not an editor). If BA insists on editability, allow it **only for custom (non-canonical) roles** via the existing `system_roles.permissions` jsonb — the 3 canonical roles stay immutable (recovery anchor).
 
-> Recommendation: push back on the editable E/R/D/H matrix. It exceeds the reference ALM product, and "WA can broaden a role via override" (SRS §2) is a standing security foot-gun for a small-company MVP.
+> Recommendation: push back on the editable E/R/D/H matrix. It exceeds Rally, and "WA can broaden a role via override" (SRS §2) is a standing security foot-gun for a small-company MVP.
 
 ### 4.2 Enforcement — collapse 3 → 1 (adopt opshub's `PolicyGuard`)
 - One guard: `@RequirePermission(code, scopeFrom?)`. `scopeFrom(req)` resolves the resource's scope (project id from param/query/body, or attrs after a load). Guard resolves effective permissions and decides. Removes the `PermissionGuard` + `ProjectPermissionGuard` + `assertProjectPermission` split that caused §3.1.
@@ -108,5 +108,5 @@ Since boilerplate must stay identical with opshub and opshub is ahead: **converg
 
 1. **Editable matrix vs fixed roles?** — Recommend **fixed roles + read-only matrix inspector** (BA call; contradicts SRS §2 editability).
 2. **Converge onto opshub's authz (single guard, resolve+cache, fail-closed)?** — Recommend **yes**; bigger refactor, but the DRY long-term target and fixes the read gaps by construction.
-3. **Project access as the primary gate for non-admins?** — Recommend **yes** (matches the reference ALM product + SRS §3.1); it's the most behaviour-visible change.
+3. **Project access as the primary gate for non-admins?** — Recommend **yes** (matches Rally + SRS §3.1); it's the most behaviour-visible change.
 4. **Ship P0 now regardless?** — Recommend **yes** — it's a live cross-project read leak.
