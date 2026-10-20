@@ -1,6 +1,6 @@
 # Observability Architecture — Current State
 
-Date: 2026-08-30 · Status: **live in develop, pending prod apply** · Scope: rally only (opshub/qnsc-kb-backend replication not started)
+Date: 2026-08-30 · Status: **live in develop, pending prod apply** · Scope: rova only (opshub/qnsc-kb-backend replication not started)
 
 Supersedes `2026-07-26-observability-architecture-design.md` for anything the two disagree
 on. That document is the original plan; this one is what actually shipped, verified against
@@ -13,7 +13,7 @@ real Grafana screenshots and live queries, not reconstructed from Terraform alon
 | Covers | Everything app-emitted: HTTP/DB-pool/worker metrics, logs, traces | Everything AWS-native: RDS, ECS, ALB, ElastiCache, SQS |
 | Why here | Only place this data exists — our own OTel instrumentation | Free, published by AWS regardless of anything we do |
 | Notifies via | Microsoft Teams (webhook) | Email (SNS topic, `alarm_emails`) |
-| Managed by | `rally/infra/modules/stack` + `qnsc-infra/live/observability` (Terraform) | `rally/infra/modules/stack` + `qnsc-tf-modules/modules/observability` (Terraform) |
+| Managed by | `rova/infra/modules/stack` + `qnsc-infra/live/observability` (Terraform) | `rova/infra/modules/stack` + `qnsc-tf-modules/modules/observability` (Terraform) |
 
 **Not merged, on purpose.** Ingesting CloudWatch metrics into Grafana's Mimir would spend
 metered free-tier series budget (10k cap) on data that is free in CloudWatch and already
@@ -57,7 +57,7 @@ real trace waterfall in Explore). Not something this repo's Terraform configures
 Loki datasource is `"readOnly": true` via the API, confirmed by direct query, so it could
 never have been Terraform-managed anyway.
 
-**Dashboards** (`rally/infra/modules/stack/main.tf`, one Terraform-provisioned dashboard
+**Dashboards** (`rova/infra/modules/stack/main.tf`, one Terraform-provisioned dashboard
 per concern, RED/USE split):
 - **Overview** — HTTP request rate/error rate/status distribution/latency (p50/p95/p99),
   DB pool in-use vs waiting, worker job success/failure rate, Recent errors (fixed-query
@@ -87,7 +87,7 @@ Every rule annotation carries a `runbook_url` (Grafana renders it as a clickable
 the fired alert). Thresholds are per-env (`local.alert_thresholds_by_env`), the SAME
 numbers the dashboard threshold-line overlays draw — single source of truth, cannot drift.
 
-**SLO** (`grafana_slo`, `rally/infra/modules/stack/main.tf`) — HTTP availability, ratio of
+**SLO** (`grafana_slo`, `rova/infra/modules/stack/main.tf`) — HTTP availability, ratio of
 non-5xx to total requests, 30-day rolling window, 99% develop / 99.5% production. A
 DIFFERENT question from `http-5xx-rate` (5-minute page-worthy vs 30-day commitment),
 deliberately a separate objective number. Generates its own fast-burn/slow-burn alert
@@ -119,8 +119,8 @@ one shared SNS topic (`alarm_emails`):
 | App-specific | `security_fail_open` (auth denylist/rate-limiter degraded), `outbox_dead_letter` | Log-metric-filter-based, not OTel — deliberate, since `OTEL_ENABLED` being on doesn't change that CloudWatch already has these logs regardless |
 
 **Deliberately NOT alarmed on a shared resource.** ElastiCache CloudWatch alarms are only
-wired when a product has its OWN dedicated node (`cache.shared = false`, true for rally
-prod). Rally develop uses a SHARED node (`qnsc-infra/live/runtime-dev`,
+wired when a product has its OWN dedicated node (`cache.shared = false`, true for rova
+prod). Rova develop uses a SHARED node (`qnsc-infra/live/runtime-dev`,
 `module.shared_cache`) — an alarm scoped to one tenant of a multi-tenant resource would
 misattribute, the same class of bug the ALB latency alarm avoided by scoping per target
 group instead of per load balancer. A shared node's alarms belong where the node is

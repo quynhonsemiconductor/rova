@@ -61,7 +61,7 @@ Feature.** If they rule it like Release, the reversal is this route plus one SPA
 single-project per §5.3:133, which is what lets the GUARD check it (`{ from: 'query', field:
 'projectId' }`) instead of a service-side narrowing — so the service deliberately makes **no**
 authorization call, pinned by a spec. Note the API still *accepts* a cross-project Feature link
-(`assertFeatureLinkable` permits it, because Rally's rollup matches `feature_id` alone) while the picker
+(`assertFeatureLinkable` permits it, because the reference ALM product's rollup matches `feature_id` alone) while the picker
 no longer offers one: 0 such rows exist, and the BA's field scope wins over offering it.
 
 **HOME's two aggregates were the last cross-project reads still scoped by `workspace_id` alone**, and

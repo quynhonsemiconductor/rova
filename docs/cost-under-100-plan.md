@@ -1,9 +1,9 @@
-# Plan — rally dev + prod under $100/mo
+# Plan — rova dev + prod under $100/mo
 
 > **ARCHIVED 2026-10-18: historical plan, do not follow.** Two parts no longer match the code:
 > - The Cloudflare Tunnel token is no longer a key in the app bundle (`rally/<env>/app`, `tunnel-token`). It is
 >   a standalone, Terraform-managed secret named `<product>/<env>/tunnel-token-tf` (`infra/modules/stack/main.tf`).
-> - "rally" is the old product name in this plan. The product is now rova.
+> - "rally" was the product name when this plan was written; the product is now rova. Remaining `rally-*` strings are legacy physical identifiers (hostnames, secret paths, alarm names) — do not rename.
 >
 > Kept as history, so it is not deleted. Cost figures are as of 2026-08-02.
 
@@ -77,7 +77,7 @@ must be replaced by Cloudflare analytics or dropped.
 
 **Also removes** the shared-ALB host-routing design that `runtime-prod` is built around.
 opshub's prod stack is written against that ALB and would need the same treatment before
-it launches. This is the change with the largest blast radius outside rally.
+it launches. This is the change with the largest blast radius outside rova.
 
 ### 2. Delete the persistent develop environment — −$63.08
 
@@ -144,7 +144,7 @@ day, including a deploy.
    releases all 5 public IPv4.
 4. Remove `attach_alb` from the product stacks, and drop the two ALB-derived alarms.
 
-Prerequisite: rally's stack hardcodes `attach_alb = true` (`stack/main.tf:515`); it must
+Prerequisite: rova's stack hardcodes `attach_alb = true` (`stack/main.tf:515`); it must
 become a variable first. That module is shared with opshub.
 
 ### Phase 3 — Resize production

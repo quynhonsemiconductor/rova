@@ -136,7 +136,7 @@ wanted those you could stop after step 3 and skip the replace entirely.
    RELEASE TAG rather than a branch; a `main` dispatch silently skips the prod job.
 
    ```bash
-   gh workflow run infra-apply.yml --repo quynhonsemiconductor/rally --ref vX.Y.Z
+   gh workflow run infra-apply.yml --repo quynhonsemiconductor/rova --ref vX.Y.Z
    ```
 
    Then approve `apply-prod` on the run. Review the plan in its log before approving: it

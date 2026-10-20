@@ -7,7 +7,7 @@
 | Created | 2026-09-14 |
 | Feature code | `SU` |
 | Sources of truth | `Mini_Rally_pj/04_Developement_tracking/Phase 7 (After MVP)/Split Unfinished/{FEATURE,SRS,USER_STORIES}.md`; mockup `03_Mockup Design/src/app/{splitStory.ts,components/SplitStoryDialog.tsx}` |
-| Rally parity checked against | `knowledge.broadcom.com/external/article/232813` (split creates a new Story in the current Iteration, moves the original forward), `.../278314` (editing a Test Result's work product) |
+| Reference-ALM parity checked against | `knowledge.broadcom.com/external/article/232813` (split creates a new Story in the current Iteration, moves the original forward), `.../278314` (editing a Test Result's work product) |
 | Delivery rule | **1 User Story = 1 PR.** Ten PRs (SU-01…SU-10) as planned; SU-03/04/05 shipped as one and SU-07/08 as one, per the §8 Q16 amendments (a) and (c) — seven PRs in practice. Every PR must go green on `Backend CI required` + `Web CI required` + `PR title (conventional commits)`. |
 
 > **How to use this file.** Every task is a checkbox. Tick it only when the work is merged AND its
@@ -41,13 +41,13 @@ attribution or historical Result Work Product is **not** here — it is in §8, 
 ### Declared divergences (record in `CLAUDE.md`, not `docs/DIVERGENCE.md`)
 
 `docs/DIVERGENCE.md` is scoped to **rova-vs-opshub** architecture. Product divergence from
-Broadcom Rally / from the mockup goes in `CLAUDE.md`, exactly as Phase 7 Test Cases resolved it.
+The reference ALM product / from the mockup goes in `CLAUDE.md`, exactly as Phase 7 Test Cases resolved it.
 
 1. **Target-Iteration team rule differs from the mockup** (D8): a team-less (shared) Iteration is a
    legal target for a team-owned Story. The mockup requires exact team equality.
-2. **Broadcom Rally splits into "the next iteration" automatically; we require an explicit target
+2. **The reference ALM product splits into "the next iteration" automatically; we require an explicit target
    choice** from the valid set. The SRS mandates the selector (§5.2), so this is BA-driven.
-3. **No Actual-hour time series exists.** Rally attributes worked hours by their own timestamps.
+3. **No Actual-hour time series exists.** The reference ALM product attributes worked hours by their own timestamps.
    Rova's `tasks.actual_hours` is a single manual scalar — `0052_task_actual_hours_manual.sql`
    dropped the `time_logs`→`actual_hours` trigger. Split-time Actual attribution is therefore
    reconstructed from the Split Event snapshot, not from a per-day ledger. See §8 Q1.

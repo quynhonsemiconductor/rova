@@ -1,9 +1,9 @@
 # SCM Connections — GitHub App & Backfill (runbook)
 
-Rally links GitHub pull requests and commits to work items when their title,
+Rova links GitHub pull requests and commits to work items when their title,
 branch, or commit message references a work-item key (e.g. `US-42`). This runbook
 covers the **Phase 2** setup: a dedicated GitHub App that (a) auto-delivers
-webhook events for every installed repo and (b) lets Rally backfill a repo's
+webhook events for every installed repo and (b) lets Rova backfill a repo's
 **existing** PRs/commits over the REST API when you map it.
 
 Phase 1 (inbound webhook → HMAC verify → `scm.webhook_inbox` → worker relay →
@@ -12,13 +12,13 @@ adds history.
 
 ---
 
-## 1. Register the "Rally SCM" GitHub App (org admin)
+## 1. Register the "Rova SCM" GitHub App (org admin)
 
 On github.com → your org → **Settings ▸ Developer settings ▸ GitHub Apps ▸ New GitHub App**:
 
-- **Homepage URL**: your Rally URL.
+- **Homepage URL**: your Rova URL.
 - **Webhook ▸ Active**: on.
-  - **Webhook URL**: `https://<rally-host>/v1/scm/webhook/github`
+  - **Webhook URL**: `https://<rova-host>/v1/scm/webhook/github`
   - **Webhook secret**: a strong random string — this becomes `GITHUB_WEBHOOK_SECRET`.
 - **Permissions ▸ Repository**:
   - Pull requests: **Read-only**
@@ -29,7 +29,7 @@ On github.com → your org → **Settings ▸ Developer settings ▸ GitHub Apps
   - **Installation** — App installed/uninstalled/suspended → bind/deactivate.
   - **Installation repositories** — a repo added to / removed from the install →
     auto-register + backfill / deactivate. **This is what makes a newly-created
-    repo appear in Rally automatically.**
+    repo appear in Rova automatically.**
   - **Repository** — a repo archived/unarchived after discovery → deactivate /
     re-register (archived repos stop emitting events, so they are dropped).
 - **Where can this app be installed**: Only on this account.
@@ -40,10 +40,10 @@ Create it, then:
    service accepts both).
 3. **Install** the App on the org. Choose **All repositories** so future repos
    auto-appear (with *Selected repositories*, an admin must add each new repo to
-   the install before it flows to Rally). Archived/disabled repos are skipped
+   the install before it flows to Rova). Archived/disabled repos are skipped
    automatically on discovery.
 
-## 2. Provide credentials to Rally
+## 2. Provide credentials to Rova
 
 Config keys (`libs/platform/src/config/env.schema.ts`):
 
@@ -62,7 +62,7 @@ and leave `GITHUB_APP_PRIVATE_KEY` unset:
 ```bash
 aws secretsmanager put-secret-value \
   --secret-id rally/<env>/github-app-private-key \
-  --secret-string file://rally-scm.private-key.pem \
+  --secret-string file://rova-scm.private-key.pem \
   --region ap-southeast-1
 ```
 
@@ -73,7 +73,7 @@ in qnsc-ci blocks the deploy rather than letting a task start without it.
 ## 3. Connect the organization (Settings ▸ Integrations)
 
 Org-level, no per-repo typing. Under **Connected organizations**, click
-**Connect GitHub** and pick the App installation. Rally then:
+**Connect GitHub** and pick the App installation. Rova then:
 
 - binds the installation to the workspace (`scm.installations`),
 - discovers every **active** repo it can access (`GET /installation/repositories`,
@@ -87,8 +87,8 @@ uninstalled → all its repos deactivated. **Disconnect** clears the org's repos
 from the dashboard (reconnect re-adds the active ones).
 
 Linking needs no repo→project mapping: work-item keys are unique per **workspace**
-(Rally FormattedID), so any `US-42` in a PR title / branch / commit resolves
-workspace-wide — the real-Rally org-scoped model.
+(FormattedID, the reference ALM product's key format), so any `US-42` in a PR title / branch / commit resolves
+workspace-wide — the reference ALM product's org-scoped model.
 
 **Add manually** (fallback) — for a repo outside a connected installation, add it
 as `owner/name`; same backfill-on-add behaviour.
