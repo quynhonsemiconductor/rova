@@ -306,7 +306,7 @@ export class ScmDrizzleRepository implements IScmStore {
   // ── Work-item resolution ──────────────────────────────────────────────────
 
   async resolveWorkItemId(itemKey: string, workspaceId: string): Promise<string | null> {
-    // Workspace-unique keys (agile ALM FormattedID): (itemKey, workspaceId) resolves a
+    // Workspace-unique keys (Rally FormattedID): (itemKey, workspaceId) resolves a
     // single work item — no projectId needed, which is what makes linking org-level.
     const [row] = await this.db
       .select({ id: workItems.id })

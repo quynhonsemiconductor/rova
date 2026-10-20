@@ -1,7 +1,7 @@
 /**
  * Work-item key extraction — the link convention. A work-item's formatted key
  * embedded in a PR title, branch name, or commit message associates the SCM
- * artifact to the item (same model as Jira/GitHub/the agile ALM tool).
+ * artifact to the item (same model as Jira/GitHub/Rally).
  *
  * Keys are type-prefixed + hyphen + sequence (see ProjectsService.TYPE_PREFIX):
  *   IN- (initiative), FE- (feature), US- (story), TA- (task), DE- (defect).

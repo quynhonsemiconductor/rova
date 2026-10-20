@@ -28,7 +28,7 @@ import { SessionAuthOnly } from './session-auth-only.decorator';
  * A user's own API tokens.
  *
  * `me/*` surface, so every route is self-scoped: the principal IS the scope, and there is no permission
- * code to check — the same shape as `me/avatar`. The real agile ALM tool works this way too: any user may mint their
+ * code to check — the same shape as `me/avatar`. Real Rally works this way too: any user may mint their
  * own API Key, and only an administrator sees everyone's.
  *
  * Every route uses {@link SessionAuthOnly} rather than `@Auth()`, so a caller authenticated BY a token

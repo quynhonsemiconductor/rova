@@ -41,7 +41,7 @@ export const VelocityQuerySchema = z.object({
   // meaningful against one of them.
   //
   // No default HERE, deliberately — it lives in `DEFAULT_VELOCITY_WINDOW`, which carries the
-  // reasoning for why it is 10 (the agile ALM tool's window) rather than §6's 5. Declaring one in the schema
+  // reasoning for why it is 10 (Rally's window) rather than §6's 5. Declaring one in the schema
   // too would put the same decision in two places and change the OpenAPI contract.
   window: z.coerce
     .number()

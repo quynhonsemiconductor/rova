@@ -73,7 +73,7 @@ export function hashesMatch(a: string, b: string): boolean {
 /**
  * Expiry bounds.
  *
- * A default rather than an unbounded choice, and a cap rather than a suggestion: the real agile ALM tool's keys
+ * A default rather than an unbounded choice, and a cap rather than a suggestion: real Rally's keys
  * never expire, which is why nobody rotates them, and Atlassian settled on one year as the outer limit
  * for the same class of credential. 90 days is short enough that an abandoned token disappears on its
  * own and long enough that a quarterly rotation is not a weekly chore.

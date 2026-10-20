@@ -33,7 +33,7 @@ function isDuplicateKeyError(err: unknown): boolean {
   }
 }
 
-/** Valid release status transitions (agile ALM-aligned lifecycle). */
+/** Valid release status transitions (Rally-aligned lifecycle). */
 const RELEASE_TRANSITIONS: Record<ReleaseStatus, ReleaseStatus[]> = {
   planning: ['active', 'planning'],
   active: ['accepted', 'planning', 'active'],
@@ -82,7 +82,7 @@ const EMPTY_TASK_ROLLUP: TaskRollup = {
  * it for a value, and the shared read-only `ArtifactTable` renders an unmatched schedule state as an
  * empty track. `storyPoints` is null for the same reason and renders `EMPTY_VALUE`: a Feature's
  * forecast is the TIERED top-down estimate the Portfolio surface resolves (AC-014), not a leaf Plan
- * Estimate, and the agile ALM tool keeps those two apart as `Plan Estimate` and `Leaf Story Plan Estimate Total`.
+ * Estimate, and Rally keeps those two apart as `Plan Estimate` and `Leaf Story Plan Estimate Total`.
  */
 export interface ReleaseArtifactRow {
   id: string;

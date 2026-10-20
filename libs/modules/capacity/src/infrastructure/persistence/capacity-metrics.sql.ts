@@ -13,7 +13,7 @@ import type { CapacityPlanUnit } from '../../../../../../db/schema/enums';
  *
  * REVERSED DIVERGENCE (BA retest 2026-08-17, `P5-CP-029`, P0). This used to add `work_items.project_id
  * = plan.project_id AND work_items.release_id = plan.release_id`, following Broadcom's own sentence for
- * The agile ALM tool ("If a portfolio item includes allocated points/counts, the Project and Release fields in the
+ * Rally ("If a portfolio item includes allocated points/counts, the Project and Release fields in the
  * story must match the plan for that story to be included in the Rollup calculation"). The BA has ruled
  * against it: the release filter is what made a Feature with one Completed 3-point child report
  * `Rollup = 0, Complete = 0` on the plan header, on the Team row and on the Features tab, because an
@@ -41,7 +41,7 @@ const PEER_ALLOC = 'peer_alloc';
  *
  *  1. The child names a team that holds an allocation of this Feature on this plan → that team's slice.
  *  2. Otherwise — no team at all, or a team nobody planned this Feature with — it falls to the
- *     Feature's OWNER on the plan, which is the agile ALM tool's Planned Team Assignment (`is_primary`). That row is
+ *     Feature's OWNER on the plan, which is Rally's Planned Team Assignment (`is_primary`). That row is
  *     unique per (plan, Feature) by `uq_capacity_allocation_primary`, so the fallback cannot duplicate.
  *
  * A strict `work_items.team_id = allocation.team_id` was tier 1 alone, and SQL equality never matches
@@ -82,7 +82,7 @@ export function teamSliceChildScope(): SQL {
 /**
  * The measure a plan is counted in — POINTS or the number of child items.
  *
- * The agile ALM tool plans in one of two units ("View Work Items by Points or Count") and the BA states the
+ * Rally plans in one of two units ("View Work Items by Points or Count") and the BA states the
  * arithmetic for both: `SUM(child.planEstimate)` for points, `COUNT(child)` for count. Everything
  * downstream — Rollup, Complete, the bars, every warning, the cutline — has to be expressed in the
  * SAME unit as the team's Capacity, or a count-unit plan compares points against a headcount.

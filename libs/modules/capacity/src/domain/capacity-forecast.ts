@@ -1,7 +1,7 @@
 /**
- * The agile ALM tool's Capacity Forecast, as pure arithmetic.
+ * Rally's Capacity Forecast, as pure arithmetic.
  *
- * The agile ALM tool: "This technique randomly samples up to 52 weeks of historical
+ * Rally: "This technique randomly samples up to 52 weeks of historical
  * throughput/velocity data 20,000 times to produce accurate capacity forecasts for a
  * selected team" (Broadcom TechDocs, "Rally Capacity Forecast"). It reports three lines —
  * Min is the amount delivered 85% of the time, Median 50%, Max 15% — and lets a planner
@@ -11,7 +11,7 @@
  * planner needs "what can I commit to". A team averaging 30 points with a range of 10–50
  * cannot commit to 30, and the average alone cannot say that.
  *
- * ONE DIVERGENCE, deliberate. The agile ALM tool samples WEEKLY buckets, because its tool also serves
+ * ONE DIVERGENCE, deliberate. Rally samples WEEKLY buckets, because its tool also serves
  * Kanban teams with no timeboxes. We sample ITERATIONS:
  *   • nothing in this schema records WHEN a story was accepted — there is no `accepted_at`
  *     and no state-change history — so weekly acceptance totals are not derivable at all;
@@ -19,7 +19,7 @@
  *   • an iteration is this product's planning cadence, so a forecast expressed in
  *     iterations is the one a planner can act on.
  * The trial count, the three percentiles, the availability multiplier and the complexity
- * adjustments all follow the agile ALM tool exactly.
+ * adjustments all follow Rally exactly.
  */
 
 /** One finished iteration's delivery for the team being forecast. */
@@ -35,7 +35,7 @@ export interface VelocitySample {
 }
 
 /**
- * How well understood the work is. The agile ALM tool's five options and their exact adjustments —
+ * How well understood the work is. Rally's five options and their exact adjustments —
  * "Well Understood - Easier than Normal" through "Many Unknowns - major concerns".
  */
 export const FORECAST_COMPLEXITY = {
@@ -48,14 +48,14 @@ export const FORECAST_COMPLEXITY = {
 
 export type ForecastComplexity = keyof typeof FORECAST_COMPLEXITY;
 
-/** The agile ALM tool samples "up to 52 weeks" of history. */
+/** Rally samples "up to 52 weeks" of history. */
 export const FORECAST_HISTORY_DAYS = 364;
 
-/** The agile ALM tool runs 20,000 trials. */
+/** Rally runs 20,000 trials. */
 export const FORECAST_TRIALS = 20_000;
 
 /**
- * The agile ALM tool "requires at least 14 days of data for the team to forecast a capacity, and if
+ * Rally "requires at least 14 days of data for the team to forecast a capacity, and if
  * your team has less than 14 days of data, a warning message indicates that a capacity
  * cannot be calculated". Sampling one short iteration 20,000 times would return that same
  * iteration dressed up as a distribution.
@@ -240,7 +240,7 @@ export function forecastCapacity(input: ForecastInput): ForecastResult {
   }
   totals.sort((a, b) => a - b);
 
-  // The agile ALM tool's three lines. Delivered 85% of the time = the 15th percentile of outcomes, and
+  // Rally's three lines. Delivered 85% of the time = the 15th percentile of outcomes, and
   // so on — the probability of ACHIEVING a number and the number's rank run opposite ways,
   // which is the easiest thing to get backwards here.
   const scale = (input.availabilityPct / 100) * (1 + FORECAST_COMPLEXITY[input.complexity] / 100);

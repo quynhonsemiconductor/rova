@@ -70,7 +70,7 @@ export class SetCapacityDto extends createZodDto(SetCapacitySchema) {}
  * Plan a Feature against a team.
  *
  * `teamId` null (or omitted) parks it in the Unallocated bucket. `value` OMITTED assigns without
- * allocating — the agile ALM tool's primary assignment — which stores null and charges the Feature's own
+ * allocating — Rally's primary assignment — which stores null and charges the Feature's own
  * estimate (Refined → Preliminary) to that team on read.
  */
 export const AllocateSchema = z.object({
@@ -91,9 +91,9 @@ export const UpdateAllocationSchema = z
 export class UpdateAllocationDto extends createZodDto(UpdateAllocationSchema) {}
 
 /**
- * The agile ALM tool's `Move To Another Plan`.
+ * Rally's `Move To Another Plan`.
  *
- * `updateRelease` is the agile ALM tool's `Update the Release to match the selected plan` checkbox, and it
+ * `updateRelease` is Rally's `Update the Release to match the selected plan` checkbox, and it
  * defaults to FALSE: it writes a field on the Feature itself, outside the plan, so it has to be
  * asked for. Without it a move between releases is refused rather than performed silently.
  *
@@ -109,11 +109,11 @@ export const MoveItemToPlanSchema = z.object({
 export class MoveItemToPlanDto extends createZodDto(MoveItemToPlanSchema) {}
 
 /**
- * Inputs to the agile ALM tool's Calculate Capacity Forecast.
+ * Inputs to Rally's Calculate Capacity Forecast.
  *
- * Both are OPTIONAL with the agile ALM tool's own defaults, so a planner can ask for a forecast without
+ * Both are OPTIONAL with Rally's own defaults, so a planner can ask for a forecast without
  * answering two questions first: 100% availability is "the team as it has recently been",
- * and `typical` is "Understood - Typical Work", the agile ALM tool's no-adjustment option.
+ * and `typical` is "Understood - Typical Work", Rally's no-adjustment option.
  *
  * The window is NOT an input. It comes from the plan's planned dates, because the forecast
  * answers "can this team deliver the work in THIS plan" — letting a client pass its own
@@ -121,7 +121,7 @@ export class MoveItemToPlanDto extends createZodDto(MoveItemToPlanSchema) {}
  */
 export const ForecastCapacitySchema = z.object({
   /**
-   * Percentage of the team's recent size. The agile ALM tool: 100 for a stable team, 200 if it doubled,
+   * Percentage of the team's recent size. Rally: 100 for a stable team, 200 if it doubled,
    * 50 if it halved. Capped at 500 — beyond that the historical samples describe a
    * different team and the arithmetic is no longer a forecast.
    */
@@ -135,7 +135,7 @@ export const ForecastCapacitySchema = z.object({
    * The BA's version of this feature is a proposal "from a supplied historic velocity"
    * (`02_Capacity_Planning/SRS.md:142`), so it is an INPUT here rather than something derived —
    * "velocity-driven automatic capacity" is out of scope (SRS:418). Omitted, the forecast
-   * samples the team's own accepted history, which is what the agile ALM tool does.
+   * samples the team's own accepted history, which is what Rally does.
    *
    * Capped at 100000: past that it is a typo, and a proposal in the millions is worse than no
    * proposal because a planner may adopt it with one click.
@@ -147,9 +147,9 @@ export class ForecastCapacityDto extends createZodDto(ForecastCapacitySchema) {}
 /**
  * Publish a plan.
  *
- * `updateFields: false` is the agile ALM tool's "Publish Without Updating Fields" — publish for visibility
+ * `updateFields: false` is Rally's "Publish Without Updating Fields" — publish for visibility
  * while leaving every Feature's Release and planned dates untouched. Defaults to TRUE because
- * that is the agile ALM tool's primary button and the point of publishing a plan; opting out is the
+ * that is Rally's primary button and the point of publishing a plan; opting out is the
  * deliberate act, so it is the one that has to be stated.
  */
 export const PublishPlanSchema = z.object({

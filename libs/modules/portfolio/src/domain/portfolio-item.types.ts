@@ -28,7 +28,7 @@ export interface PortfolioItem {
    *
    * WORKSPACE-wide sequence per type, not per project — `uq_portfolio_item_key` is
    * on (workspace_id, item_key), so a per-project sequence would make two projects
-   * both mint `EP-1` and collide. Matches the agile ALM tool, where a FormattedID is unique
+   * both mint `EP-1` and collide. Matches Rally, where a FormattedID is unique
    * across the workspace, and the work-item counter, which is workspace-scoped too.
    * (Releases differ deliberately: `uq_releases_key` is per-project.)
    */
@@ -50,7 +50,7 @@ export interface PortfolioItem {
   parentId: string | null;
   /** Feature only. */
   teamId: string | null;
-  /** Feature only — the agile ALM tool allows Release on the lowest portfolio level only. */
+  /** Feature only — Rally allows Release on the lowest portfolio level only. */
   releaseId: string | null;
   ownerId: string | null;
   plannedStartDate: string | null;
@@ -193,7 +193,7 @@ export interface CreatePortfolioItemInput {
  * rather than spreading the object.
  *
  * `type` is absent on purpose: changing an Epic into a Feature (or back) would have to
- * move child links, re-key the item and re-rank it into another scope. The agile ALM tool does not
+ * move child links, re-key the item and re-rank it into another scope. Rally does not
  * offer it either.
  */
 export interface UpdatePortfolioItemInput {

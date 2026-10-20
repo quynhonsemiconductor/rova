@@ -2,7 +2,7 @@ import type { WorkflowStatusCategory } from '../../../../../db/schema/enums';
 
 /**
  * Default workflow statuses seeded for every new project.
- * Mirrors the standard agile ALM flow: Defined → In Progress → Completed → Accepted.
+ * Mirrors the standard Rally flow: Defined → In Progress → Completed → Accepted.
  * Extracted as a named constant so tests and seeding scripts share the same
  * definition — no risk of the service and the seed diverging.
  */

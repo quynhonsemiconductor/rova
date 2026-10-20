@@ -77,7 +77,7 @@ export interface IWorkItemRepository {
   /**
    * A portfolio item's type + archived state, for validating a Story's Feature link.
    *
-   * Not scoped by project on purpose: the agile ALM tool lets a Story roll up to a Feature in another project,
+   * Not scoped by project on purpose: Rally lets a Story roll up to a Feature in another project,
    * and the portfolio rollup matches on `feature_id` alone.
    */
   findPortfolioItemLinkTarget(
@@ -224,7 +224,7 @@ export interface IWorkItemRepository {
   /**
    * Census of a parent's LIVE child task states, for the parent schedule-state reconciliation.
    *
-   * A census rather than the `areAllTasksComplete` boolean it replaced: the agile ALM tool derives the parent from
+   * A census rather than the `areAllTasksComplete` boolean it replaced: Rally derives the parent from
    * the whole set — all Defined, all Completed, otherwise In Progress — so "are they all complete"
    * cannot answer two of the three cases. `total` is 0 for a parent with no tasks, which the caller
    * treats as "nothing to derive from" rather than as an empty truth.

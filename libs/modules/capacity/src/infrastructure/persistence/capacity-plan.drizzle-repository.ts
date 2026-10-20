@@ -208,7 +208,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         alloc: capacityPlanAllocations,
         itemKey: portfolioItems.itemKey,
         name: portfolioItems.name,
-        // The agile ALM tool's "Project" column: where the Feature lives OUTSIDE the plan. Not the same as the
+        // Rally's "Project" column: where the Feature lives OUTSIDE the plan. Not the same as the
         // plan's project — a Story-to-Feature link may cross projects, so a plan can carry a
         // Feature owned elsewhere, and the planner needs to see that before allocating to it.
         itemProjectId: portfolioItems.projectId,
@@ -233,7 +233,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         )`,
         rank: portfolioItems.rank,
         // The Feature's OWN totals, across every team — the same child population WITHOUT the team
-        // attribution. The agile ALM tool's Items tab reports a Feature's rollup once, not once per team, and
+        // attribution. Rally's Items tab reports a Feature's rollup once, not once per team, and
         // `teamSliceChildScope` partitions exactly this set, so the team slices sum back to it.
         itemRollup: sql<string>`(
           select ${measureSql(plan.unit)}
@@ -449,7 +449,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
    * The oldest TEAM-assigned allocation for a Feature — the one that inherits the assignment
    * when the primary is removed or parked.
    *
-   * Oldest rather than largest: the first team to receive work is the one the agile ALM tool's assign-then-
+   * Oldest rather than largest: the first team to receive work is the one Rally's assign-then-
    * allocate order treats as the owner, and "biggest allocation wins" would hand ownership around
    * on every estimate edit.
    */
@@ -571,7 +571,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
    *
    * `publishedAt`/`publishedBy` are STAMPED on publish and deliberately left in place on
    * revert: they record that a publish happened, which is what lets a re-publish of an
-   * emptied plan be allowed (the agile ALM tool blocks only a plan that has never been published, holds
+   * emptied plan be allowed (Rally blocks only a plan that has never been published, holds
    * no items and has no projects).
    */
   async setStatus(
@@ -600,7 +600,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
    * A team's delivery history: accepted totals per FINISHED iteration.
    *
    * Attributed by the STORY's own `team_id`, not the iteration's. An iteration is optionally
-   * team-scoped in this schema and the real agile ALM tool uses project-as-team, so an iteration row is
+   * team-scoped in this schema and real Rally uses project-as-team, so an iteration row is
    * an unreliable owner; the work item always names the team that delivered it. That also
    * makes a shared iteration contribute correctly to each team that worked in it.
    *

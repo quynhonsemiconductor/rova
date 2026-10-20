@@ -260,7 +260,7 @@ describe('CapacityPlansService', () => {
       expect(repo.delete).toHaveBeenCalledWith('plan-1', WORKSPACE);
     });
 
-    it('deletes a PUBLISHED plan too — the agile ALM tool allows it, unlike every other write here', async () => {
+    it('deletes a PUBLISHED plan too — Rally allows it, unlike every other write here', async () => {
       // "you can delete an existing plan, even if the plan is published". The Release and dates the
       // plan stamped onto Features are those Features' data now; deleting drops the explanation,
       // not the values, and revert is what undoes them.
@@ -465,7 +465,7 @@ describe('CapacityPlansService', () => {
       expect(repo.listByProject).toHaveBeenCalledWith('proj-a', WORKSPACE);
     });
 
-    describe("getPlanDetail — the row kind decides which of the agile ALM tool's rules can fire", () => {
+    describe("getPlanDetail — the row kind decides which of Rally's rules can fire", () => {
       /** One allocated Feature, with the tier inputs the caller controls. */
       const allocationRow = (over: Partial<CapacityAllocationRow> = {}): CapacityAllocationRow => ({
         id: 'alloc-1',
@@ -496,7 +496,7 @@ describe('CapacityPlansService', () => {
         ...over,
       });
 
-      it("flags a team with no capacity entered — the agile ALM tool's missing-capacity error", async () => {
+      it("flags a team with no capacity entered — Rally's missing-capacity error", async () => {
         repo.findViewById.mockResolvedValue(
           view({
             teams: [
@@ -519,7 +519,7 @@ describe('CapacityPlansService', () => {
 
       it('flags a Feature whose estimate came from no tier at all', async () => {
         // Every tier empty: no allocation, no refined forecast, and a preliminary size the
-        // project maps to zero. `resolveEstimate` reports `none`, so the agile ALM tool's Missing
+        // project maps to zero. `resolveEstimate` reports `none`, so Rally's Missing
         // Estimate Error applies — and the SERVICE is what supplies that tier, because the
         // repository cannot see the project estimate map.
         maps.forProject.mockResolvedValue({
@@ -566,10 +566,10 @@ describe('CapacityPlansService', () => {
     });
   });
 
-  describe("the cutline — the agile ALM tool's plan-wide fits/does-not-fit line", () => {
-    // The agile ALM tool: "Items above the cutline fit within the defined plan capacity." PLAN capacity, on
+  describe("the cutline — Rally's plan-wide fits/does-not-fit line", () => {
+    // Rally: "Items above the cutline fit within the defined plan capacity." PLAN capacity, on
     // the item list, in rank order. An earlier version drew it per TEAM, which answered a
-    // different question (what one team drops) than the agile ALM tool's line does (what this plan drops).
+    // different question (what one team drops) than Rally's line does (what this plan drops).
     const row = (over: Partial<CapacityAllocationRow>): CapacityAllocationRow => ({
       id: `alloc-${over.portfolioItemId ?? 'x'}-${over.teamId ?? 'none'}`,
       planId: 'plan-1',
@@ -627,7 +627,7 @@ describe('CapacityPlansService', () => {
     });
 
     it('counts a shared Feature ONCE, summing its allocations', async () => {
-      // The agile ALM tool lists the item once and nests the allocations; the line must accumulate the
+      // Rally lists the item once and nests the allocations; the line must accumulate the
       // Feature's total, not each allocation separately.
       repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '25')] }));
       repo.listAllocations.mockResolvedValue([
@@ -848,7 +848,7 @@ describe('CapacityPlansService', () => {
   });
 
   describe('primary team assignment', () => {
-    // The agile ALM tool: "you can assign the portfolio item to one primary team and then allocate points or
+    // Rally: "you can assign the portfolio item to one primary team and then allocate points or
     // story counts to the additional teams that will contribute to the work." One team owns the
     // Feature — that team is what the Items tab's Planned Team Assignment column shows.
     const allocationRow = (over: Partial<CapacityAllocation> = {}): CapacityAllocation => ({
@@ -891,7 +891,7 @@ describe('CapacityPlansService', () => {
     });
 
     it('leaves a SECOND team as a contributor', async () => {
-      // The agile ALM tool allocates to "additional teams"; only one of them owns the Feature.
+      // Rally allocates to "additional teams"; only one of them owns the Feature.
       repo.hasPrimaryAllocation.mockResolvedValue(true);
 
       await service.allocate(actor, 'plan-1', {
@@ -1129,7 +1129,7 @@ describe('CapacityPlansService', () => {
     });
 
     it('writes the DATES ONLY when the window spans outside the release, and says why', async () => {
-      // The agile ALM tool: "The Release field is only updated when the start and end dates do not span
+      // Rally: "The Release field is only updated when the start and end dates do not span
       // releases." The dates are still written — this corrects the Phase 5 spec, which
       // required equality and skipped the whole write.
       repo.findById.mockResolvedValue(
@@ -1336,7 +1336,7 @@ describe('CapacityPlansService', () => {
       ]);
     });
 
-    it("publishes WITHOUT touching a single field when asked — the agile ALM tool's second button", async () => {
+    it("publishes WITHOUT touching a single field when asked — Rally's second button", async () => {
       const result = await service.publishPlan(actor, 'plan-1', { updateFields: false });
 
       expect(repo.applyPlanToFeature).not.toHaveBeenCalled();
@@ -1357,7 +1357,7 @@ describe('CapacityPlansService', () => {
     });
 
     it('refuses a plan that has never been published and holds nothing', async () => {
-      // The agile ALM tool blocks only when ALL THREE hold: never published, no items, no projects.
+      // Rally blocks only when ALL THREE hold: never published, no items, no projects.
       repo.listAllocations.mockResolvedValue([]);
       repo.findViewById.mockResolvedValue(view({ ...matchesRelease, teams: [] }));
 
@@ -1406,7 +1406,7 @@ describe('CapacityPlansService', () => {
     });
 
     it('returns to draft and does NOT roll back what publishing wrote', async () => {
-      // The agile ALM tool: "No changes are made to the field values in the portfolio items." Stated in the
+      // Rally: "No changes are made to the field values in the portfolio items." Stated in the
       // response rather than left to be discovered, because "revert" reads like an undo.
       const result = await service.revertPlan(actor, 'plan-1');
 
@@ -1608,7 +1608,7 @@ describe('CapacityPlansService', () => {
     });
 
     it('MOVES the unallocated row onto the team instead of adding beside it', async () => {
-      // The agile ALM tool: "choosing a Team assigns the existing unallocated row to that Team". Keeping both
+      // Rally: "choosing a Team assigns the existing unallocated row to that Team". Keeping both
       // would count the Feature twice — parked demand AND a team commitment — which is what
       // happened once adding and allocating became two steps.
       repo.findAllocationFor.mockImplementation(async (_plan, _item, teamId) =>
@@ -1647,7 +1647,7 @@ describe('CapacityPlansService', () => {
     it('SETS an existing row for the same (Feature, team) pair rather than adding to it', async () => {
       // The BA: "Re-applying allocation replaces the Feature's Team allocation rows." Adding meant
       // applying the same dialog twice doubled committed demand, and a slice could never be corrected
-      // downwards through this path. The agile ALM tool asks for "the number to allocate for this team", not a
+      // downwards through this path. Rally asks for "the number to allocate for this team", not a
       // delta. Still one row per (Feature, team): a second would double-count in every total.
       // Per-argument, because `allocate` asks twice: first whether the Feature has an UNALLOCATED
       // row to move onto the team, then whether the team already holds one to add to.
@@ -1915,7 +1915,7 @@ describe('CapacityPlansService', () => {
 
     it('charges a ZERO row zero, and says its estimate is missing', async () => {
       // §246's Team-picker default. A row committing nothing has no demand to plan against, which is
-      // The agile ALM tool's "Feature Missing Estimate Error" — and it must NOT quietly resolve to the Feature's
+      // Rally's "Feature Missing Estimate Error" — and it must NOT quietly resolve to the Feature's
       // forecast, which is exactly what the pre-0101 read did with a null.
       repo.listAllocations.mockResolvedValue([
         row({ value: '0', source: 'manual', refined: 30, preliminarySize: 'm' }),
@@ -2243,7 +2243,7 @@ describe('CapacityPlansService', () => {
     });
 
     it('refuses a move between releases unless the Release is updated with it', async () => {
-      // The agile ALM tool's checkbox exists for exactly this: a Feature committed to another release cannot be
+      // Rally's checkbox exists for exactly this: a Feature committed to another release cannot be
       // planned here (`CAPACITY_ALLOCATION_OTHER_RELEASE`), so the move either says so or moves the
       // Feature's Release deliberately.
       arrange({ target: { releaseId: 'rel-2' } });
@@ -2303,7 +2303,7 @@ describe('CapacityPlansService', () => {
       expect(result.targetRepublished).toBe(false);
     });
 
-    it('refuses a target that already holds the Feature — the agile ALM tool offers Remove Only instead', async () => {
+    it('refuses a target that already holds the Feature — Rally offers Remove Only instead', async () => {
       arrange({ onTarget: [alloc({ id: 'alloc-x', planId: 'plan-2' })] });
       await expect(
         service.moveItemToPlan(actor, 'plan-1', {
@@ -2836,7 +2836,7 @@ describe('CapacityPlansService', () => {
     });
 
     it('refuses a delete, even though a PUBLISHED state would not block one', async () => {
-      // The two conditions are unrelated: the agile ALM tool lets a planner delete a published plan, which is
+      // The two conditions are unrelated: Rally lets a planner delete a published plan, which is
       // why this path skips `requireDraft` — not because deleting is exempt from PRJ-FR-010.
       repo.findById.mockResolvedValue(plan({ status: 'published' }));
       await expect(service.deletePlan(actor, 'plan-1')).rejects.toMatchObject({

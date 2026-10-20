@@ -157,7 +157,7 @@ export class PortfolioItemsController {
   //
   // The real check is `AccessService.listReadableProjectIds`, which the service applies
   // as a project filter, distinguishing `null` (unrestricted) from `[]` (nothing) so it
-  // cannot fail open. That mirrors the agile ALM tool, where access to an artifact follows from
+  // cannot fail open. That mirrors Rally, where access to an artifact follows from
   // permission on its PROJECT rather than any per-artifact grant. Pinned by
   // `test/e2e/portfolio-isolation.e2e.spec.ts`.
   //

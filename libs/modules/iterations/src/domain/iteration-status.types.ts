@@ -48,7 +48,7 @@ export interface IterationStatusItem {
    */
   teamId: string | null;
   isBlocked: boolean;
-  /** work_items.blocked_reason — surfaced beside the Block flag (the agile ALM tool's "Blocked Reason"). */
+  /** work_items.blocked_reason — surfaced beside the Block flag (Rally's "Blocked Reason"). */
   blockedReason: string | null;
   /** work_items.story_points (Plan Estimate). */
   planEstimate: number | null;
@@ -71,7 +71,7 @@ export interface IterationStatusItem {
    * they owned read `No Entry` while the id sat in the database. A name belongs to the row.
    */
   assigneeName: string | null;
-  /** work_items.dev_owner_id — the agile ALM tool's "Dev Owner" (distinct from Owner/assignee). */
+  /** work_items.dev_owner_id — Rally's "Dev Owner" (distinct from Owner/assignee). */
   devOwnerId: string | null;
   /** As `assigneeName`, for the Dev Owner column. */
   devOwnerName: string | null;
@@ -79,15 +79,15 @@ export interface IterationStatusItem {
   /** The linked Feature's id — the Feature column links to portfolio detail, not
    * to `/item/:key`: a Feature is a portfolio item, so no work-item key resolves it. */
   featureId: string | null;
-  /** Nearest ancestor Feature key (the agile ALM tool's "Feature" column); null when none. */
+  /** Nearest ancestor Feature key (Rally's "Feature" column); null when none. */
   featureKey: string | null;
   /** Nearest ancestor Feature title, for the chip tooltip. */
   featureTitle: string | null;
-  /** Count of non-deleted child defects (the agile ALM tool's "Defects"). */
+  /** Count of non-deleted child defects (Rally's "Defects"). */
   defectCount: number;
-  /** Count of child defects not yet accepted/released (the agile ALM tool's "Defect Status"). */
+  /** Count of child defects not yet accepted/released (Rally's "Defect Status"). */
   openDefectCount: number;
-  /** Milestones directly assigned to this item (the agile ALM tool's "Milestones"). */
+  /** Milestones directly assigned to this item (Rally's "Milestones"). */
   milestones: { id: string; name: string }[];
   /**
    * Phase 7 Carryover — `YYYY-MM-DD`. `startDate` is the Story's system-managed first In-Progress

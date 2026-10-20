@@ -426,7 +426,7 @@ export class IterationsService {
      *
      * `work_items.iteration_id` and `work.tasks.iteration_id` carry `ON DELETE SET NULL` as of
      * migration 0114, so the items survive and become unscheduled in the same statement as this
-     * DELETE. That is the agile ALM tool's documented behaviour — "If you delete an iteration that stories and
+     * DELETE. That is Rally's documented behaviour — "If you delete an iteration that stories and
      * defects are scheduled in, they will all be updated to unscheduled" — and it is enforced in the
      * database rather than here because `db/seeds/**` and raw SQL write those tables directly.
      *

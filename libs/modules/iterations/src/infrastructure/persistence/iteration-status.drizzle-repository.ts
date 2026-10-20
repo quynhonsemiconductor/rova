@@ -275,22 +275,22 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         and t.state = 'completed'
     )`;
 
-    // The Feature this row belongs to — the agile ALM tool's "Feature" column.
+    // The Feature this row belongs to — Rally's "Feature" column.
     //
     // Read from work_items.feature_id → work.portfolio_items, which is where a
     // Feature actually lives (P5.1). This previously walked parent_id looking for a
     // work_items row of type 'feature': a Feature was a work item, found one or two
     // levels up (story→feature, defect→story→feature).
     //
-    // That model is gone. In both the agile ALM tool and the BA spec a Feature is a PORTFOLIO
-    // ITEM, not a schedulable artifact — the agile ALM tool keeps PortfolioItem and
+    // That model is gone. In both Rally and the BA spec a Feature is a PORTFOLIO
+    // ITEM, not a schedulable artifact — Rally keeps PortfolioItem and
     // HierarchicalRequirement as separate object families joined by a field, and only
     // the lowest portfolio level attaches to the story hierarchy. Keeping the old
     // walk would have meant two tables both minting `FE-` keys and both meaning
     // Feature, so `feature` has been removed from work_item_type.
     //
     // A defect no longer inherits its parent story's Feature implicitly: it carries
-    // its own feature_id. Simpler, and it matches the agile ALM tool, where the association is an
+    // its own feature_id. Simpler, and it matches Rally, where the association is an
     // explicit field on each artifact rather than something inferred from ancestry.
     const featureItem = alias(portfolioItems, 'pi_feature');
     const featureId = featureItem.id;
@@ -321,7 +321,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       string | null
     >`coalesce(${devOwnerUser.displayName}, ${devOwnerUser.email})`;
 
-    // Child-defect rollup — the agile ALM tool's "Defects" (count) + "Defect Status" (open summary).
+    // Child-defect rollup — Rally's "Defects" (count) + "Defect Status" (open summary).
     const defectCount = sql<number>`(
       select count(*)::int from ${workItems} d
       where d.parent_id = ${workItems.id} and d.type = 'defect' and d.deleted_at is null
@@ -332,7 +332,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         and d.schedule_state not in (${acceptedScheduleStatesSql()})
     )`;
 
-    // Milestones directly assigned to the work item — the agile ALM tool's "Milestones" column.
+    // Milestones directly assigned to the work item — Rally's "Milestones" column.
     // Returns {id,name} objects so the grid can render names AND edit by id.
     const milestoneList = sql<Array<{ id: string; name: string }>>`coalesce((
       select json_agg(json_build_object('id', m.id, 'name', m.name) order by m.name)

@@ -89,8 +89,8 @@ export interface ReleaseFeature {
  * contract (`release_daily_snapshots.team_id IS NULL` is a MEASURED All Teams row, never a sum).
  *
  * What this does NOT do is admit a Feature owned by a team OUTSIDE the scope. That is a real
- * divergence from the reference ALM product, which derives such a Feature, and it is tracked as `P6-RT-9`
- * pending the live agile-ALM check the decision matrix asked for; RT-BR-01/02 as written exclude it.
+ * divergence from Rally, which derives such a Feature, and it is tracked as `P6-RT-9`
+ * pending the live-Rally check the decision matrix asked for; RT-BR-01/02 as written exclude it.
  */
 export function inScope(teamId: string | null, scope: TeamScope): boolean {
   // All Teams = every Team in the selected Project, including work with no Team yet:
@@ -196,7 +196,7 @@ export function unparentedItems(
  * The columns the list may be sorted on (§246, RT-AC-05 + the `name` divergence).
  *
  * `Rank`, `ID` and `Team` are the SRS's three; `name` is the declared agile-ALM-parity addition
- * (`P6-RT-5`, decided 2026-08-04 — the agile ALM tool sorts its Features List on Rank, ID and Name). Anything
+ * (`P6-RT-5`, decided 2026-08-04 — Rally sorts its Features List on Rank, ID and Name). Anything
  * else is ignored by `parseSort`, which falls the request back to the bucket's own rank order
  * rather than 400-ing on a column a future grid might offer.
  */

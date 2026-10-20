@@ -52,7 +52,7 @@ export interface TeamStatusTaskRow {
 /**
  * Roster member identity — every active member of the iteration's team (or the
  * project when the iteration is not team-scoped). Used to render zero-task
- * members alongside members who have tasks (agile ALM parity).
+ * members alongside members who have tasks (Rally parity).
  */
 export interface TeamStatusRosterMember {
   id: string;

@@ -733,7 +733,7 @@ export class ProjectsService {
     // implementation and one message across the module.
     await this.assertProjectWritable(workspaceId, projectId);
     const prefix = ProjectsService.TYPE_PREFIX[type];
-    // Agile ALM FormattedID: the sequence is per-(workspace, type), so US-42 is unique
+    // Rally FormattedID: the sequence is per-(workspace, type), so US-42 is unique
     // across the whole workspace (not per project). projectId is still used above
     // only to enforce the archived-project guard.
     const seq = await this.projectRepo.incrementCounter(workspaceId, type);

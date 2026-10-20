@@ -74,7 +74,7 @@ export class ApiTokensService {
    * Mint a token for the calling user.
    *
    * The plaintext is returned once and never persisted in any form, so a lost token is reset rather
-   * than recovered — the same contract as the real agile ALM tool's API Key, and the reason `token_hash` can be a
+   * than recovered — the same contract as real Rally's API Key, and the reason `token_hash` can be a
    * one-way hash at all.
    */
   async mint(request: MintRequest): Promise<MintResult> {

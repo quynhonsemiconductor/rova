@@ -75,7 +75,7 @@ export class AccessService {
     private readonly audit: AuditProducer,
     private readonly cache: CacheService,
     // Read-only, for `listReadableProjectIds`: project membership is the roster
-    // equivalent of the agile ALM tool's ProjectPermission and has no repository port of its own.
+    // equivalent of Rally's ProjectPermission and has no repository port of its own.
     @InjectDrizzle() private readonly db: DrizzleDB,
   ) {}
 
@@ -700,7 +700,7 @@ export class AccessService {
    *     Nothing in the suite asserted the refusal either — the only `assertTeamScoped` mentions in
    *     any spec were `vi.fn().mockResolvedValue(undefined)` mocks, so the whole feature was
    *     covered by zero tests for its entire life.
-   *   • The real agile ALM tool has no `Team` object and no team authorization scope at all: its
+   *   • Real Rally has no `Team` object and no team authorization scope at all: its
    *     `ProjectPermission` is per (user, project, workspace), and "Team Member" is a
    *     presentational checkbox beside the Permission field that auto-promotes to Editor. That
    *     auto-promotion is what this repo now implements instead — a `team_members` row IMPLIES a
@@ -713,7 +713,7 @@ export class AccessService {
    * The authorization model is: Workspace Admin, per-Project `admin` or `editor`, and No Access as
    * the absence of a `work.project_members` row.
    *
-   * This note supersedes the "Team-scoped Editor is KEPT, against the real agile ALM tool" divergence that
+   * This note supersedes the "Team-scoped Editor is KEPT, against real Rally" divergence that
    * CLAUDE.md recorded up to this date.
    */
 
@@ -884,13 +884,13 @@ export class AccessService {
    * feature repository, because more than one surface needs it (portfolio items now,
    * capacity plans next) and because getting it wrong leaks another project's data.
    *
-   * Mirrors the agile ALM tool, where access to an artifact follows from permission on its PROJECT
-   * rather than from any per-artifact grant: the agile ALM tool stores one `ProjectPermission` row
+   * Mirrors Rally, where access to an artifact follows from permission on its PROJECT
+   * rather than from any per-artifact grant: Rally stores one `ProjectPermission` row
    * per (user, project, workspace) and a Viewer sees everything in that project.
    *
    * Two sources, unioned:
    *   1. a workspace-wide grant (`workspace:*` or an explicit workspace-tier `:view`)
-   *      sees every project — the agile ALM tool's Workspace Admin;
+   *      sees every project — Rally's Workspace Admin;
    *   2. project-scoped assignments that GRANT `permission` — which covers per-project
    *      membership too, because {@link effectiveAssignments} synthesizes a project-scoped
    *      entry from every active `project_members` row using `ACCESS_LEVEL_PERMISSIONS`.

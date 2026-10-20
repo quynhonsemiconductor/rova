@@ -45,7 +45,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
    *
    * An EPIC aggregates through its child Features — a story is never linked to an Epic
    * directly (only the lowest portfolio level attaches to the story hierarchy, in both
-   * the agile ALM tool and the BA spec), so the subquery matches any work item whose feature_id is
+   * Rally and the BA spec), so the subquery matches any work item whose feature_id is
    * one of this Epic's active Features.
    *
    * TWO "done" definitions, and both are used here on purpose:
@@ -389,7 +389,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
    * **NO project filter, on purpose.** `listFeatureOptions` is project-scoped because it is a
    * write-eligibility feed for one project (§5.3:133) and its route's guard checks that one
    * project. Membership is not scoped that way: `assertFeatureLinkable` deliberately PERMITS a
-   * cross-project link ("The agile ALM tool lets a team project's Story roll up to a portfolio project's
+   * cross-project link ("Rally lets a team project's Story roll up to a portfolio project's
    * Feature"), and `rollupSubqueries()` matches `feature_id` alone. Adding `project_id` here
    * would hide a legitimately linked child from the tab while the Percent Done bar on the same
    * page still counted it — one row, two answers, in the same viewport. The disagreement the

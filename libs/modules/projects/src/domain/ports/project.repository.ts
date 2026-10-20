@@ -45,7 +45,7 @@ export interface IProjectRepository {
   softDelete(id: string, workspaceId: string, tx?: DbExecutor): Promise<void>;
   /** Seed workspace-wide item counters (per type). Idempotent. */
   initCounter(workspaceId: string, tx?: DbExecutor): Promise<void>;
-  /** Allocate the next workspace-wide sequence for a type (agile ALM FormattedID). */
+  /** Allocate the next workspace-wide sequence for a type (Rally FormattedID). */
   incrementCounter(workspaceId: string, itemType: WorkItemType, tx?: DbExecutor): Promise<number>;
   getMaxItemNumber(workspaceId: string, itemType: WorkItemType): Promise<number>;
 }

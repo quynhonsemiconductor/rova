@@ -13,7 +13,7 @@
  *
  * WHY THRESHOLDS ARE A PARAMETER
  *
- * The agile ALM tool deliberately uses a different scheme per surface — Portfolio Items warn at
+ * Rally deliberately uses a different scheme per surface — Portfolio Items warn at
  * 20%/40% behind the required acceptance rate, Release Tracking uses ≥90% Good /
  * 70–89% At Risk / <70% Critical, and Milestone Delivery Confidence is a third
  * scheme again. Hard-coding one set here would mean a second copy of this algorithm
@@ -32,7 +32,7 @@ export interface HealthThresholds {
 }
 
 /**
- * Portfolio Items thresholds, matching the agile ALM tool: at risk from 20% behind the required
+ * Portfolio Items thresholds, matching Rally: at risk from 20% behind the required
  * acceptance rate, late from 40% behind.
  */
 export const PORTFOLIO_HEALTH_THRESHOLDS: HealthThresholds = {
@@ -45,7 +45,7 @@ export interface HealthInput {
   accepted: number;
   /** Total amount in scope, in the same unit as `accepted`. */
   total: number;
-  /** Planned start. `null` when not set — the agile ALM tool allows a portfolio item with no dates. */
+  /** Planned start. `null` when not set — Rally allows a portfolio item with no dates. */
   start: Date | null;
   /** Planned end. `null` when not set. */
   end: Date | null;
@@ -65,7 +65,7 @@ export interface HealthResult {
   percentElapsed: number | null;
   /**
    * Why the verdict could not be computed, for the "missing estimates or dates"
-   * warning the agile ALM tool shows in its hover callout. `null` when health was evaluated.
+   * warning Rally shows in its hover callout. `null` when health was evaluated.
    */
   indeterminate: 'no_dates' | 'no_work' | null;
 }
@@ -102,21 +102,21 @@ export function computeHealth(input: HealthInput): HealthResult {
 
   const isDone = percentDone !== null && percentDone >= 1;
 
-  // No window means no required rate. The agile ALM tool shows these as gray and warns about the
+  // No window means no required rate. Rally shows these as gray and warns about the
   // missing dates rather than assuming a schedule — including when the work is finished,
-  // because the agile ALM tool's blue is defined in terms of the Planned End Date.
+  // because Rally's blue is defined in terms of the Planned End Date.
   if (start === null || end === null) {
     return { state: 'not_started', percentDone, percentElapsed: null, indeterminate: 'no_dates' };
   }
 
   /**
-   * Complete = the agile ALM tool's BLUE, which requires BOTH conditions:
+   * Complete = Rally's BLUE, which requires BOTH conditions:
    * "current date is after the Planned End Date and the artifacts in the portfolio item
    * are 100% done" (Broadcom TechDocs, "Using the Portfolio Items Page").
    *
    * So finishing EARLY does not turn the item blue — it stays green (on track, indeed
    * ahead) until the planned end passes. This function previously reported `complete` on
-   * 100% alone, which read more intuitively but disagreed with the agile ALM tool; parity won.
+   * 100% alone, which read more intuitively but disagreed with Rally; parity won.
    */
   if (isDone && daysBetween(end, today) > 0) {
     return { state: 'complete', percentDone, percentElapsed: 1, indeterminate: null };
@@ -131,7 +131,7 @@ export function computeHealth(input: HealthInput): HealthResult {
 
   const elapsedDays = daysBetween(start, today);
 
-  // Before the start date: gray, matching the agile ALM tool's "future start date" case.
+  // Before the start date: gray, matching Rally's "future start date" case.
   if (elapsedDays < 0) {
     return { state: 'not_started', percentDone, percentElapsed: 0, indeterminate: null };
   }
@@ -139,7 +139,7 @@ export function computeHealth(input: HealthInput): HealthResult {
   const percentElapsed = clamp01(elapsedDays / windowDays);
 
   // Behind is measured in PERCENTAGE POINTS, not as a ratio, so the thresholds read
-  // the way the agile ALM tool states them ("20% below the required rate").
+  // the way Rally states them ("20% below the required rate").
   const pctBehind = (percentElapsed - (percentDone ?? 0)) * 100;
 
   if (pctBehind >= thresholds.latePctBehind) {

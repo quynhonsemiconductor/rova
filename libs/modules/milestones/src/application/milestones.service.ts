@@ -65,7 +65,7 @@ export interface MilestoneProgress {
  * `scheduleState` and `priority` are `''` for a PORTFOLIO row, and `storyPoints` is null — a
  * Feature or Epic carries none of the three. Its `state` is a different axis from a Story's Schedule
  * State, `portfolio_items` has no priority column at all, and a portfolio forecast is the tiered
- * top-down estimate the Portfolio surface resolves (AC-014) rather than a leaf Plan Estimate; the agile ALM tool
+ * top-down estimate the Portfolio surface resolves (AC-014) rather than a leaf Plan Estimate; Rally
  * keeps those apart as `Plan Estimate` and `Leaf Story Plan Estimate Total`. `''` is not a member of
  * either enum, so nothing can mistake it for a value. See `ReleaseArtifactRow`, which says the same
  * for the same reason on the same shared table.
@@ -629,9 +629,9 @@ export class MilestonesService {
    *
    * INHERITED DESCENDANTS ARE COMPUTED ON READ, and only on read. A Feature or Epic assigned to a
    * milestone brings its leaf Stories/Defects into the milestone's display scope — which is what
-   * The agile ALM tool's own milestone Artifacts roll-ups mean by `Leaf Story Plan Estimate Total` and
+   * Rally's own milestone Artifacts roll-ups mean by `Leaf Story Plan Estimate Total` and
    * `Accepted Leaf Story Count`. Three reasons it is not materialised into link rows:
-   *   • `portfolio_items` already computes every rollup on read for a stated reason (`work.ts`: the agile ALM tool
+   *   • `portfolio_items` already computes every rollup on read for a stated reason (`work.ts`: Rally
    *     stores its rollups and consequently ships a "Correct rollup discrepancy" action to repair
    *     drift; computing on read means that cannot happen). This is the same aggregate, on the same
    *     hierarchy, one table over.
@@ -953,7 +953,7 @@ export class MilestonesService {
     const milestone = await this.getMilestone(actor.workspaceId, id);
     await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
     /**
-     * The ASSOCIATIONS go, the artifacts stay — the agile ALM tool: deleting a milestone "removes the association
+     * The ASSOCIATIONS go, the artifacts stay — Rally: deleting a milestone "removes the association
      * from each work item… The work item itself is not deleted."
      *
      * `MilestoneDrizzleRepository.delete` does that itself, clearing all four junction tables before

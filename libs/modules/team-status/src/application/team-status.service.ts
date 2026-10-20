@@ -101,7 +101,7 @@ export class TeamStatusService {
     const rows = await this.repo.getTaskRows(iterationId, actor.workspaceId, teamId, teamScope);
 
     /**
-     * Full member roster — The agile ALM tool lists every team member for the iteration, including those with
+     * Full member roster — Rally lists every team member for the iteration, including those with
      * zero tasks (rendered with an empty load bar). Source is the iteration's team; falls back to
      * project members when the iteration is not team-scoped.
      *

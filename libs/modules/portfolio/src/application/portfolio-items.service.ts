@@ -51,12 +51,12 @@ const KEY_PREFIX: Record<PortfolioItemType, string> = { epic: 'EP', feature: 'FE
 export interface PortfolioItemWithProgress extends PortfolioItemView {
   progress: PortfolioProgress;
   /**
-   * The agile ALM tool's green/yellow/red/blue status for a portfolio item, computed against the
+   * Rally's green/yellow/red/blue status for a portfolio item, computed against the
    * planned window (Broadcom TechDocs, "Using the Portfolio Items Page"): at risk when the
    * acceptance rate is >20% below the rate needed to finish by the Planned End Date, late
    * at >40%, blue once the end date has passed AND everything is done.
    *
-   * Deliberately NOT applied to Releases/Iterations/Milestones: The agile ALM tool documents this scheme
+   * Deliberately NOT applied to Releases/Iterations/Milestones: Rally documents this scheme
    * for portfolio items only, and shows a percent-complete state bar on those surfaces
    * instead — which this app already renders.
    */
@@ -93,7 +93,7 @@ export interface AcceptedChildrenGroup {
  * and the Percent Done indicators on the same page can never disagree — they are then
  * literally the same numbers. `byType` only splits that total up.
  *
- * A type with no children is still returned with zeroes: The agile ALM tool shows "Defects: 0% 0/0"
+ * A type with no children is still returned with zeroes: Rally shows "Defects: 0% 0/0"
  * rather than hiding the row, and a missing row would read as "this Feature cannot have
  * defects" instead of "it has none".
  */
@@ -181,7 +181,7 @@ export class PortfolioItemsService {
     // The ROUTE only proves the caller may read the workspace — `portfolio:view` is
     // project-tier and this route's projectId is optional, so the guard cannot check it.
     // Without the filter below a Project Member would list every project's portfolio,
-    // which contradicts BA spec §3.2 and the agile ALM tool, where access follows project permission.
+    // which contradicts BA spec §3.2 and Rally, where access follows project permission.
     //
     // `null` means unrestricted (workspace-wide grant). An empty array means "no
     // readable projects" and must return nothing rather than everything — the two are
@@ -759,7 +759,7 @@ export class PortfolioItemsService {
    *
    * The Preliminary Estimate fallback comes from WORKSPACE SETTINGS, never a code
    * constant: the BA spec calls the seeded values temporary and defers the real scale
-   * to Settings > Workspace > Project Management, and the agile ALM tool makes the equivalent
+   * to Settings > Workspace > Project Management, and Rally makes the equivalent
    * mapping a workspace-admin setting.
    */
   private withProgress(

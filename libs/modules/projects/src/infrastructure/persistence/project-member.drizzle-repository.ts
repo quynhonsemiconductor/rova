@@ -62,7 +62,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
     // Owner candidate on its work items even without an explicit project_members row
     // (TS-008 / P1-DC-012 — root cause of "added a team member, then they are not in
     // the Owner dropdown"). project_members and team_members stay separate tables
-    // (this app deliberately does not collapse project and team the way the agile ALM tool does);
+    // (this app deliberately does not collapse project and team the way Rally does);
     // this is read-only derivation for ownership eligibility, not a write-side sync,
     // so it can never drift the way a hook on addTeamMember would. Explicit members
     // win on conflict because they carry a real project role.
