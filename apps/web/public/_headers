@@ -1,0 +1,37 @@
+# Response headers for the deployed SPA. Cloudflare Pages reads this file from the root of
+# what it publishes (public/ is copied into dist/ verbatim by Vite); after the on-prem
+# move Workers Static Assets reads the same file. Matching is order-sensitive and MERGED:
+# /* carries the security headers, and the asset rule below only adds Cache-Control.
+#
+# ONE POLICY FOR DEV AND PROD — a static file cannot specialise per environment. The
+# localhost entries the old index.html <meta> CSP carried (Garage on localhost:4620, the
+# API on localhost:3000) are dev-only and deliberately GONE: local `pnpm dev` runs without
+# a CSP, and the deployed dev environment talks to the same origins as prod — same-origin
+# API through the edge (Pages Functions proxy today, no-Worker routes after the move) and
+# R2 presigned attachments.
+#
+# *.r2.cloudflarestorage.com is required for attachments: uploads go DIRECTLY from the
+# browser via a presigned PUT, and downloads follow a 302 to a presigned GET, so both
+# connect-src and img-src need it. rova-assets{-dev}.qnsc.vn are the PUBLIC-asset origins
+# (avatars, workspace logos), img-src ONLY — a custom domain replaces the r2 host entirely,
+# so the wildcard does not cover it. They are named explicitly because a *.qnsc.vn wildcard
+# would let any future subdomain serve images into the app.
+#
+# connect-src blob: covers the rich-text paste preview (createObjectURL, then fetch of the
+# blob URL before upload); worker-src blob: covers workers constructed from inline blobs.
+#
+# frame-ancestors and X-Frame-Options are here, as HEADERS — neither does anything in a
+# <meta> tag, which is why they were never in the removed one.
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://rova-assets-dev.qnsc.vn https://rova-assets.qnsc.vn; connect-src 'self' blob: https://*.r2.cloudflarestorage.com https://login.microsoftonline.com https://login.microsoft.com https://graph.microsoft.com; worker-src blob:; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://login.microsoftonline.com;
+  Cache-Control: no-cache
+
+# Content-hashed filenames: the bytes behind a given URL never change.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
