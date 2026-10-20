@@ -34,7 +34,7 @@ import {
   ADMIN_USER_ID,
   DEVELOPER_ID,
   adminActor,
-  bootRallyApp,
+  bootRovaApp,
   grantProjectAccess,
   uniqueKey,
 } from './support/flow-harness';
@@ -51,7 +51,7 @@ describe('BA flows: E2E-011 Team Status renders a fully-related task', () => {
   const admin = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     teams = app.get(TeamService);
     iterations = app.get(IterationsService);

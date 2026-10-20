@@ -571,7 +571,7 @@ export function WorkItemDetailPage() {
 
       {/* Floating Save/Cancel — appears once any field has an unsaved edit
           (sidebar dropdowns or the rich-text editors), matching Broadcom
-          Rally's UX instead of auto-saving each field on change. */}
+          Broadcom's Rally UX instead of auto-saving each field on change. */}
       <SaveCancelBar
         visible={isDirty && !readOnly}
         saving={saving}

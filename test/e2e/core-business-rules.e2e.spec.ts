@@ -17,7 +17,7 @@ import { IterationsService } from '@modules/iterations';
 import { ReleasesService } from '@modules/releases';
 import { MilestonesService } from '@modules/milestones';
 
-import { ALL, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { ALL, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('Core business rules (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
@@ -30,7 +30,7 @@ describe('Core business rules (real AppModule + seeded DB)', () => {
   const newProject = (name: string) => projects.createProject(actor, { key: uniqueKey(), name });
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
     iterations = app.get(IterationsService);

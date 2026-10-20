@@ -10,7 +10,7 @@
  * measured, so there is no report yet when it executes.
  *
  * Ported from opshub's `test/coverage-floors.spec.ts` verbatim except for the final test,
- * which pins against rally's own `vitest.config.ts` instead of opshub's.
+ * which pins against rova's own `vitest.config.ts` instead of opshub's.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -1,7 +1,7 @@
 /**
  * Shared bootstrap + fixtures for the BA business-flow E2E suite.
  *
- * These specs boot the REAL rally `AppModule` (real Nest DI, real Drizzle
+ * These specs boot the REAL rova `AppModule` (real Nest DI, real Drizzle
  * against the seeded compose `postgres` service) and drive the REAL application services,
  * exactly as the HTTP controllers do. Nothing is stubbed: the flows are proven
  * end-to-end against the same code and database the running server uses.
@@ -68,7 +68,7 @@ export const DEVELOPER_ID = '00000000-0000-7000-8000-000000000020';
 export const VIEWER_ID = '00000000-0000-7000-8000-000000000021';
 
 /** Boot the real AppModule with a Fastify adapter (no port bound). */
-export async function bootRallyApp(): Promise<NestFastifyApplication> {
+export async function bootRovaApp(): Promise<NestFastifyApplication> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
   // The request context used to come from AsyncLocalStorageMiddleware, which AppModule applied itself, so every app
@@ -103,7 +103,7 @@ export async function bootRallyApp(): Promise<NestFastifyApplication> {
  * awaiting it is deterministic regardless of whether a cron, a wake signal,
  * or this harness triggered the pass that got there first.
  */
-export async function bootRallyWorkerRelays(): Promise<{
+export async function bootRovaWorkerRelays(): Promise<{
   module: TestingModule;
   notificationRelay: NotificationRelayService;
   emailRelay: EmailRelayService;
@@ -126,7 +126,7 @@ export async function bootRallyWorkerRelays(): Promise<{
 /**
  * Boot the audit projection relay against the real DB, with nothing else running.
  *
- * Deliberately a separate module from `bootRallyWorkerRelays`: two relays polling
+ * Deliberately a separate module from `bootRovaWorkerRelays`: two relays polling
  * `outbox_events` and `notification_outbox` in one process are competing consumers,
  * and a test that has to reason about which relay claimed its row is a test that will
  * eventually be flaky for a reason nobody can reproduce.

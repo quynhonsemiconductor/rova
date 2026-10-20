@@ -77,7 +77,7 @@ export interface EstimateBreakdown {
  * is a fixed label in one tooltip rather than a data cell, so it does not reopen the placeholder rule —
  * do not "fix" it back.
  */
-const RALLY_ABSENT = '—'
+const RALLY_ABSENT = '—' // legacy identifier, do not rename
 
 export function EstimateTierIcon({
   tier,

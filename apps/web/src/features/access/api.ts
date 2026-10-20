@@ -1,7 +1,7 @@
 /**
  * Access / permission hooks.
  *
- * Rally authorization is two-tier and purely additive:
+ * Rally's authorization is two-tier and purely additive:
  *  - BASELINE  = the union of the user's global + workspace role assignments.
  *    It's baked into the JWT and exposed via the auth store's `hasPermission`.
  *  - PER-PROJECT = baseline ∪ any role scoped to a specific project, resolved

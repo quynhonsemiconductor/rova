@@ -56,7 +56,7 @@ export const useAppContext = create<AppContextState>()(devtools(
       reset: () => set({ workspace: null, project: null, team: null, sidebarCollapsed: false }),
     }),
     {
-      name: 'rally-context',
+      name: 'rally-context', // legacy physical name, do not rename
       partialize: (s) => ({
         workspace: s.workspace,
         project: s.project,

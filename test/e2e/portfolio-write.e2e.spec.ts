@@ -31,7 +31,7 @@ import {
   ALL,
   WORKSPACE_ID,
   adminActor,
-  bootRallyApp,
+  bootRovaApp,
   makeActor,
   uniqueKey,
 } from './support/flow-harness';
@@ -48,7 +48,7 @@ describe('portfolio write paths (e2e)', () => {
   let projectBId: string;
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     portfolio = app.get(PortfolioItemsService);
     items = app.get(WorkItemsService);
     projects = app.get(ProjectsService);
