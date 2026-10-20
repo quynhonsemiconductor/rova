@@ -23,7 +23,7 @@
  *      delivered the SNS envelope while the consumer parsed it as the bare event,
  *      reading `undefined` for every field.
  *
- * Local dev worked, which is what kept it hidden: `scripts/localstack/01-bootstrap.sh`
+ * Local dev worked, which is what kept it hidden: the LocalStack bootstrap (since removed)
  * subscribed all four queues, unfiltered, with raw delivery on. It was more generous
  * than the Terraform, so dev could not reproduce prod.
  *

@@ -12,9 +12,8 @@
  * written, in the caller's transaction, addressed to the INVITED address, carrying the accept link and
  * the workspace name the template needs. It cannot assert delivery — that is a verified identity, an
  * IAM grant and the SES sandbox, none of which exist in a unit-test database. Those are asserted by
- * `infra/` and checked by hand (`aws sesv2 get-account --query ProductionAccessEnabled`); locally,
- * `docker compose exec localstack awslocal ses verify-email-identity` plus the worker's relay is what
- * makes the send observable.
+ * `infra/` and checked by hand (`aws sesv2 get-account --query ProductionAccessEnabled`). Locally there
+ * is no SES to send through (nothing emulates it since LocalStack went), so the row is what this file checks.
  *
  * NOTE FOR THE NEXT READER: there USED to be an ORPHANED `InvitationService` in this module with its
  * own `inviteMember` and its own email scheduling — no module provided it, the barrel did not export
