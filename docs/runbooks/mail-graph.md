@@ -112,7 +112,7 @@ aws secretsmanager get-secret-value --secret-id rova/develop/mail-graph-certific
 ```
 
 Expected: `starts: -----BEGIN  | key block: True | certificate block: True`. The library also parses the PEM when the worker starts, so a malformed value fails
-the deploy with an error naming `MAIL_GRAPH_CERTIFICATE`, never its content. Raw or base64 both work; the raw form above is what to store.
+the deploy with an error naming `AZURE_CLIENT_CERTIFICATE_PATH`, never its content. The file holds ONE PEM, private key first, then the certificate (`cat mail.key mail.crt`).
 
 Keep `mail.key` only until the verification in step 8 has passed, then delete it from the workstation; the secret is then its only copy. Keep
 `mail.crt` and the expiry date.
