@@ -4,7 +4,7 @@
  * Active when EMAIL_PROVIDER=dev (the default).
  * Lets the entire flow (template render, scheduler, relay) run without a
  * real email provider — the rendered subject/text is fully visible in logs.
- * Set EMAIL_PROVIDER=ses or EMAIL_PROVIDER=resend to use a real provider.
+ * Set EMAIL_PROVIDER=graph to use the real provider.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { IEmailProvider, EmailPayload, EmailSendResult } from '../email.provider';
@@ -20,7 +20,6 @@ export class DevEmailProvider implements IEmailProvider {
   async send(payload: EmailPayload): Promise<EmailSendResult> {
     const fields: Record<string, unknown> = {
       to: payload.to,
-      from: payload.from,
       subject: payload.subject,
       category: payload.category ?? 'transactional',
       idempotencyKey: payload.idempotencyKey,
@@ -32,7 +31,7 @@ export class DevEmailProvider implements IEmailProvider {
 
     this.logger.debug(
       fields,
-      '[DEV EMAIL] Would send email — set EMAIL_PROVIDER=ses|resend to use a real transport',
+      '[DEV EMAIL] Would send email — set EMAIL_PROVIDER=graph to use a real transport',
     );
 
     return { messageId: null };

@@ -6,8 +6,6 @@ import { EmailService } from './email.service';
 import { GraphEmailProvider } from './providers/graph.provider';
 import type { EmailTemplateName, EmailTemplateVars } from './templates';
 
-const config = { get: (k: string) => (k === 'MAIL_FROM_EMAIL' ? undefined : 'Mini Rova') } as never;
-
 /** Resilience stand-in that retries like the real EMAIL preset (5 attempts) and counts how often it was used. */
 function retryingResilience() {
   const execute = vi.fn(async <T>(_name: string, op: () => Promise<T>): Promise<T> => {
@@ -58,7 +56,7 @@ describe('EmailService with the Graph provider (it owns its retries)', () => {
         Promise.resolve({ id: 'req-1', transport: 'graph' }),
       );
       const { resilience } = retryingResilience();
-      const service = new EmailService(provider, resilience, config);
+      const service = new EmailService(provider, resilience);
 
       await expect(
         service.sendTemplate('x@qnsc.vn', template, SAMPLES[template] as never, `key-${template}`),
@@ -74,7 +72,7 @@ describe('EmailService with the Graph provider (it owns its retries)', () => {
       send: vi.fn(() => Promise.reject(new NonRetryableError('Graph answered 400'))),
     };
     const { resilience, execute } = retryingResilience();
-    const service = new EmailService(failing, resilience, config);
+    const service = new EmailService(failing, resilience);
     await expect(
       service.sendTemplate('x@qnsc.vn', 'workspace-invitation', SAMPLES['workspace-invitation']),
     ).rejects.toBeInstanceOf(NonRetryableError);
@@ -88,7 +86,7 @@ describe('EmailService with the Graph provider (it owns its retries)', () => {
   ])('hands %s straight to the relay, one call', async (_label, error, type) => {
     const provider = { ownsRetries: true as const, send: vi.fn(() => Promise.reject(error)) };
     const { resilience, execute } = retryingResilience();
-    const service = new EmailService(provider, resilience, config);
+    const service = new EmailService(provider, resilience);
     await expect(
       service.sendTemplate('x@qnsc.vn', 'workspace-invitation', SAMPLES['workspace-invitation']),
     ).rejects.toBeInstanceOf(type);
@@ -108,7 +106,7 @@ describe('EmailService with the Graph provider (it owns its retries)', () => {
         }),
       };
       const { resilience } = retryingResilience();
-      const service = new EmailService(provider, resilience, config);
+      const service = new EmailService(provider, resilience);
 
       const sending = service
         .sendTemplate('x@qnsc.vn', 'workspace-invitation', SAMPLES['workspace-invitation'])
@@ -131,7 +129,7 @@ describe('EmailService with any other provider (SES, Resend, dev)', () => {
       .mockRejectedValueOnce(new Error('socket hang up'))
       .mockResolvedValue({ messageId: 'id-1' });
     const { resilience, execute } = retryingResilience();
-    const service = new EmailService({ send }, resilience, config);
+    const service = new EmailService({ send }, resilience);
     await expect(
       service.sendTemplate('x@qnsc.vn', 'workspace-invitation', SAMPLES['workspace-invitation']),
     ).resolves.toEqual({ messageId: 'id-1' });

@@ -2016,15 +2016,12 @@ module "api" {
     # URL)", which is what develop did until the buckets got a custom domain.
     { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs["${var.product}_attachments_endpoint"] },
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
-    # Email — SES in production. The sender is REQUIRED alongside the provider: without it the API
-    # now fails at boot by design, because the old behaviour was to send every message as
-    # `"Mini Rally" <>`, collect an SES rejection for each, open the email circuit breaker for the
-    # life of the process — and go on reporting healthy.
-    { name = "EMAIL_PROVIDER", value = var.email_provider },
+    # Email — Microsoft Graph is the only transport (SES and Resend were removed, rova#717). The
+    # mailbox and the Service app are REQUIRED alongside it: the API refuses to boot without them.
+    { name = "EMAIL_PROVIDER", value = "graph" },
     # The shared mailbox Graph sends as (not a secret). The api gets it so both tasks agree on the transport; only the worker has the certificate.
     { name = "MAIL_GRAPH_SENDER", value = var.mail_graph_sender },
     { name = "MAIL_GRAPH_CLIENT_ID", value = var.mail_graph_client_id },
-    { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     # Observability
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
@@ -2218,20 +2215,12 @@ module "worker" {
     # URL)", which is what develop did until the buckets got a custom domain.
     { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs["${var.product}_attachments_endpoint"] },
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
-    # The WORKER sends too — the notification relay is its job — so it needs the sender for the
-    # same reason the api task does.
-    { name = "EMAIL_PROVIDER", value = var.email_provider },
+    # The WORKER sends too — the notification relay is its job — so it needs the transport and the
+    # mailbox the same way the api task does.
+    { name = "EMAIL_PROVIDER", value = "graph" },
     # The shared mailbox Graph sends as (not a secret). The api gets it so both tasks agree on the transport; only the worker has the certificate.
     { name = "MAIL_GRAPH_SENDER", value = var.mail_graph_sender },
     { name = "MAIL_GRAPH_CLIENT_ID", value = var.mail_graph_client_id },
-    // `try`, not a plain index: the _shared stack owns these outputs, and a PR-time plan runs
-    // against the remote state as it is TODAY — which does not have them yet. Empty until
-    // _shared applies, which is exactly the loop's off state (the worker logs "feedback OFF").
-    // The queue ARN below is CONSTRUCTED instead, same idiom as ses_identity_arn, so the IAM
-    // grant is correct from the first apply and needs no ordering at all.
-    { name = "SES_BOUNCE_CONFIGSET", value = aws_sesv2_configuration_set.email_feedback.configuration_set_name },
-    { name = "SES_BOUNCE_QUEUE_URL", value = aws_sqs_queue.ses_bounce_feedback.url },
-    { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
     { name = "OTEL_SERVICE_NAME", value = "${var.product}-worker" },
@@ -3261,203 +3250,3 @@ resource "aws_scheduler_schedule" "ecs_scale_up" {
 # and jointly produce the exact state the other check exists to prevent — tasks up,
 # no cache, REDIS_URL falling back to localhost, denylist and rate limiter failing
 # open — except on a timer, at 08:00, with nobody watching.
-
-
-# ── Outbound email: the permission half ───────────────────────────────────────
-#
-# The IDENTITY is created once in `infra/live/_shared` (per account+region, and both environments
-# share both). What belongs here is the runtime grant: without `ses:SendEmail` on the task role, every
-# send fails with AccessDenied before the sender is even looked at — which is what both environments
-# did, while `EMAIL_PROVIDER=ses` and `MAIL_FROM_EMAIL` sat correctly configured beside it. Three
-# failures then opened the app's in-process email circuit breaker and the API kept reporting healthy,
-# so invitations and notifications were silently dead.
-#
-# The shared `ecs-service` module takes no policy input, so this attaches to the role it outputs.
-# `split("/", arn)[1]` is the same idiom `infra/live/_shared` already uses for the deploy-role guards.
-#
-# SCOPED TWO WAYS, because a bare `ses:SendEmail` on `"*"` would let a compromised task send as any
-# verified identity in the account — including prod's — from either environment:
-#   • `Resource` is this account's identity for the sender's own domain, so develop cannot send
-#     through an identity it does not share;
-#   • `ses:FromAddress` pins the envelope sender to `MAIL_FROM_EMAIL` exactly, so the grant cannot be
-#     used to impersonate another address on the same domain.
-# The ARN is CONSTRUCTED rather than read from the shared state on purpose: IAM happily references a
-# resource that does not exist yet, so the two applies can run in either order and the permission
-# simply starts working once the identity is verified. A remote-state dependency would make this
-# stack fail until `_shared` had been applied.
-locals {
-  mail_domain      = split("@", var.mail_from_email)[1]
-  ses_identity_arn = "arn:aws:ses:${var.region}:${data.aws_caller_identity.current.account_id}:identity/${local.mail_domain}"
-
-  ses_send_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = ["ses:SendEmail", "ses:SendRawEmail"]
-        # BOTH resources, or a send that names a configuration set is denied on the
-        # config-set ARN even with the identity allowed: SES evaluates EVERY resource the
-        # request touches. Found live — worker emails failed with AccessDenied on
-        # 'configuration-set/rova-email-feedback' the moment #468 tagged sends with it,
-        # opening the email circuit breaker in both environments.
-        Resource = [local.ses_identity_arn, "arn:aws:ses:${var.region}:${data.aws_caller_identity.current.account_id}:configuration-set/rova-email-feedback"]
-        Condition = {
-          StringEquals = { "ses:FromAddress" = var.mail_from_email }
-        }
-      },
-    ]
-  })
-}
-
-resource "aws_iam_role_policy" "api_ses_send" {
-  name   = "${local.name}-api-ses-send"
-  role   = split("/", module.api.task_role_arn)[1]
-  policy = local.ses_send_policy
-}
-
-# The worker relays the outbox, so it sends MORE mail than the API does — the API only sends inline
-# where a caller waits for the result. Both need it; a grant on one is a half outage that looks like a
-# flake.
-resource "aws_iam_role_policy" "worker_ses_send" {
-  name   = "${local.name}-worker-ses-send"
-  role   = split("/", module.worker.task_role_arn)[1]
-  policy = local.ses_send_policy
-}
-
-
-# ── SES asynchronous feedback, PER ENVIRONMENT ───────────────────────────────
-#
-# The loop's whole point is that a verdict lands on the row that sent it, in the
-# DATABASE that sent it — so the queue an environment drains must be its own. The
-# first cut of this lived in _shared with one config set, topic and queue for both
-# environments, and both workers long-polled that one queue: whichever polled first
-# consumed the event, and when it was the other environment's worker the verdict
-# logged "matched no sent row" in one database while the sending row stayed bare in
-# the other. Observed live twice on 2026-08-21. The SES IDENTITY above this comment
-# stays shared — it is one-per-account-and-region — but a configuration set is an
-# ordinary named resource and each environment owns its own chain end to end.
-#
-# EXPAND FIRST: the shared chain is removed from _shared in the change AFTER this
-# one deploys (the repo's own #394 rule — removing infrastructure running code still
-# uses needs the deploy first). Until then both chains exist and the workers, on
-# their new task definitions, use only their own.
-#
-# The queue policy is the delivery half: aws_sns_topic_subscription confirms the
-# subscription, but each published event is a separate cross-service call that SQS
-# authorizes against this policy — without it every verdict dies between the two
-# services while every metric reads green. Also diagnosed live, same day.
-resource "aws_sesv2_configuration_set" "email_feedback" {
-  # `configuration_set_name`, not `name`: the pinned provider predates the rename.
-  configuration_set_name = "${local.name}-email-feedback"
-}
-
-resource "aws_sns_topic" "ses_bounce_events" {
-  name = "${local.name}-ses-bounce-events"
-}
-
-resource "aws_sesv2_configuration_set_event_destination" "bounces" {
-  configuration_set_name = aws_sesv2_configuration_set.email_feedback.configuration_set_name
-  event_destination_name = "bounce-complaints-to-sqs"
-
-  event_destination {
-    enabled              = true
-    matching_event_types = ["BOUNCE", "COMPLAINT"]
-    sns_destination {
-      topic_arn = aws_sns_topic.ses_bounce_events.arn
-    }
-  }
-}
-
-resource "aws_sqs_queue" "ses_bounce_feedback" {
-  name = "${local.name}-ses-bounce-feedback"
-}
-
-resource "aws_sqs_queue_policy" "ses_bounce_feedback" {
-  queue_url = aws_sqs_queue.ses_bounce_feedback.url
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect    = "Allow"
-        Principal = { Service = "sns.amazonaws.com" }
-        Action    = "sqs:SendMessage"
-        Resource  = aws_sqs_queue.ses_bounce_feedback.arn
-        Condition = {
-          ArnEquals = { "aws:SourceArn" = aws_sns_topic.ses_bounce_events.arn }
-        }
-      },
-    ]
-  })
-}
-
-resource "aws_sns_topic_subscription" "ses_bounce_to_sqs" {
-  topic_arn = aws_sns_topic.ses_bounce_events.arn
-  protocol  = "sqs"
-  endpoint  = aws_sqs_queue.ses_bounce_feedback.arn
-}
-
-# This queue had NO alarm of any kind — checked, zero aws_cloudwatch_metric_alarm
-# resources reference it anywhere in this repo, unlike every other AWS resource the
-# stack owns. If BounceFeedbackService's long-poll loop stalls (a bug, a permission
-# change, a worker deploy that drops the consumer), bounce/complaint events pile up
-# silently: no failed health check, no 5xx, nothing — the app keeps sending mail to
-# addresses SES already told us are bad, which is the compliance-relevant failure
-# mode, not just a queue-depth one.
-resource "aws_cloudwatch_metric_alarm" "ses_bounce_queue_depth" {
-  alarm_name          = "${local.name}-ses-bounce-queue-depth-high"
-  namespace           = "AWS/SQS"
-  metric_name         = "ApproximateNumberOfMessagesVisible"
-  dimensions          = { QueueName = aws_sqs_queue.ses_bounce_feedback.name }
-  statistic           = "Maximum"
-  period              = 300
-  evaluation_periods  = 3
-  threshold           = 100
-  comparison_operator = "GreaterThanThreshold"
-  treat_missing_data  = "notBreaching"
-  alarm_actions       = [module.observability.alarm_topic_arn]
-  tags                = local.tags
-}
-
-# The direct "is anyone draining this" signal — depth alone can spike from a real
-# burst of bounces/complaints and clear on its own; age only grows when nothing is
-# consuming. 1 hour is generous: BounceFeedbackService long-polls continuously, so a
-# healthy consumer never lets a message sit anywhere near that long.
-resource "aws_cloudwatch_metric_alarm" "ses_bounce_queue_stalled" {
-  alarm_name          = "${local.name}-ses-bounce-queue-stalled"
-  namespace           = "AWS/SQS"
-  metric_name         = "ApproximateAgeOfOldestMessage"
-  dimensions          = { QueueName = aws_sqs_queue.ses_bounce_feedback.name }
-  statistic           = "Maximum"
-  period              = 300
-  evaluation_periods  = 1
-  threshold           = 3600
-  comparison_operator = "GreaterThanThreshold"
-  treat_missing_data  = "notBreaching"
-  alarm_actions       = [module.observability.alarm_topic_arn]
-  tags                = local.tags
-}
-
-# The feedback half of the SES loop: the worker's BounceFeedbackService long-polls the shared
-# bounce queue. Scoped to the ONE queue and the three calls a drain makes — Receive to claim a
-# batch, Delete to acknowledge (which the consumer does whether or not the event matched a row,
-# so an unmatched event can never poison the queue into a retry that cannot succeed), and
-# GetQueueAttributes for the SDK's standard startup probe. No wildcard: a compromised worker
-# must not be able to drain or tamper with any other queue in the account.
-resource "aws_iam_role_policy" "worker_sqs_bounce_feedback" {
-  name = "${local.name}-worker-sqs-bounce-feedback"
-  role = split("/", module.worker.task_role_arn)[1]
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
-        # Deterministic queue name, so the ARN needs no remote-state round trip — the same
-        # reason ses_identity_arn is constructed. The queue is created in _shared with this name.
-        Resource = aws_sqs_queue.ses_bounce_feedback.arn
-      },
-    ]
-  })
-}

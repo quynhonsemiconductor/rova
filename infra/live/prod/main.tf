@@ -106,9 +106,8 @@ module "stack" {
   seed_on_deploy        = false
   platform_admin_emails = var.platform_admin_emails
 
-  // Mail through Microsoft 365 (Graph): STAGED, NOT SWITCHED ON. `email_provider` stays at the module default ("ses") until the owner has done
-  // docs/runbooks/mail-graph.md for this environment; the cut-over is then a PR setting email_provider = "graph",
-  // mail_graph_client_id (the "Rova Prod Service" app) and mail_graph_certificate_set = true.
+  // Mail through Microsoft 365 (Graph) is the only transport (rova#717). Production needs mail_graph_client_id (the "Rova Prod Service"
+  // app) and mail_graph_certificate_set = true before the tasks boot: docs/runbooks/mail-graph.md.
   // A non-prod environment never sends from the prod mailbox: develop has its own.
   mail_graph_sender = "noreply-rova@qnsc.vn"
 
@@ -557,4 +556,12 @@ module "stack" {
   // This environment owns its public DNS (API and web CNAMEs, Pages custom domain). An explicit
   // switch, never inferred from the zone id; the zone id itself is validated in the stack module.
   dns_enabled = true
+
+  // Mail goes through Microsoft Graph in this release (rova#727), and SES is removed in the same window (rova#730).
+  // Release gate, in docs/runbooks/mail-graph.md order: (1) the "Rova Prod Service" app id goes in mail_graph_client_id
+  // (empty here, so nothing is injected until the owner sets it); (2) mail_graph_certificate_set flips to true only after
+  // rova/production/mail-graph-certificate holds the PEM. Flipping either early makes the worker refuse to start or deploy blocked.
+  email_provider             = "graph"
+  mail_graph_client_id       = ""
+  mail_graph_certificate_set = false
 }

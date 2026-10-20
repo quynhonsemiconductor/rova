@@ -181,35 +181,9 @@ variable "platform_admin_emails" {
   default     = []
 }
 
-variable "email_provider" {
-  description = <<-EOT
-    Which transport sends mail: "graph" sends through Microsoft 365 (Graph `sendMail`) from `mail_graph_sender`, "ses" uses this
-    account's SES (being replaced by graph), "dev" logs and sends nothing.
-
-    Defaults to "ses", which is what both environments ran when this variable did not exist, so applying this changes nothing until
-    somebody chooses "graph". "graph" needs `mail_graph_sender` and the worker's certificate (`mail_graph_certificate_set`); the WORKER
-    is the only process that sends. The mailbox is granted to the Entra app by Exchange RBAC for Applications, NOT by a Graph
-    permission in Entra: docs/runbooks/mail-graph.md has the owner steps, in order.
-  EOT
-  type        = string
-  default     = "ses"
-
-  validation {
-    condition     = contains(["graph", "ses", "dev"], var.email_provider)
-    error_message = "email_provider must be graph, ses or dev."
-  }
-
-  validation {
-    condition = var.email_provider != "graph" || (
-      var.mail_graph_sender != "" && var.mail_graph_client_id != "" && var.mail_graph_certificate_set
-    )
-    error_message = "email_provider = \"graph\" needs mail_graph_sender, mail_graph_client_id and mail_graph_certificate_set = true. Finish docs/runbooks/mail-graph.md first: the deploy refuses to inject a secret that holds no value."
-  }
-}
-
 variable "mail_graph_sender" {
   description = <<-EOT
-    The shared mailbox Graph sends as, e.g. `noreply-rova@qnsc.vn`. Required for email_provider = "graph". A public address, held in git.
+    The shared mailbox Graph sends as, e.g. `noreply-rova@qnsc.vn`. Required: Graph is the only sending transport. A public address, held in git.
     Graph sends as exactly this mailbox: the Exchange role assignment is scoped to its PrimarySmtpAddress, so any other sender is a 403.
 
     A NON-PROD ENVIRONMENT NEVER SENDS FROM THE PROD MAILBOX (decision 2026-10-18, HYBRID-INFRA-PLAN §7.4): develop sends as
@@ -256,30 +230,10 @@ variable "mail_graph_certificate_set" {
       1. generate a key and certificate with openssl, upload the public certificate to the Entra app;
       2. put the PEM (the private key, then the certificate; raw or base64) into the standalone secret `<product>/<env>/mail-graph-certificate`
          (NOT the app bundle: the API's task role reads the bundle, and must not be able to read this);
-      3. set this true, together with email_provider = "graph".
+      3. set this true.
   EOT
   type        = bool
   default     = false
-}
-
-variable "mail_from_email" {
-  description = <<-EOT
-    Verified sender for all outbound mail. REQUIRED while email_provider is not "dev":
-    the API now fails at boot without it, deliberately, because the previous behaviour was
-    to send every message as `"Mini Rally" <>`, have SES reject each one, open the email
-    circuit breaker and report healthy — a silent outage of invitations, notifications and
-    password resets in both environments.
-
-    The address (or its domain) must be a verified identity in the target account's SES,
-    or every send still fails — Terraform cannot check that for you.
-  EOT
-  type        = string
-  default     = "noreply@qnsc.vn"
-
-  validation {
-    condition     = can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.mail_from_email))
-    error_message = "mail_from_email must be a single bare email address (no display name)."
-  }
 }
 
 variable "seed_on_deploy" {
