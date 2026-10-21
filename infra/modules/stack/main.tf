@@ -658,7 +658,7 @@ locals {
   # The explicit bucket boundaries of http_server_duration_milliseconds, in
   # milliseconds — the only `le` values that exist on the series.
   #
-  # MIRRORS apps/api/src/main.ts. The list is NOT the OpenTelemetry JS defaults any
+  # MIRRORS apps/api/src/app-options.ts. The list is NOT the OpenTelemetry JS defaults any
   # more: those stop at 10000, and the same change that added this gate widened the
   # view (`httpDurationBoundaries` on startOtel) precisely because the top finite
   # bucket is where a p99 goes to hide. The first fifteen entries are still the SDK
@@ -685,8 +685,7 @@ locals {
   # exporter might in fact have), but a rejected legal boundary is still a plan that
   # fails for the wrong reason.
   http_duration_boundaries_ms = [
-    0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000,
-    15000, 30000, 60000, 120000, 180000,
+    0, 250, 1000, 2500, 5000, 10000, 60000, 180000,
   ]
 
   # The three ratio thresholds rendered as PERCENTAGES for the alert summaries.
