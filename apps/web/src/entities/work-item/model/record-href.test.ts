@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetReportedForTests } from '@/shared/lib/report-once'
-import { defaultRecordHref, resolveRecordHref } from './record-href'
+import { defaultRecordHref, recordHrefProblem, resolveRecordHref } from './record-href'
 
 // `reportOnce` is session-wide by design; each test starts a fresh session.
 beforeEach(() => {
@@ -55,27 +55,29 @@ describe('resolveRecordHref', () => {
   })
 })
 
-describe('defaultRecordHref diagnostics and encoding', () => {
+describe('recordHrefProblem (what useRecordHref reports) and encoding', () => {
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('warns in development when a type has no URL rule — a caller forgot its href', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(defaultRecordHref('Story', 'US-1')).toBeUndefined() // wrong casing: not a record kind
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('"Story"'))
+  it('names an unknown type — a caller forgot its href, or mistyped the type', () => {
+    expect(recordHrefProblem('Story')?.message).toContain('"Story"') // wrong casing
   })
 
-  it('reports an Epic / Feature that reaches it with no id — a portfolio type through a work-item cast', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(defaultRecordHref('epic', 'EP-9')).toBeUndefined()
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('pass `recordId`'))
+  it('names an Epic / Feature with no id — a portfolio type through a work-item cast', () => {
+    expect(recordHrefProblem('epic')?.message).toContain('pass `recordId`')
+    expect(recordHrefProblem('epic', 'pf-1')).toBeUndefined()
   })
 
-  it('does not warn for a type it addresses', () => {
+  it('has nothing to say about a type it addresses, or a work item still without a key', () => {
+    expect(recordHrefProblem('story')).toBeUndefined()
+    expect(recordHrefProblem('feature', 'pf-1')).toBeUndefined()
+  })
+
+  it('keeps defaultRecordHref PURE: deriving a URL never logs, even for a broken input', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    defaultRecordHref('story', 'US-1')
-    defaultRecordHref('feature', 'FE-1', 'pf-1')
+    defaultRecordHref('Story', 'US-1')
+    defaultRecordHref('epic', 'EP-1')
     expect(warn).not.toHaveBeenCalled()
   })
 

@@ -1,5 +1,5 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
-import { resolveRecordHref } from '@/entities/work-item/model/record-href'
+import { useRecordHref } from '@/entities/work-item/model/use-record-href'
 import type { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
 import { RECORD_LABEL_LAYOUT, RECORD_LINK_LABEL, RecordOpener } from '@/shared/ui/record-link'
 import { cn } from '@/shared/lib/utils'
@@ -38,7 +38,8 @@ interface WorkItemRefCellProps {
    * only WORK ITEMS (each opens `/item/$itemKey`), which are addressed by key and need no id. That
    * rests on `as WorkItemType` casts of API strings, so it is not enforced by the compiler: a
    * portfolio type slipping through would get no URL — and `defaultRecordHref` then REPORTS it
-   * (dev warning, prod error) rather than dropping it silently. A grid that can render both kinds
+   * (`useRecordHref`: dev warning, prod error) rather than dropping it silently. A grid that can
+   * render both kinds
    * passes `recordId` unconditionally, as `ArtifactTable` does.
    */
   recordId?: string
@@ -72,6 +73,8 @@ export function WorkItemRefCell({
   variant = 'inline',
 }: WorkItemRefCellProps) {
   const label = title ? `${itemKey}: ${title}` : itemKey
+  // Before the read-only return: a hook runs on every render, whichever branch follows.
+  const target = useRecordHref({ href, type, itemKey, recordId, enabled: onOpen !== undefined })
   if (!onOpen) {
     return (
       <span
@@ -87,9 +90,6 @@ export function WorkItemRefCell({
       </span>
     )
   }
-
-  // Built only past the read-only branch: a cell without `onOpen` ignores the URL.
-  const target = resolveRecordHref(href, type, itemKey, recordId)
 
   if (variant === 'pill') {
     // `text-ui-sm`, matching the read-only rendering above and every other editable cell: this

@@ -13,7 +13,10 @@ import { cn } from '@/shared/lib/utils'
  * `w-0` makes the content contribute nothing to that max-content measurement; `min-w-full` then
  * stretches it back to the cell's real width once the row is laid out, so it wraps inside the column
  * exactly as wide as its header. Use it for any `grow` column whose cell WRAPS (a `truncate` cell
- * clips instead and does not need it). Guarded end to end by `backlog.e2e.ts` (Connections tab).
+ * clips instead and does not need it). `backlog.e2e.ts` (Connections tab) asserts the effect in a
+ * real browser: a long PR title and commit message (with an unbroken token) stay within their
+ * header's width and the columns after them stay on screen. Not mutation-checked — Playwright needs
+ * the full local stack — so that test is the evidence, not a proof it fails without `w-0`.
  */
 export function WrapBox({ className, children }: { className?: string; children: ReactNode }) {
   return <div className={cn('w-0 min-w-full', className)}>{children}</div>

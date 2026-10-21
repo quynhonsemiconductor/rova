@@ -1,6 +1,5 @@
 import { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
 import { entityDetailPath } from '@/shared/lib/entity-link'
-import { reportOnce } from '@/shared/lib/report-once'
 
 type AddressedType = WorkItemType | PortfolioItemType
 
@@ -60,29 +59,41 @@ export function defaultRecordHref(
   itemKey: string,
   recordId?: string,
 ): string | undefined {
-  if (!isAddressedType(type)) {
-    // Reached only when a cell has NO `href` of its own (`resolveRecordHref` is `href || …`), so an
-    // unknown type here means a caller forgot its URL or passed a mistyped type — the cell would
-    // silently lose its new-tab link. It still opens in place.
-    reportOnce(
-      `record-href:type:${type}`,
-      `defaultRecordHref: no URL rule for record type "${type}"; pass \`href\``,
-    )
-    return undefined
-  }
+  if (!isAddressedType(type)) return undefined
   if (ADDRESSING[type] === 'key') {
     // No key yet (an optimistic row) means no URL — never a bare `/item/`. The same rule
     // `entityLinkFor` applies (`!key` → `undefined`). A cell that renders such a row and LATER gets
     // its key flips <button> → <a>: see the first-render note on `RecordOpener`.
     return pathForKey(itemKey, entityDetailPath.workItem)
   }
-  if (recordId) return entityDetailPath.portfolioItem(recordId)
-  // An Epic / Feature with neither `href` nor `recordId`: typically a portfolio type that slipped
-  // through a `WorkItemType` cast at a work-item-only call site. Same silent loss, same report.
-  reportOnce(
-    `record-href:no-id:${type}`,
-    `defaultRecordHref: a "${type}" is addressed by id; pass \`recordId\` (or \`href\`)`,
-  )
+  return recordId ? entityDetailPath.portfolioItem(recordId) : undefined
+}
+
+/**
+ * Why a cell with no `href` of its own gets no URL, when that is a DEFECT rather than a normal state
+ * (an optimistic row with no key yet is normal). Pure — `useRecordHref` reports it from an effect,
+ * so neither this helper nor `defaultRecordHref` has a side effect during render.
+ *
+ * - an unknown type: a caller forgot its `href`, or passed a mistyped type;
+ * - an Epic / Feature with no `recordId`: typically a portfolio type that slipped through a
+ *   `WorkItemType` cast at a work-item-only call site.
+ */
+export function recordHrefProblem(
+  type: string,
+  recordId?: string,
+): { key: string; message: string } | undefined {
+  if (!isAddressedType(type)) {
+    return {
+      key: `record-href:type:${type}`,
+      message: `defaultRecordHref: no URL rule for record type "${type}"; pass \`href\``,
+    }
+  }
+  if (ADDRESSING[type] === 'id' && !recordId) {
+    return {
+      key: `record-href:no-id:${type}`,
+      message: `defaultRecordHref: a "${type}" is addressed by id; pass \`recordId\` (or \`href\`)`,
+    }
+  }
   return undefined
 }
 

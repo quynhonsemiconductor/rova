@@ -1,6 +1,6 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import type { WorkItemType } from '@/entities/work-item/model/types'
-import { resolveRecordHref } from '@/entities/work-item/model/record-href'
+import { useRecordHref } from '@/entities/work-item/model/use-record-href'
 import { RECORD_LABEL_LAYOUT, RECORD_LINK_LABEL, RecordOpener } from '@/shared/ui/record-link'
 import { cn } from '@/shared/lib/utils'
 
@@ -61,6 +61,8 @@ const CELL_LAYOUT = 'min-w-0 items-start gap-1'
 const OPEN_CLASS = cn('flex', CELL_LAYOUT)
 
 export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
+  // Before the read-only return: a hook runs on every render, whichever branch follows.
+  const target = useRecordHref({ href, type, itemKey, recordId, enabled: onOpen !== undefined })
   if (onOpen === undefined) {
     return (
       <span className={cn('inline-flex', CELL_LAYOUT)} title={itemKey}>
@@ -81,12 +83,7 @@ export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
   )
 
   return (
-    <RecordOpener
-      href={resolveRecordHref(href, type, itemKey, recordId)}
-      onOpen={onOpen}
-      title={itemKey}
-      className={OPEN_CLASS}
-    >
+    <RecordOpener href={target} onOpen={onOpen} title={itemKey} className={OPEN_CLASS}>
       {content}
     </RecordOpener>
   )
