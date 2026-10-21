@@ -287,6 +287,9 @@ jobs:
         env:
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_grafana_alerting_auth: ${{ secrets.GRAFANA_ALERTS_TOKEN }}
+          # Staff emails (platform_admin_emails) are not in git; the roster is an
+          # organisation variable. '[]' keeps tofu happy when the variable is unset.
+          TF_VAR_platform_admin_emails: ${{ vars.ROVA_PLATFORM_ADMIN_EMAILS || '[]' }}
 
       # Refuse a saved plan that DELETES or REPLACES a DNS, edge, mail-identity, certificate or key resource (the
       # 2026-10-09 outage) unless this run is allowed to: the PR being merged carries the label `allow-dns-destroy`
@@ -319,6 +322,9 @@ jobs:
         env:
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_grafana_alerting_auth: ${{ secrets.GRAFANA_ALERTS_TOKEN }}
+          # Staff emails (platform_admin_emails) are not in git; the roster is an
+          # organisation variable. '[]' keeps tofu happy when the variable is unset.
+          TF_VAR_platform_admin_emails: ${{ vars.ROVA_PLATFORM_ADMIN_EMAILS || '[]' }}
 
       # Refuse a saved plan that DELETES or REPLACES a DNS, edge, mail-identity, certificate or key resource (the
       # 2026-10-09 outage) unless this run is allowed to: the PR being merged carries the label `allow-dns-destroy`
@@ -454,6 +460,9 @@ jobs:
         env:
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_grafana_alerting_auth: ${{ secrets.GRAFANA_ALERTS_TOKEN }}
+          # Staff emails (platform_admin_emails) are not in git; the roster is an
+          # organisation variable. '[]' keeps tofu happy when the variable is unset.
+          TF_VAR_platform_admin_emails: ${{ vars.ROVA_PLATFORM_ADMIN_EMAILS || '[]' }}
           # Pin the prod image to the exact release tag that triggered this apply
           # (e.g. v1.4.2), so an infra apply never resets the task def to :latest.
           TF_VAR_image_tag:            ${{ github.ref_name }}
@@ -498,6 +507,9 @@ jobs:
         env:
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_grafana_alerting_auth: ${{ secrets.GRAFANA_ALERTS_TOKEN }}
+          # Staff emails (platform_admin_emails) are not in git; the roster is an
+          # organisation variable. '[]' keeps tofu happy when the variable is unset.
+          TF_VAR_platform_admin_emails: ${{ vars.ROVA_PLATFORM_ADMIN_EMAILS || '[]' }}
           # Pin the prod image to the exact release tag that triggered this apply
           # (e.g. v1.4.2), so an infra apply never resets the task def to :latest.
           TF_VAR_image_tag:            ${{ github.ref_name }}

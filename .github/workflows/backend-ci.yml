@@ -357,7 +357,7 @@ jobs:
           ENTRA_CLIENT_ID: ci-test-client
           ENTRA_CLIENT_SECRET: ci-test-secret
           SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
-          PLATFORM_ADMIN_EMAILS: nghiavt@qnsc.vn
+          PLATFORM_ADMIN_EMAILS: devops@qnsc.vn
           # The suite shares ONE authenticated principal (admin@qnsc.dev) across 49 files, and the
           # DEFAULT rate-limit tier is 100 requests per 60s keyed by `uid:{sub}`. So the limiter is
           # a shared budget that every spec spends from, and adding assertions anywhere can push an

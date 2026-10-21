@@ -37,7 +37,11 @@ variable "platform_admin_emails" {
     colleague is a values change, not a module change).
   EOT
   type        = list(string)
-  default     = ["nghiavt@qnsc.vn", "quangld@qnsc.vn", "hieuvbm@qnsc.vn", "anhntn@qnsc.vn"]
+  # The real roster names staff, so it stays out of git: set it in terraform.tfvars
+  # (git-ignored) or in the ROVA_PLATFORM_ADMIN_EMAILS Actions variable, which
+  # infra-apply.yml passes as TF_VAR_platform_admin_emails. Empty default = the
+  # deploy silently grants nobody until the roster is set.
+  default     = []
 }
 
 // ── Public identifiers, held in git on purpose ────────────────────────────────
