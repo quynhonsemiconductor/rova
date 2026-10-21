@@ -14,8 +14,11 @@ import { cn } from '@/shared/lib/utils'
  * `href` is an in-app PATH (`entityDetailPath.*`), so the new tab boots the SPA at the record
  * exactly as a pasted link does — the deep-link loaders already adopt the record's own project.
  *
- * Every click and middle-click stops propagation, so a row that also listens (select, open a
- * summary) does not ALSO react to a gesture aimed at the link.
+ * Every `click` and `auxclick` (middle-click) stops propagation, so a row that listens for CLICKS
+ * (select, open a summary) does not also react to a gesture aimed at the link. `mousedown` /
+ * `pointerdown` are NOT stopped: no row wraps a record link in a press handler today — the drag
+ * listeners (`useRowRerank`, the Iteration Board, capacity rows) sit on a separate grip beside the
+ * link, never around it. A row that starts something on press must stop it here too.
  *
  * MODULE-PRIVATE on purpose: {@link RecordOpener} is the only way to render one, so its
  * {@link isInAppPath} check cannot be bypassed by a direct call with an untrusted URL.
