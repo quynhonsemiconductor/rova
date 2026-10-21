@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/shared/lib/utils'
-import { RecordLink } from '@/shared/ui/record-link'
+import { RecordOpener } from '@/shared/ui/record-link'
 
 /**
  * CellLink — the shared link affordance for table/list cells whose text opens a
@@ -36,25 +36,9 @@ export function CellLink({
     className,
   )
 
-  if (href) {
-    return (
-      <RecordLink href={href} onOpen={onClick} title={title} className={classes}>
-        {children}
-      </RecordLink>
-    )
-  }
-
   return (
-    <button
-      type="button"
-      title={title}
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick()
-      }}
-      className={classes}
-    >
+    <RecordOpener href={href} onOpen={onClick} title={title} className={classes}>
       {children}
-    </button>
+    </RecordOpener>
   )
 }

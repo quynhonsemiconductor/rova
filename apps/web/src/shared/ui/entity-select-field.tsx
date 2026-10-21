@@ -68,7 +68,7 @@ export function OwnerSelectField({
 interface TeamSelectFieldProps {
   value: string | null | undefined
   onChange: (value: string) => void
-  teams: SelectableTeam[]
+  teams: readonly SelectableTeam[]
   label?: string
   placeholder?: string
   id?: string
