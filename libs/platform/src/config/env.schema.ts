@@ -100,7 +100,7 @@ export const EnvSchema = z
     IDENTITY_TEST_LOGIN: emptyToUndefined(z.enum(['enabled']).optional()),
 
     // Cookie signing. Distinct from CSRF_SECRET on purpose: this one signs every
-    // cookie rally sets, so rotating it invalidates all of them. Sharing one value
+    // cookie rova sets, so rotating it invalidates all of them. Sharing one value
     // between the two made a cookie-hygiene rotation read as a CSRF change (and
     // vice versa) in the audit trail.
     COOKIE_SECRET: z.string().min(32),
@@ -255,7 +255,7 @@ export const EnvSchema = z
     RESEND_API_KEY: z.string().optional(),
     /** Reply-To address shown in email clients. Defaults to a no-reply alias. */
     MAIL_REPLY_TO: z.string().email().optional(),
-    /** Public base URL used to build password-reset and invitation links (e.g. https://app.rally.io). */
+    /** Public base URL used to build password-reset and invitation links (e.g. https://app.rova.io). */
     APP_BASE_URL: z.string().url().default('http://localhost:5173'),
 
     // Observability

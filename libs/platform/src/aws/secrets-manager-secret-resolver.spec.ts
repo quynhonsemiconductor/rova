@@ -45,7 +45,7 @@ describe('SecretsManagerSecretResolver', () => {
   // broke SSO login on develop when the secrets module switched to `use_bundle`.
   describe('bundled refs ("<arn>:<key>::")', () => {
     const BUNDLE =
-      'arn:aws:secretsmanager:ap-southeast-1:608983206583:secret:rally/develop/app-bH4nIC';
+      'arn:aws:secretsmanager:ap-southeast-1:608983206583:secret:rally/develop/app-bH4nIC'; // legacy physical name, do not rename
     const REF = `${BUNDLE}:entra-client-secret::`;
 
     it('strips the key suffix before calling GetSecretValue', async () => {

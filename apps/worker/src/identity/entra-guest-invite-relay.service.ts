@@ -25,8 +25,8 @@
  * (`NO_CONNECTION` from our login box, `AADSTS50020` from Microsoft's). The email is therefore
  * scheduled HERE, by the only component that knows the guest is ready, in the same transaction that
  * marks the row `sent`. That is why the docblock this replaced was wrong to call a directory write
- * "not latency-critical" on the grounds that "the invitee has a Rally email to act on either way":
- * the Rally email is UNUSABLE until the guest exists, so it must not exist any earlier.
+ * "not latency-critical" on the grounds that "the invitee has a Rova email to act on either way":
+ * the Rova email is UNUSABLE until the guest exists, so it must not exist any earlier.
  *
  * Cadence is 10s, not the SCM backfill's 30s, for that same reason — the wait is now the invitee's,
  * not a background job's — and `wakeGuestInviteRelay` makes the ordinary case immediate, with the

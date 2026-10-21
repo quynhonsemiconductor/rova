@@ -159,8 +159,8 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // OpenAPI — opt-in per environment via SWAGGER_ENABLED (default off)
   if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('Rally API')
-      .setDescription('Rally SaaS — project management platform API')
+      .setTitle('Rova API')
+      .setDescription('Rova SaaS — project management platform API')
       .setVersion('1.0')
       .addCookieAuth(
         SESSION_COOKIE,

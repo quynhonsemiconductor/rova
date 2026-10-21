@@ -659,7 +659,7 @@ export class CapacityPlansService {
   /**
    * Rally's Calculate Capacity Forecast, for ONE team.
    *
-   * Rally's tool "produces estimates for a single team and does not respect the Parent/Child
+   * Rally "produces estimates for a single team and does not respect the Parent/Child
    * hierarchy", so this is scoped per team rather than proposing capacities for a whole plan
    * at once — a departure from the API sketch in the Phase 5 spec, which had one plan-wide
    * `POST /:id/forecast`. Per team is both what Rally does and what the planner needs: the

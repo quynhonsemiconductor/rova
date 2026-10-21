@@ -48,7 +48,7 @@ describe('prefixOf', () => {
     expect(prefixOf(minted.plaintext)).toBe(minted.prefix);
   });
 
-  it('rejects anything that is not a Rally token', () => {
+  it('rejects anything that is not a Rova token', () => {
     expect(prefixOf('eyJhbGciOiJFUzI1NiJ9.e30.sig')).toBeNull();
     expect(prefixOf('rly_short')).toBeNull();
     expect(prefixOf('')).toBeNull();
