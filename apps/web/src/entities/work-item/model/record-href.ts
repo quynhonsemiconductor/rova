@@ -1,17 +1,24 @@
 import { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
 import { entityDetailPath } from '@/shared/lib/entity-link'
 
-// Listed, not derived from the enums: the contract is these exact types, and a member added to
-// either enum later must not be admitted (and addressed the wrong way) silently.
-const KEY_ADDRESSED_TYPES: ReadonlySet<string> = new Set<string>([
-  WorkItemType.Story,
-  WorkItemType.Task,
-  WorkItemType.Defect,
-])
-const ID_ADDRESSED_PORTFOLIO_TYPES: ReadonlySet<string> = new Set<string>([
-  PortfolioItemType.Epic,
-  PortfolioItemType.Feature,
-])
+type AddressedType = WorkItemType | PortfolioItemType
+
+/**
+ * How each record kind is addressed. A `Record` over BOTH enums, so a member added to either enum
+ * is a COMPILE error here until someone decides how it is addressed — it cannot fall through to
+ * "no URL" silently — and a mistyped key is refused too.
+ */
+const ADDRESSING: Record<AddressedType, 'key' | 'id'> = {
+  [WorkItemType.Story]: 'key',
+  [WorkItemType.Task]: 'key',
+  [WorkItemType.Defect]: 'key',
+  [PortfolioItemType.Epic]: 'id',
+  [PortfolioItemType.Feature]: 'id',
+}
+
+function isAddressedType(type: string): type is AddressedType {
+  return Object.hasOwn(ADDRESSING, type)
+}
 
 /**
  * The detail path an ID / reference cell can derive on its own (US-120) — the ONE place the
@@ -27,10 +34,10 @@ export function defaultRecordHref(
   itemKey: string,
   recordId?: string,
 ): string | undefined {
-  // No key yet (an optimistic row) means no URL — never a bare `/item/` (as `entityLinkFor` does).
-  if (KEY_ADDRESSED_TYPES.has(type)) return itemKey ? entityDetailPath.workItem(itemKey) : undefined
-  if (recordId && ID_ADDRESSED_PORTFOLIO_TYPES.has(type)) {
-    return entityDetailPath.portfolioItem(recordId)
+  if (!isAddressedType(type)) return undefined
+  if (ADDRESSING[type] === 'key') {
+    // No key yet (an optimistic row) means no URL — never a bare `/item/` (as `entityLinkFor` does).
+    return itemKey ? entityDetailPath.workItem(itemKey) : undefined
   }
-  return undefined
+  return recordId ? entityDetailPath.portfolioItem(recordId) : undefined
 }

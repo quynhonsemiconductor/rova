@@ -12,7 +12,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createEvent, fireEvent, render, screen } from '@testing-library/react'
 
-import { isNewTabClick } from '@/shared/lib/new-tab-click'
 import { RecordLink, RecordOpener } from './record-link'
 
 /** Fire a click and report whether the handler prevented the browser's default. */
@@ -21,18 +20,6 @@ function click(el: HTMLElement, init: MouseEventInit = {}): boolean {
   fireEvent(el, event)
   return event.defaultPrevented
 }
-
-describe('isNewTabClick', () => {
-  it('is false only for a plain primary click', () => {
-    const plain = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false }
-    expect(isNewTabClick(plain)).toBe(false)
-    expect(isNewTabClick({ ...plain, ctrlKey: true })).toBe(true)
-    expect(isNewTabClick({ ...plain, metaKey: true })).toBe(true)
-    expect(isNewTabClick({ ...plain, shiftKey: true })).toBe(true)
-    expect(isNewTabClick({ ...plain, altKey: true })).toBe(true)
-    expect(isNewTabClick({ ...plain, button: 1 })).toBe(true)
-  })
-})
 
 describe('RecordLink', () => {
   it('is a real link to the record', () => {

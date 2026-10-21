@@ -379,7 +379,10 @@ async function seedScm(db: Db): Promise<void> {
         'feat(nx): bump workspace to v21 and migrate the generators to the new project graph API\n\n' +
         'Nx 21 removes the legacy workspace.json project configuration reader, so every generator ' +
         'that still read it through readWorkspaceConfiguration is moved onto readProjectsConfigurationFromProjectGraph. ' +
-        'The migration script under tools/ rewrites the remaining callers and is idempotent.',
+        'The migration script under tools/ rewrites the remaining callers and is idempotent.\n\n' +
+        // One UNBROKEN token far wider than the column, so the e2e also proves a token with no space
+        // to break at wraps inside the Message column (`break-words`) instead of widening the row.
+        'Refs: tools/migrations/nx-21/readProjectsConfigurationFromProjectGraph/replace-legacy-workspace-json-reader.migration.ts',
       uri: 'https://github.com/quynhonsemiconductor/rova/commit/9f2c1ab',
       repositoryFullName: 'quynhonsemiconductor/rova',
       authorName: 'Nghia-VanTrong',

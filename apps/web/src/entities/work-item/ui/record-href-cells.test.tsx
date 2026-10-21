@@ -3,34 +3,12 @@
  * Ctrl/Cmd+click or middle-click. The click semantics themselves are pinned in
  * `shared/ui/record-link.test.tsx`.
  */
-import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { describe, expect, it, vi } from 'vitest'
+import { createEvent, fireEvent, render, screen } from '@testing-library/react'
 
 import { IdCell } from './id-cell'
 import { WorkItemRefCell } from './work-item-ref-cell'
-import { defaultRecordHref } from '../model/record-href'
-
-describe('defaultRecordHref', () => {
-  it('derives /item/{key} for a work item, and nothing for a record addressed by id', () => {
-    expect(defaultRecordHref('story', 'US-120')).toBe('/item/US-120')
-    expect(defaultRecordHref('task', 'TA-3')).toBe('/item/TA-3')
-    expect(defaultRecordHref('defect', 'DE-9')).toBe('/item/DE-9')
-    expect(defaultRecordHref('feature', 'FE-1')).toBeUndefined()
-    expect(defaultRecordHref('release', 'RL-1')).toBeUndefined()
-  })
-
-  it('addresses an Epic / Feature by its id when given one — and only those types', () => {
-    expect(defaultRecordHref('feature', 'FE-1', 'pf-1')).toBe('/portfolio/pf-1')
-    expect(defaultRecordHref('epic', 'EP-1', 'pf-2')).toBe('/portfolio/pf-2')
-    // A work item stays key-addressed even when a grid passes its id unconditionally.
-    expect(defaultRecordHref('story', 'US-1', 'wi-1')).toBe('/item/US-1')
-    expect(defaultRecordHref('release', 'RL-1', 'rl-1')).toBeUndefined()
-  })
-
-  it('gives a key-addressed row with no key yet (an optimistic row) no URL, never a bare /item/', () => {
-    expect(defaultRecordHref('story', '')).toBeUndefined()
-  })
-})
 
 describe('IdCell / WorkItemRefCell carry the record URL', () => {
   it('IdCell links a work item to its detail page by default', () => {
@@ -85,5 +63,62 @@ describe('IdCell / WorkItemRefCell carry the record URL', () => {
       />,
     )
     expect(screen.getByRole('link').getAttribute('href')).toBe('/item/US-6')
+  })
+})
+
+/** Fire a click and report whether the handler prevented the browser's default. */
+function click(el: HTMLElement, init: MouseEventInit = {}): boolean {
+  const event = createEvent.click(el, { button: 0, ...init })
+  fireEvent(el, event)
+  return event.defaultPrevented
+}
+
+/**
+ * The contract the cells inherit from `RecordOpener` now that the click handling moved there: every
+ * host grid's ROW has its own click handler, so a plain click must open the record ONCE and never
+ * reach the row; a new-tab gesture must be left to the browser and must not ALSO open in place.
+ */
+describe.each<[string, (onOpen: () => void) => ReactElement]>([
+  ['IdCell', (onOpen) => <IdCell type="story" itemKey="US-7" onOpen={onOpen} />],
+  [
+    'WorkItemRefCell (inline)',
+    (onOpen) => <WorkItemRefCell type="story" itemKey="US-7" onOpen={onOpen} />,
+  ],
+  [
+    'WorkItemRefCell (pill)',
+    (onOpen) => <WorkItemRefCell type="story" itemKey="US-7" onOpen={onOpen} variant="pill" />,
+  ],
+])('%s inside a clickable row', (_name, cell) => {
+  it('a plain click opens in place once and never reaches the row', () => {
+    const onOpen = vi.fn()
+    const rowClick = vi.fn()
+    render(<div onClick={rowClick}>{cell(onOpen)}</div>)
+
+    expect(click(screen.getByRole('link'))).toBe(true)
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(rowClick).not.toHaveBeenCalled()
+  })
+
+  it('a Ctrl/Cmd+click is left to the browser — no in-place open, no row click', () => {
+    const onOpen = vi.fn()
+    const rowClick = vi.fn()
+    render(<div onClick={rowClick}>{cell(onOpen)}</div>)
+
+    expect(click(screen.getByRole('link'), { ctrlKey: true })).toBe(false)
+    expect(click(screen.getByRole('link'), { metaKey: true })).toBe(false)
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(rowClick).not.toHaveBeenCalled()
+  })
+})
+
+describe('an empty href is no URL', () => {
+  it('falls back to the derived URL instead of rendering <a href=""> (the current page)', () => {
+    render(<IdCell type="story" itemKey="US-8" onOpen={() => {}} href="" />)
+    expect(screen.getByRole('link').getAttribute('href')).toBe('/item/US-8')
+  })
+
+  it('does the same in WorkItemRefCell', () => {
+    render(<WorkItemRefCell type="story" itemKey="US-8" onOpen={() => {}} href="" />)
+    expect(screen.getByRole('link').getAttribute('href')).toBe('/item/US-8')
   })
 })

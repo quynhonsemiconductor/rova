@@ -78,7 +78,8 @@ export function WorkItemRefCell({
   }
 
   // Built only past the read-only branch: a cell without `onOpen` ignores the URL.
-  const target = href ?? defaultRecordHref(type, itemKey, recordId)
+  // `||`, not `??`: an empty `href` is no URL, and must not become `<a href="">` (the current page).
+  const target = href || defaultRecordHref(type, itemKey, recordId)
 
   if (variant === 'pill') {
     // `text-ui-sm`, matching the read-only rendering above and every other editable cell: this

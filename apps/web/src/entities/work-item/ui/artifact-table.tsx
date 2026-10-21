@@ -21,6 +21,11 @@ import { SkeletonList } from '@/shared/ui/skeleton'
 export interface ArtifactTableItem {
   id: string
   itemKey: string
+  /**
+   * A work-item type (Story / Task / Defect) or a portfolio type (Epic / Feature) — the only kinds a
+   * Milestone or Release links. `string` because both API shapes declare it so; every kind listed
+   * here is addressed by `defaultRecordHref`, which `artifact-table.test.tsx` pins per kind.
+   */
   type: string
   title: string
   scheduleState: string

@@ -27,6 +27,7 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { formatWith } from '@/shared/lib/utils'
 import { listResource } from '@/shared/lib/query/resource'
 import { LoadErrorState } from '@/shared/ui/load-error-state'
+import { WrapBox } from '@/shared/ui/wrap-box'
 
 // ── Shared cell helpers ───────────────────────────────────────────────────────
 
@@ -182,9 +183,9 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
               className="block font-mono text-ui-xs break-all"
               title={`${x.action} ${x.path}`}
             >
-              {/* `inline-block` + margin, so the action letter never fuses onto the path when the
-                  text is copied ("Mapps/web/…"). */}
-              <span className="mr-1.5 inline-block text-foreground-subtle">{x.action}</span>
+              {/* A REAL space, not a margin: CSS never reaches the clipboard, so with only `mr-1.5` a copy
+                  read "Mapps/web/…". In a mono face the space is about the margin's width. */}
+              <span className="inline-block text-foreground-subtle">{x.action}</span>{' '}
               {c.uri ? <ExtLink href={c.uri}>{x.path}</ExtLink> : x.path}
             </span>
           ))}
@@ -222,23 +223,6 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
 
 const ROW_CLASS =
   'flex min-h-[35px] items-center gap-2 border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter'
-
-/**
- * Wraps free text inside a cell WITHOUT letting it size the row.
- *
- * Each row is `minWidth: max-content`, so a cell's max-content width becomes a floor on the row.
- * For Message — a `grow` column, which by design has no width ceiling — that floor was the whole
- * commit message on ONE line: the row widened to fit it, the text never wrapped, and the cell grew
- * past its header so Changes / Author / Commit Timestamp were pushed off to the right (Production,
- * 2026-10-06, the US-120 Changesets tab).
- *
- * `w-0` makes the content contribute nothing to that max-content measurement; `min-w-full` then
- * stretches it back to the cell's real width once the row is laid out, so it wraps inside the column
- * exactly as wide as its header.
- */
-function WrapBox({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <div className={`w-0 min-w-full ${className ?? ''}`}>{children}</div>
-}
 
 function includesCI(haystack: string, needle: string): boolean {
   return haystack.toLowerCase().includes(needle.trim().toLowerCase())

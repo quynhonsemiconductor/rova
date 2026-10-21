@@ -46,6 +46,7 @@ import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { useReleases } from '@/features/releases/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { entityDetailPath } from '@/shared/lib/entity-link'
+import { WrapBox } from '@/shared/ui/wrap-box'
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -406,7 +407,12 @@ const MILESTONES_COLUMNS: ColumnSpec<Milestone, MilestoneCtx, MilestoneColKey>[]
     grow: true,
     sortCol: 'name',
     cellClassName: 'flex min-w-0 items-center px-0',
-    cell: (m, ctx) => <MilestoneNameCell milestone={m} canEdit={ctx.canManage} />,
+    // A `grow` column of wrapping text in a `max-content` row: `WrapBox`, or a long name widens the row.
+    cell: (m, ctx) => (
+      <WrapBox>
+        <MilestoneNameCell milestone={m} canEdit={ctx.canManage} />
+      </WrapBox>
+    ),
   },
   {
     key: 'targetStartDate',

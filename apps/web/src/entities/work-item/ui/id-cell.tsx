@@ -82,7 +82,7 @@ export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
 
   return (
     <RecordOpener
-      href={href ?? defaultRecordHref(type, itemKey, recordId)}
+      href={href || defaultRecordHref(type, itemKey, recordId)}
       onOpen={onOpen}
       title={itemKey}
       className={OPEN_CLASS}
