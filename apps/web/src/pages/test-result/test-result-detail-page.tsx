@@ -36,6 +36,7 @@ import { DateField } from '@/shared/ui/date-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { OwnerSelectField } from '@/shared/ui/entity-select-field'
 import { VerdictBadge } from '@/features/test-cases/ui/verdict-badge'
+import { RecordTypeBadge } from '@/features/test-cases/ui/record-type-badge'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
 import { PageSpinner } from '@/shared/ui/spinner'
 import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
@@ -144,6 +145,7 @@ export function TestResultDetailPage() {
   return (
     <DetailLayout
       onBack={back}
+      badge={<RecordTypeBadge type="testResult" />}
       itemKey={testResult.testResultKey}
       copyLink={{
         key: testResult.testResultKey,
