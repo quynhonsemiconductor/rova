@@ -16,8 +16,9 @@ const ADDRESSING: Record<AddressedType, 'key' | 'id'> = {
   [PortfolioItemType.Feature]: 'id',
 }
 
-// A Set of the map's OWN keys: an inherited name (`constructor`) is not a record kind, and this
-// avoids `Object.hasOwn` (ES2022), which Vite's default build target does not guarantee.
+// The map's keys as a Set, so membership is a lookup that cannot hit an inherited name
+// (`constructor` — `Object.keys` returns own keys only) without probing the map with
+// `Object.hasOwn` (ES2022), a runtime method Vite's default build target does not guarantee.
 const ADDRESSED_TYPES: ReadonlySet<string> = new Set(Object.keys(ADDRESSING))
 
 function isAddressedType(type: string): type is AddressedType {
