@@ -99,7 +99,7 @@ jobs:
       contents: read
       id-token: write
       packages: read
-    uses: quynhonsemiconductor/ci/.github/workflows/k8s-promote.yml@5a57261635f88c46fa1e6e553f9b930a138b4b2e # v1.22.0
+    uses: quynhonsemiconductor/ci/.github/workflows/k8s-promote.yml@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
     with:
       product: rova
       # Same service list as k8s-deploy.yml / gitops base.yaml — the promote
@@ -114,10 +114,11 @@ jobs:
       # The reusable's promote step only does ECR batch-get-image / put-image, so
       # rova's existing ECR-push role covers it — no new role for promotion.
       aws-role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rova-github-ecr-push
-      # ── gitops token — opens the prod PR, does NOT merge it (§10b) ────────────
-      # Unlike the dev token, this one writes the prod path, but only far enough
-      # to OPEN a branch and a PR; the review is the control (§10b), so it must
-      # NOT have merge rights. It is a distinct credential from the dev bump
-      # token in k8s-deploy.yml precisely so the dev CI identity can never touch
-      # prod.yaml. A human must create it (see the summary handed back).
-      gitops-token: ${{ secrets.GITOPS_PROMOTE_TOKEN }}
+      # ── The gitops identity is the qnsc-automation GitHub App (ci P0-21) ─────
+      # The reusable mints a job-scoped App token for `gitops`: contents:write to
+      # push the branch, pull-requests:write to open the prod PR, never merge
+      # (§10b, the review is the control). The key is passed explicitly — org
+      # secrets do not flow into a reusable workflow on their own. The old
+      # long-lived GITOPS_PROMOTE_TOKEN repo secret is gone with it — retire the
+      # secret in the org settings after this merges.
+      QNSC_AUTOMATION_PRIVATE_KEY: ${{ secrets.QNSC_AUTOMATION_PRIVATE_KEY }}
