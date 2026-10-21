@@ -1,5 +1,6 @@
 import { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
 import { entityDetailPath } from '@/shared/lib/entity-link'
+import { reportOnce } from '@/shared/lib/report-once'
 
 type AddressedType = WorkItemType | PortfolioItemType
 
@@ -54,10 +55,11 @@ export function defaultRecordHref(
   if (!isAddressedType(type)) {
     // Reached only when a cell has NO `href` of its own (`resolveRecordHref` is `href || …`), so an
     // unknown type here means a caller forgot its URL or passed a mistyped type — the cell would
-    // silently lose its new-tab link. Development only; the cell still opens in place.
-    if (import.meta.env.DEV) {
-      console.warn(`defaultRecordHref: no URL rule for record type "${type}"; pass \`href\``)
-    }
+    // silently lose its new-tab link. It still opens in place.
+    reportOnce(
+      `record-href:type:${type}`,
+      `defaultRecordHref: no URL rule for record type "${type}"; pass \`href\``,
+    )
     return undefined
   }
   if (ADDRESSING[type] === 'key') {
@@ -66,7 +68,14 @@ export function defaultRecordHref(
     // its key flips <button> → <a>: see the first-render note on `RecordOpener`.
     return itemKey ? entityDetailPath.workItem(itemKey) : undefined
   }
-  return recordId ? entityDetailPath.portfolioItem(recordId) : undefined
+  if (recordId) return entityDetailPath.portfolioItem(recordId)
+  // An Epic / Feature with neither `href` nor `recordId`: typically a portfolio type that slipped
+  // through a `WorkItemType` cast at a work-item-only call site. Same silent loss, same report.
+  reportOnce(
+    `record-href:no-id:${type}`,
+    `defaultRecordHref: a "${type}" is addressed by id; pass \`recordId\` (or \`href\`)`,
+  )
+  return undefined
 }
 
 /**

@@ -60,6 +60,12 @@ describe('defaultRecordHref diagnostics and encoding', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('"Story"'))
   })
 
+  it('reports an Epic / Feature that reaches it with no id — a portfolio type through a work-item cast', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(defaultRecordHref('epic', 'EP-9')).toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('pass `recordId`'))
+  })
+
   it('does not warn for a type it addresses', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     defaultRecordHref('story', 'US-1')

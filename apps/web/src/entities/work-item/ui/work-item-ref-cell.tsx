@@ -35,7 +35,11 @@ interface WorkItemRefCellProps {
    * site that can render an Epic / Feature MUST pass it (or `href`), or the cell silently falls back
    * to an in-place button. `FeatureCell` passes `href`; the other callers — the detail sidebar's
    * parent pill, Team Status' work product, Quality's parent Story and the linked-items list — render
-   * only WORK ITEMS (each opens `/item/$itemKey`), which are addressed by key and need no id.
+   * only WORK ITEMS (each opens `/item/$itemKey`), which are addressed by key and need no id. That
+   * rests on `as WorkItemType` casts of API strings, so it is not enforced by the compiler: a
+   * portfolio type slipping through would get no URL — and `defaultRecordHref` then REPORTS it
+   * (dev warning, prod error) rather than dropping it silently. A grid that can render both kinds
+   * passes `recordId` unconditionally, as `ArtifactTable` does.
    */
   recordId?: string
   /**

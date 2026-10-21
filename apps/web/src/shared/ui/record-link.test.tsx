@@ -152,6 +152,20 @@ describe('RecordOpener refuses a URL that is not an in-app path', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('https://example.com/x'))
   })
 
+  it('reports one refused URL ONCE for the whole page, not once per cell', () => {
+    const warn = vi.mocked(console.warn)
+    render(
+      <>
+        {Array.from({ length: 5 }, (_, i) => (
+          <RecordOpener key={i} href="https://example.com/many" onOpen={() => {}}>
+            {`US-${i}`}
+          </RecordOpener>
+        ))}
+      </>,
+    )
+    expect(warn.mock.calls.filter(([m]) => String(m).includes('example.com/many'))).toHaveLength(1)
+  })
+
   it('warns once per refused URL, not on every re-render', () => {
     const warn = vi.mocked(console.warn)
     const { rerender } = render(
