@@ -167,6 +167,9 @@ export default defineConfig({
         'libs/platform/src/storage/storage.service.ts',
         'libs/platform/src/utils/lexorank.util.ts',
         'libs/shared-kernel/src/permissions.ts',
+        // First apps/api entry. The boot-time roster assert has an ordinary unit spec, and
+        // test/coverage-include.spec.ts excludes only test/ and apps/web — so it must be measured.
+        'apps/api/src/bootstrap/platform-admin-emails.ts',
       ],
       exclude: ['**/*.spec.ts'],
       // Ratchet: raise these incrementally as coverage improves, NEVER lower them.

@@ -9,6 +9,7 @@ import { CSRF_HEADER, CSRF_SECRET_COOKIE, requiresCsrfProtection } from '@platfo
 import { enableHealth, registerRequestTiming } from '@quynhonsemiconductor/platform-runtime';
 import { SseConnections, registerSseShutdown } from '@modules/notifications';
 import { assertEdgeClientIpEnv, enableCorrelationId } from '@quynhonsemiconductor/platform-http';
+import { assertPlatformAdminEmailsEnv } from './platform-admin-emails';
 import { SESSION_COOKIE } from '@platform/auth';
 import { isSessionBody, redactSessionTokens } from '@platform/http/session-token-redaction';
 
@@ -35,6 +36,10 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // on the first request. A bad key is refused HERE, at boot, naming the variable, rather than surfacing as a
   // quietly disabled feature on whichever request arrives first.
   assertEdgeClientIpEnv();
+  // The workspace-admin roster comes from the app bundle (platform-admin-emails key).
+  // API-only: the worker never receives it and must boot without it, so the check
+  // lives in this entrypoint, not in the shared env schema.
+  assertPlatformAdminEmailsEnv(config.get('PLATFORM_ADMIN_EMAILS'), config.get('NODE_ENV'));
   // Two independent switches, not one `isDev`. They used to share
   // `NODE_ENV !== 'production'`, which meant any environment that isn't literally
   // "production" — staging, preview, a mis-set task definition — silently shipped

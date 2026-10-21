@@ -353,9 +353,12 @@ export const EnvSchema = z
     SSO_JIT_ENABLED: booleanish(true),
     /**
      * Comma-separated SSO (Entra) emails auto-granted workspace_admin on first login.
-     * Example: "nghiavt@qnsc.vn,quangld@qnsc.vn"
+     * Example: "alice@example.test,bob@example.test"
      */
     PLATFORM_ADMIN_EMAILS: z.string().default(''),
+    // No schema-level requirement here ON PURPOSE: the worker shares this schema and
+    // never sees the roster (the bundle key is injected into the API only), and it must
+    // boot without it. The API asserts its own copy at boot — apps/api/bootstrap.
   })
   .superRefine((env, ctx) => {
     /**

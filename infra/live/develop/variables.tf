@@ -30,16 +30,6 @@ variable "alarm_emails" {
   default = ["devops@qnsc.vn"]
 }
 
-variable "platform_admin_emails" {
-  description = <<-EOT
-    Emails auto-granted workspace_admin on every SSO login. A variable rather than a
-    literal in the stack so the two environments can differ (and so adding a
-    colleague is a values change, not a module change).
-  EOT
-  type        = list(string)
-  default     = ["nghiavt@qnsc.vn", "quangld@qnsc.vn", "hieuvbm@qnsc.vn", "anhntn@qnsc.vn"]
-}
-
 // ── Public identifiers, held in git on purpose ────────────────────────────────
 // These are NOT secrets: an Entra tenant/client id appears in the browser's auth
 // redirect, a GitHub App id is public, and a Cloudflare account id identifies the

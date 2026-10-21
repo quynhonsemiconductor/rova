@@ -123,7 +123,6 @@ module "stack" {
   # qnsc.vn is the company tenant: those users are directory members on SSO, not B2B
   # guests — see the variable's own description for what this skips and unlocks.
   internal_email_domains = "qnsc.vn"
-  platform_admin_emails  = var.platform_admin_emails
 
   // Mail through Microsoft 365 (Graph): ON. The worker sends as noreply-rova-dev@qnsc.vn with the "Rova Dev Service" app (certificate only, no Entra
   // permissions; Exchange "Application Mail.Send" scoped to that one mailbox). The certificate is the standalone secret rova/develop/mail-graph-certificate.

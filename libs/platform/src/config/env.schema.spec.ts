@@ -324,3 +324,22 @@ describe('EnvSchema — EMAIL_PROVIDER=smtp (Mailpit, development only)', () => 
     expect(EnvSchema.safeParse(env({ ...smtp, MAIL_SMTP_PORT: '70000' })).success).toBe(false);
   });
 });
+
+describe('EnvSchema — platform admin roster', () => {
+  // The roster is NOT required at the schema level: the worker shares this schema and
+  // never receives the bundle key (it is injected into the API only), so production
+  // with an empty roster must still parse — the worker boots on it. Production also
+  // requires an https APP_BASE_URL; satisfy the unrelated rules so these assertions
+  // isolate the roster.
+  const prod = env({ NODE_ENV: 'production', APP_BASE_URL: 'https://rova.example' });
+
+  it('parses a production environment without the roster — the worker boots on it', () => {
+    expect(EnvSchema.safeParse(prod).success).toBe(true);
+  });
+
+  it('parses a production environment with the roster set — the API reads it', () => {
+    const result = EnvSchema.safeParse({ ...prod, PLATFORM_ADMIN_EMAILS: 'devops@qnsc.vn' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.PLATFORM_ADMIN_EMAILS).toBe('devops@qnsc.vn');
+  });
+});
