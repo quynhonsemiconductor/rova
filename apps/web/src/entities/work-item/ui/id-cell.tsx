@@ -67,7 +67,7 @@ export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
     return (
       <span className={cn('inline-flex', CELL_LAYOUT)} title={itemKey}>
         <TypeBadge type={type} />
-        <span className={`${KEY_CLASS} text-muted-foreground`}>{itemKey}</span>
+        <span className={cn(KEY_CLASS, 'text-muted-foreground')}>{itemKey}</span>
       </span>
     )
   }

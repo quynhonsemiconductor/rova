@@ -39,7 +39,8 @@ function isAddressedType(type: string): type is AddressedType {
  * `/item/` or `/test-case/`. The one copy of that rule, shared by every key-addressed cell.
  */
 export function pathForKey(key: string, build: (key: string) => string): string | undefined {
-  return key ? build(key) : undefined
+  // `trim`: a whitespace-only key (bad data) is no key either, not a dead `/item/%20`.
+  return key.trim() ? build(key) : undefined
 }
 
 /**

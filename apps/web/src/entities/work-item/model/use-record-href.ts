@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 import { reportOnce } from '@/shared/lib/report-once'
-import { recordHrefProblem, resolveRecordHref } from './record-href'
+import { defaultRecordHref, recordHrefProblem } from './record-href'
 
 /**
- * The URL an ID / reference cell renders (`resolveRecordHref`), and — from an EFFECT, so render
+ * The URL an ID / reference cell renders (its `href`, else `defaultRecordHref`), and — from an EFFECT, so render
  * stays pure, the same rule `RecordOpener` follows — a once-per-session report when a cell that
  * should have a URL got none (`recordHrefProblem`). `enabled: false` for a read-only cell, which
  * ignores the URL anyway and so has nothing to report.
@@ -29,5 +29,5 @@ export function useRecordHref({
   }, [problemKey, problemMessage])
   // An explicit `href` is authoritative whatever `enabled` says; `enabled` only mutes the DERIVED
   // URL and its report. (`||`: an empty `href` is no URL — `resolveRecordHref`'s rule.)
-  return href || (enabled ? resolveRecordHref(undefined, type, itemKey, recordId) : undefined)
+  return href || (enabled ? defaultRecordHref(type, itemKey, recordId) : undefined)
 }

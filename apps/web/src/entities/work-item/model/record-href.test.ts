@@ -35,6 +35,7 @@ describe('defaultRecordHref', () => {
 
   it.each([
     ['a key-addressed row with no key yet (an optimistic row)', 'story', '', 'wi-1'],
+    ['a key-addressed row whose key is only whitespace (bad data)', 'story', '  ', 'wi-1'],
     ['an id-addressed row with no id', 'feature', 'FE-1', undefined],
     ['a type the rule does not address', 'release', 'RL-1', 'rl-1'],
     // `hasOwn`, not `in`: an inherited property name is not a record kind.

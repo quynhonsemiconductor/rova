@@ -294,8 +294,11 @@ export function TrackingGrid({
       // new tab" cannot resolve the one row to two different records. An in-app path, so the
       // router navigates in place rather than reloading the document.
       const href = rowHref(row)
-      // No derivable URL (a kind the rule does not address) still opens — as a work item, the
-      // route every non-Feature row took before — rather than doing nothing.
+      // Defensive only: the API types `issueType` as feature | story | defect and `id` as a required
+      // uuid, so every row with a key gets a URL. Without one (an empty key, or a kind added to the
+      // API before this rule), the row still opens — as a work item, the route every non-Feature row
+      // took before — rather than doing nothing. (`navigate({ href })` with an in-app path is a normal
+      // router navigation: `tracking-grid.navigate-href.test.ts` runs it on a real router.)
       if (href) void navigate({ href })
       else void navigate({ to: '/item/$itemKey', params: { itemKey: row.itemKey } })
     },
