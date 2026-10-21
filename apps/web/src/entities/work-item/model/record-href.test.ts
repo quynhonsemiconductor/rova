@@ -82,6 +82,11 @@ describe('recordHrefProblem (what useRecordHref reports) and encoding', () => {
     expect(recordHrefProblem('feature', '  ')?.message).toContain('pass `recordId`')
   })
 
+  it('names an identifier-shaped type, digits included, so two such typos stay distinct', () => {
+    expect(recordHrefProblem('Story2')?.key).toBe('record-href:type:"Story2"')
+    expect(recordHrefProblem('Story3')?.key).not.toBe(recordHrefProblem('Story2')?.key)
+  })
+
   it('never copies an unexpected type string into the report — only its length', () => {
     const odd = 'contact me: a@b.example'
     const problem = recordHrefProblem(odd)

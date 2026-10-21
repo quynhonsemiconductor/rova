@@ -91,8 +91,9 @@ export interface ListResource<T> extends ResourceBase {
    * present, `rows` IS the query cache's array, which must not be mutated either.
    *
    * It used to be `T[]` to save a spread at helpers typed `T[]`; widening those helpers' parameters to
-   * `readonly` cost less than the runtime-only guarantee did. To reorder, use `toSorted(…)` (ES2023; returns a new array), or copy — and keep the result
-   * reference-stable either way (memoise it, e.g. inside `useMemo`): `[...rows].sort(…)` computed inline on
+   * `readonly` cost less than the runtime-only guarantee did. To reorder, copy — `[...rows].sort(…)`, the pattern the codebase uses (`toSorted` would
+   * type-check under the ES2023 lib, but Vite's default build target does not guarantee it at runtime
+   * and nothing polyfills it) — and keep the result reference-stable either way (memoise it, e.g. inside `useMemo`): `[...rows].sort(…)` computed inline on
    * every render hands a fresh reference to consumers like `useRowRerank` and reintroduces the
    * error-301 loop described on `NO_ROWS`.
    */

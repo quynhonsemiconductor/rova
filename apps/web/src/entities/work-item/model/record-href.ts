@@ -89,10 +89,10 @@ export function recordHrefProblem(
   recordId?: string,
 ): { key: string; message: string } | undefined {
   if (!isAddressedType(type)) {
-    // The type is named only when it LOOKS like one (a short identifier, e.g. a casing slip
-    // like `Story`); anything else is reported by length alone, so an unexpected API string can
+    // The type is named only when it LOOKS like one (a short identifier — letters, digits, `_`,
+    // `-` — e.g. a casing slip like `Story` or a `Story2`); anything else is reported by length alone, so an unexpected API string can
     // neither land in a log line nor grow the de-duplication key space.
-    const named = /^[A-Za-z_-]{1,32}$/.test(type)
+    const named = /^[A-Za-z0-9_-]{1,32}$/.test(type)
       ? `"${type}"`
       : `(unrecognized, ${type.length} chars)`
     return {

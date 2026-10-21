@@ -47,6 +47,9 @@ function RecordLink({
       className={className}
       // A link is draggable by default, which would fight the row's rank drag handle.
       draggable={false}
+      // Enter opens it; Space deliberately does NOT (it scrolls). A `link` activates on Enter only —
+      // making Space open it too would make it behave like a button while announcing a link. The
+      // in-place `<button>` fallback keeps the button's own Enter + Space.
       onClick={(e) => {
         e.stopPropagation()
         if (isNewTabClick(e)) return
