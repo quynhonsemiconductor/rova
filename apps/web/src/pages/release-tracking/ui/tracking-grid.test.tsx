@@ -180,3 +180,11 @@ describe('TrackingGrid', () => {
     expect(screen.getByText('empty.direct.title')).toBeInTheDocument()
   })
 })
+
+// US-120: a Feature row is addressed by id (`/portfolio/<id>`); an Unparented work item by its key.
+describe('TrackingGrid — ID link', () => {
+  it('links a Feature row to its portfolio detail page by id', () => {
+    renderGrid()
+    expect(screen.getByTitle('FE-1').getAttribute('href')).toBe('/portfolio/f-1')
+  })
+})

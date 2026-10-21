@@ -95,3 +95,12 @@ describe('AllocationRow — the Allocation cell', () => {
     expect(screen.getByText('0')).toBeTruthy()
   })
 })
+
+// US-120: the ID cell is a real link to the Feature's portfolio detail (by id), so Ctrl/Cmd+click and
+// "Open link in new tab" work. Dropping `href` would silently fall back to an in-place-only button.
+describe('AllocationRow — ID link', () => {
+  it('links the Feature key to its portfolio detail page', () => {
+    renderRow()
+    expect(screen.getByTitle('FE-1').getAttribute('href')).toBe('/portfolio/fe-1')
+  })
+})
