@@ -39,8 +39,10 @@ function isAddressedType(type: string): type is AddressedType {
  * `/item/` or `/test-case/`. The one copy of that rule, shared by every key-addressed cell.
  */
 export function pathForKey(key: string, build: (key: string) => string): string | undefined {
-  // `trim`: a whitespace-only key (bad data) is no key either, not a dead `/item/%20`.
-  return key.trim() ? build(key) : undefined
+  // Trimmed: a whitespace-only key (bad data) is no key, and a padded one would otherwise build a
+  // dead `/item/%20US-5%20` — so the URL is built from the trimmed value too.
+  const trimmed = key.trim()
+  return trimmed ? build(trimmed) : undefined
 }
 
 /**

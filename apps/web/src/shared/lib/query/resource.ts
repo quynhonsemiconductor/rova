@@ -83,10 +83,11 @@ export interface ListResource<T> extends ResourceBase {
    * `reverse`, `push`, `pop`, `shift`, `unshift`, `splice`, `fill` or `copyWithin` (`rows.sort(…)`
    * is `TS2339`). Whenever there is no data —
    * loading, error, disabled, or `emptyListResource()` — `rows` is the shared FROZEN `NO_ROWS` array
-   * (see there for why it must keep one reference), and a WRITE (`push`, `splice`, `fill` …) would
-   * throw a `TypeError` only in those states, which a fixture that resolves data never reaches. `sort`
-   * on that EMPTY array writes nothing and never throws, so against `sort` the only guard is the
-   * compile error above. When data is
+   * (see there for why it must keep one reference). On that EMPTY frozen array only the
+   * LENGTH-changing writes throw a `TypeError` — `push`, `pop`, `shift`, `unshift`, `splice` —
+   * and only in those states, which a fixture that resolves data never reaches. `sort`, `reverse`,
+   * `fill` and `copyWithin` write nothing there and never throw, so against them the only guard is
+   * the compile error above. When data is
    * present, `rows` IS the query cache's array, which must not be mutated either.
    *
    * It used to be `T[]` to save a spread at helpers typed `T[]`; widening those helpers' parameters to

@@ -29,6 +29,8 @@ describe('defaultRecordHref', () => {
     ['story', 'US-1', 'wi-1', '/item/US-1'],
     ['feature', 'FE-1', 'pf-1', '/portfolio/pf-1'],
     ['epic', 'EP-1', 'pf-2', '/portfolio/pf-2'],
+    // A padded key (bad data) builds from the trimmed value, never `/item/%20US-5%20`.
+    ['story', ' US-5 ', undefined, '/item/US-5'],
   ])('addresses a %s (%s, id %s) at %s', (type, key, id, expected) => {
     expect(defaultRecordHref(type, key, id)).toBe(expected)
   })
