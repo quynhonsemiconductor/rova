@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { isNewTabClick } from '@/shared/lib/new-tab-click'
+import { cn } from '@/shared/lib/utils'
 
 /**
  * RecordLink — a real `<a href>` to a record's detail page that still lets the caller decide what
@@ -56,13 +57,13 @@ function RecordLink({
 }
 
 /**
- * The reset every record opener starts from, so a `<a>` and its `<button>` fallback render the same
- * and the ID / reference cells cannot drift: no border, background or padding, no underline until
- * hovered (`group-hover` on the label), left-aligned text, a pointer cursor. Cells add only their
- * own layout (flex vs inline-flex, gap, width). `TestCaseIdCell` deliberately uses the Button link
- * variant instead.
+ * The reset every record opener starts from: no border, background or padding, no underline until
+ * hovered (`group-hover` on the label, hence `group`), left-aligned text, a pointer cursor. Applied
+ * by `RecordOpener` ITSELF to both the `<a>` and the `<button>` fallback, so the two cannot drift
+ * and no cell can forget it; a caller's `className` comes after it and wins any conflict
+ * (tailwind-merge), which is how `TestCaseIdCell` keeps the Button link look.
  */
-export const RECORD_OPENER_RESET =
+const RECORD_OPENER_RESET =
   'group cursor-pointer border-none bg-transparent p-0 text-left no-underline'
 
 /**
@@ -110,13 +111,14 @@ export function RecordOpener({
   ariaLabel?: string
   children: ReactNode
 }) {
+  const classes = cn(RECORD_OPENER_RESET, className)
   if (href && isInAppPath(href)) {
     return (
       <RecordLink
         href={href}
         onOpen={onOpen}
         title={title}
-        className={className}
+        className={classes}
         ariaLabel={ariaLabel}
       >
         {children}
@@ -134,7 +136,7 @@ export function RecordOpener({
       onAuxClick={(e) => e.stopPropagation()}
       title={title}
       aria-label={ariaLabel}
-      className={className}
+      className={classes}
     >
       {children}
     </button>

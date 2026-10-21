@@ -540,6 +540,8 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
         type="project"
         itemKey={p.key}
         onOpen={() => ctx.onOpen(p.key)}
+        // Projects are addressed by KEY (`/projects/$projectKey`), exactly where `ctx.onOpen` goes;
+        // `defaultRecordHref` covers only work and portfolio items, so the URL is passed here.
         href={entityDetailPath.project(p.key)}
       />
     ),

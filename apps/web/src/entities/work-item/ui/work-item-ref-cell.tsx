@@ -1,8 +1,7 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { resolveRecordHref } from '@/entities/work-item/model/record-href'
 import type { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
-import { RECORD_OPENER_RESET, RecordOpener } from '@/shared/ui/record-link'
-import { cn } from '@/shared/lib/utils'
+import { RecordOpener } from '@/shared/ui/record-link'
 
 interface WorkItemRefCellProps {
   /**
@@ -109,7 +108,8 @@ export function WorkItemRefCell({
   // free text of unbounded length, and every grid that shows it uses `min-h-*` rows
   // that can grow. `items-start` keeps the type glyph on the first line instead of
   // floating to the vertical middle of a two-line title.
-  const inlineClass = cn(RECORD_OPENER_RESET, 'inline-flex max-w-full items-start gap-1.5')
+  // `RecordOpener` supplies the reset (incl. `group` for the hover underline); this is only layout.
+  const inlineClass = 'inline-flex max-w-full items-start gap-1.5'
   const inlineContent = (
     <>
       <TypeBadge type={type} size={16} />

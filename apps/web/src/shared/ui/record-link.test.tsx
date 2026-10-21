@@ -149,3 +149,43 @@ describe('RecordOpener refuses a URL that is not an in-app path', () => {
     },
   )
 })
+
+describe('RecordOpener styling', () => {
+  it("gives the link and the button fallback the SAME reset, under the caller's own classes", () => {
+    const { rerender } = render(
+      <RecordOpener href="/item/US-1" onOpen={() => {}} className="flex gap-1">
+        US-1
+      </RecordOpener>,
+    )
+    const linkClasses = screen.getByRole('link').classList
+    rerender(
+      <RecordOpener href={undefined} onOpen={() => {}} className="flex gap-1">
+        US-1
+      </RecordOpener>,
+    )
+    const buttonClasses = screen.getByRole('button').classList
+    for (const cls of [
+      'group',
+      'cursor-pointer',
+      'border-none',
+      'bg-transparent',
+      'p-0',
+      'flex',
+      'gap-1',
+    ]) {
+      expect(linkClasses.contains(cls)).toBe(true)
+      expect(buttonClasses.contains(cls)).toBe(true)
+    }
+  })
+
+  it("lets a caller's class override the reset (tailwind-merge)", () => {
+    render(
+      <RecordOpener href="/item/US-1" onOpen={() => {}} className="p-2">
+        US-1
+      </RecordOpener>,
+    )
+    const classes = screen.getByRole('link').classList
+    expect(classes.contains('p-2')).toBe(true)
+    expect(classes.contains('p-0')).toBe(false)
+  })
+})
