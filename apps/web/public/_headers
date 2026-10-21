@@ -20,6 +20,14 @@
 # connect-src blob: covers the rich-text paste preview (createObjectURL, then fetch of the
 # blob URL before upload); worker-src blob: covers workers constructed from inline blobs.
 #
+# script-src has NO 'unsafe-inline': the built index.html carries no inline script (Vite
+# emits module scripts by URL). The Entra redirect is a full-page NAVIGATION, never a
+# fetch, so login.microsoftonline.com / login.microsoft.com / graph.microsoft.com appear
+# nowhere in connect-src — the SPA holds no tokens and calls no Microsoft API directly.
+# Google Fonts is gone from style/font-src: the app renders no Google Fonts (kept only
+# by inertia from the old meta). form-action keeps login.microsoftonline.com: the SSO
+# redirect POSTs a form there.
+#
 # frame-ancestors and X-Frame-Options are here, as HEADERS — neither does anything in a
 # <meta> tag, which is why they were never in the removed one.
 
@@ -29,7 +37,7 @@
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://rova-assets-dev.qnsc.vn https://rova-assets.qnsc.vn; connect-src 'self' blob: https://*.r2.cloudflarestorage.com https://login.microsoftonline.com https://login.microsoft.com https://graph.microsoft.com; worker-src blob:; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://login.microsoftonline.com;
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://rova-assets-dev.qnsc.vn https://rova-assets.qnsc.vn; connect-src 'self' blob: https://*.r2.cloudflarestorage.com; worker-src blob:; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://login.microsoftonline.com;
   Cache-Control: no-cache
 
 # Content-hashed filenames: the bytes behind a given URL never change.
