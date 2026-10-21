@@ -61,7 +61,6 @@
     "@fastify/cookie": "^11.0.0",
     "@fastify/csrf-protection": "^8.0.0",
     "@fastify/helmet": "^13.0.2",
-    "@fastify/multipart": "^10.0.0",
     "@fastify/static": "^10.1.2",
     "@nestjs/common": "^11.2.5",
     "@nestjs/config": "^4.0.0",

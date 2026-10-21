@@ -58,6 +58,10 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
 # Install production-only packages — this slim node_modules goes into the
 # final API and worker images.  Runs in parallel with the builder stage.
 # ─────────────────────────────────────────────────────────────────────────────
+FROM alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 AS rds-ca
+ADD https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /bundle.pem
+RUN chmod 0644 /bundle.pem
+
 FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS prod-deps
 ARG PNPM_VERSION
 
@@ -130,6 +134,16 @@ RUN apk upgrade --no-cache \
 
 # Runtime tunables — override via docker run -e or Kubernetes env
 ENV NODE_ENV=production
+# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
+# default points at the baked file; a task definition may override it (on-prem:
+# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
+# CAs over time and a stale local copy would fail verification against new
+# instances instead of being silently wrong. Own stage so it is fetched once and
+# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
+# (nestjs/migrator) must read it.
+COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
+ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+
 ENV NODE_OPTIONS="--max-old-space-size=512"
 ENV PORT=3000
 ENV HOST=0.0.0.0
@@ -172,6 +186,16 @@ RUN apk upgrade --no-cache \
     && rm -rf /var/cache/apk/*
 
 ENV NODE_ENV=production
+# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
+# default points at the baked file; a task definition may override it (on-prem:
+# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
+# CAs over time and a stale local copy would fail verification against new
+# instances instead of being silently wrong. Own stage so it is fetched once and
+# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
+# (nestjs/migrator) must read it.
+COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
+ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+
 ENV NODE_OPTIONS="--max-old-space-size=256"
 
 WORKDIR /app
@@ -207,6 +231,16 @@ RUN apk upgrade --no-cache \
     && rm -rf /var/cache/apk/*
 
 ENV NODE_ENV=production
+# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
+# default points at the baked file; a task definition may override it (on-prem:
+# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
+# CAs over time and a stale local copy would fail verification against new
+# instances instead of being silently wrong. Own stage so it is fetched once and
+# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
+# (nestjs/migrator) must read it.
+COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
+ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+
 
 WORKDIR /app
 

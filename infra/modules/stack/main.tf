@@ -156,7 +156,7 @@ locals {
     }, {
     # There is deliberately NO jwt-public here. `env.schema.ts` derives the public key
     # from this one, because an ES256 public key is a pure function of its private half and
-    # rally publishes no JWKS. Storing both allowed the one failure a key pair cannot
+    # rova publishes no JWKS. Storing both allowed the one failure a key pair cannot
     # otherwise have — a mismatched pair, where signing succeeds and every verification
     # rejects — which nothing detected, since both halves were individually valid to
     # Terraform, to the deploy preflight and to the schema. Do not add it back.
@@ -338,7 +338,7 @@ module "cache" {
 # export into a void. That is what makes turning telemetry on a one-line change
 # per environment rather than a migration.
 # ── Cloudflare Tunnel ─────────────────────────────────────────────────────────
-# Created by Terraform via the shared cf-tunnel module. Both of rally's tunnels predate
+# Created by Terraform via the shared cf-tunnel module. Both of rova's tunnels predate
 # it and were made in the dashboard, so live/*/main.tf carries an `import` block that
 # adopts each one — the module ignores `secret` precisely so that adoption is a no-op
 # rather than a rotation. Rotating the secret would change the connector token, and every
@@ -352,20 +352,20 @@ module "tunnel" {
 
   // ── STEP ONE OF TWO: ADOPT THE TUNNEL, CHANGE NOTHING ─────────────────────
   // `hostname` is deliberately left unset, so this module creates NO configuration
-  // resource and rally keeps the routing it has today.
+  // resource and rova keeps the routing it has today.
   //
   // That restraint is the whole point. Cloudflare's tunnel-configuration API is a
   // whole-document PUT, so writing a partial rule set silently discards anything the
   // live configuration holds that this file does not reproduce — against a tunnel that
   // is currently carrying traffic, on a hostname nobody has compared rule-by-rule.
   //
-  // config_src is left UNSET, because that is what rally's tunnels actually have. The
+  // config_src is left UNSET, because that is what rova's tunnels actually have. The
   // first plan of this change proved it, and proved why it matters:
   //
   //   + config_src = "cloudflare" # forces replacement
   //
   // Writing the attribute would have destroyed and recreated a tunnel currently serving
-  // rally-api-dev.qnsc.vn — new UUID, new CNAME target, new connector token. The plan is
+  // rally-api-dev.qnsc.vn (legacy physical hostname, do not rename) — new UUID, new CNAME target, new connector token. The plan is
   // the only place that was visible before it happened.
   //
   // STEP TWO IS NOW AVAILABLE, PER ENVIRONMENT, via `tunnel_routing_managed`.
@@ -374,7 +374,7 @@ module "tunnel" {
   // rule, so `cloudflared` connected, reported healthy and returned 503 to every request
   // — `No ingress rules were defined in provided config (if any) nor from the cli`. The
   // post-deploy readiness check caught it, but nothing in the pipeline could have created
-  // the rule, because rally adopted its tunnels and left routing outside Terraform. That
+  // the rule, because rova adopted its tunnels and left routing outside Terraform. That
   // is a step someone has to remember, and on production nobody did.
   //
   // Still OPT-IN, and still off for develop, because the configuration API is a
@@ -760,7 +760,8 @@ locals {
 # ── VOLUME GATE: why four of these queries end in `and on() (... >= N)` ───────
 #
 # A PERCENTILE OVER A HANDFUL OF SAMPLES IS NOT A PERCENTILE, and neither is a
-# ratio. Production paged on `rally-production-http-p99-latency` with a value of
+# ratio. Production paged on `rally-production-http-p99-latency` (legacy physical
+# alert-rule name, do not rename) with a value of
 # A=10000 and resolved at A=48.5. Neither number described the service:
 #
 #   * 10000 is not a latency at all. It was the largest finite bucket boundary of
@@ -1136,7 +1137,8 @@ data "grafana_data_source" "tempo" {
 # intended.
 #
 # Fixed by creating it ONCE, centrally, in qnsc-infra/live/observability
-# (`grafana_folder.rally_dashboards`) — same fix as `alerts_folder_uid`
+# (`grafana_folder.rally_dashboards` — legacy physical identifiers "grafana_folder.
+# rally_dashboards" and the "Rally" folder title, do not rename) — same fix as `alerts_folder_uid`
 # already being a plain resource reference there, not a var that can be
 # left unset. `var.grafana_alerting.product_dashboards_folder_uid` below
 # is that folder's real UID.
@@ -1211,7 +1213,7 @@ resource "grafana_dashboard" "overview" {
     # backend-deploy.yml's `annotate-deploy` job posts these via Grafana's
     # own annotation API after each successful deploy, tagged so ONLY this
     # product's THIS environment's deploys show here (a develop dashboard
-    # showing prod's deploy markers, or rally's dashboard showing another
+    # showing prod's deploy markers, or rova's dashboard showing another
     # product's, would misattribute exactly the correlation this exists to
     # enable). Built-in "-- Grafana --" datasource — Grafana's own
     # annotation store, not a Loki/Prometheus query.
@@ -1358,7 +1360,8 @@ resource "grafana_dashboard" "overview" {
         # screenshot review, before prod — an ungrouped query returns one
         # series PER RUNNING TASK (service_instance_id differs across
         # replicas/rollouts even though service_name doesn't), which
-        # rendered as duplicate-looking "rally-api in_use" legend entries
+        # rendered as duplicate-looking "rally-api in_use" (legacy physical service
+        # name, do not rename) legend entries
         # instead of one line per service.
         targets = [
           {
@@ -1516,7 +1519,7 @@ resource "grafana_dashboard" "runtime" {
     # backend-deploy.yml's `annotate-deploy` job posts these via Grafana's
     # own annotation API after each successful deploy, tagged so ONLY this
     # product's THIS environment's deploys show here (a develop dashboard
-    # showing prod's deploy markers, or rally's dashboard showing another
+    # showing prod's deploy markers, or rova's dashboard showing another
     # product's, would misattribute exactly the correlation this exists to
     # enable). Built-in "-- Grafana --" datasource — Grafana's own
     # annotation store, not a Loki/Prometheus query.
@@ -1874,6 +1877,7 @@ module "api" {
   #
   #   AccessDeniedException: assumed-role/rally-develop-api-exec is not authorized to
   #   perform: secretsmanager:GetSecretValue on .../rally/develop/tunnel-token-tf-*
+  #   (quoted verbatim from the live error — legacy physical role/secret names, do not rename)
   #
   # The apply that introduced the secret succeeded and wired the sidecar to it, so
   # nothing failed until the next task START — which then could not, the circuit breaker
@@ -2529,17 +2533,17 @@ module "observability" {
   # module silently skips the two user-facing ALB alarms.
   alb_arn = try(data.terraform_remote_state.runtime.outputs.alb_arn, "")
 
-  # Node mode only, and only rally's OWN dedicated node (never the shared node in
+  # Node mode only, and only rova's OWN dedicated node (never the shared node in
   # the runtime layer — see cache_cluster_id's own description for why: a shared
   # node's alarms belong where the node is created, not in one tenant's stack).
   # enable_cache_alarms is a SEPARATE, plan-time-known condition from
   # cache_cluster_id's value: on a from-scratch environment the cache node's
   # cluster_id output is unknown until apply, and a count gated on that directly
   # is a hard OpenTofu error, not a deferred plan (opshub hit this live; ported
-  # back here before rally ever exercises the same first-apply path).
+  # back here before rova ever exercises the same first-apply path).
   enable_cache_alarms = var.cache.enabled && !var.cache.shared && var.cache.mode == "node"
   cache_cluster_id    = var.cache.enabled && !var.cache.shared && var.cache.mode == "node" ? module.cache[0].cluster_id : ""
-  # `identifier` (rally-prod), NOT `instance_id` (db-F35NKOG…). CloudWatch publishes RDS
+  # `identifier` (rally-prod — legacy physical name, do not rename), NOT `instance_id` (db-F35NKOG…). CloudWatch publishes RDS
   # metrics under the DBInstanceIdentifier dimension, and `aws_db_instance.id` returns the
   # RESOURCE id on AWS provider 5.x — so this pointed at a dimension value that does not
   # exist. Six alarms sat in INSUFFICIENT_DATA permanently: RDS CPU, connections and free
@@ -2551,8 +2555,8 @@ module "observability" {
 
   # Drives BOTH per-target-group alarms: response latency and UnHealthyHostCount.
   # Scoped by target group because the ALB is shared with other products — a
-  # load-balancer-wide dimension aggregated rally and opshub into one p95 and paged
-  # under a rally name for traffic that was not always rally's.
+  # load-balancer-wide dimension aggregated rova and opshub into one p95 and paged
+  # under a legacy rally name for traffic that was not always rova's.
   #
   # Passed unconditionally now. It used to be gated on `monitor_target_health`, which
   # meant develop — where the cost-saver makes zero tasks a normal state — gave up

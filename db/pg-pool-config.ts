@@ -9,12 +9,15 @@
  * all unreachable. If RDS IAM auth is ever wanted again, it is in git history (`db/pg-iam.ts`).
  */
 import { resolveDatabaseUrl, type DatabaseUrlParts } from './database-url';
-import { pgOptions } from './pg-ssl';
+import { pgOptions, type PgTlsInput } from './pg-ssl';
 
 export type PoolConnectionConfig = ReturnType<typeof pgOptions>;
 
-export function resolvePoolConfig(env: DatabaseUrlParts = process.env): PoolConnectionConfig {
-  return pgOptions(resolveDatabaseUrl(env));
+/** The TLS input rides alongside the URL parts: `DATABASE_SSL_CA` opts into verification. */
+export type DatabaseConfigEnv = DatabaseUrlParts & { DATABASE_SSL_CA?: string; NODE_ENV?: string };
+
+export function resolvePoolConfig(env: DatabaseConfigEnv = process.env): PoolConnectionConfig {
+  return pgOptions(resolveDatabaseUrl(env), tlsInput(env));
 }
 
 /**
@@ -26,9 +29,13 @@ export function resolvePoolConfig(env: DatabaseUrlParts = process.env): PoolConn
  * Note which role that is: the deployed migrator's `DATABASE_USER` is `<product>_migrate`, never the application
  * role, whose `statement_timeout` would kill a long migration and whose rights do not include DDL.
  */
+function tlsInput(env: { DATABASE_SSL_CA?: string; NODE_ENV?: string }): PgTlsInput {
+  return { caFile: env.DATABASE_SSL_CA, isProduction: env.NODE_ENV === 'production' };
+}
+
 export function resolveMigrationPoolConfig(
-  env: DatabaseUrlParts & { DATABASE_MIGRATION_URL?: string } = process.env,
+  env: DatabaseConfigEnv & { DATABASE_MIGRATION_URL?: string } = process.env,
 ): PoolConnectionConfig {
-  if (env.DATABASE_MIGRATION_URL) return pgOptions(env.DATABASE_MIGRATION_URL);
+  if (env.DATABASE_MIGRATION_URL) return pgOptions(env.DATABASE_MIGRATION_URL, tlsInput(env));
   return resolvePoolConfig(env);
 }
