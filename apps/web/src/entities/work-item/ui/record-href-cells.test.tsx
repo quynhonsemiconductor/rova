@@ -26,6 +26,10 @@ describe('defaultRecordHref', () => {
     expect(defaultRecordHref('story', 'US-1', 'wi-1')).toBe('/item/US-1')
     expect(defaultRecordHref('release', 'RL-1', 'rl-1')).toBeUndefined()
   })
+
+  it('gives a key-addressed row with no key yet (an optimistic row) no URL, never a bare /item/', () => {
+    expect(defaultRecordHref('story', '')).toBeUndefined()
+  })
 })
 
 describe('IdCell / WorkItemRefCell carry the record URL', () => {
