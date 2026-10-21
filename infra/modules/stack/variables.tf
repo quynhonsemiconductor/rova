@@ -180,6 +180,7 @@ variable "platform_admin_emails" {
   description = "Emails auto-granted workspace_admin on every SSO login."
   type        = list(string)
   default     = []
+  sensitive   = true
 }
 
 variable "email_provider" {

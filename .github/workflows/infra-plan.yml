@@ -69,5 +69,6 @@ jobs:
       tf_secret_vars_json: |
         {
           "cloudflare_api_token": "${{ secrets.CLOUDFLARE_API_TOKEN }}",
-          "grafana_alerting_auth": "${{ secrets.GRAFANA_ALERTS_TOKEN }}"
+          "grafana_alerting_auth": "${{ secrets.GRAFANA_ALERTS_TOKEN }}",
+          "platform_admin_emails": "${{ secrets.ROVA_PLATFORM_ADMIN_EMAILS }}"
         }

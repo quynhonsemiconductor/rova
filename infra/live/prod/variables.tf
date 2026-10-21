@@ -37,11 +37,15 @@ variable "platform_admin_emails" {
     colleague is a values change, not a module change).
   EOT
   type        = list(string)
-  # The real roster names staff, so it stays out of git: set it in terraform.tfvars
-  # (git-ignored) or in the ROVA_PLATFORM_ADMIN_EMAILS Actions variable, which
-  # infra-apply.yml passes as TF_VAR_platform_admin_emails. Empty default = the
-  # deploy silently grants nobody until the roster is set.
-  default     = []
+  sensitive   = true
+  # The roster is the ROVA_PLATFORM_ADMIN_EMAILS Actions SECRET (masked in logs),
+  # passed to plan and apply as TF_VAR_platform_admin_emails. Sensitive so plan
+  # output redacts it; required, because an empty list would silently remove
+  # every workspace admin.
+  validation {
+    condition     = length(var.platform_admin_emails) > 0
+    error_message = "platform_admin_emails must be a non-empty list of email addresses (the ROVA_PLATFORM_ADMIN_EMAILS Actions secret); an empty list would silently remove every workspace admin."
+  }
 }
 
 // ── Public identifiers, held in git on purpose ────────────────────────────────
