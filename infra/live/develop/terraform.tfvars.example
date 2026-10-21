@@ -5,9 +5,5 @@
 
 # Microsoft Entra (Azure AD) SSO — optional; leave empty ("") to disable SSO
 # Find in Azure Portal → App registrations → your app → Overview
-# The staff roster auto-granted workspace_admin on SSO login names real people —
-# fill it in here (this file is git-ignored), never in variables.tf.
-platform_admin_emails = ["devops@qnsc.vn"]
-
 entra_tenant_id = ""
 entra_client_id = ""

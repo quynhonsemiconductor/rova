@@ -30,24 +30,6 @@ variable "alarm_emails" {
   default = ["devops@qnsc.vn"]
 }
 
-variable "platform_admin_emails" {
-  description = <<-EOT
-    Emails auto-granted workspace_admin on every SSO login. A variable rather than a
-    literal in the stack so the two environments can differ (and so adding a
-    colleague is a values change, not a module change).
-  EOT
-  type        = list(string)
-  sensitive   = true
-  # The roster is the ROVA_PLATFORM_ADMIN_EMAILS Actions SECRET (masked in logs),
-  # passed to plan and apply as TF_VAR_platform_admin_emails. Sensitive so plan
-  # output redacts it; required, because an empty list would silently remove
-  # every workspace admin.
-  validation {
-    condition     = length(var.platform_admin_emails) > 0
-    error_message = "platform_admin_emails must be a non-empty list of email addresses (the ROVA_PLATFORM_ADMIN_EMAILS Actions secret); an empty list would silently remove every workspace admin."
-  }
-}
-
 // ── Public identifiers, held in git on purpose ────────────────────────────────
 // These are NOT secrets: an Entra tenant/client id appears in the browser's auth
 // redirect, a GitHub App id is public, and a Cloudflare account id identifies the

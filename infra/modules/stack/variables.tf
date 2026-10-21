@@ -176,13 +176,6 @@ variable "cache" {
   }
 }
 
-variable "platform_admin_emails" {
-  description = "Emails auto-granted workspace_admin on every SSO login."
-  type        = list(string)
-  default     = []
-  sensitive   = true
-}
-
 variable "email_provider" {
   description = <<-EOT
     Which transport sends mail: "graph" sends through Microsoft 365 (Graph `sendMail`) from `mail_graph_sender`, "ses" uses this

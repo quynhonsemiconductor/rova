@@ -165,8 +165,14 @@ locals {
     # NOTE: give this a value BEFORE the next app deploy — COOKIE_SECRET is required at
     # startup, so a task wired to an empty secret cannot boot (a failed deploy plus
     # rollback, not a silent downgrade, which is the intent).
-    "cookie-secret"       = "Cookie signing secret (distinct from csrf-secret)"
-    "entra-client-secret" = "Microsoft Entra confidential-client secret (sign-in app; the worker's Graph guest invite reuses it until it moves to the Service app)"
+    "cookie-secret" = "Cookie signing secret (distinct from csrf-secret)"
+    # Comma-separated emails auto-granted workspace_admin on SSO login. API only. The
+    # owner adds the KEY to <product>/<env>/app by hand (it names staff, so it is not
+    # in git and Terraform never sets it); until the key exists the injected task
+    # cannot start, and the API also refuses to boot on an empty value — loud, never
+    # silent.
+    "platform-admin-emails" = "Comma-separated emails auto-granted workspace_admin on SSO login (API only)"
+    "entra-client-secret"   = "Microsoft Entra confidential-client secret (sign-in app; the worker's Graph guest invite reuses it until it moves to the Service app)"
     # identity 8 (Better Auth): signs the session cookie and encrypts what it stores. API only; rotating it signs everyone out.
     # A KEY of the app bundle, absent until the owner puts a value in; injected into the API only once `better_auth_secret_set`.
     "better-auth-secret" = "Identity 8 (Better Auth) cookie-signing and encryption secret, 32+ characters (openssl rand -base64 48). API only. Not the cookie-secret, not the csrf-secret."
@@ -1923,6 +1929,9 @@ module "api" {
     # non-secret and passed as plain env below; the app composes the URL.
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    # Fail-closed on purpose: empty or absent, the API refuses to boot (env.schema
+    # superRefine) rather than silently granting nobody workspace_admin.
+    { name = "PLATFORM_ADMIN_EMAILS", secret_arn = module.secrets.secret_arns["platform-admin-emails"] },
     { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
     # `JWT_PRIVATE_KEY` above and `ENTRA_REDIRECT_URI` below are identity 7's. The image no longer reads them; they stay bound so that
@@ -1999,7 +2008,9 @@ module "api" {
     # granted GetSecretValue on it via task_secret_arns below.
     { name = "IDENTITY_HOME_SECRET_REF", value = module.secrets.secret_arns["entra-client-secret"] },
     # Comma-separated emails auto-granted workspace_admin on every SSO login
-    { name = "PLATFORM_ADMIN_EMAILS", value = join(",", var.platform_admin_emails) },
+    # PLATFORM_ADMIN_EMAILS is NOT here: it is a KEY of the app bundle, injected from
+    # it in the API's secrets list below (fail-closed: the API refuses to boot without
+    # it, and a bundle without the key fails the task at start — see the map entry).
     # Messaging — SQS queue URLs injected at deploy time from module outputs
     # Attachments object storage — Cloudflare R2 (S3-compatible) from the platform
     # storage-dev stack. Bucket name still travels as S3_ATTACHMENTS_BUCKET; the

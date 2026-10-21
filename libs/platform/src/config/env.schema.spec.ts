@@ -324,3 +324,21 @@ describe('EnvSchema — EMAIL_PROVIDER=smtp (Mailpit, development only)', () => 
     expect(EnvSchema.safeParse(env({ ...smtp, MAIL_SMTP_PORT: '70000' })).success).toBe(false);
   });
 });
+
+describe('EnvSchema — platform admin roster', () => {
+  it('refuses an empty roster outside local development and the test suite', () => {
+    // Production also requires an https APP_BASE_URL; satisfy the unrelated rules so
+    // these assertions isolate the roster.
+    const prod = env({ NODE_ENV: 'production', APP_BASE_URL: 'https://rova.example' });
+    expect(EnvSchema.safeParse(prod).success).toBe(false);
+    expect(EnvSchema.safeParse(prod).error?.issues[0]?.path).toEqual(['PLATFORM_ADMIN_EMAILS']);
+    expect(EnvSchema.safeParse({ ...prod, PLATFORM_ADMIN_EMAILS: 'devops@qnsc.vn' }).success).toBe(
+      true,
+    );
+  });
+
+  it('still allows local development and the test suite to omit the roster', () => {
+    expect(EnvSchema.safeParse(env({ NODE_ENV: 'development' })).success).toBe(true);
+    expect(EnvSchema.safeParse(env({ NODE_ENV: 'test' })).success).toBe(true);
+  });
+});

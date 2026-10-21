@@ -104,7 +104,6 @@ module "stack" {
 
   // Never seed demo data into production.
   seed_on_deploy        = false
-  platform_admin_emails = var.platform_admin_emails
 
   // Mail through Microsoft 365 (Graph): STAGED, NOT SWITCHED ON. `email_provider` stays at the module default ("ses") until the owner has done
   // docs/runbooks/mail-graph.md for this environment; the cut-over is then a PR setting email_provider = "graph",
