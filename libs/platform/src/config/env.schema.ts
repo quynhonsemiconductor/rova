@@ -356,21 +356,9 @@ export const EnvSchema = z
      * Example: "alice@example.test,bob@example.test"
      */
     PLATFORM_ADMIN_EMAILS: z.string().default(''),
-  })
-  .superRefine((env, ctx) => {
-    // Deployed environments grant workspace_admin on SSO login by this roster; an
-    // empty value would silently grant nobody. Local development and the test suite
-    // (which set their own fixtures) may omit it — the same exemption identity uses.
-    // Fail-closed to match the ECS wiring: the value arrives from the app bundle's
-    // platform-admin-emails key, and a task without it never starts.
-    if (!env.PLATFORM_ADMIN_EMAILS && !['development', 'test'].includes(env.NODE_ENV)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['PLATFORM_ADMIN_EMAILS'],
-        message:
-          'PLATFORM_ADMIN_EMAILS is empty: no SSO login would be granted workspace_admin. Set the platform-admin-emails key of the <product>/<env>/app bundle (comma-separated emails).',
-      });
-    }
+    // No schema-level requirement here ON PURPOSE: the worker shares this schema and
+    // never sees the roster (the bundle key is injected into the API only), and it must
+    // boot without it. The API asserts its own copy at boot — apps/api/bootstrap.
   })
   .superRefine((env, ctx) => {
     /**
