@@ -1,7 +1,7 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { defaultRecordHref } from '@/entities/work-item/model/record-href'
 import type { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
-import { RecordLink } from '@/shared/ui/record-link'
+import { RecordOpener } from '@/shared/ui/record-link'
 
 interface WorkItemRefCellProps {
   /**
@@ -58,10 +58,6 @@ export function WorkItemRefCell({
   variant = 'inline',
 }: WorkItemRefCellProps) {
   const label = title ? `${itemKey}: ${title}` : itemKey
-  const open = (e: { stopPropagation: () => void }) => {
-    e.stopPropagation()
-    onOpen?.()
-  }
   if (!onOpen) {
     return (
       <span
@@ -92,14 +88,10 @@ export function WorkItemRefCell({
         <span className="truncate">{label}</span>
       </>
     )
-    return target ? (
-      <RecordLink href={target} onOpen={onOpen} title={label} className={pillClass}>
+    return (
+      <RecordOpener href={target} onOpen={onOpen} title={label} className={pillClass}>
         {pillContent}
-      </RecordLink>
-    ) : (
-      <button type="button" onClick={open} title={label} className={pillClass}>
-        {pillContent}
-      </button>
+      </RecordOpener>
     )
   }
 
@@ -119,13 +111,9 @@ export function WorkItemRefCell({
       </span>
     </>
   )
-  return target ? (
-    <RecordLink href={target} onOpen={onOpen} title={label} className={inlineClass}>
+  return (
+    <RecordOpener href={target} onOpen={onOpen} title={label} className={inlineClass}>
       {inlineContent}
-    </RecordLink>
-  ) : (
-    <button type="button" onClick={open} title={label} className={inlineClass}>
-      {inlineContent}
-    </button>
+    </RecordOpener>
   )
 }

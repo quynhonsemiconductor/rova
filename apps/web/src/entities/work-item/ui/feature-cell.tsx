@@ -11,8 +11,12 @@ interface FeatureCellProps {
    * Portfolio detail — §3.2:85 hides it from an Editor — so the cell renders as text.
    */
   onOpen?: () => void
-  /** `/portfolio/{featureId}` — the Feature's detail URL, for opening it in a new tab (US-120). */
-  href?: string
+  /**
+   * `/portfolio/{featureId}` — the Feature's detail URL, for opening it in a new tab (US-120).
+   * REQUIRED (pass `undefined` deliberately): a Feature is addressed by id, which the cell does not
+   * hold, so there is no default — an omitted URL would silently drop the new-tab behaviour.
+   */
+  href: string | undefined
 }
 
 /**

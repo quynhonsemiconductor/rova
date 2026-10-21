@@ -128,6 +128,9 @@ export function StatusRow({
 
   // Narrowed locals so closures below keep the non-null type.
   const featureId = item.featureId
+  // ONE gate for both the click and the URL (§3.2:85): a reader without Portfolio access gets
+  // neither, and the two cannot drift apart.
+  const openableFeatureId = canOpenPortfolio ? featureId : null
   const featureKey = item.featureKey
   const featureTitle = item.featureTitle
   const milestones = item.milestones
@@ -299,15 +302,16 @@ export function StatusRow({
               // its key to `/item/:itemKey` used to work when Feature was a
               // work-item type; that lookup can no longer resolve it.
               onOpen={
-                canOpenPortfolio && featureId
-                  ? () => void navigate({ to: '/portfolio/$itemId', params: { itemId: featureId } })
+                openableFeatureId
+                  ? () =>
+                      void navigate({
+                        to: '/portfolio/$itemId',
+                        params: { itemId: openableFeatureId },
+                      })
                   : undefined
               }
-              // Same gate as `onOpen`: a reader without Portfolio access gets no URL either.
               href={
-                canOpenPortfolio && featureId
-                  ? entityDetailPath.portfolioItem(featureId)
-                  : undefined
+                openableFeatureId ? entityDetailPath.portfolioItem(openableFeatureId) : undefined
               }
             />
           ) : (

@@ -1,7 +1,7 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import type { WorkItemType } from '@/entities/work-item/model/types'
 import { defaultRecordHref } from '@/entities/work-item/model/record-href'
-import { RecordLink } from '@/shared/ui/record-link'
+import { RecordOpener } from '@/shared/ui/record-link'
 
 interface IdCellProps {
   /** Work-item type — drives the leading {@link TypeBadge} glyph. */
@@ -80,26 +80,14 @@ export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
     </>
   )
 
-  const target = href ?? defaultRecordHref(type, itemKey, recordId)
-  if (target) {
-    return (
-      <RecordLink href={target} onOpen={onOpen} title={itemKey} className={OPEN_CLASS}>
-        {content}
-      </RecordLink>
-    )
-  }
-
   return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation()
-        onOpen()
-      }}
+    <RecordOpener
+      href={href ?? defaultRecordHref(type, itemKey, recordId)}
+      onOpen={onOpen}
       title={itemKey}
       className={OPEN_CLASS}
     >
       {content}
-    </button>
+    </RecordOpener>
   )
 }

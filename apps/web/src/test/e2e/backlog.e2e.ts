@@ -180,16 +180,22 @@ test.describe('work-item detail — Changesets', () => {
     const message = page.locator('span[title^="feat(nx): bump workspace to v21 and migrate"]')
     await expect(message).toBeVisible()
     const header = page.getByRole('button', { name: /^Message, / })
+    const timestamp = page.getByText('Commit Timestamp', { exact: true })
+    // `boundingBox()` does not wait, so every measured element is waited for first.
+    await expect(header).toBeVisible()
+    await expect(timestamp).toBeVisible()
 
     const messageBox = await message.boundingBox()
     const headerBox = await header.boundingBox()
-    expect(messageBox && headerBox).toBeTruthy()
+    const timestampBox = await timestamp.boundingBox()
+    expect(messageBox).not.toBeNull()
+    expect(headerBox).not.toBeNull()
+    expect(timestampBox).not.toBeNull()
     // Wrapped within the header's width, so it spans several lines rather than one long run.
     expect(messageBox!.width).toBeLessThanOrEqual(headerBox!.width + 1)
     expect(messageBox!.height).toBeGreaterThan(40)
 
     // And the columns after it stay on screen.
-    const timestamp = await page.getByText('Commit Timestamp', { exact: true }).boundingBox()
-    expect(timestamp!.x + timestamp!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+    expect(timestampBox!.x + timestampBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
   })
 })

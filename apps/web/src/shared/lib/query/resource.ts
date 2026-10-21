@@ -79,21 +79,19 @@ interface ResourceBase {
  */
 export interface ListResource<T> extends ResourceBase {
   /**
-   * `T[]`, not `readonly T[]`, on purpose: the seam has to be CHEAPER than the idiom it replaces or
-   * it gets bypassed, and a `readonly` array forces a spread at every existing helper that takes
-   * `T[]` (`iterationsInScope`, the pickers, `useMemo` filters). The invariant this file defends is
-   * "an error is not an empty answer".
+   * `readonly T[]`, so the compiler refuses an in-place mutation. Whenever there is no data —
+   * loading, error, disabled, or `emptyListResource()` — `rows` is the shared FROZEN `NO_ROWS` array
+   * (see there for why it must keep one reference), and `rows.sort(…)` / `rows.push(…)` would throw a
+   * `TypeError` only in those states, which a fixture that resolves data never reaches. When data is
+   * present, `rows` IS the query cache's array, which must not be mutated either.
    *
-   * BUT DO NOT MUTATE IT IN PLACE. Whenever there is no data — loading, error, disabled, or
-   * `emptyListResource()` — `rows` is the shared FROZEN `NO_ROWS` array (see there for why it must
-   * keep one reference), and `rows.sort(…)` / `rows.push(…)` throws a `TypeError`. That only
-   * happens while data is missing, so a fixture that resolves data will not catch it. Copy first —
-   * and keep the copy reference-stable (memoise it, e.g. inside `useMemo`): `[...rows].sort(…)`
-   * computed inline on every render hands a fresh reference to consumers like `useRowRerank` and
-   * reintroduces the error-301 loop described on `NO_ROWS`. When data is present, `rows` IS the
-   * query cache's array, which must not be mutated either.
+   * It used to be `T[]` to save a spread at helpers typed `T[]`; widening those helpers' parameters to
+   * `readonly` cost less than the runtime-only guarantee did. To reorder, copy — and keep the copy
+   * reference-stable (memoise it, e.g. inside `useMemo`): `[...rows].sort(…)` computed inline on
+   * every render hands a fresh reference to consumers like `useRowRerank` and reintroduces the
+   * error-301 loop described on `NO_ROWS`.
    */
-  readonly rows: T[]
+  readonly rows: readonly T[]
 }
 
 /** A single-value resource (a detail record, a count). */
@@ -124,9 +122,9 @@ function pending<T>(q: QueryLike<T>): boolean {
  */
 const NO_ROWS: readonly never[] = Object.freeze([])
 
-/** `NO_ROWS` as a list's `rows` — the ONE unsafe cast; see `ListResource.rows` for why it is `T[]`. */
-function noRows<T>(): T[] {
-  return NO_ROWS as unknown as T[]
+/** `NO_ROWS` as a list's `rows`. No cast: `readonly never[]` is already a `readonly T[]`. */
+function noRows<T>(): readonly T[] {
+  return NO_ROWS
 }
 
 /**

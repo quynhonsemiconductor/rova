@@ -51,3 +51,43 @@ export function RecordLink({
     </a>
   )
 }
+
+/**
+ * RecordOpener — `RecordLink` when the record's URL is known, otherwise a `<button>` that opens it
+ * in place only. The ONE copy of that fallback, so the ID and reference cells cannot drift on it
+ * (the button stops propagation for the same reason the link does).
+ */
+export function RecordOpener({
+  href,
+  onOpen,
+  title,
+  className,
+  children,
+}: {
+  href: string | undefined
+  onOpen: () => void
+  title?: string
+  className?: string
+  children: ReactNode
+}) {
+  if (href) {
+    return (
+      <RecordLink href={href} onOpen={onOpen} title={title} className={className}>
+        {children}
+      </RecordLink>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpen()
+      }}
+      title={title}
+      className={className}
+    >
+      {children}
+    </button>
+  )
+}
