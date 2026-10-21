@@ -10,6 +10,7 @@
 import type { TFunction } from 'i18next'
 import type { ActivityActionRow, ActivityRow } from '@/entities/activity/ui/activity-history-tab'
 import { activityFieldLabel, formatActivityValue } from '@/entities/work-item/model/activity'
+import { formatDateIso } from '@/shared/lib/utils'
 import { VERDICT_LABEL } from './test-result-columns'
 
 /** Field → its label key in the `test-cases` namespace — the SAME words the detail pages use. */
@@ -79,7 +80,8 @@ export function describeTestActivity(
           tester: text(meta.testerName) ?? t('history.unknownUser'),
           verdict: verdictLabel(meta.verdict) ?? t('history.empty'),
           build: text(meta.build) ?? t('history.empty'),
-          date: text(meta.runDate) ?? t('history.empty'),
+          // Same `yyyy-MM-dd` the Results grid's Date cell shows; a date-only value is never shifted.
+          date: formatDateIso(text(meta.runDate), t('history.empty')),
         }),
       }
     case 'test_result.deleted':

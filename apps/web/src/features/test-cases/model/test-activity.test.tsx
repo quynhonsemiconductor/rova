@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { render, renderHook, screen } from '@testing-library/react'
 import { listResource } from '@/shared/lib/query/resource'
 import { ActivityHistoryTab, type ActivityRow } from '@/entities/activity/ui/activity-history-tab'
+import { activityFieldLabel } from '@/entities/work-item/model/activity'
 import { useTestActivityLayout } from './use-test-activity-layout'
 import '@/shared/i18n/i18n'
 
@@ -131,6 +132,15 @@ describe('Test activity history', () => {
     renderHistory([row({ changes: { field: 'notes', old: null, new: null } })])
 
     expect(screen.getByText('Content changed')).toBeInTheDocument()
+    expect(screen.queryByText(/→/)).not.toBeInTheDocument()
+  })
+
+  it('an action this file does not word falls back to the shared label, keyed but detail-free', () => {
+    const log = row({ action: 'test_result.archived', changes: null })
+    renderHistory([log])
+
+    expect(screen.getByText('TR-4')).toBeInTheDocument()
+    expect(screen.getByText(activityFieldLabel(log))).toBeInTheDocument()
     expect(screen.queryByText(/→/)).not.toBeInTheDocument()
   })
 })

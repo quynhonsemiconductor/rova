@@ -667,6 +667,31 @@ describe('TestCasesService', () => {
         testerName: 'Chi',
       });
     });
+
+    it('a failed name lookup degrades the rows instead of failing the feed', async () => {
+      activity.listFor.mockResolvedValue({
+        data: [
+          {
+            id: 'log',
+            createdAt: '2026-10-16T00:00:00.000Z',
+            actorId: 'user-1',
+            actorName: 'Admin',
+            entityType: 'test_case',
+            entityId: 'tc-1',
+            action: 'test_case.updated',
+            changes: { field: 'ownerId', old: null, new: 'user-2' },
+            metadata: {},
+          },
+        ],
+        total: 1,
+      });
+      testResultRepo.findUserNames.mockRejectedValue(new Error('db down'));
+
+      const { items, total } = await service.getActivity(actor, 'tc-1', { limit: 50, offset: 0 });
+
+      expect(total).toBe(1);
+      expect(items[0].metadata).toEqual({ subjectKey: 'TC-1', oldName: null, newName: null });
+    });
   });
 
   describe('delete (F1/F2)', () => {

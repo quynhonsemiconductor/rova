@@ -126,10 +126,6 @@ export default defineConfig({
         'libs/modules/test-cases/src/application/test-cases.service.ts',
         'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/test-cases/src/application/test-case-types.service.ts',
-        'libs/modules/test-cases/src/application/test-results.service.ts',
-        'libs/modules/test-cases/src/application/test-case-types.service.ts',
-        'libs/modules/test-cases/src/application/test-results.service.ts',
-        'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/work-items/src/application/work-items.service.ts',
         // Phase 7 SU-01. `split-story.ts` is required (it has `split-story.spec.ts`);
         // `iteration-assignable.ts` is added deliberately even though it has no spec of its own — it

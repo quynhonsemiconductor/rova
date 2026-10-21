@@ -148,10 +148,19 @@ export class TestCasesService {
     testCaseKey: string | null,
   ): Promise<ActivityLog[]> {
     const refs = collectTestActivityRefs(logs);
-    const [resultKeys, userNames] = await Promise.all([
-      this.testResultRepo.findKeysByIds(refs.resultIds, workspaceId),
-      this.testResultRepo.findUserNames(refs.userIds),
-    ]);
+    let resultKeys: ReadonlyMap<string, string> = new Map();
+    let userNames: ReadonlyMap<string, string> = new Map();
+    try {
+      [resultKeys, userNames] = await Promise.all([
+        this.testResultRepo.findKeysByIds(refs.resultIds, workspaceId),
+        this.testResultRepo.findUserNames(refs.userIds),
+      ]);
+    } catch (err) {
+      // Best-effort display data, like `logSafe` on the write side: a failed lookup must not take
+      // the history feed down. Rows still carry the keys their metadata holds, and an unresolved
+      // person reads "Unknown user" — never the uuid.
+      this.logger.warn({ err, workspaceId }, 'Test activity enrichment lookup failed');
+    }
     return enrichTestActivity(logs, { resultKeys, userNames, testCaseKey });
   }
 
