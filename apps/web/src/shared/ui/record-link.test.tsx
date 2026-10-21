@@ -123,7 +123,12 @@ describe('isInAppPath', () => {
     '/\\example.com/item/US-1',
     'item/US-1',
     '',
-  ])('refuses %s', (href) => {
+    // The URL parser deletes tab / LF / CR, so each of these resolves to //evil.com.
+    '/\n//evil.com',
+    '/\t//evil.com',
+    '/\r//evil.com',
+    '/item/US-1\n',
+  ])('refuses %j', (href) => {
     expect(isInAppPath(href)).toBe(false)
   })
 })

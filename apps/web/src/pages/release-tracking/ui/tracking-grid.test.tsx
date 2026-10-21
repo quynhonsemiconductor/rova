@@ -187,4 +187,17 @@ describe('TrackingGrid — ID link', () => {
     renderGrid()
     expect(screen.getByTitle('FE-1').getAttribute('href')).toBe('/portfolio/f-1')
   })
+
+  it('links an Unparented work item by its KEY, though the grid hands every row its id', () => {
+    const unparented = { ...row(1), id: 'wi-9', itemKey: 'US-9', issueType: 'story' }
+    renderGrid({
+      bucket: 'unparented',
+      report: {
+        ...report(1, 25, 1),
+        bucket: 'unparented',
+        rows: [unparented],
+      } as unknown as ReleaseTrackingReport,
+    })
+    expect(screen.getByTitle('US-9').getAttribute('href')).toBe('/item/US-9')
+  })
 })

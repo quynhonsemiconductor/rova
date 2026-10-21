@@ -62,6 +62,9 @@ function RecordLink({
  * enforced rather than merely documented.
  */
 export function isInAppPath(href: string): boolean {
+  // Refused outright, before any prefix check: the URL parser DELETES tab, LF and CR, so `/\n//host`
+  // passes `!startsWith('//')` here and still resolves to `//host`. No route path contains them.
+  if (/[\t\n\r]/.test(href)) return false
   // `/\` too: browsers read a backslash as a slash, so `/\host` is protocol-relative as well.
   return href.startsWith('/') && !href.startsWith('//') && !href.startsWith('/\\')
 }
