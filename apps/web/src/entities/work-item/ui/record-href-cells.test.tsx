@@ -145,3 +145,22 @@ describe('IdCell with no URL to derive (an unaddressed type)', () => {
     vi.restoreAllMocks()
   })
 })
+
+// The hover underline is scoped to the opener's NAMED group: a bare `group-hover:` matched any
+// ancestor `group`, and most grid rows carry one, so every ID underlined on row hover.
+describe('the label underline belongs to the opener, not the row', () => {
+  it.each<[string, ReactElement]>([
+    ['IdCell', <IdCell key="id" type="story" itemKey="US-4" onOpen={() => {}} />],
+    [
+      'WorkItemRefCell',
+      <WorkItemRefCell key="ref" type="story" itemKey="US-4" onOpen={() => {}} />,
+    ],
+  ])('%s scopes group-hover to group/record', (_name, cell) => {
+    render(<div className="group">{cell}</div>)
+    const link = screen.getByRole('link')
+    expect(link.classList.contains('group/record')).toBe(true)
+    const classes = [link, ...link.querySelectorAll('*')].flatMap((el) => [...el.classList])
+    expect(classes).toContain('group-hover/record:underline')
+    expect(classes).not.toContain('group-hover:underline')
+  })
+})

@@ -1,6 +1,6 @@
 /**
  * Report a defect that degrades silently — a record link that lost its URL — ONCE per key for the
- * whole page, not once per cell: one mis-built path helper feeding a 50-row grid is one defect, and
+ * whole SESSION (the Set is module-level and survives route changes in this SPA), not once per cell: one mis-built path helper feeding a 50-row grid is one defect, and
  * 50 identical errors would bury real ones. A warning in development (an authoring hint), an error
  * in production (a defect someone should see).
  */

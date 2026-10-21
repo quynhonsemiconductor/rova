@@ -7,6 +7,7 @@ describe('reportOnce', () => {
     vi.restoreAllMocks()
   })
 
+  // The Set is module-level, so every key here is unique to this test: order-independent.
   it('reports a key once, however many callers hit it (warning in development)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     for (let i = 0; i < 50; i += 1) reportOnce('report-once-test:a', 'broken path builder')

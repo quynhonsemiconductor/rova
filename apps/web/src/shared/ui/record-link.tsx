@@ -62,20 +62,22 @@ function RecordLink({
 
 /**
  * The reset every record opener starts from: no border, background or padding, no underline until
- * hovered (`group-hover` on the label, hence `group`), left-aligned text, a pointer cursor. Applied
+ * hovered (`group-hover/record` on the label, hence the NAMED `group/record`), left-aligned text, a pointer cursor. Applied
  * by `RecordOpener` ITSELF to both the `<a>` and the `<button>` fallback, so the two cannot drift
  * and no cell can forget it; a caller's `className` comes after it and wins any conflict
  * (tailwind-merge), which is how `TestCaseIdCell` keeps the Button link look.
  */
 const RECORD_OPENER_RESET =
-  'group cursor-pointer border-none bg-transparent p-0 text-left no-underline'
+  'group/record cursor-pointer border-none bg-transparent p-0 text-left no-underline'
 
 /**
  * The link treatment for the LABEL inside an opener: link colour, underline only on hover of the
- * whole opener (`group-hover`, which is why the reset carries `group`). One constant, so the ID and
+ * opener itself. A NAMED group (`group/record`): a bare `group-hover:` matches ANY ancestor `group`,
+ * and most grid rows carry one, so every ID in a row underlined when the row was hovered. One constant, so the ID and
  * reference cells cannot drift when the link look next changes.
  */
-export const RECORD_LINK_LABEL = 'text-primary-light underline-offset-2 group-hover:underline'
+export const RECORD_LINK_LABEL =
+  'text-primary-light underline-offset-2 group-hover/record:underline'
 
 /**
  * The label's LAYOUT inside an ID / reference cell: one line centred against the type glyph

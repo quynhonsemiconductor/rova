@@ -73,7 +73,7 @@ export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
   const content = (
     <>
       <TypeBadge type={type} />
-      {/* `min-h-5` (in `KEY_CLASS`) so a one-line key sits CENTRED against the type glyph rather than
+      {/* `min-h-5` (in `RECORD_LABEL_LAYOUT`, which `KEY_CLASS` composes) so a one-line key sits CENTRED against the type glyph rather than
           riding its top edge, which is the same rule the team and owner cells follow. A wrapped key
           still starts level with the glyph. */}
       <span className={cn(KEY_CLASS, RECORD_LINK_LABEL)}>{itemKey}</span>

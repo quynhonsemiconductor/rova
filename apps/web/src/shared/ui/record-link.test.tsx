@@ -212,7 +212,7 @@ describe('RecordOpener styling', () => {
     )
     const buttonClasses = screen.getByRole('button').classList
     for (const cls of [
-      'group',
+      'group/record',
       'cursor-pointer',
       'border-none',
       'bg-transparent',
