@@ -3,9 +3,10 @@
  * link in new tab" work. Dropping `href` would silently fall back to an in-place-only button.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 
-vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
+const navigate = vi.fn()
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 vi.mock('@/features/releases/api', () => ({
   useUpdateRelease: () => ({ mutate: vi.fn() }),
 }))
@@ -36,5 +37,14 @@ describe('ReleaseRow — ID link', () => {
       <ReleaseRow release={release} canManage={false} colStyleFor={() => ({})} gutter={null} />,
     )
     expect(screen.getByTitle('RE-1').getAttribute('href')).toBe('/releases/rel-1')
+  })
+
+  it('opens the release at exactly the URL its ID cell links to', () => {
+    render(
+      <ReleaseRow release={release} canManage={false} colStyleFor={() => ({})} gutter={null} />,
+    )
+    const link = screen.getByTitle('RE-1')
+    fireEvent.click(link)
+    expect(navigate).toHaveBeenCalledWith({ href: link.getAttribute('href') })
   })
 })

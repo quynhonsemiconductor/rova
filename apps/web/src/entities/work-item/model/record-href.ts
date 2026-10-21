@@ -69,7 +69,9 @@ export function defaultRecordHref(
     // its key flips <button> → <a>: see the first-render note on `RecordOpener`.
     return pathForKey(itemKey, entityDetailPath.workItem)
   }
-  return recordId ? entityDetailPath.portfolioItem(recordId) : undefined
+  // Trimmed like a key: a whitespace-only id is no id, not a dead `/portfolio/%20`.
+  const id = recordId?.trim()
+  return id ? entityDetailPath.portfolioItem(id) : undefined
 }
 
 /**
@@ -86,12 +88,18 @@ export function recordHrefProblem(
   recordId?: string,
 ): { key: string; message: string } | undefined {
   if (!isAddressedType(type)) {
+    // The type is named only when it LOOKS like one (a short identifier, e.g. a casing slip
+    // like `Story`); anything else is reported by length alone, so an unexpected API string can
+    // neither land in a log line nor grow the de-duplication key space.
+    const named = /^[A-Za-z_-]{1,32}$/.test(type)
+      ? `"${type}"`
+      : `(unrecognized, ${type.length} chars)`
     return {
-      key: `record-href:type:${type}`,
-      message: `defaultRecordHref: no URL rule for record type "${type}"; pass \`href\``,
+      key: `record-href:type:${named}`,
+      message: `defaultRecordHref: no URL rule for record type ${named}; pass \`href\``,
     }
   }
-  if (ADDRESSING[type] === 'id' && !recordId) {
+  if (ADDRESSING[type] === 'id' && !recordId?.trim()) {
     return {
       key: `record-href:no-id:${type}`,
       message: `defaultRecordHref: a "${type}" is addressed by id; pass \`recordId\` (or \`href\`)`,

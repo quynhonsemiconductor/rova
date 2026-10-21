@@ -125,8 +125,10 @@ export function ReleaseRow({
 
   const navigate = useNavigate()
 
+  // ONE URL for the ID cell's link and its click, so a plain click and a new tab cannot diverge.
+  const detailHref = entityDetailPath.release(release.id)
   function openDetail() {
-    void navigate({ to: '/releases/$releaseId', params: { releaseId: release.id } })
+    void navigate({ href: detailHref })
   }
 
   return (
@@ -143,7 +145,7 @@ export function ReleaseRow({
           type="release"
           itemKey={release.releaseKey ?? '--'}
           onOpen={openDetail}
-          href={entityDetailPath.release(release.id)}
+          href={detailHref}
         />
       </div>
 

@@ -39,6 +39,7 @@ describe('defaultRecordHref', () => {
     ['a key-addressed row with no key yet (an optimistic row)', 'story', '', 'wi-1'],
     ['a key-addressed row whose key is only whitespace (bad data)', 'story', '  ', 'wi-1'],
     ['an id-addressed row with no id', 'feature', 'FE-1', undefined],
+    ['an id-addressed row whose id is only whitespace (bad data)', 'feature', 'FE-1', '  '],
     ['a type the rule does not address', 'release', 'RL-1', 'rl-1'],
     // `hasOwn`, not `in`: an inherited property name is not a record kind.
     ['an inherited property name', 'constructor', 'X-1', 'x-1'],
@@ -70,6 +71,18 @@ describe('recordHrefProblem (what useRecordHref reports) and encoding', () => {
   it('names an Epic / Feature with no id — a portfolio type through a work-item cast', () => {
     expect(recordHrefProblem('epic')?.message).toContain('pass `recordId`')
     expect(recordHrefProblem('epic', 'pf-1')).toBeUndefined()
+  })
+
+  it('reports a whitespace-only id like a missing one', () => {
+    expect(recordHrefProblem('feature', '  ')?.message).toContain('pass `recordId`')
+  })
+
+  it('never copies an unexpected type string into the report — only its length', () => {
+    const odd = 'contact me: a@b.example'
+    const problem = recordHrefProblem(odd)
+    expect(problem?.message).not.toContain('a@b.example')
+    expect(problem?.key).not.toContain('a@b.example')
+    expect(problem?.message).toContain(`${odd.length} chars`)
   })
 
   it('has nothing to say about a type it addresses, or a work item still without a key', () => {

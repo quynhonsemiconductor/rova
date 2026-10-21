@@ -233,4 +233,22 @@ describe('TrackingGrid — ID link', () => {
     expect(navigate).toHaveBeenCalledWith({ to: '/item/$itemKey', params: { itemKey: 'XX-1' } })
     warn.mockRestore()
   })
+
+  it('does not navigate a keyless row of an unknown kind to a bare /item/', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const keyless = { ...row(1), id: 'x-2', itemKey: '', issueType: 'unknown' }
+    renderGrid({
+      bucket: 'unparented',
+      report: {
+        ...report(1, 25, 1),
+        bucket: 'unparented',
+        rows: [keyless],
+      } as unknown as ReleaseTrackingReport,
+    })
+    const opener = screen.getAllByRole('button').find((b) => b.getAttribute('title') === '')
+    expect(opener).toBeDefined()
+    fireEvent.click(opener!)
+    expect(navigate).not.toHaveBeenCalledWith({ to: '/item/$itemKey', params: { itemKey: '' } })
+    warn.mockRestore()
+  })
 })

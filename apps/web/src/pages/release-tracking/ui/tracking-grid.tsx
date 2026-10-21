@@ -295,12 +295,14 @@ export function TrackingGrid({
       // router navigates in place rather than reloading the document.
       const href = rowHref(row)
       // Defensive only: the API types `issueType` as feature | story | defect and `id` as a required
-      // uuid, so every row with a key gets a URL. Without one (an empty key, or a kind added to the
-      // API before this rule), the row still opens — as a work item, the route every non-Feature row
-      // took before — rather than doing nothing. (`navigate({ href })` with an in-app path is a normal
+      // uuid, so every row with a key gets a URL. A kind added to the API before this rule still opens —
+      // as a work item, the route every non-Feature row took before — rather than doing nothing. (`navigate({ href })` with an in-app path is a normal
       // router navigation: `tracking-grid.navigate-href.test.ts` runs it on a real router.)
       if (href) void navigate({ href })
-      else void navigate({ to: '/item/$itemKey', params: { itemKey: row.itemKey } })
+      // A row with no key has nowhere to go: never a bare `/item/`.
+      else if (row.itemKey.trim()) {
+        void navigate({ to: '/item/$itemKey', params: { itemKey: row.itemKey } })
+      }
     },
   }
 
