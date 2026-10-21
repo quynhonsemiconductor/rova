@@ -58,12 +58,12 @@ const KEY_CLASS = cn(RECORD_LABEL_LAYOUT, 'font-mono text-ui-md')
 // `RecordOpener` supplies the reset (incl. `group` for the hover underline); this is only layout.
 // Glyph + key geometry, shared by the openable and the read-only rendering so they cannot drift.
 const CELL_LAYOUT = 'min-w-0 items-start gap-1'
-const OPEN_CLASS = `flex ${CELL_LAYOUT}`
+const OPEN_CLASS = cn('flex', CELL_LAYOUT)
 
 export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
   if (onOpen === undefined) {
     return (
-      <span className={`inline-flex ${CELL_LAYOUT}`} title={itemKey}>
+      <span className={cn('inline-flex', CELL_LAYOUT)} title={itemKey}>
         <TypeBadge type={type} />
         <span className={`${KEY_CLASS} text-muted-foreground`}>{itemKey}</span>
       </span>
