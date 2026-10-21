@@ -150,7 +150,8 @@ async function seedProject(project: {
   }
   if (!actualId) return; // should never happen
 
-  // 2. Initialise the WORKSPACE-wide item-key counter per type (Rally FormattedID;
+  // 2. Initialise the WORKSPACE-wide item-key counter per type (FormattedID-style,
+  //    per Rally;
   //    mirrors ProjectsService.createProject). Runs per project but the workspace
   //    counter rows are shared — onConflictDoNothing makes later projects no-op.
   const counterTypes = ['story', 'task', 'defect'] as const;
@@ -881,7 +882,7 @@ async function seedFlow() {
         title: 'Update workspace.json for NX v21 breaking changes',
         state: 'completed' as const,
         assigneeId: DEVELOPER_ID,
-        // Real-Rally task time: Estimate is an independent planned value; a
+        // Reference-ALM task time: Estimate is an independent planned value; a
         // Completed task has To Do = 0 (nothing left); Actuals is what was
         // logged. Estimate (2) stays independent of To Do (0) / Actual (1.5).
         estimateHours: '2',
@@ -901,7 +902,7 @@ async function seedFlow() {
         title: 'Validate all affected generators after upgrade',
         state: 'in_progress' as const,
         assigneeId: ADMIN_USER_ID,
-        // Real-Rally task time: independent Estimate (3h planned); To Do (3h
+        // Reference-ALM task time: independent Estimate (3h planned); To Do (3h
         // remaining, defaulted to Estimate before work started); no Actuals yet.
         estimateHours: '3',
         todoHours: '3',
