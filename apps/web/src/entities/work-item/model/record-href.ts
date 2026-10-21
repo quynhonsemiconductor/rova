@@ -4,8 +4,10 @@ import { entityDetailPath } from '@/shared/lib/entity-link'
 type AddressedType = WorkItemType | PortfolioItemType
 
 // The two enums must not share a VALUE: the map below is keyed by value, so a shared one would
-// collapse two entries into one with no error and flip a record kind to the wrong scheme. A shared
-// value makes `Extract<…>` non-`never`, and this line then fails to compile.
+// collapse two entries into one with no error and flip a record kind to the wrong scheme. Both are
+// const-object unions of string LITERALS (`types.ts`, `as const` — not TS `enum`s), so a shared
+// value makes `Extract<…>` non-`never` and this line fails to compile (verified with a planted
+// clash: TS2322).
 const enumsAreDisjoint: [Extract<WorkItemType, PortfolioItemType>] extends [never] ? true : never =
   true
 void enumsAreDisjoint

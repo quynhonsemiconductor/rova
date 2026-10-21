@@ -106,7 +106,9 @@ export function isInAppPath(href: string): boolean {
  * props it renders with, in the same render, so for a row that arrives with its data the element is
  * decided on the first one. The one exception the rule itself allows: a work-item row rendered
  * before it HAS a key gets no URL (`defaultRecordHref`), and would flip `<button>` → `<a>` when the
- * key arrives. No surface renders such a row today; a new one that does accepts that remount. (The
+ * key arrives. No surface renders such a row today — checked: every work-item cache write stores the
+ * server's reply, key included (`setQueryData` in `onSuccess`; there is no `onMutate` insert), and
+ * `useRowRerank` only reorders rows the server returned. A new one that does accepts that remount. (The
  * empty-key branch of `defaultRecordHref` points back here.)
  * Do not pass a URL that resolves asynchronously otherwise.
  */

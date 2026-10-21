@@ -6,7 +6,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
+const navigate = vi.fn()
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 import '@/shared/i18n/i18n'
 import { IssuesPanel } from './issues-panel'
@@ -32,5 +33,14 @@ describe('IssuesPanel', () => {
     await userEvent.click(screen.getByRole('button'))
 
     expect(screen.getByRole('link', { name: 'US-3' }).getAttribute('href')).toBe('/item/US-3')
+  })
+
+  it('opens the child at exactly the URL its link carries', async () => {
+    render(<IssuesPanel row={row} releaseName="R1" releaseStart={null} releaseEnd={null} />)
+    await userEvent.click(screen.getByRole('button'))
+    const link = screen.getByRole('link', { name: 'US-3' })
+    await userEvent.click(link)
+
+    expect(navigate).toHaveBeenCalledWith({ href: link.getAttribute('href') })
   })
 })

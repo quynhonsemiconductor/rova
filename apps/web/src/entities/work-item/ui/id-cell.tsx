@@ -56,12 +56,14 @@ const KEY_CLASS = cn(RECORD_LABEL_LAYOUT, 'font-mono text-ui-md')
 // `items-start` + no `overflow-hidden`: the key wraps, so the type glyph must stay
 // on its first line and the control must be allowed to grow.
 // `RecordOpener` supplies the reset (incl. `group` for the hover underline); this is only layout.
-const OPEN_CLASS = 'flex min-w-0 items-start gap-1'
+// Glyph + key geometry, shared by the openable and the read-only rendering so they cannot drift.
+const CELL_LAYOUT = 'min-w-0 items-start gap-1'
+const OPEN_CLASS = `flex ${CELL_LAYOUT}`
 
 export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
   if (onOpen === undefined) {
     return (
-      <span className="inline-flex min-w-0 items-start gap-1" title={itemKey}>
+      <span className={`inline-flex ${CELL_LAYOUT}`} title={itemKey}>
         <TypeBadge type={type} />
         <span className={`${KEY_CLASS} text-muted-foreground`}>{itemKey}</span>
       </span>
