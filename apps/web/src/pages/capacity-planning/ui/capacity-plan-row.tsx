@@ -10,8 +10,8 @@ import { StatusBadge } from '@/shared/ui/status-badge'
 import { formatDateTime } from '@/shared/lib/utils'
 import { CAPACITY_STATUS_STYLE } from '@/features/capacity-planning/status-colors'
 import { useUpdateCapacityPlan, type CapacityPlan } from '@/features/capacity-planning/api'
-import type { PlanColKey } from '../model/columns'
 import { entityDetailPath } from '@/shared/lib/entity-link'
+import type { PlanColKey } from '../model/columns'
 
 /**
  * One row of the Capacity Planning list, matching Rally's own: `ID`, `Name`, `Release`, `Status`,

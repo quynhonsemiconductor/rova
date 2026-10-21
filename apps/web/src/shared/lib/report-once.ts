@@ -12,3 +12,8 @@ export function reportOnce(key: string, message: string): void {
   if (import.meta.env.DEV) console.warn(message)
   else console.error(message)
 }
+
+/** Tests only: forget what was reported, so each test starts from a clean session. */
+export function resetReportedForTests(): void {
+  reported.clear()
+}

@@ -36,6 +36,14 @@ function isAddressedType(type: string): type is AddressedType {
 }
 
 /**
+ * `build(key)` — or no URL at all when there is no key yet (an optimistic row): never a bare
+ * `/item/` or `/test-case/`. The one copy of that rule, shared by every key-addressed cell.
+ */
+export function pathForKey(key: string, build: (key: string) => string): string | undefined {
+  return key ? build(key) : undefined
+}
+
+/**
  * The detail path an ID / reference cell can derive on its own (US-120) — the one place the
  * TYPE → id-or-key choice lives, so a grid mixing artifact kinds passes `recordId` unconditionally
  * instead of re-implementing the split. The path strings come from `entityDetailPath`, which
@@ -66,7 +74,7 @@ export function defaultRecordHref(
     // No key yet (an optimistic row) means no URL — never a bare `/item/`. The same rule
     // `entityLinkFor` applies (`!key` → `undefined`). A cell that renders such a row and LATER gets
     // its key flips <button> → <a>: see the first-render note on `RecordOpener`.
-    return itemKey ? entityDetailPath.workItem(itemKey) : undefined
+    return pathForKey(itemKey, entityDetailPath.workItem)
   }
   if (recordId) return entityDetailPath.portfolioItem(recordId)
   // An Epic / Feature with neither `href` nor `recordId`: typically a portfolio type that slipped

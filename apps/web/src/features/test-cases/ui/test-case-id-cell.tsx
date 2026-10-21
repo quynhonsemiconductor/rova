@@ -12,6 +12,7 @@
  * (US-120); a plain click still calls `onOpen`.
  */
 import { entityDetailPath } from '@/shared/lib/entity-link'
+import { pathForKey } from '@/entities/work-item/model/record-href'
 import { buttonVariants } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/utils'
 import { RecordOpener } from '@/shared/ui/record-link'
@@ -24,9 +25,9 @@ export function TestCaseIdCell({
   onOpen: () => void
 }) {
   return (
-    // No key yet (an optimistic row) → no URL, the same rule `defaultRecordHref` applies.
+    // No key yet (an optimistic row) → no URL: the shared `pathForKey` rule.
     <RecordOpener
-      href={testCaseKey ? entityDetailPath.testCase(testCaseKey) : undefined}
+      href={pathForKey(testCaseKey, entityDetailPath.testCase)}
       onOpen={onOpen}
       title={testCaseKey}
       className={cn(

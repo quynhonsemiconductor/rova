@@ -10,9 +10,15 @@
  *    while the browser opens the new one.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetReportedForTests } from '@/shared/lib/report-once'
 import { createEvent, fireEvent, render, screen } from '@testing-library/react'
 
 import { RecordOpener, isInAppPath } from './record-link'
+
+// `reportOnce` is session-wide by design; each test starts a fresh session.
+beforeEach(() => {
+  resetReportedForTests()
+})
 
 /** Fire a click and report whether the handler prevented the browser's default. */
 function click(el: HTMLElement, init: MouseEventInit = {}): boolean {
@@ -150,6 +156,22 @@ describe('RecordOpener refuses a URL that is not an in-app path', () => {
       </RecordOpener>,
     )
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('https://example.com/x'))
+  })
+
+  it('reports one KIND of bad URL once, though each row carries a different one', () => {
+    const warn = vi.mocked(console.warn)
+    render(
+      <>
+        {Array.from({ length: 5 }, (_, i) => (
+          <RecordOpener key={i} href={`https://example.com/item/${i}`} onOpen={() => {}}>
+            {`US-${i}`}
+          </RecordOpener>
+        ))}
+      </>,
+    )
+    expect(
+      warn.mock.calls.filter(([m]) => String(m).includes('RecordOpener: refused')),
+    ).toHaveLength(1)
   })
 
   it('reports one refused URL ONCE for the whole page, not once per cell', () => {

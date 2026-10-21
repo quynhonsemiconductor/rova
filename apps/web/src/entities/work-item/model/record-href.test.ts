@@ -4,7 +4,13 @@
  * an id), and a type the rule does not know.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetReportedForTests } from '@/shared/lib/report-once'
 import { defaultRecordHref, resolveRecordHref } from './record-href'
+
+// `reportOnce` is session-wide by design; each test starts a fresh session.
+beforeEach(() => {
+  resetReportedForTests()
+})
 
 describe('defaultRecordHref', () => {
   // Unaddressed types warn in development (asserted below); keep the other cases' output clean.

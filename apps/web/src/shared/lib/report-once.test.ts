@@ -1,6 +1,11 @@
 /** A silent-degradation defect is reported once per key for the whole page, not once per cell. */
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { reportOnce } from './report-once'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { reportOnce, resetReportedForTests } from './report-once'
+
+// `reportOnce` is session-wide by design; each test starts a fresh session.
+beforeEach(() => {
+  resetReportedForTests()
+})
 
 describe('reportOnce', () => {
   afterEach(() => {

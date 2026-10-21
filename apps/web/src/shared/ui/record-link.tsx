@@ -100,6 +100,19 @@ export function isInAppPath(href: string): boolean {
 }
 
 /**
+ * The KIND of a refused URL, for de-duplicating its report. A broken path builder usually emits a
+ * DIFFERENT bad URL per row (each id baked in), so keying by the URL itself would still log once
+ * per row; keyed by shape, one defect is one report however many rows it breaks.
+ */
+function refusedUrlShape(href: string): string {
+  if (/[\t\n\r]/.test(href)) return 'control-character'
+  if (href.startsWith('//') || href.startsWith('/\\')) return 'protocol-relative'
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(href)
+  if (scheme) return `scheme:${scheme[1].toLowerCase()}`
+  return 'relative-path'
+}
+
+/**
  * RecordOpener — `RecordLink` when the record's URL is known, otherwise a `<button>` that opens it
  * in place only. The ONE copy of that fallback, so the ID and reference cells cannot drift on it
  * (the button stops propagation for the same reason the link does).
@@ -138,12 +151,12 @@ export function RecordOpener({
   const linkHref = href && isInAppPath(href) ? href : undefined
   // In an effect, not during render (render stays pure; StrictMode would double it). Safe either
   // way — it opens in place — but a path builder returning a full URL or junk would otherwise
-  // disable new-tab links silently, everywhere: reported once per URL for the whole page.
+  // disable new-tab links silently, everywhere: reported once per KIND of bad URL for the session.
   useEffect(() => {
     if (href && !linkHref) {
       reportOnce(
-        `record-link:refused:${href}`,
-        `RecordOpener: refused a URL that is not an in-app path, opening in place: ${href}`,
+        `record-link:refused:${refusedUrlShape(href)}`,
+        `RecordOpener: refused a URL that is not an in-app path, opening in place (first seen: ${href})`,
       )
     }
   }, [href, linkHref])
