@@ -617,6 +617,7 @@ export function useWorkItemCounts(projects: Array<{ id: string }>) {
 
 export function useCommittedIterationsWorkItems(projectIds: string[], userId?: string) {
   return useQuery({
+    // Copy before sorting: `sort()` mutates in place, and `projectIds` is the caller's array.
     queryKey: ['work-items-committed-iterations', [...projectIds].sort(), userId],
     queryFn: async () => {
       if (projectIds.length === 0) return []

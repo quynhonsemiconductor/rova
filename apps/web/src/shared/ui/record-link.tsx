@@ -56,6 +56,16 @@ function RecordLink({
 }
 
 /**
+ * The reset every record opener starts from, so a `<a>` and its `<button>` fallback render the same
+ * and the ID / reference cells cannot drift: no border, background or padding, no underline until
+ * hovered (`group-hover` on the label), left-aligned text, a pointer cursor. Cells add only their
+ * own layout (flex vs inline-flex, gap, width). `TestCaseIdCell` deliberately uses the Button link
+ * variant instead.
+ */
+export const RECORD_OPENER_RESET =
+  'group cursor-pointer border-none bg-transparent p-0 text-left no-underline'
+
+/**
  * Whether `href` is an in-app path (`/item/US-5`), the only thing a record link may carry. A
  * `javascript:` URL, another scheme, or a protocol-relative `//host` is refused: the components below
  * are the one place every ID and reference cell renders its URL, so this is where that contract is

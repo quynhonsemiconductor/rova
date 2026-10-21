@@ -28,7 +28,6 @@ import { PortfolioChildRows } from './portfolio-child-rows'
 import { ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
 import { ProjectCell } from '@/shared/ui/project-cell'
 import { type PortfolioCellOptions } from '../model/cell-options'
-import { entityDetailPath } from '@/shared/lib/entity-link'
 
 /**
  * One Portfolio grid row.
@@ -203,7 +202,7 @@ export function PortfolioRow({
             type={item.type}
             itemKey={item.itemKey}
             onOpen={() => onOpen(item.id)}
-            href={entityDetailPath.portfolioItem(item.id)}
+            recordId={item.id}
           />
         </div>
 

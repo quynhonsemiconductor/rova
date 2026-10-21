@@ -35,7 +35,6 @@ import {
   type PortfolioItem,
 } from '@/features/portfolio/api'
 import { EPIC_CHILD_COLUMNS, type EpicChildColKey } from '../model/children-columns'
-import { entityDetailPath } from '@/shared/lib/entity-link'
 
 type EpicSortField = 'itemKey' | 'name' | 'team' | 'state' | 'owner'
 
@@ -423,7 +422,7 @@ function EpicChildRow({
           type={feature.type}
           itemKey={feature.itemKey}
           onOpen={onOpen}
-          href={entityDetailPath.portfolioItem(feature.id)}
+          recordId={feature.id}
         />
       </div>
       <div style={colStyles.name} className="min-w-0 px-2" title={feature.name}>

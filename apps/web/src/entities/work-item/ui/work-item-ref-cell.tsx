@@ -1,7 +1,8 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { resolveRecordHref } from '@/entities/work-item/model/record-href'
 import type { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
-import { RecordOpener } from '@/shared/ui/record-link'
+import { RECORD_OPENER_RESET, RecordOpener } from '@/shared/ui/record-link'
+import { cn } from '@/shared/lib/utils'
 
 interface WorkItemRefCellProps {
   /**
@@ -29,7 +30,13 @@ interface WorkItemRefCellProps {
    * Feature given `recordId`. Without either the reference opens in place only.
    */
   href?: string
-  /** The record's own id, so an Epic / Feature is addressed by id exactly as `IdCell` does it. */
+  /**
+   * The record's own id, so an Epic / Feature is addressed by id exactly as `IdCell` does it. A call
+   * site that can render an Epic / Feature MUST pass it (or `href`), or the cell silently falls back
+   * to an in-place button. `FeatureCell` passes `href`; the other callers — the detail sidebar's
+   * parent pill, Team Status' work product, Quality's parent Story and the linked-items list — render
+   * only WORK ITEMS (each opens `/item/$itemKey`), which are addressed by key and need no id.
+   */
   recordId?: string
   /**
    * Visual treatment:
@@ -102,8 +109,7 @@ export function WorkItemRefCell({
   // free text of unbounded length, and every grid that shows it uses `min-h-*` rows
   // that can grow. `items-start` keeps the type glyph on the first line instead of
   // floating to the vertical middle of a two-line title.
-  const inlineClass =
-    'group inline-flex max-w-full cursor-pointer items-start gap-1.5 border-none bg-transparent p-0 no-underline'
+  const inlineClass = cn(RECORD_OPENER_RESET, 'inline-flex max-w-full items-start gap-1.5')
   const inlineContent = (
     <>
       <TypeBadge type={type} size={16} />

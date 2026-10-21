@@ -1,7 +1,8 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import type { WorkItemType } from '@/entities/work-item/model/types'
 import { resolveRecordHref } from '@/entities/work-item/model/record-href'
-import { RecordOpener } from '@/shared/ui/record-link'
+import { RECORD_OPENER_RESET, RecordOpener } from '@/shared/ui/record-link'
+import { cn } from '@/shared/lib/utils'
 
 interface IdCellProps {
   /** Work-item type — drives the leading {@link TypeBadge} glyph. */
@@ -55,8 +56,7 @@ const KEY_CLASS =
 
 // `items-start` + no `overflow-hidden`: the key wraps, so the type glyph must stay
 // on its first line and the control must be allowed to grow.
-const OPEN_CLASS =
-  'group flex min-w-0 cursor-pointer items-start gap-1 border-none bg-transparent p-0 text-left no-underline'
+const OPEN_CLASS = cn(RECORD_OPENER_RESET, 'flex min-w-0 items-start gap-1')
 
 export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
   if (onOpen === undefined) {
