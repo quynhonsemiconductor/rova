@@ -148,14 +148,16 @@ describe('RecordOpener refuses a URL that is not an in-app path', () => {
     vi.restoreAllMocks()
   })
 
-  it('warns in development, naming the refused URL', () => {
+  it('warns in development, naming the KIND of refused URL but not its content', () => {
     const warn = vi.mocked(console.warn)
     render(
       <RecordOpener href="https://example.com/x" onOpen={() => {}}>
         US-1
       </RecordOpener>,
     )
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('https://example.com/x'))
+    // The shape and length, never the URL itself (it could carry an email or a token).
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('scheme:https'))
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('example.com')
   })
 
   it('reports one KIND of bad URL once, though each row carries a different one', () => {
@@ -185,7 +187,9 @@ describe('RecordOpener refuses a URL that is not an in-app path', () => {
         ))}
       </>,
     )
-    expect(warn.mock.calls.filter(([m]) => String(m).includes('example.com/many'))).toHaveLength(1)
+    expect(
+      warn.mock.calls.filter(([m]) => String(m).includes('RecordOpener: refused')),
+    ).toHaveLength(1)
   })
 
   it('warns once per refused URL, not on every re-render', () => {
@@ -200,7 +204,9 @@ describe('RecordOpener refuses a URL that is not an in-app path', () => {
         US-1 again
       </RecordOpener>,
     )
-    expect(warn.mock.calls.filter(([m]) => String(m).includes('example.com/y'))).toHaveLength(1)
+    expect(
+      warn.mock.calls.filter(([m]) => String(m).includes('RecordOpener: refused')),
+    ).toHaveLength(1)
   })
 
   it.each(['javascript:alert(1)', '//example.com/x'])(

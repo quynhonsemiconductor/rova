@@ -154,12 +154,13 @@ export function RecordOpener({
   // disable new-tab links silently, everywhere: reported once per KIND of bad URL for the session.
   useEffect(() => {
     if (href && !linkHref) {
-      // A bounded SAMPLE, not the whole URL: this branch exists because a caller passed something
-      // unexpected, and that could carry user text — a log line must not become a copy of it.
-      const sample = href.length > 80 ? `${href.slice(0, 80)}…` : href
+      // The URL's SHAPE and length only, never its content: this branch exists because a caller
+      // passed something unexpected, which could carry user text, an email or a token — a log line
+      // must not become a copy of it. The shape already names the defect.
+      const shape = refusedUrlShape(href)
       reportOnce(
-        `record-link:refused:${refusedUrlShape(href)}`,
-        `RecordOpener: refused a URL that is not an in-app path, opening in place (first seen: ${sample})`,
+        `record-link:refused:${shape}`,
+        `RecordOpener: refused a URL that is not an in-app path (${shape}, ${href.length} chars), opening in place`,
       )
     }
   }, [href, linkHref])

@@ -14,7 +14,9 @@ interface FeatureCellProps {
   /**
    * `/portfolio/{featureId}` — the Feature's detail URL, for opening it in a new tab (US-120).
    * REQUIRED (pass `undefined` deliberately): a Feature is addressed by id, which the cell does not
-   * hold, so there is no default — an omitted URL would silently drop the new-tab behaviour.
+   * hold, so there is no default — an omitted URL loses the new-tab link (the cell still opens in
+   * place), and `useRecordHref` REPORTS it once per session: a dev warning, a prod `console.error`.
+   * It only logs, never throws, so a misconfigured call site cannot take down a grid.
    */
   href: string | undefined
 }
