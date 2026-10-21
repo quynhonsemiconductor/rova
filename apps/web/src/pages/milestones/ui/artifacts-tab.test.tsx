@@ -171,12 +171,12 @@ describe('Milestone ArtifactsTab', () => {
     const feature = await screen.findByRole('link', { name: /FE-6/ })
     expect(feature.getAttribute('href')).toBe('/portfolio/pi-1')
     fireEvent.click(feature)
-    expect(navigate).toHaveBeenCalledWith({ to: '/portfolio/$itemId', params: { itemId: 'pi-1' } })
+    expect(navigate).toHaveBeenCalledWith({ href: '/portfolio/pi-1' })
 
     const story = screen.getByRole('link', { name: /US-9/ })
     expect(story.getAttribute('href')).toBe('/item/US-9')
     fireEvent.click(story)
-    expect(navigate).toHaveBeenCalledWith({ to: '/item/$itemKey', params: { itemKey: 'US-9' } })
+    expect(navigate).toHaveBeenCalledWith({ href: '/item/US-9' })
   })
 
   it('ADDS an artifact through the milestone end, preserving the ones already linked', async () => {

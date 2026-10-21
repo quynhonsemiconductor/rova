@@ -33,8 +33,9 @@ export function CellLink({
   wrap?: boolean
   children: ReactNode
 }) {
-  // Not `RECORD_LINK_LABEL`: that uses `group-hover:`, which styles DESCENDANTS of the `group`
-  // opener — and here the opener IS the text, so the underline must be its own `hover:`.
+  // Not `RECORD_LINK_LABEL`: its `group-hover/record:underline` is a DESCENDANT selector — it can
+  // only underline a child of the `group/record` opener, and here the opener IS the text, so the
+  // underline must be its own `hover:`.
   const classes = cn(
     'block text-left text-primary-light underline-offset-2 hover:underline',
     wrap ? 'break-words whitespace-normal' : 'truncate',

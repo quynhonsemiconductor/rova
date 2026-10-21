@@ -51,8 +51,9 @@ export function CapacityPlanRow({
   // Per row, like `ReleaseRow`/`IterationRow`: the mutation belongs to the row being edited, and a
   // page-level one would need the row's id threaded back up through the commit handler.
   const updatePlan = useUpdateCapacityPlan()
-  const open = () =>
-    void navigate({ to: '/capacity-planning/$planId', params: { planId: plan.id } })
+  // ONE URL for the ID cell's link and its click, so a plain click and a new tab cannot diverge.
+  const detailHref = entityDetailPath.capacityPlan(plan.id)
+  const open = () => void navigate({ href: detailHref })
 
   async function saveName(next: string) {
     const name = next.trim()
@@ -78,7 +79,7 @@ export function CapacityPlanRow({
           type="capacityPlan"
           itemKey={plan.planKey ?? '--'}
           onOpen={open}
-          href={entityDetailPath.capacityPlan(plan.id)}
+          href={detailHref}
         />
       </div>
 

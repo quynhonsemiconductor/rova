@@ -35,6 +35,7 @@ import {
   type PortfolioItem,
 } from '@/features/portfolio/api'
 import { EPIC_CHILD_COLUMNS, type EpicChildColKey } from '../model/children-columns'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 type EpicSortField = 'itemKey' | 'name' | 'team' | 'state' | 'owner'
 
@@ -276,9 +277,7 @@ export function EpicChildrenTable({
               rowNum={rerank.items.indexOf(feature) + 1}
               colStyles={colStyles}
               dragDisabled={dragDisabled}
-              onOpen={() =>
-                void navigate({ to: '/portfolio/$itemId', params: { itemId: feature.id } })
-              }
+              onOpen={() => void navigate({ href: entityDetailPath.portfolioItem(feature.id) })}
               stateLabel={t(`states.${feature.state}`, { defaultValue: feature.state })}
               expanded={expanded.has(feature.id)}
               onToggleExpanded={() => toggleExpanded(feature.id)}

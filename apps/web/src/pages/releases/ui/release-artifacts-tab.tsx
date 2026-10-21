@@ -11,29 +11,16 @@ import type { ArtifactTableItem } from '@/entities/work-item/ui/artifact-table'
 import { listResource } from '@/shared/lib/query/resource'
 import { useArtifactPagination } from '@/entities/work-item/ui/use-artifact-pagination'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
-import { PORTFOLIO_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { SelectionModal } from '@/shared/ui/selection-modal'
+import { defaultRecordHref } from '@/entities/work-item/model/record-href'
 
 /**
  * `MAX_LIMIT` on the shared page query. Past this the picker offers the first page only — the same
  * ceiling `useProjects` already lives with, and the reason the modal carries its own search box.
  */
 const CANDIDATE_LIMIT = 100
-
-/**
- * A release's artifacts come from TWO tables — `work_items.release_id` and, for a Feature,
- * `portfolio_items.release_id` — so a row's detail surface depends on which one it is.
- *
- * The discriminator is the row's own `type`: `work_item_type` and `portfolio_item_type` are
- * disjoint enums (`story|defect|task` against `epic|feature`), which is also why `TypeBadge` already
- * resolves a glyph for all five from one prop. No extra DTO field is served for this — one that only
- * restated `type` would be a second source for the same fact.
- */
-function isPortfolioArtifact(type: string): boolean {
-  return type in PORTFOLIO_TYPE_CONFIG
-}
 
 /**
  * A portfolio row's Priority is ABSENT, not blank: `portfolio_items` has no priority column, so the
@@ -174,13 +161,14 @@ export function ReleaseArtifactsTab({
         pageInfo={artifactsQuery.data?.pageInfo}
         entityNoun="release"
         pagination={pagination}
-        onOpenItem={(item) =>
-          isPortfolioArtifact(item.type)
-            ? // A Feature's detail lives on the Portfolio surface and is addressed by ID, not by key
-              // — `/item/$itemKey` resolves against `work_items` only, so it would 404 for FE-6.
-              navigate({ to: '/portfolio/$itemId', params: { itemId: item.id } })
-            : navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
-        }
+        // A release's artifacts come from TWO tables — `work_items.release_id` and, for a Feature,
+        // `portfolio_items.release_id` — and the row's own `type` (disjoint enums) says which. The
+        // SAME rule the row's ID link uses (`defaultRecordHref`): a Feature / Epic by id on the
+        // Portfolio surface, a work item by key — so a click and a new tab open the same record.
+        onOpenItem={(item) => {
+          const href = defaultRecordHref(item.type, item.itemKey, item.id)
+          if (href) void navigate({ href })
+        }}
       />
 
       <SelectionModal

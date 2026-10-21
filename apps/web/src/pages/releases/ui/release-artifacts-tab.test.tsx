@@ -190,12 +190,12 @@ describe('ReleaseArtifactsTab', () => {
     const feature = await screen.findByRole('link', { name: /FE-6/ })
     expect(feature.getAttribute('href')).toBe('/portfolio/pi-1')
     fireEvent.click(feature)
-    expect(navigate).toHaveBeenCalledWith({ to: '/portfolio/$itemId', params: { itemId: 'pi-1' } })
+    expect(navigate).toHaveBeenCalledWith({ href: '/portfolio/pi-1' })
 
     const story = screen.getByRole('link', { name: /US-1/ })
     expect(story.getAttribute('href')).toBe('/item/US-1')
     fireEvent.click(story)
-    expect(navigate).toHaveBeenCalledWith({ to: '/item/$itemKey', params: { itemKey: 'US-1' } })
+    expect(navigate).toHaveBeenCalledWith({ href: '/item/US-1' })
   })
 
   it('pre-ticks exactly the items whose release is this one', async () => {

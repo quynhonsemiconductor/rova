@@ -530,7 +530,7 @@ export function MilestonesPage() {
 
   const cellCtx: MilestoneCtx = {
     canManage,
-    onOpen: (id) => navigate({ to: '/milestones/$milestoneId', params: { milestoneId: id } }),
+    onOpen: (id) => navigate({ href: entityDetailPath.milestone(id) }),
   }
 
   return (

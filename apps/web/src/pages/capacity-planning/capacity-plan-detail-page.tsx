@@ -81,6 +81,7 @@ import { entityLinkFor } from '@/shared/lib/entity-link'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 import { PublishPlanModal } from './ui/publish-plan-modal'
 import { EditCapacityPlanModal } from './ui/edit-capacity-plan-modal'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 export function CapacityPlanDetailPage() {
   const { t } = useTranslation('capacity')
@@ -394,7 +395,7 @@ export function CapacityPlanDetailPage() {
 
   const openFeature = useCallback(
     (portfolioItemId: string) =>
-      void navigate({ to: '/portfolio/$itemId', params: { itemId: portfolioItemId } }),
+      void navigate({ href: entityDetailPath.portfolioItem(portfolioItemId) }),
     [navigate],
   )
 
