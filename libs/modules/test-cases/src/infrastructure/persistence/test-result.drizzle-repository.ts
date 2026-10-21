@@ -93,6 +93,24 @@ export class TestResultDrizzleRepository implements ITestResultRepository {
     return this.mapRow(rows[0]);
   }
 
+  async findKeysByIds(ids: string[], workspaceId: string): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.db
+      .select({ id: testResults.id, key: testResults.testResultKey })
+      .from(testResults)
+      .where(and(inArray(testResults.id, ids), eq(testResults.workspaceId, workspaceId)));
+    return new Map(rows.map((r) => [r.id, r.key]));
+  }
+
+  async findUserNames(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.db
+      .select({ id: users.id, name: sql<string>`coalesce(${users.displayName}, ${users.email})` })
+      .from(users)
+      .where(inArray(users.id, ids));
+    return new Map(rows.map((r) => [r.id, r.name]));
+  }
+
   async update(
     id: string,
     input: UpdateTestResultInput,
