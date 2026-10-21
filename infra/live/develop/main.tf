@@ -1,4 +1,4 @@
-// rally · develop
+// rova · develop
 //
 // This file is deliberately thin. The entire stack lives in ../../modules/stack, so
 // develop and production cannot drift structurally — only the values below differ.
@@ -125,6 +125,14 @@ module "stack" {
   internal_email_domains = "qnsc.vn"
   platform_admin_emails  = var.platform_admin_emails
 
+  // Mail through Microsoft 365 (Graph): ON. The worker sends as noreply-rova-dev@qnsc.vn with the "Rova Dev Service" app (certificate only, no Entra
+  // permissions; Exchange "Application Mail.Send" scoped to that one mailbox). The certificate is the standalone secret rova/develop/mail-graph-certificate.
+  // A non-prod environment never sends from the prod mailbox: develop has its own. docs/runbooks/mail-graph.md.
+  email_provider             = "graph"
+  mail_graph_client_id       = "ba917ac2-3580-43ef-a8c1-c8cb6288651a"
+  mail_graph_certificate_set = true
+  mail_graph_sender          = "noreply-rova-dev@qnsc.vn"
+
   entra_tenant_id = var.entra_tenant_id
   entra_client_id = var.entra_client_id
   github_app_id   = var.github_app_id
@@ -135,7 +143,8 @@ module "stack" {
   secrets_recovery_window_days = 0
 
   // ── Secret bundling · COMPLETE ──────────────────────────────────────────────
-  // Every app secret lives in ONE container, rally/develop/app, read per key by ECS via
+  // Every app secret lives in ONE container, rally/develop/app (legacy physical
+  // name, do not rename — recreated as rova/develop/app in the on-prem move), read per key by ECS via
   // the `<arn>:<key>::` form of valueFrom. Secrets Manager bills per SECRET regardless of
   // size, so this is 12 containers' worth of material for one container's fee.
   //
@@ -164,9 +173,10 @@ module "stack" {
   // Setting this also sets `attach_alb = false` on the api service — a tunnel-served
   // task must not simultaneously be an ALB target.
   //
-  // Requires `tunnel-token` in rally/develop/app, which holds the connector token for
-  // the `rally-develop` tunnel (created out of band 2026-08-02; a tunnel and its token
-  // are one Cloudflare object, so Terraform does not mint it).
+  // Needs `cloudflare_account_id`: the stack creates the tunnel and its connector token itself
+  // (`aws_secretsmanager_secret.tunnel_token`, `<product>/<env>/tunnel-token-tf`), so nothing is
+  // pasted into the bundle. The tunnel was first created out of band on 2026-08-02 and its token
+  // lived in the bundle's `tunnel-token` key until the stack took over.
   //
   // DEVELOP FIRST, deliberately: this is the environment where the tunnel path gets
   // proven — SSE held open past the heartbeat interval, Entra SSO end to end, and an
@@ -191,7 +201,7 @@ module "stack" {
   // arm64 pnpm + Nest compile on x86 costs more build minutes than the Fargate saving is
   // worth.
   //
-  // rally qualifies on every image in the task: the app is node:alpine (multi-arch), and
+  // rova qualifies on every image in the task: the app is node:alpine (multi-arch), and
   // both sidecars publish arm64 — cloudflare/cloudflared and amazon/aws-otel-collector,
   // checked 2026-08-17. qnsc-kb does not, and cannot follow: clamav/clamav is amd64-only
   // on every published tag.
@@ -202,11 +212,11 @@ module "stack" {
   container_insights = "disabled"
 
   // ── Shared develop cache ─────────────────────────────────────────────────────
-  // Uses the ONE Valkey node in the runtime layer rather than a node of rally's own.
+  // Uses the ONE Valkey node in the runtime layer rather than a node of rova's own.
   //
   // ElastiCache cannot be stopped, only deleted, so a per-product dev cache billed all
   // 730 hours of the month regardless of the idle schedule above — which now runs this
-  // environment only 55 hours a week. rally and qnsc-kb were paying $15.45 each for two
+  // environment only 55 hours a week. rova and qnsc-kb were paying $15.45 each for two
   // nodes holding a few thousand keys between them. The runtime layer already owned the
   // security group and the data subnets; only the node was duplicated.
   //
@@ -221,11 +231,12 @@ module "stack" {
   //
   // MIND THE EVICTION POLICY IF YOU EVER TUNE IT. qnsc-kb runs Celery on this node, and
   // its broker keys carry no TTL. The default parameter group is `volatile-lru`, which
-  // evicts only keys that HAVE a TTL — rally's rate-limit counters and denylist entries
-  // go first, Celery's queue is never a candidate. Setting `allkeys-lru` to make rally's
+  // evicts only keys that HAVE a TTL — rova's rate-limit counters and denylist entries
+  // go first, Celery's queue is never a candidate. Setting `allkeys-lru` to make rova's
   // cache behave better under pressure would silently start dropping qnsc-kb's tasks.
   //
-  // APPLIED 2026-08-17. rally-develop-cache was destroyed and the endpoint changed, so the
+  // APPLIED 2026-08-17. rally-develop-cache (legacy physical name, do not rename —
+  // recreated as rova-develop-cache in the on-prem move) was destroyed and the endpoint changed, so the
   // cutover was a task-definition revision plus a rolling deploy. Verified afterwards:
   // /v1/readyz reported postgres up AND valkey up, and the worker's NotificationPubSub
   // logged no lookup failures on the new revision. The old revision briefly did — it still
@@ -309,7 +320,7 @@ module "stack" {
   //
   // 19:00 is what moves the money. Develop was up 08:00-00:00, so five of those sixteen
   // hours were after everyone had stopped. Measured across both develop environments
-  // (rally and qnsc-kb), the 19:00-00:00 tail is ~$8.13/mo of RDS and Fargate.
+  // (rova and qnsc-kb), the 19:00-00:00 tail is ~$8.13/mo of RDS and Fargate.
   //
   // THE LATE PASSES ARE NOT OPTIONAL, and dropping to a single 19:00 stop is the obvious
   // "simplification" that breaks this. A deploy at 20:00 wakes develop; with nothing after
@@ -388,7 +399,8 @@ module "stack" {
   //   01:00:47Z  ecs:UpdateService  worker desiredCount=1
   wake_schedule = null // OFF since 2026-10-14; see idle_schedule above
 
-  // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
+  // Both halves of rally/develop/r2-public-* (legacy physical names, do not rename —
+  // recreated as rova-* in the on-prem move) are populated, so the public-bucket
   // credential can be injected. This is a FIX, not hardening: the primary token
   // (`rally-develop-r2-app`) is scoped to `rally-develop-attachments` alone, so while
   // this was false every avatar and workspace-logo write went to the public bucket
@@ -399,8 +411,12 @@ module "stack" {
   // same value is the Pages secret EDGE_CLIENT_IP_SECRET, so the API can verify the visitor address the Pages Function
   // signs. Develop only: production sets its own key first (runbook, "PRODUCTION").
   edge_client_ip_secret_set = true
+  # identity 8. The value MUST be in the `better-auth-secret` key of rova/develop/app before this lands: see docs/runbooks/identity-v8-cutover.md.
+  better_auth_secret_set = true
 
   // Step 2 of docs/runbooks/db-role-least-privilege.md: rally/develop/db-*-password
+  // (legacy physical names, do not rename — recreated as rova/develop/db-*-password
+  // in the on-prem move)
   // are populated, so the migrator can read them and the one-off cutover task can
   // set them on the roles. Inert on its own — the normal migrate entrypoint ignores
   // these, and api/worker stay on the master credential until `db_least_privilege`
@@ -420,7 +436,7 @@ module "stack" {
   // two leftover `tenant_isolation` policies on storage.files and
   // work.work_item_attachments executed for the first time. They require
   // `app.workspace_id`, which nothing sets, so they denied every insert. Migration
-  // 0070 drops them, completing the teardown migration 0025 began — Rally is
+  // 0070 drops them, completing the teardown migration 0025 began — rova is
   // single-tenant and DB-level isolation is an explicit non-goal, so those two
   // policies (2 of 41 workspace-scoped tables) were never a boundary.
   //
@@ -460,7 +476,7 @@ module "stack" {
 
     // TEMPORARY, for the rally->rova subnet-group rebuild only. AWS refuses to move a DB
     // instance between subnet groups in the same VPC, so rova-develop still sits in
-    // rally-develop-db and the only way into rova-develop-db is a new instance.
+    // rally-develop-db (legacy physical name, do not rename) and the only way into rova-develop-db is a new instance.
     //
     // Honoured only when the instance is CREATED. With the instance present this is inert
     // (the module holds it under ignore_changes), so merging this changes nothing. The

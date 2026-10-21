@@ -2,7 +2,7 @@
  * WHOSE bucket a request lands in, against the real `RateLimitGuard` and the real `clientIp()`.
  *
  * Behind the Cloudflare Tunnel `req.ip` is cloudflared's own address, so keying by it put EVERY visitor in one bucket:
- * `AUTH_LOGIN` (5 attempts per 15 minutes) and `DEFAULT` (100 per minute) were the whole company's. The guard now
+ * `STRICT` (20 per minute) and `DEFAULT` (100 per minute) were the whole company's. The guard now
  * keys by `clientIp()`. What these tests pin is the property, not the plumbing: two visitors behind the same
  * tunnel address get different buckets, a forged header does not choose a bucket, a verified edge address does.
  *
@@ -12,6 +12,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { requestContextStorage, type RequestContext } from '@quynhonsemiconductor/observability';
+import { KEYED_BY_ADDRESS } from '@quynhonsemiconductor/platform-http';
 import { signEdgeClientIp } from '@quynhonsemiconductor/platform-http/edge';
 import { RateLimitGuard } from './rate-limit.guard';
 import { RATE_LIMIT_METADATA_KEY, RATE_LIMIT_TIERS } from './rate-limit.constants';
@@ -79,13 +81,13 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
 
   it('gives two visitors behind the same tunnel address DIFFERENT buckets', async () => {
     await guard.canActivate(
-      context(request({ headers: { 'cf-connecting-ip': '203.0.113.7' } }), 'AUTH_LOGIN'),
+      context(request({ headers: { 'cf-connecting-ip': '203.0.113.7' } }), 'STRICT'),
     );
     await guard.canActivate(
-      context(request({ headers: { 'cf-connecting-ip': '198.51.100.20' } }), 'AUTH_LOGIN'),
+      context(request({ headers: { 'cf-connecting-ip': '198.51.100.20' } }), 'STRICT'),
     );
 
-    expect(keys).toEqual(['AUTH_LOGIN:ip:203.0.113.7', 'AUTH_LOGIN:ip:198.51.100.20']);
+    expect(keys).toEqual(['STRICT:ip:203.0.113.7', 'STRICT:ip:198.51.100.20']);
     expect(keys.join()).not.toContain(TUNNEL);
   });
 
@@ -99,10 +101,10 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
             'x-real-ip': '5.6.7.8',
           },
         }),
-        'AUTH_LOGIN',
+        'STRICT',
       ),
     );
-    expect(keys).toEqual(['AUTH_LOGIN:ip:203.0.113.7']);
+    expect(keys).toEqual(['STRICT:ip:203.0.113.7']);
   });
 
   it('with EDGE_CLIENT_IP_SECRET set, takes the VERIFIED signed address over cf-connecting-ip', async () => {
@@ -118,11 +120,11 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     await guard.canActivate(
       context(
         request({ headers: { 'cf-connecting-ip': '104.28.0.1', ...signed } }), // 104.28.0.1: Cloudflare's own
-        'AUTH_LOGIN',
+        'STRICT',
       ),
     );
 
-    expect(keys).toEqual(['AUTH_LOGIN:ip:203.0.113.99']);
+    expect(keys).toEqual(['STRICT:ip:203.0.113.99']);
   });
 
   it('ignores a signed address that does not verify (wrong key), falling back to cf-connecting-ip', async () => {
@@ -135,41 +137,50 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     });
 
     await guard.canActivate(
-      context(
-        request({ headers: { 'cf-connecting-ip': '198.51.100.20', ...forged } }),
-        'AUTH_LOGIN',
-      ),
+      context(request({ headers: { 'cf-connecting-ip': '198.51.100.20', ...forged } }), 'STRICT'),
     );
 
-    expect(keys).toEqual(['AUTH_LOGIN:ip:198.51.100.20']);
+    expect(keys).toEqual(['STRICT:ip:198.51.100.20']);
   });
 
-  it('an authenticated user is still keyed by user id, not address', async () => {
-    await guard.canActivate(
-      context(request({ headers: { 'cf-connecting-ip': '203.0.113.7' }, user: { sub: 'user-1' } })),
+  const principalStore = (userId?: string): RequestContext => ({
+    workspaceId: undefined,
+    userId,
+    sessionId: userId ? 'sess-1' : undefined,
+    correlationId: 'corr-1',
+    traceparent: undefined,
+  });
+
+  it('an authenticated user is keyed by user id, not address: the principal comes from the request context', async () => {
+    const req = request({ headers: { 'cf-connecting-ip': '203.0.113.7' } });
+    await requestContextStorage.run(principalStore('user-1'), () =>
+      guard.canActivate(context(req)),
     );
     expect(keys).toEqual(['DEFAULT:uid:user-1']);
+    expect((req as unknown as Record<symbol, unknown>)[KEYED_BY_ADDRESS]).toBeUndefined();
+  });
+
+  it('req.user alone is NOT a principal (platform-http 5): the caller is keyed by address, and the request is marked so a guard that authenticates later can say it ran too late', async () => {
+    const req = request({
+      headers: { 'cf-connecting-ip': '203.0.113.7' },
+      user: { sub: 'user-1' },
+    });
+    await requestContextStorage.run(principalStore(), () => guard.canActivate(context(req)));
+    expect(keys).toEqual(['DEFAULT:ip:203.0.113.7']);
+    expect((req as unknown as Record<symbol, unknown>)[KEYED_BY_ADDRESS]).toBe(true);
   });
 
   it("keeps rova's own thresholds: the guard changed WHO is counted, not how many", async () => {
     await guard.canActivate(context(request({ headers: { 'cf-connecting-ip': '1.1.1.1' } })));
     await guard.canActivate(
-      context(request({ headers: { 'cf-connecting-ip': '1.1.1.1' } }), 'AUTH_LOGIN'),
-    );
-    await guard.canActivate(
-      context(request({ headers: { 'cf-connecting-ip': '1.1.1.1' } }), 'AUTH_SSO_START'),
-    );
-    await guard.canActivate(
-      context(request({ headers: { 'cf-connecting-ip': '1.1.1.1' } }), 'AUTH_IDP_LOOKUP'),
+      context(request({ headers: { 'cf-connecting-ip': '1.1.1.1' } }), 'STRICT'),
     );
 
     expect(consumed).toEqual([
       { limit: 100, window: 60 },
-      { limit: 5, window: 900 },
-      { limit: 30, window: 900 },
-      { limit: 10, window: 900 },
+      { limit: 20, window: 60 },
     ]);
     expect(RATE_LIMIT_TIERS.DEFAULT).toEqual({ limit: 100, windowSeconds: 60 });
-    expect(RATE_LIMIT_TIERS.AUTH_LOGIN).toEqual({ limit: 5, windowSeconds: 900 });
+    expect(RATE_LIMIT_TIERS.STRICT).toEqual({ limit: 20, windowSeconds: 60 });
   });
 });

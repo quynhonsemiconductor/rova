@@ -1,5 +1,12 @@
 # Plan — rally dev + prod under $100/mo
 
+> **ARCHIVED 2026-10-18: historical plan, do not follow.** Two parts no longer match the code:
+> - The Cloudflare Tunnel token is no longer a key in the app bundle (`rally/<env>/app`, `tunnel-token`). It is
+>   a standalone, Terraform-managed secret named `<product>/<env>/tunnel-token-tf` (`infra/modules/stack/main.tf`).
+> - "rally" is the old product name in this plan. The product is now rova.
+>
+> Kept as history, so it is not deleted. Cost figures are as of 2026-08-02.
+
 Target: **both environments, prod live, under $100/mo.** Decided 2026-08-02.
 
 The current architecture cannot reach it. Prod alone at go-live is ~$142/mo before dev
@@ -75,7 +82,7 @@ it launches. This is the change with the largest blast radius outside rally.
 ### 2. Delete the persistent develop environment — −$63.08
 
 Removes dev's ALB, IPv4, RDS, cache, Fargate and NAT. Local development already works:
-`docker-compose.dev.yml` runs `postgres:17-alpine`, `valkey/valkey:8-alpine` and
+`docker-compose.dev.yml` runs `postgres:18.6`, `valkey/valkey:8.1.10-alpine` and
 localstack, and `pnpm db:migrate` seeds.
 
 **What is given up:** the shared `rally-dev.qnsc.vn` URL, the deploy-to-dev CI path, and

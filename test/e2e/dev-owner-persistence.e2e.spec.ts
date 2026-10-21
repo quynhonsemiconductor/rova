@@ -15,13 +15,12 @@
  * service-level spec would have proven the column is writable without proving the screen's own feed
  * returns it, and this defect is exactly the gap between those two claims.
  *
- * Bearer token from `AuthService.devLogin`: Bearer callers are CSRF-exempt by design, and the test app
- * has no `/v1` prefix and no cookie plugin (`reply.setCookie is not a function`).
+ * The session cookie from identity's test-login (`support/session.ts`). The test app is built without `bootstrapApp`, so it has
+ * no `/v1` prefix, no cookie plugin and no CSRF hook; a spec that needs those boots `createBootstrappedApp()`.
  */
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
@@ -31,6 +30,7 @@ import {
   NXP_STORY_1_ID,
   SEED_PROJECTS,
 } from '../../db/seeds/constants';
+import { signIn } from './support/session';
 
 const NXP_PROJECT_ID = SEED_PROJECTS[0].id;
 
@@ -43,8 +43,7 @@ describe('Dev Owner persistence (GAP-P2-IS-004)', () => {
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    const auth = app.get(AuthService);
-    const session = await auth.devLogin('dev@qnsc.dev');
+    const session = { accessToken: await signIn(app, 'dev@qnsc.dev') };
     token = session.accessToken;
   }, 60_000);
 
@@ -56,7 +55,7 @@ describe('Dev Owner persistence (GAP-P2-IS-004)', () => {
     method: 'GET' | 'PATCH' | 'POST',
     url: string,
     payload?: Record<string, unknown>,
-  ) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+  ) => app.inject({ method, url, headers: { cookie: token }, payload });
 
   it('writes Dev Owner, returns it, and still returns it on a fresh read', async () => {
     const patch = await authed('PATCH', `/work-items/${NXP_STORY_1_ID}`, {

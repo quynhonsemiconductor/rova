@@ -4,7 +4,7 @@ import { SignJWT } from 'jose';
 import { AppConfigService, RetryAfterError } from '@platform';
 import { githubCallSignal } from './github-http';
 import { rateLimitWaitMs } from './github-rest.client';
-import { SECRET_RESOLVER, type ISecretResolver } from '@quynhonsemiconductor/identity';
+import { SECRET_RESOLVER, type ISecretResolver } from '@platform';
 
 /**
  * Authenticates as the "Rally SCM" GitHub App and mints short-lived installation

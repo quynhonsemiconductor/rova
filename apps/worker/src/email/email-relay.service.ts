@@ -11,10 +11,10 @@
  */
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import { InjectDrizzle, Span, ResiliencePreset, leaseForResilience } from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
-import { AbstractOutboxRelay } from '@platform/outbox';
+import { AbstractOutboxRelay, dbDelay } from '@platform/outbox';
 import type { Claimed, OutboxLeaseTable } from '@platform/outbox';
 import { EmailService } from '@platform/email';
 import type { EmailTemplateName, EmailTemplateVars } from '@platform/email';
@@ -57,6 +57,8 @@ export class EmailRelayService
   }
 
   async onModuleInit(): Promise<void> {
+    // Fail the deploy, not the first invitation, if the configured transport cannot work (a missing Graph variable).
+    this.emailService.assertReady();
     this.logger.log('Email relay started — polling email_outbox every 5s');
     this.unsubscribeRelayWake = await this.pubSub.subscribeEmailRelayWake(() => {
       this.relay().catch((err: unknown) =>
@@ -93,7 +95,7 @@ export class EmailRelayService
     return leaseForResilience(ResiliencePreset.EMAIL);
   }
 
-  protected async selectDue(tx: DrizzleTx, limit: number, now: Date): Promise<EmailOutboxRow[]> {
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<EmailOutboxRow[]> {
     return tx
       .select({
         id: emailOutbox.id,
@@ -110,8 +112,8 @@ export class EmailRelayService
         and(
           eq(emailOutbox.status, 'pending'),
           lt(emailOutbox.attempts, this.maxAttempts),
-          lte(emailOutbox.scheduledAt, now),
-          this.notLeased(now),
+          lte(emailOutbox.scheduledAt, sql`now()`),
+          this.notLeased(),
         ),
       )
       .orderBy(asc(emailOutbox.scheduledAt), asc(emailOutbox.seq), asc(emailOutbox.id))
@@ -159,7 +161,7 @@ export class EmailRelayService
   ): Promise<void> {
     await tx
       .update(emailOutbox)
-      .set({ status: 'sent', sentAt: new Date(), messageId: result.messageId })
+      .set({ status: 'sent', sentAt: sql`now()`, messageId: result.messageId })
       .where(eq(emailOutbox.id, row.id));
   }
 
@@ -168,7 +170,7 @@ export class EmailRelayService
     row: Claimed<EmailOutboxRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
     // `attempts` was spent at claim time. Only a retry pushes scheduledAt forward; a terminal row keeps its
     // last one, which is fine since selectDue() never selects 'failed' rows again.
@@ -177,7 +179,7 @@ export class EmailRelayService
       .set({
         status: newStatus,
         lastError,
-        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
       })
       .where(eq(emailOutbox.id, row.id));
   }

@@ -21,13 +21,12 @@
  * cannot see a feed at all. CLAUDE.md states it twice: "a spec that calls a service directly cannot
  * see a guard defect", and a decorator is a note, not a check.
  *
- * Bearer tokens from `AuthService.devLogin`: Bearer callers are CSRF-exempt by design, and the test
+ * The session cookie from identity's test-login (`support/session.ts`). The test
  * app has no `/v1` prefix and no cookie plugin (`reply.setCookie is not a function`).
  */
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
@@ -40,6 +39,7 @@ import {
   PAY_STORY_ID,
   SEED_PROJECTS,
 } from '../../db/seeds/constants';
+import { signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 const PAY = SEED_PROJECTS[1].id;
@@ -53,20 +53,13 @@ interface StoryOption {
 
 describe('the Parent Story reference feed (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    auth = app.get(AuthService);
   });
 
   afterAll(async () => {
@@ -74,13 +67,13 @@ describe('the Parent Story reference feed (e2e)', () => {
   });
 
   async function tokenFor(email: string): Promise<string> {
-    const { accessToken } = await auth.devLogin(email, '127.0.0.1');
-    expect(accessToken, `dev-login for ${email}`).toBeTruthy();
+    const accessToken = await signIn(app, email);
+    expect(accessToken, `test-login for ${email}`).toBeTruthy();
     return accessToken;
   }
 
   function get(url: string, token: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: token } });
   }
 
   async function options(projectId: string, token: string): Promise<StoryOption[]> {
@@ -186,7 +179,7 @@ describe('the Parent Story reference feed (e2e)', () => {
       const response = await app.inject({
         method: 'PATCH',
         url: `/work-items/${NXP_DEFECT_1_ID}`,
-        headers: { authorization: `Bearer ${editor}` },
+        headers: { cookie: editor },
         payload: { parentId },
       });
       expect(response.statusCode, `${label} — ${response.body.slice(0, 200)}`).toBe(403);
@@ -211,7 +204,7 @@ describe('the Parent Story reference feed (e2e)', () => {
       const response = await app.inject({
         method: 'PATCH',
         url: `/work-items/${NXP_DEFECT_1_ID}`,
-        headers: { authorization: `Bearer ${admin}` },
+        headers: { cookie: admin },
         payload: { parentId },
       });
       expect(response.statusCode, response.body.slice(0, 300)).toBe(200);

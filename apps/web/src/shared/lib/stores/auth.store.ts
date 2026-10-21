@@ -83,10 +83,11 @@ export const useAuthStore = create<AuthState>()(
 
         set({ isSwitchingWorkspace: true })
         try {
-          // The server re-issues tokens onto the SAME session; the browser keeps
-          // its session cookie and holds no tokens, so there is nothing to store
-          // client-side. A 204 means the session now resolves to the new ws.
-          const res = await fetch(`${API}/v1/bff/switch-workspace`, {
+          // The server moves the SAME session to the workspace (identity's `setContext`, after asking
+          // `workspace_members` whether the caller may act there); the browser keeps its session cookie
+          // and holds no tokens, so there is nothing to store client-side. A 204 means the session now
+          // resolves to the new workspace; a 403 means the caller is not a member.
+          const res = await fetch(`${API}/v1/auth/switch-workspace`, {
             method: 'POST',
             credentials: 'include',
             referrerPolicy: 'no-referrer',

@@ -156,7 +156,7 @@ locals {
     }, {
     # There is deliberately NO jwt-public here. `env.schema.ts` derives the public key
     # from this one, because an ES256 public key is a pure function of its private half and
-    # rally publishes no JWKS. Storing both allowed the one failure a key pair cannot
+    # rova publishes no JWKS. Storing both allowed the one failure a key pair cannot
     # otherwise have — a mismatched pair, where signing succeeds and every verification
     # rejects — which nothing detected, since both halves were individually valid to
     # Terraform, to the deploy preflight and to the schema. Do not add it back.
@@ -166,7 +166,10 @@ locals {
     # startup, so a task wired to an empty secret cannot boot (a failed deploy plus
     # rollback, not a silent downgrade, which is the intent).
     "cookie-secret"       = "Cookie signing secret (distinct from csrf-secret)"
-    "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
+    "entra-client-secret" = "Microsoft Entra confidential-client secret (sign-in app; the worker's Graph guest invite reuses it until it moves to the Service app)"
+    # identity 8 (Better Auth): signs the session cookie and encrypts what it stores. API only; rotating it signs everyone out.
+    # A KEY of the app bundle, absent until the owner puts a value in; injected into the API only once `better_auth_secret_set`.
+    "better-auth-secret" = "Identity 8 (Better Auth) cookie-signing and encryption secret, 32+ characters (openssl rand -base64 48). API only. Not the cookie-secret, not the csrf-secret."
     # The key the Cloudflare Pages Function signs the visitor's address with
     # (`@quynhonsemiconductor/platform-http/edge`) and the API verifies (`clientIp()`). The SAME value as the Pages
     # project's secret of that name. A KEY of the app bundle (both environments bundle their secrets): it is absent until
@@ -222,13 +225,6 @@ locals {
     # Terraform: grant LOGIN and set the value FIRST, flip the flag second, or the
     # task boots and dies on 28P01. Full sequence in
     # docs/runbooks/db-role-least-privilege.md.
-    # Cloudflare Tunnel connector token, consumed by the cloudflared sidecar as
-    # TUNNEL_TOKEN. Created out of band with the tunnel itself (a tunnel and its token
-    # are one object in Cloudflare — Terraform does not mint this), then pasted into the
-    # bundle. Present in `secret_names` so `secret_arns["tunnel-token"]` resolves and so
-    # the key shows up in the bundle's generated description; the IAM grant is the whole
-    # bundle either way.
-    "tunnel-token"       = "Cloudflare Tunnel connector token (cloudflared TUNNEL_TOKEN)"
     "db-app-password"    = "Password for the rova_app Postgres role (api) — set with the LOGIN grant"
     "db-worker-password" = "Password for the rova_worker Postgres role (worker) — set with the LOGIN grant"
   })
@@ -342,7 +338,7 @@ module "cache" {
 # export into a void. That is what makes turning telemetry on a one-line change
 # per environment rather than a migration.
 # ── Cloudflare Tunnel ─────────────────────────────────────────────────────────
-# Created by Terraform via the shared cf-tunnel module. Both of rally's tunnels predate
+# Created by Terraform via the shared cf-tunnel module. Both of rova's tunnels predate
 # it and were made in the dashboard, so live/*/main.tf carries an `import` block that
 # adopts each one — the module ignores `secret` precisely so that adoption is a no-op
 # rather than a rotation. Rotating the secret would change the connector token, and every
@@ -356,20 +352,20 @@ module "tunnel" {
 
   // ── STEP ONE OF TWO: ADOPT THE TUNNEL, CHANGE NOTHING ─────────────────────
   // `hostname` is deliberately left unset, so this module creates NO configuration
-  // resource and rally keeps the routing it has today.
+  // resource and rova keeps the routing it has today.
   //
   // That restraint is the whole point. Cloudflare's tunnel-configuration API is a
   // whole-document PUT, so writing a partial rule set silently discards anything the
   // live configuration holds that this file does not reproduce — against a tunnel that
   // is currently carrying traffic, on a hostname nobody has compared rule-by-rule.
   //
-  // config_src is left UNSET, because that is what rally's tunnels actually have. The
+  // config_src is left UNSET, because that is what rova's tunnels actually have. The
   // first plan of this change proved it, and proved why it matters:
   //
   //   + config_src = "cloudflare" # forces replacement
   //
   // Writing the attribute would have destroyed and recreated a tunnel currently serving
-  // rally-api-dev.qnsc.vn — new UUID, new CNAME target, new connector token. The plan is
+  // rally-api-dev.qnsc.vn (legacy physical hostname, do not rename) — new UUID, new CNAME target, new connector token. The plan is
   // the only place that was visible before it happened.
   //
   // STEP TWO IS NOW AVAILABLE, PER ENVIRONMENT, via `tunnel_routing_managed`.
@@ -378,7 +374,7 @@ module "tunnel" {
   // rule, so `cloudflared` connected, reported healthy and returned 503 to every request
   // — `No ingress rules were defined in provided config (if any) nor from the cli`. The
   // post-deploy readiness check caught it, but nothing in the pipeline could have created
-  // the rule, because rally adopted its tunnels and left routing outside Terraform. That
+  // the rule, because rova adopted its tunnels and left routing outside Terraform. That
   // is a step someone has to remember, and on production nobody did.
   //
   // Still OPT-IN, and still off for develop, because the configuration API is a
@@ -404,16 +400,34 @@ module "tunnel" {
   config_src = "" // NOT omittable: the module defaults it to "cloudflare". See above.
 }
 
+# The Graph mail credential: ONE PEM holding the private key then the certificate, of the "Rova <Dev|Prod> Service" Entra app. A STANDALONE secret and not a
+# key of the app bundle on purpose: `task_secret_arns` gives the whole bundle to the task role of BOTH services, so a bundled key would be readable by
+# the API process. This one is referenced only from the worker's `secrets` (the execution role injects it at start) and is in no task role.
+# Terraform creates the empty container; the owner puts the value (docs/runbooks/mail-graph.md), and `mail_graph_certificate_set` injects it only after.
+resource "aws_secretsmanager_secret" "mail_graph_certificate" {
+  name                    = "${var.product}/${var.env}/mail-graph-certificate"
+  description             = "Graph mail credential: PEM holding the private key and certificate of the Service app. No client secret exists for that app. Injected into the worker only."
+  kms_key_id              = local.kms_key_arn
+  recovery_window_in_days = var.secrets_recovery_window_days
+
+  tags = local.tags
+}
+
+locals {
+  # The worker's execution role must be able to read it to inject it; nothing else is granted.
+  worker_mail_secret_iam_arns = var.mail_graph_certificate_set ? [aws_secretsmanager_secret.mail_graph_certificate.arn] : []
+}
+
 # The connector token, in its own secret rather than as a key in the bundle.
 #
 # It cannot share the bundle: that is one JSON object an operator populates by hand, and
 # Terraform writing a single key of it would clobber the rest. Separate secrets keep the
 # two ownership models apart — this one is Terraform's, the bundle stays the operator's.
 #
-# MIGRATION NOTE: the bundle's existing `tunnel-token` key is left in place and simply
-# stops being referenced. Nothing deletes it, so a rollback is a one-line revert, and the
-# api task keeps serving from its current task definition until the next deploy moves it
-# onto this ARN.
+# MIGRATION NOTE: the bundle used to carry a `tunnel-token` key, pasted in by hand. Nothing
+# has referenced it since the sidecar moved onto this ARN, and it is no longer declared in
+# `secret_names`. The key may still sit in each environment's live bundle JSON; Terraform
+# does not manage the JSON, so removing it is an owner step (see the PR that dropped it).
 resource "aws_secretsmanager_secret" "tunnel_token" {
   count = var.tunnel_enabled && var.cloudflare_account_id != "" ? 1 : 0
 
@@ -425,11 +439,36 @@ resource "aws_secretsmanager_secret" "tunnel_token" {
   tags = local.tags
 }
 
-resource "aws_secretsmanager_secret_version" "tunnel_token" {
+# The connector token's VALUE, written at apply time and never held as a Terraform attribute.
+#
+# The version resource that used to hold it read the value on every refresh, and that needs
+# secretsmanager:GetSecretValue on the plan role. The plan role must not have it, so the
+# container above stays managed here and this resource writes the token into a new version
+# when it changes (a tunnel recreate changes the hash). No plan reads a secret value.
+#
+# The version resource that held the value is forgotten here, not destroyed. A bare `removed` block
+# (OpenTofu 1.9: no `lifecycle` inside it; it forgets by default) takes the old version out of state on
+# apply, and leaves the secret's current version alone. Without it, the removal would plan a DESTROY of
+# the version, which can strip the AWSCURRENT stage the sidecar reads.
+removed {
+  from = aws_secretsmanager_secret_version.tunnel_token
+}
+
+resource "terraform_data" "tunnel_token_value" {
   count = var.tunnel_enabled && var.cloudflare_account_id != "" ? 1 : 0
 
-  secret_id     = aws_secretsmanager_secret.tunnel_token[0].id
-  secret_string = module.tunnel[0].token
+  # A hash, so the token itself never lands in state or in a plan.
+  triggers_replace = sha256(module.tunnel[0].token)
+
+  # The token goes in through the environment and stdin, never argv, and is never echoed. Only the
+  # new version id is printed.
+  provisioner "local-exec" {
+    environment = {
+      TUNNEL_TOKEN = module.tunnel[0].token
+      SECRET_ID    = aws_secretsmanager_secret.tunnel_token[0].id
+    }
+    command = "set -eu; command -v aws >/dev/null || { echo 'aws CLI missing on the runner' >&2; exit 1; }; printf '%s' \"$TUNNEL_TOKEN\" | aws secretsmanager put-secret-value --region ${var.region} --secret-id \"$SECRET_ID\" --secret-string file:///dev/stdin --query VersionId --output text"
+  }
 }
 
 # ── Cloudflare Tunnel sidecar (api only) ──────────────────────────────────────
@@ -721,7 +760,8 @@ locals {
 # ── VOLUME GATE: why four of these queries end in `and on() (... >= N)` ───────
 #
 # A PERCENTILE OVER A HANDFUL OF SAMPLES IS NOT A PERCENTILE, and neither is a
-# ratio. Production paged on `rally-production-http-p99-latency` with a value of
+# ratio. Production paged on `rally-production-http-p99-latency` (legacy physical
+# alert-rule name, do not rename) with a value of
 # A=10000 and resolved at A=48.5. Neither number described the service:
 #
 #   * 10000 is not a latency at all. It was the largest finite bucket boundary of
@@ -904,6 +944,37 @@ module "alerts" {
       summary     = "Outbox relay {{ $labels.relay }} has failed its pass continuously for 10m in ${var.env} - a claim query or the database connection is failing before any row is reached, so nothing is delivered. The error is in the worker log (`level=error`, the relay's class name)."
       runbook_url = "${local.runbook_base_url}/outbox-relay-failing.md"
     },
+    # A scheduled job (an `ExclusiveJob` user) that FAILED, whatever the volume. `worker-job-failure-rate` below is a RATIO over a 5-minute window
+    # gated on `min_samples_5m` job runs - but only ExclusiveJob users are timed by JobMetrics (the outbox relays are not), and they run once an
+    # hour, once a day, or every few minutes, so a 5-minute window never holds the floor's worth of runs and that rule cannot fire. It did
+    # not when `this.cache.tryLock is not a function` failed EVERY scheduled job for 14 hours on develop (2026-10-15): no alert.
+    # This one has no floor: any failure of a scheduled job in the last hour, per job (`{{ $labels.job_name }}` names it).
+    #
+    # `job_name`, not `job`: through OTLP -> Prometheus `job` is overwritten with service.namespace/service.name, so a metric attribute called
+    # `job` collapsed every cron of a worker into one series (observability < 0.6.0). From 0.6.0 the attribute is `job_name`; until a product runs
+    # that release the series is still one per worker: this rule still fires, but with no job name (read the worker log).
+    #
+    # THE BLIND SPOT, and why the expression is shaped this way. A counter first added to by its first failure appears at 1, and `increase()` sees
+    # no change in a series' first sample. observability >= 0.6.0 creates the series at 0 before each run, which covers a failure after an earlier
+    # run; but the exporter sends every 30 s, so a job whose VERY FIRST run after a pod start fails exports 0 and 1 in the same batch and still
+    # starts at 1. So the value is `increase()` PLUS, for a series that did not exist an hour ago (`X unless X offset 1h`), its current value (the
+    # failures since it appeared). The obvious `increase(X) or (X unless X offset 1h)` does NOT work: a new series with two or more samples has an
+    # `increase` result (0), so `or` never reaches the right side. Both shapes were run through promtool (prom/prometheus v3.5.0) against a new
+    # series appearing at 1, a series at 0 then failing, an old constant series (no alert), a new series at 0 (no alert) and another environment.
+    #
+    # `for = "5m"` only delays the page by five minutes; it does NOT filter one-off failures. The one-hour `increase` window means a job that
+    # failed once stays above zero for an hour, so a single failure of an hourly or daily job pages. That is intended: a scheduled job that
+    # threw has not done its work. Healthy, the series does not exist and the no-data state is OK.
+    {
+      name        = "scheduled-job-failed"
+      promql      = "sum by (job_name) (increase(job_failures_total{deployment_environment_name=\"${var.env}\"}[1h])) + (sum by (job_name) (job_failures_total{deployment_environment_name=\"${var.env}\"} unless job_failures_total{deployment_environment_name=\"${var.env}\"} offset 1h) or sum by (job_name) (increase(job_failures_total{deployment_environment_name=\"${var.env}\"}[1h])) * 0)"
+      for         = "5m"
+      op          = "gt"
+      threshold   = 0
+      severity    = "warning"
+      summary     = "Scheduled job {{ $labels.job_name }} failed in the last hour in ${var.env} - it throws before or while doing its work, so what it does (a sweep, a sync, a purge) is not being done. The exception is in the worker log (`level=error`, `context` = the job)."
+      runbook_url = "${local.runbook_base_url}/scheduled-job-failed.md"
+    },
     {
       name = "worker-job-failure-rate"
       # `or vector(0)` on the numerator — same reasoning as http-5xx-rate and
@@ -1066,7 +1137,8 @@ data "grafana_data_source" "tempo" {
 # intended.
 #
 # Fixed by creating it ONCE, centrally, in qnsc-infra/live/observability
-# (`grafana_folder.rally_dashboards`) — same fix as `alerts_folder_uid`
+# (`grafana_folder.rally_dashboards` — legacy physical identifiers "grafana_folder.
+# rally_dashboards" and the "Rally" folder title, do not rename) — same fix as `alerts_folder_uid`
 # already being a plain resource reference there, not a var that can be
 # left unset. `var.grafana_alerting.product_dashboards_folder_uid` below
 # is that folder's real UID.
@@ -1141,7 +1213,7 @@ resource "grafana_dashboard" "overview" {
     # backend-deploy.yml's `annotate-deploy` job posts these via Grafana's
     # own annotation API after each successful deploy, tagged so ONLY this
     # product's THIS environment's deploys show here (a develop dashboard
-    # showing prod's deploy markers, or rally's dashboard showing another
+    # showing prod's deploy markers, or rova's dashboard showing another
     # product's, would misattribute exactly the correlation this exists to
     # enable). Built-in "-- Grafana --" datasource — Grafana's own
     # annotation store, not a Loki/Prometheus query.
@@ -1288,7 +1360,8 @@ resource "grafana_dashboard" "overview" {
         # screenshot review, before prod — an ungrouped query returns one
         # series PER RUNNING TASK (service_instance_id differs across
         # replicas/rollouts even though service_name doesn't), which
-        # rendered as duplicate-looking "rally-api in_use" legend entries
+        # rendered as duplicate-looking "rally-api in_use" (legacy physical service
+        # name, do not rename) legend entries
         # instead of one line per service.
         targets = [
           {
@@ -1446,7 +1519,7 @@ resource "grafana_dashboard" "runtime" {
     # backend-deploy.yml's `annotate-deploy` job posts these via Grafana's
     # own annotation API after each successful deploy, tagged so ONLY this
     # product's THIS environment's deploys show here (a develop dashboard
-    # showing prod's deploy markers, or rally's dashboard showing another
+    # showing prod's deploy markers, or rova's dashboard showing another
     # product's, would misattribute exactly the correlation this exists to
     # enable). Built-in "-- Grafana --" datasource — Grafana's own
     # annotation store, not a Loki/Prometheus query.
@@ -1804,6 +1877,7 @@ module "api" {
   #
   #   AccessDeniedException: assumed-role/rally-develop-api-exec is not authorized to
   #   perform: secretsmanager:GetSecretValue on .../rally/develop/tunnel-token-tf-*
+  #   (quoted verbatim from the live error — legacy physical role/secret names, do not rename)
   #
   # The apply that introduced the secret succeeded and wired the sidecar to it, so
   # nothing failed until the next task START — which then could not, the circuit breaker
@@ -1851,6 +1925,9 @@ module "api" {
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
     { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
+    # `JWT_PRIVATE_KEY` above and `ENTRA_REDIRECT_URI` below are identity 7's. The image no longer reads them; they stay bound so that
+    # a rollback to the previous (v7) image can still boot. They are removed with the v7 tables, in the day-7 freeze change
+    # (docs/runbooks/identity-v8-cutover.md).
     # GitHub App webhook HMAC secret — the API verifies X-Hub-Signature-256 on
     # inbound SCM webhooks (/v1/scm/webhook/*). Absent → the receiver returns 503,
     # no boot impact. Execution-role read is covered by secret_arns above.
@@ -1869,6 +1946,13 @@ module "api" {
       # The API's alone (the worker serves no visitor). Injected only once populated: the deploy preflight refuses to
       # deploy when an injected secret holds no value. See the variable.
       { name = "EDGE_CLIENT_IP_SECRET", secret_arn = module.secrets.secret_arns["edge-client-ip-secret"] },
+    ] : [],
+    var.better_auth_secret_set ? [
+      # The API's alone (the worker signs nobody in; its schema leaves it optional and the process never reads it). Injected only
+      # once the KEY is in the bundle. The deploy preflight only proves the bundle container has a version, NOT that this key exists in
+      # it: a missing key fails at task start, after the migrator ran. Identity also refuses to start the API without the value.
+      # See the variable.
+      { name = "BETTER_AUTH_SECRET", secret_arn = module.secrets.secret_arns["better-auth-secret"] },
   ] : [])
 
   environment_vars = concat(local.api_db_env, [
@@ -1892,7 +1976,12 @@ module "api" {
     # Microsoft Entra SSO (BFF) — all Entra vars are mandatory; the API fails to boot without them.
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
+    # identity 7's redirect URI, kept for a rollback to the previous image. Identity 8's is `${local.app_base_url}/api/auth/callback/microsoft`,
+    # registered on the Entra app next to this one; nothing here carries it because the API derives it from APP_BASE_URL.
     { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
+    # Invite-only access, the same value the migrator writes onto the home connection (below): a staff address that has no profile
+    # and no live invitation is refused at first sign-in (B2B guests always are). The sign-in hook reads it from the API's env.
+    { name = "SSO_JIT_ENABLED", value = "false" },
     # Enqueue-side of Entra B2B guest provisioning: `inviteMember` writes a guest_invite_outbox row
     # only while this is true. The worker carries the same value for the drain side.
     { name = "ENTRA_GUEST_INVITE_ENABLED", value = tostring(var.entra_guest_invite_enabled) },
@@ -1935,7 +2024,10 @@ module "api" {
     # now fails at boot by design, because the old behaviour was to send every message as
     # `"Mini Rally" <>`, collect an SES rejection for each, open the email circuit breaker for the
     # life of the process — and go on reporting healthy.
-    { name = "EMAIL_PROVIDER", value = "ses" },
+    { name = "EMAIL_PROVIDER", value = var.email_provider },
+    # The shared mailbox Graph sends as (not a secret). The api gets it so both tasks agree on the transport; only the worker has the certificate.
+    { name = "MAIL_GRAPH_SENDER", value = var.mail_graph_sender },
+    { name = "MAIL_GRAPH_CLIENT_ID", value = var.mail_graph_client_id },
     { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     # Observability
     { name = "LOG_LEVEL", value = "info" },
@@ -2042,7 +2134,7 @@ module "worker" {
   # `secret_iam_arns`, NOT `secret_arns` — same reason as the api execution role above:
   # a bundled `secret_arns` yields valueFrom references that are invalid as IAM resources
   # and fail silently at apply time, surfacing only as a boot failure.
-  secret_arns = concat(local.secret_iam_arns, [module.rds.master_secret_arn], module.firelens_agent_worker.secret_arns)
+  secret_arns = concat(local.secret_iam_arns, [module.rds.master_secret_arn], module.firelens_agent_worker.secret_arns, local.worker_mail_secret_iam_arns)
   kms_key_arn = local.kms_key_arn
   secrets = concat(local.worker_db_secrets, [
     # DB credentials come from local.worker_db_secrets above: the RDS-managed
@@ -2062,7 +2154,11 @@ module "worker" {
     # Cloudflare R2 bucket-scoped credentials (worker also reads/writes attachments).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
-    ], var.storage_public_credentials ? [
+    ], var.mail_graph_certificate_set ? [
+    # The Graph mail certificate: the WORKER's alone (it relays the outbox; the api never sends), injected only once populated. A STANDALONE secret,
+    # not a key of the app bundle: the bundle is readable by the API's task role, and the API must not be able to read a credential that can send mail.
+    { name = "MAIL_GRAPH_CERTIFICATE", secret_arn = aws_secretsmanager_secret.mail_graph_certificate.arn },
+    ] : [], var.storage_public_credentials ? [
     # Public-bucket-scoped pair, injected only once populated. NOT unconditional: the
     # deploy preflight blocks on an injected secret that holds no value, so wiring these
     # while empty broke every develop deploy. See the variable.
@@ -2128,7 +2224,10 @@ module "worker" {
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
     # The WORKER sends too — the notification relay is its job — so it needs the sender for the
     # same reason the api task does.
-    { name = "EMAIL_PROVIDER", value = "ses" },
+    { name = "EMAIL_PROVIDER", value = var.email_provider },
+    # The shared mailbox Graph sends as (not a secret). The api gets it so both tasks agree on the transport; only the worker has the certificate.
+    { name = "MAIL_GRAPH_SENDER", value = var.mail_graph_sender },
+    { name = "MAIL_GRAPH_CLIENT_ID", value = var.mail_graph_client_id },
     // `try`, not a plain index: the _shared stack owns these outputs, and a PR-time plan runs
     // against the remote state as it is TODAY — which does not have them yet. Empty until
     // _shared applies, which is exactly the loop's off state (the worker logs "feedback OFF").
@@ -2140,11 +2239,9 @@ module "worker" {
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
     { name = "OTEL_SERVICE_NAME", value = "${var.product}-worker" },
-    # NO LONGER READ by the app: createWorkerApp takes the service name from OTEL_SERVICE_NAME (set above to the same value), so this entry is dead
-    # and can be dropped in a later infra change. It used to be what apps/worker/src/otel.ts read (as serviceNameEnvVar), not OTEL_SERVICE_NAME, so that two
-    # processes sharing an environment stay distinguishable. It is set here, to the same value as OTEL_SERVICE_NAME above, so the name reported by
-    # metrics and traces matches the logs (FireLens labels them 'rova-worker'). History, not current behaviour: before this was set, the code default
-    # applied and was the pre-rename name 'rally-worker'.
+    # The worker process reads OTEL_WORKER_SERVICE_NAME (apps/worker/src/main.ts passes it to createWorkerApp as serviceNameEnvVar) in preference to
+    # OTEL_SERVICE_NAME, so that the api and the worker stay distinguishable when they share one `.env` locally. Here it is set to the same value
+    # as OTEL_SERVICE_NAME above, so the name reported by metrics, traces and logs is 'rova-worker' either way.
     { name = "OTEL_WORKER_SERVICE_NAME", value = "${var.product}-worker" },
     # Gated on the sidecar actually existing, so the app can never export into a
     # void. False until observability.otlp_endpoint is set.
@@ -2196,7 +2293,7 @@ module "migrator" {
   region             = var.region
   log_retention_days = var.log_retention_days
 
-  environment = {
+  environment = merge({
     NODE_ENV       = "production"
     AWS_REGION     = var.region
     SEED_ON_DEPLOY = tostring(var.seed_on_deploy)
@@ -2237,7 +2334,12 @@ module "migrator" {
     #
     # So the split the schema already intends stands: directory = staff, by owned domain. Shared =
     # externals, by invitation.
-  }
+    }, var.identity_v8_backfill_on_deploy ? {
+    # The identity v8 backfill, committed by THIS task after the migrations and before the API rolls; a failed preflight or assertion
+    # fails the task and so the deploy (the previous tasks keep serving). Set true only by the production cutover change and back to
+    # false after it. docs/runbooks/identity-v8-cutover.md, "Production".
+    IDENTITY_V8_BACKFILL = "commit"
+  } : {})
 
   secrets = merge({
     # The master credential, and it stays that way even when `db_least_privilege`
@@ -2431,17 +2533,17 @@ module "observability" {
   # module silently skips the two user-facing ALB alarms.
   alb_arn = try(data.terraform_remote_state.runtime.outputs.alb_arn, "")
 
-  # Node mode only, and only rally's OWN dedicated node (never the shared node in
+  # Node mode only, and only rova's OWN dedicated node (never the shared node in
   # the runtime layer — see cache_cluster_id's own description for why: a shared
   # node's alarms belong where the node is created, not in one tenant's stack).
   # enable_cache_alarms is a SEPARATE, plan-time-known condition from
   # cache_cluster_id's value: on a from-scratch environment the cache node's
   # cluster_id output is unknown until apply, and a count gated on that directly
   # is a hard OpenTofu error, not a deferred plan (opshub hit this live; ported
-  # back here before rally ever exercises the same first-apply path).
+  # back here before rova ever exercises the same first-apply path).
   enable_cache_alarms = var.cache.enabled && !var.cache.shared && var.cache.mode == "node"
   cache_cluster_id    = var.cache.enabled && !var.cache.shared && var.cache.mode == "node" ? module.cache[0].cluster_id : ""
-  # `identifier` (rally-prod), NOT `instance_id` (db-F35NKOG…). CloudWatch publishes RDS
+  # `identifier` (rally-prod — legacy physical name, do not rename), NOT `instance_id` (db-F35NKOG…). CloudWatch publishes RDS
   # metrics under the DBInstanceIdentifier dimension, and `aws_db_instance.id` returns the
   # RESOURCE id on AWS provider 5.x — so this pointed at a dimension value that does not
   # exist. Six alarms sat in INSUFFICIENT_DATA permanently: RDS CPU, connections and free
@@ -2453,8 +2555,8 @@ module "observability" {
 
   # Drives BOTH per-target-group alarms: response latency and UnHealthyHostCount.
   # Scoped by target group because the ALB is shared with other products — a
-  # load-balancer-wide dimension aggregated rally and opshub into one p95 and paged
-  # under a rally name for traffic that was not always rally's.
+  # load-balancer-wide dimension aggregated rova and opshub into one p95 and paged
+  # under a legacy rally name for traffic that was not always rova's.
   #
   # Passed unconditionally now. It used to be gated on `monitor_target_health`, which
   # meant develop — where the cost-saver makes zero tasks a normal state — gave up
@@ -2698,6 +2800,43 @@ resource "aws_cloudwatch_metric_alarm" "outbox_dead_letter" {
   # A metric filter emits no data points when nothing matches, which is the
   # healthy state — treat that as OK rather than INSUFFICIENT_DATA noise.
   treat_missing_data = "notBreaching"
+
+  alarm_actions = [module.observability.alarm_topic_arn]
+  ok_actions    = [module.observability.alarm_topic_arn]
+}
+
+# ── The Graph mail sender is refused (403/404 on sendMail) ──────────────────────
+# Not a dead-letter: the email relay DEFERS every row for 15 minutes without spending its attempts, so `outbox-dead-letter` stays silent while no
+# email leaves. Causes: the Exchange role assignment is missing or still propagating (up to ~2 hours), or the mailbox is missing / not REST-enabled
+# (docs/runbooks/mail-graph.md). The field is SENDER_BLOCKED_FIELD in libs/platform/src/email/providers/graph.provider.ts. The provider logs it
+# once per block, i.e. every ~15 minutes while the cause stands, so the alarm looks back over four 5-minute periods and stays in ALARM until
+# the blocks stop.
+resource "aws_cloudwatch_log_metric_filter" "email_sender_blocked" {
+  name           = "${local.name}-email-sender-blocked"
+  log_group_name = module.worker.log_group_name
+  pattern        = "{ $.senderBlocked = \"*\" }"
+
+  metric_transformation {
+    name          = "EmailSenderBlocked"
+    namespace     = "${var.product}/${var.env}"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "email_sender_blocked" {
+  alarm_name        = "${local.name}-email-sender-blocked"
+  alarm_description = "Microsoft Graph refused the shared mailbox (403/404 on sendMail): no email is leaving, and nothing is dead-lettered. Exchange role missing or still propagating, or the mailbox is missing. docs/runbooks/mail-graph.md, \"When Graph refuses, or does not answer\"."
+
+  namespace           = "${var.product}/${var.env}"
+  metric_name         = "EmailSenderBlocked"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 4
+  datapoints_to_alarm = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
 
   alarm_actions = [module.observability.alarm_topic_arn]
   ok_actions    = [module.observability.alarm_topic_arn]

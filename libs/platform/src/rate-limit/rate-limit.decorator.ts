@@ -7,9 +7,7 @@ import type { RateLimitTier } from './rate-limit.constants';
  * Override the default rate-limit tier on a controller or route handler.
  *
  * @example
- * // Login endpoint — 5 attempts per 15-min window
- * @RateLimit('AUTH_LOGIN')
- * async login(...) {}
+ * // Default for a route with no decorator — 100/min per user (per address on a public route)
  *
  * // Sensitive write — 20/min
  * @RateLimit('STRICT')

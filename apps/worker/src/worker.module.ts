@@ -11,6 +11,7 @@ import { AuditProjectionRelay } from './audit/audit-projection.relay';
 import { SnapshotCronService } from './cron/snapshot.cron';
 import { CleanupCronService } from './cron/cleanup.cron';
 import { EmailRelayService } from './email/email-relay.service';
+import { WorkerHeartbeatService } from './heartbeat/worker-heartbeat.service';
 import { ApiTokensModule } from '@modules/api-tokens';
 import { BounceFeedbackService } from './email/bounce-feedback.service';
 import { NotificationRelayService } from './notifications/notification-relay.service';
@@ -48,6 +49,7 @@ import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
     AuditProjectionRelay,
     // Email outbox relay → IEmailProvider
     EmailRelayService,
+    WorkerHeartbeatService,
     BounceFeedbackService,
     // Notification outbox relay → in_app_notifications
     NotificationRelayService,

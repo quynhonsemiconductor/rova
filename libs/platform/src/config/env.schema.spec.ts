@@ -1,96 +1,56 @@
 import { describe, it, expect } from 'vitest';
-import { generateKeyPairSync, createPublicKey } from 'node:crypto';
 import { EnvSchema } from './env.schema';
-
-const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
-const privatePem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
-const publicPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
 
 /** Minimum that satisfies the rest of the schema, so these tests isolate the key pair. */
 function env(overrides: Record<string, string> = {}) {
   return {
     DATABASE_URL: 'postgres://u:p@localhost:5432/rova',
     REDIS_URL: 'redis://localhost:6379',
-    JWT_PRIVATE_KEY: privatePem,
     CSRF_SECRET: 'x'.repeat(32),
     COOKIE_SECRET: 'y'.repeat(32),
     ENTRA_TENANT_ID: 'tenant',
     ENTRA_CLIENT_ID: 'client',
     ENTRA_CLIENT_SECRET: 'secret',
-    ENTRA_REDIRECT_URI: 'https://rova.example/v1/bff/callback',
     ...overrides,
   };
 }
 
-describe('EnvSchema — JWT key pair', () => {
-  // The point of the derivation: a mismatched pair is the one failure a key pair
-  // cannot otherwise have (signing succeeds, every verification rejects) and nothing
-  // upstream can detect it, because both halves are individually valid.
-  it('derives JWT_PUBLIC_KEY from JWT_PRIVATE_KEY when it is not supplied', () => {
+describe('EnvSchema — identity 8 sign-in', () => {
+  it('needs no JWT key pair and no BFF or redirect variable', () => {
     const result = EnvSchema.safeParse(env());
     expect(result.success).toBe(true);
     if (!result.success) return;
-    expect(result.data.JWT_PUBLIC_KEY).toBe(publicPem);
+    expect(Object.keys(result.data).filter((k) => /^(JWT_|BFF_)/.test(k))).toEqual([]);
+    expect(result.data.SSO_ALLOWED_EMAIL_DOMAINS).toBe('qnsc.vn');
+    expect(result.data.SSO_JIT_ENABLED).toBe(true);
   });
 
-  it('derives a key that actually matches the private half', () => {
-    const result = EnvSchema.safeParse(env());
-    if (!result.success) throw new Error('expected parse to succeed');
-    const fromPrivate = createPublicKey(result.data.JWT_PRIVATE_KEY)
-      .export({ type: 'spki', format: 'pem' })
-      .toString();
-    expect(result.data.JWT_PUBLIC_KEY).toBe(fromPrivate);
+  it('accepts the identity secret only at 32 characters or more, and an empty value as unset', () => {
+    expect(EnvSchema.safeParse(env({ BETTER_AUTH_SECRET: 'x'.repeat(31) })).success).toBe(false);
+    expect(EnvSchema.safeParse(env({ BETTER_AUTH_SECRET: 'x'.repeat(32) })).success).toBe(true);
+    expect(EnvSchema.safeParse(env({ BETTER_AUTH_SECRET: '' })).success).toBe(true);
   });
 
-  it('honours an explicitly supplied JWT_PUBLIC_KEY', () => {
-    const result = EnvSchema.safeParse(env({ JWT_PUBLIC_KEY: publicPem }));
-    expect(result.success).toBe(true);
-    if (!result.success) return;
-    expect(result.data.JWT_PUBLIC_KEY).toBe(publicPem);
-  });
-
-  it('accepts a base64-encoded private key and still derives from it', () => {
+  it('refuses the passwordless test sign-in in production', () => {
     const result = EnvSchema.safeParse(
-      env({ JWT_PRIVATE_KEY: Buffer.from(privatePem).toString('base64') }),
+      env({
+        NODE_ENV: 'production',
+        APP_BASE_URL: 'https://rova.example',
+        IDENTITY_TEST_LOGIN: 'enabled',
+      }),
     );
-    expect(result.success).toBe(true);
-    if (!result.success) return;
-    expect(result.data.JWT_PUBLIC_KEY).toBe(publicPem);
-  });
-
-  // A public key pasted into the private slot is well-formed PEM, so it passes the
-  // field-level refine and would otherwise fail much later, at the first sign().
-  it('fails with a message naming JWT_PRIVATE_KEY when a public key is supplied as the private one', () => {
-    const result = EnvSchema.safeParse(env({ JWT_PRIVATE_KEY: publicPem }));
     expect(result.success).toBe(false);
     if (result.success) return;
-    const issue = result.error.issues.find((i) => i.path.includes('JWT_PRIVATE_KEY'));
-    expect(issue?.message).toMatch(/not a PRIVATE key/);
+    expect(JSON.stringify(result.error.issues)).toContain('IDENTITY_TEST_LOGIN');
   });
 
-  // ES256 is P-256 specifically. Another curve signs fine and every verifier rejects
-  // the result, which presents as a broken deploy with no obvious cause.
-  it('rejects an EC key on the wrong curve', () => {
-    const p384 = generateKeyPairSync('ec', { namedCurve: 'secp384r1' })
-      .privateKey.export({ type: 'pkcs8', format: 'pem' })
-      .toString();
-    const result = EnvSchema.safeParse(env({ JWT_PRIVATE_KEY: p384 }));
+  it('requires an https APP_BASE_URL in production: it is the redirect and cookie origin', () => {
+    const result = EnvSchema.safeParse(
+      env({ NODE_ENV: 'production', APP_BASE_URL: 'http://rova.example' }),
+    );
     expect(result.success).toBe(false);
     if (result.success) return;
-    const issue = result.error.issues.find((i) => i.path.includes('JWT_PRIVATE_KEY'));
-    expect(issue?.message).toMatch(/must be an EC P-256 key for ES256/);
-  });
-
-  it('rejects an RSA key', () => {
-    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 })
-      .privateKey.export({ type: 'pkcs8', format: 'pem' })
-      .toString();
-    expect(EnvSchema.safeParse(env({ JWT_PRIVATE_KEY: rsa })).success).toBe(false);
-  });
-
-  it('still rejects a JWT_PRIVATE_KEY that is not PEM at all', () => {
-    const result = EnvSchema.safeParse(env({ JWT_PRIVATE_KEY: 'not-a-key' }));
-    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error.issues)).toContain('APP_BASE_URL');
   });
 });
 
@@ -270,5 +230,97 @@ describe('EnvSchema — EDGE_CLIENT_IP_SECRET', () => {
         'EDGE_CLIENT_IP_SECRET_PREVIOUS is set but EDGE_CLIENT_IP_SECRET is not',
       );
     }
+  });
+});
+
+describe('EnvSchema — EMAIL_PROVIDER=graph (Microsoft 365 mail)', () => {
+  const SERVICE_APP = '33333333-3333-4333-8333-333333333333';
+  const graph = {
+    EMAIL_PROVIDER: 'graph',
+    MAIL_GRAPH_SENDER: 'noreply-rova-dev@qnsc.vn',
+    MAIL_GRAPH_CLIENT_ID: SERVICE_APP,
+  };
+
+  it('needs the mailbox it sends as, and no MAIL_FROM_EMAIL (Graph sends as the mailbox)', () => {
+    const missing = EnvSchema.safeParse(env({ EMAIL_PROVIDER: 'graph' }));
+    expect(missing.success).toBe(false);
+    expect(
+      !missing.success && missing.error.issues.some((i) => i.path[0] === 'MAIL_GRAPH_SENDER'),
+    ).toBe(true);
+    expect(EnvSchema.safeParse(env(graph)).success).toBe(true);
+  });
+
+  it('needs the Service app (not the sign-in app) that holds the Exchange role, and it must be an application id', () => {
+    const missing = EnvSchema.safeParse(env({ ...graph, MAIL_GRAPH_CLIENT_ID: '' }));
+    expect(missing.success).toBe(false);
+    expect(
+      !missing.success && missing.error.issues.some((i) => i.path[0] === 'MAIL_GRAPH_CLIENT_ID'),
+    ).toBe(true);
+    expect(EnvSchema.safeParse(env({ ...graph, MAIL_GRAPH_CLIENT_ID: 'not-a-uuid' })).success).toBe(
+      false,
+    );
+  });
+
+  it('refuses a sender that is not an address', () => {
+    expect(EnvSchema.safeParse(env({ ...graph, MAIL_GRAPH_SENDER: 'Rova <a@b.c>' })).success).toBe(
+      false,
+    );
+  });
+
+  it('treats the empty strings Terraform injects for unset variables as unset', () => {
+    const result = EnvSchema.safeParse(
+      env({
+        EMAIL_PROVIDER: 'dev',
+        MAIL_GRAPH_SENDER: '',
+        MAIL_GRAPH_CERTIFICATE: '',
+        MAIL_GRAPH_FEDERATED_TOKEN_FILE: '',
+      }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.MAIL_GRAPH_CERTIFICATE).toBeUndefined();
+  });
+
+  it('carries the credential for the worker (certificate now, federated token later)', () => {
+    const result = EnvSchema.safeParse(
+      env({
+        ...graph,
+        MAIL_GRAPH_CERTIFICATE: 'PEM',
+        MAIL_GRAPH_FEDERATED_TOKEN_FILE: '/var/run/token',
+      }),
+    );
+    expect(result.success && result.data.MAIL_GRAPH_CERTIFICATE).toBe('PEM');
+    expect(result.success && result.data.MAIL_GRAPH_FEDERATED_TOKEN_FILE).toBe('/var/run/token');
+  });
+});
+
+describe('EnvSchema — EMAIL_PROVIDER=smtp (Mailpit, development only)', () => {
+  const smtp = {
+    EMAIL_PROVIDER: 'smtp',
+    MAIL_SMTP_HOST: 'localhost',
+    MAIL_SMTP_PORT: '1120',
+    MAIL_FROM_EMAIL: 'noreply@qnsc.vn',
+  };
+
+  it('needs the relay host and port, and a sender', () => {
+    const missing = EnvSchema.safeParse(
+      env({ EMAIL_PROVIDER: 'smtp', MAIL_FROM_EMAIL: 'noreply@qnsc.vn' }),
+    );
+    expect(missing.success).toBe(false);
+    expect(
+      !missing.success && missing.error.issues.some((i) => i.path[0] === 'MAIL_SMTP_HOST'),
+    ).toBe(true);
+    expect(EnvSchema.safeParse(env(smtp)).success).toBe(true);
+  });
+
+  it('refuses the relay in production, whatever else is set', () => {
+    const result = EnvSchema.safeParse(env({ ...smtp, NODE_ENV: 'production' }));
+    expect(result.success).toBe(false);
+    expect(
+      !result.success && result.error.issues.some((i) => i.message.includes('development only')),
+    ).toBe(true);
+  });
+
+  it('rejects a port that is not a port', () => {
+    expect(EnvSchema.safeParse(env({ ...smtp, MAIL_SMTP_PORT: '70000' })).success).toBe(false);
   });
 });

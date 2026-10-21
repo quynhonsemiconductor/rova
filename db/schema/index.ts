@@ -15,6 +15,9 @@ export * from './workspace';
 // ── identity schema ────────────────────────────────────────────────────────
 export * from './identity';
 
+// ── identity v8 tables (Better Auth; additive, unused until the cutover) ───────
+export * from './identity-auth';
+
 // ── access schema ──────────────────────────────────────────────────────────
 export * from './access';
 

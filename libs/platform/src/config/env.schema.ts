@@ -1,4 +1,3 @@
-import { createPrivateKey, createPublicKey } from 'node:crypto';
 import { z } from 'zod';
 
 /** An empty string counts as unset (a variable blanked in a task definition or `.env`). */
@@ -54,6 +53,10 @@ export const EnvSchema = z
     DATABASE_USER: z.string().optional(),
     DATABASE_PASSWORD: z.string().optional(),
     DATABASE_SSLMODE: z.string().default('require'),
+    // Path to the CA bundle database certificates must chain to (RDS global bundle in the
+    // image today, the CNPG ca.crt on-prem). REQUIRED in production: without it the
+    // process refuses to connect (see db/pg-ssl.ts) instead of encrypting unverified.
+    DATABASE_SSL_CA: emptyToUndefined(z.string().optional()),
 
     DATABASE_POOL_MIN: z.coerce.number().int().positive().default(2),
     DATABASE_POOL_MAX: z.coerce.number().int().positive().default(20),
@@ -82,29 +85,19 @@ export const EnvSchema = z
       .min(1, 'REDIS_URL is required: there is deliberately no localhost fallback'),
     REDIS_KEY_PREFIX: z.string().default('rova:'),
 
-    // JWT — keys may be raw PEM or base64-encoded PEM
-    JWT_PRIVATE_KEY: z
-      .string()
-      .min(1)
-      .transform((v) => (v.includes('-----BEGIN') ? v : Buffer.from(v, 'base64').toString('utf8')))
-      .refine((v) => v.includes('-----BEGIN'), 'JWT_PRIVATE_KEY must be a PEM-encoded private key'),
+    // ── Auth: identity 8 (Better Auth, the `staff` preset, Microsoft Entra) ──────────────────────────────────────────
+    // Sessions are database rows behind an HttpOnly cookie: there is no JWT, no refresh token and no key pair.
     /**
-     * OPTIONAL — derived from JWT_PRIVATE_KEY when absent (see the transform at the
-     * bottom of this file). Supply it only to override, e.g. a local .env that already
-     * has a pair. Nothing needs it configured: an ES256 public key is a pure function
-     * of its private key, and rova publishes no JWKS, so no verifier exists that
-     * lacks the private key.
+     * Signs identity's cookies and encrypts what it stores (identity README, "Environment"): 32+ characters, its own
+     * secret (not COOKIE_SECRET, not CSRF_SECRET). Rotating it signs everyone out. API ONLY: the worker never signs
+     * anyone in and is not given it; identity refuses to start the API without it.
      */
-    JWT_PUBLIC_KEY: z
-      .string()
-      .min(1)
-      .transform((v) => (v.includes('-----BEGIN') ? v : Buffer.from(v, 'base64').toString('utf8')))
-      .refine((v) => v.includes('-----BEGIN'), 'JWT_PUBLIC_KEY must be a PEM-encoded public key')
-      .optional(),
-    JWT_ACCESS_EXPIRY: z.string().default('15m'),
-    JWT_REFRESH_EXPIRY: z.string().default('30d'),
-    JWT_ISSUER: z.string().default('rova-api'),
-    JWT_AUDIENCE: z.string().default('rova-web'),
+    BETTER_AUTH_SECRET: emptyToUndefined(z.string().min(32).optional()),
+    /**
+     * `IDENTITY_TEST_LOGIN=enabled` loads identity's passwordless `/api/auth/test-login` for the end-to-end suites.
+     * Identity itself refuses it unless NODE_ENV is `test` or `development`; this schema ALSO refuses it in production.
+     */
+    IDENTITY_TEST_LOGIN: emptyToUndefined(z.enum(['enabled']).optional()),
 
     // Cookie signing. Distinct from CSRF_SECRET on purpose: this one signs every
     // cookie rally sets, so rotating it invalidates all of them. Sharing one value
@@ -142,11 +135,10 @@ export const EnvSchema = z
 
     // AWS
     AWS_REGION: z.string().default('ap-southeast-1'),
-    AWS_ACCOUNT_ID: z.string().optional(),
     /**
      * Custom AWS service endpoint. Set ONLY in local dev / CI to target an
-     * emulator such as LocalStack (e.g. http://localhost:4566). Leave UNSET in
-     * real AWS environments so the SDK uses the default regional endpoints.
+     * AWS emulator (none ships with the local stack; S3 is Garage via STORAGE_ENDPOINT).
+     * Leave UNSET in real AWS environments so the SDK uses the default regional endpoints.
      */
     AWS_ENDPOINT_URL: z.string().url().optional(),
     /**
@@ -217,10 +209,44 @@ export const EnvSchema = z
     // ── Email ──────────────────────────────────────────────────────────────────
     /**
      * Which email transport to use. Defaults to 'dev' (logs to stdout).
+     * 'graph' sends through Microsoft 365 (Graph sendMail) from the environment's shared mailbox: needs MAIL_GRAPH_SENDER and
+     * MAIL_GRAPH_CLIENT_ID (the "Rova <Env> Service" app, NOT the sign-in app), and in the WORKER its certificate MAIL_GRAPH_CERTIFICATE.
+     * See docs/runbooks/mail-graph.md.
+     * 'ses' and 'resend' are the transports it replaces and stay only until the cut-over is done.
      * 'ses' requires MAIL_FROM_EMAIL + IAM role with ses:SendEmail.
      * 'resend' requires RESEND_API_KEY + a verified domain in the Resend dashboard.
      */
-    EMAIL_PROVIDER: z.enum(['ses', 'resend', 'dev']).default('dev'),
+    EMAIL_PROVIDER: z.enum(['graph', 'smtp', 'ses', 'resend', 'dev']).default('dev'),
+    /**
+     * 'smtp' sends through a plain SMTP relay: Mailpit in development (`MAIL_SMTP_HOST`/`MAIL_SMTP_PORT`, sender `MAIL_FROM_EMAIL`).
+     * Development only: refused when NODE_ENV=production here and by platform-mail's smtp-guard.
+     */
+    /**
+     * The shared mailbox mail goes out as (`noreply-rova@qnsc.vn`). Required for 'graph'; not a secret. Graph sends as this mailbox and no
+     * other (the Exchange role assignment is scoped to it); the display name is the mailbox's own, so MAIL_FROM_NAME does not apply.
+     */
+    MAIL_GRAPH_SENDER: emptyToUndefined(z.string().email().optional()),
+    /**
+     * The "Rova <Env> Service" Entra app: certificate only, worker only, no client secret. NOT `ENTRA_CLIENT_ID`, the sign-in app (delegated,
+     * client secret, API): a compromised API process must not hold a credential that can send mail. The Exchange RBAC role "Application
+     * Mail.Send" is assigned to THIS app, scoped to this environment's mailbox. A public identifier.
+     */
+    MAIL_GRAPH_CLIENT_ID: emptyToUndefined(z.string().uuid().optional()),
+    /**
+     * Credential for the 'graph' provider, ECS (now): a PEM holding the private key AND the certificate of the Service app (MAIL_GRAPH_CLIENT_ID),
+     * raw or base64, from the standalone secret `rova/<env>/mail-graph-certificate` (NOT the app bundle: the API's task role reads the bundle).
+     * READ BY THE WORKER ONLY (the API never sends; only the worker's execution role is granted the secret).
+     */
+    MAIL_GRAPH_CERTIFICATE: emptyToUndefined(z.string().min(1).optional()),
+    /**
+     * Credential for the 'graph' provider, k3s (later): the projected ServiceAccount token a federated credential on the app exchanges. Wins over
+     * the certificate, so the move is: mount the token, set this, delete the certificate.
+     */
+    MAIL_GRAPH_FEDERATED_TOKEN_FILE: emptyToUndefined(z.string().min(1).optional()),
+    /** SMTP relay host for EMAIL_PROVIDER=smtp: Mailpit's compose service name in a container, `localhost` on the host. */
+    MAIL_SMTP_HOST: emptyToUndefined(z.string().min(1).optional()),
+    /** SMTP relay port for EMAIL_PROVIDER=smtp: Mailpit's SMTP port (1025 in the container). */
+    MAIL_SMTP_PORT: emptyToUndefined(z.coerce.number().int().min(1).max(65535).optional()),
     /** Display name that appears in the From header, e.g. "Mini Rova". */
     MAIL_FROM_NAME: z.string().default('Mini Rova'),
     /** Verified sender address — used by all providers. Required when EMAIL_PROVIDER != 'dev'. */
@@ -267,25 +293,12 @@ export const EnvSchema = z
     INVITATION_TTL_DAYS: z.coerce.number().int().positive().default(7),
     SESSION_CLEANUP_OLDER_THAN_DAYS: z.coerce.number().int().positive().default(7),
 
-    // SSO — Microsoft Entra ID (Azure AD) OpenID Connect
-    // Rally authenticates exclusively through the server-side BFF flow, so these
-    // Entra credentials are mandatory in every environment; the API refuses to
-    // boot without them.
+    // SSO — Microsoft Entra ID. The sign-in app registration (a confidential client, single-tenant). The API signs
+    // people in with it (`ENTRA_CLIENT_SECRET` in the code exchange); the worker reuses the same registration for the
+    // Graph guest-invite call until that moves to the certificate-only Service app. Mandatory in every environment.
     ENTRA_TENANT_ID: z.string().min(1),
     ENTRA_CLIENT_ID: z.string().min(1),
-
-    // ── BFF (Backend-for-Frontend) — server-side OIDC session ──────────────────
-    // The API is a *confidential* OIDC client: it runs the Authorization-Code +
-    // PKCE flow server-side and issues an opaque, httpOnly `__Host-` session
-    // cookie, so Entra/JWT tokens never reach the browser. This is rally's sole
-    // authentication mode — every /bff/* route is always active.
-    /** Entra confidential-client secret. */
     ENTRA_CLIENT_SECRET: z.string().min(1),
-    /**
-     * Absolute URL of the BFF OIDC callback, registered as a redirect URI on the
-     * Entra app registration, e.g. https://rally-dev.qnsc.vn/v1/bff/callback.
-     */
-    ENTRA_REDIRECT_URI: z.string().url(),
     /**
      * The key the Cloudflare Pages Function signs the visitor's address with (`@quynhonsemiconductor/platform-http/edge`)
      * and `clientIp()` verifies. Behind a Pages Function the API's `cf-connecting-ip` is a Cloudflare address shared
@@ -328,29 +341,16 @@ export const EnvSchema = z
      */
     INTERNAL_EMAIL_DOMAINS: z.string().default(''),
     /**
-     * Multi-IdP broker: the single app-level OIDC callback shared by every
-     * federated connection (the same `/bff/callback` endpoint). Defaults to
-     * ENTRA_REDIRECT_URI when unset (the home connection reuses it).
+     * Staff email domains (comma-separated, exact; `*.x.y` opts into sub-domains): identity's `staff` preset refuses a
+     * Microsoft sign-in whose address is outside them. Also read by the migrator's tenant bootstrap.
      */
-    IDENTITY_REDIRECT_URI: z.string().url().optional(),
+    SSO_ALLOWED_EMAIL_DOMAINS: z.string().default('qnsc.vn'),
     /**
-     * Multi-IdP broker: Secrets Manager ref (name/ARN, e.g. `rova/${env}/sso/home`)
-     * holding the HOME Entra client secret for the broker path. When unset the home
-     * connection is seeded without a secret ref and only the legacy home flow works.
+     * Whether a staff-domain address may create its own account at first sign-in (`true`) or only when it already has
+     * a profile or a live invitation (`false`: invite-only, how every deployed environment runs). B2B guests are always
+     * invite-only. Also read by the migrator's tenant bootstrap.
      */
-    IDENTITY_HOME_SECRET_REF: z.string().optional(),
-    /**
-     * Same-origin path the browser lands on after a successful BFF login when no
-     * safe `returnTo` was supplied. Must be a root-relative path.
-     */
-    BFF_POST_LOGIN_REDIRECT: z.string().default('/'),
-    /** Server-side BFF session lifetime (seconds). Defaults to 30 days. */
-    BFF_SESSION_TTL_SECONDS: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(30 * 24 * 60 * 60),
-
+    SSO_JIT_ENABLED: booleanish(true),
     /**
      * Comma-separated SSO (Entra) emails auto-granted workspace_admin on first login.
      * Example: "nghiavt@qnsc.vn,quangld@qnsc.vn"
@@ -428,7 +428,43 @@ export const EnvSchema = z
      * the rule this repo already follows for the database credentials above, and for the same
      * reason — a precise message now beats an invisible outage later.
      */
-    if (env.EMAIL_PROVIDER !== 'dev' && !env.MAIL_FROM_EMAIL) {
+    if (env.EMAIL_PROVIDER === 'graph' && !env.MAIL_GRAPH_SENDER) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAIL_GRAPH_SENDER'],
+        message:
+          'MAIL_GRAPH_SENDER is required when EMAIL_PROVIDER is "graph": it is the shared mailbox Graph sends as ' +
+          '(noreply-rova@qnsc.vn in production, noreply-rova-dev@qnsc.vn in develop), and the Exchange role ' +
+          'assignment names exactly that mailbox.',
+      });
+    }
+    if (env.EMAIL_PROVIDER === 'graph' && !env.MAIL_GRAPH_CLIENT_ID) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAIL_GRAPH_CLIENT_ID'],
+        message:
+          'MAIL_GRAPH_CLIENT_ID is required when EMAIL_PROVIDER is "graph": the "Rova <Env> Service" app that holds the ' +
+          'Exchange "Application Mail.Send" role for the mailbox (not the sign-in app, ENTRA_CLIENT_ID).',
+      });
+    }
+    if (env.EMAIL_PROVIDER === 'smtp' && env.NODE_ENV === 'production') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_PROVIDER'],
+        message:
+          'EMAIL_PROVIDER=smtp is for development only (Mailpit): an unauthenticated relay must never send in production. ' +
+          'Use graph in production.',
+      });
+    }
+    if (env.EMAIL_PROVIDER === 'smtp' && (!env.MAIL_SMTP_HOST || !env.MAIL_SMTP_PORT)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAIL_SMTP_HOST'],
+        message:
+          'MAIL_SMTP_HOST and MAIL_SMTP_PORT are required when EMAIL_PROVIDER is "smtp" (Mailpit: localhost and 1120 on the host, mailpit and 1025 in a container).',
+      });
+    }
+    if (env.EMAIL_PROVIDER !== 'dev' && env.EMAIL_PROVIDER !== 'graph' && !env.MAIL_FROM_EMAIL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['MAIL_FROM_EMAIL'],
@@ -439,59 +475,24 @@ export const EnvSchema = z
       });
     }
   })
-  .transform((env, ctx) => {
-    // JWT_PUBLIC_KEY is DERIVED, not configured.
-    //
-    // Storing the public half alongside the private one invited the single failure a
-    // key pair cannot otherwise have: a MISMATCHED pair, where signing succeeds and
-    // every verification rejects — total auth outage. Nothing caught it, because both
-    // values were individually valid to Terraform, to the deploy preflight, and to
-    // this schema. Deriving removes the possibility rather than monitoring for it.
-    //
-    // An explicit value still wins, so a local .env with a real pair keeps working and
-    // infra can keep injecting one through the transition.
-    if (env.JWT_PUBLIC_KEY) return { ...env, JWT_PUBLIC_KEY: env.JWT_PUBLIC_KEY };
-
-    const reject = (message: string) => {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['JWT_PRIVATE_KEY'], message });
-      return z.NEVER;
-    };
-
-    // createPrivateKey FIRST, deliberately. createPublicKey happily accepts a public
-    // key as its input and hands it straight back, so deriving from it would silently
-    // succeed for the likeliest paste error there is — the public half dropped into
-    // the private slot — and fail much later at the first sign().
-    let privateKey;
-    try {
-      privateKey = createPrivateKey(env.JWT_PRIVATE_KEY);
-    } catch {
-      return reject(
-        'JWT_PRIVATE_KEY is PEM but not a PRIVATE key. A public key pasted here would ' +
-          'pass the format check and then break signing at runtime.',
-      );
+  .superRefine((env, ctx) => {
+    if (env.NODE_ENV !== 'production') return;
+    if (env.IDENTITY_TEST_LOGIN) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['IDENTITY_TEST_LOGIN'],
+        message:
+          'IDENTITY_TEST_LOGIN cannot be set when NODE_ENV=production: it is a passwordless sign-in for end-to-end suites only.',
+      });
     }
-
-    // ES256 means P-256 specifically. Any other curve signs happily and produces
-    // tokens every verifier rejects, which reads as a broken deploy with no cause.
-    const curve = privateKey.asymmetricKeyDetails?.namedCurve;
-    if (privateKey.asymmetricKeyType !== 'ec' || curve !== 'prime256v1') {
-      return reject(
-        `JWT_PRIVATE_KEY must be an EC P-256 key for ES256, got ` +
-          `${privateKey.asymmetricKeyType}${curve ? `/${curve}` : ''}.`,
-      );
+    if (!env.APP_BASE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['APP_BASE_URL'],
+        message:
+          'APP_BASE_URL must be https when NODE_ENV=production: it is the origin Entra redirects the browser to (/api/auth/callback/microsoft) and the origin of the session cookie.',
+      });
     }
-
-    return {
-      ...env,
-      // Derived from the validated PEM rather than the KeyObject: @types/node's
-      // createPublicKey overloads do not accept a bare KeyObject, though the runtime
-      // does. Re-exporting keeps this typed without a cast.
-      JWT_PUBLIC_KEY: createPublicKey(
-        privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
-      )
-        .export({ type: 'spki', format: 'pem' })
-        .toString(),
-    };
   });
 
 export type Env = z.infer<typeof EnvSchema>;

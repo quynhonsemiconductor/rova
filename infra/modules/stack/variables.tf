@@ -25,8 +25,9 @@ variable "env_slug" {
   description = <<-EOT
     Short environment token used in RESOURCE NAMES (`<product>-<env_slug>`).
     Deliberately separate from `env`: existing resources are named `rally-prod`
-    while the environment is called `production`, and renaming them would force
-    replacement of the cluster, RDS instance and log groups.
+    (legacy physical name, do not rename — recreated as rova-prod in the
+    on-prem move) while the environment is called `production`, and renaming
+    them would force replacement of the cluster, RDS instance and log groups.
   EOT
   type        = string
 }
@@ -48,12 +49,12 @@ variable "api_domain" {
 }
 
 variable "web_record" {
-  description = "Cloudflare CNAME label for the SPA (e.g. `rally-dev`, `rally`)."
+  description = "Cloudflare CNAME label for the SPA (e.g. `rova-dev`, `rova`)."
   type        = string
 }
 
 variable "api_record" {
-  description = "Cloudflare CNAME label for the API (e.g. `rally-api-dev`, `rally-api`)."
+  description = "Cloudflare CNAME label for the API (e.g. `rova-api-dev`, `rova-api`)."
   type        = string
 }
 
@@ -179,6 +180,87 @@ variable "platform_admin_emails" {
   description = "Emails auto-granted workspace_admin on every SSO login."
   type        = list(string)
   default     = []
+}
+
+variable "email_provider" {
+  description = <<-EOT
+    Which transport sends mail: "graph" sends through Microsoft 365 (Graph `sendMail`) from `mail_graph_sender`, "ses" uses this
+    account's SES (being replaced by graph), "dev" logs and sends nothing.
+
+    Defaults to "ses", which is what both environments ran when this variable did not exist, so applying this changes nothing until
+    somebody chooses "graph". "graph" needs `mail_graph_sender` and the worker's certificate (`mail_graph_certificate_set`); the WORKER
+    is the only process that sends. The mailbox is granted to the Entra app by Exchange RBAC for Applications, NOT by a Graph
+    permission in Entra: docs/runbooks/mail-graph.md has the owner steps, in order.
+  EOT
+  type        = string
+  default     = "ses"
+
+  validation {
+    condition     = contains(["graph", "ses", "dev"], var.email_provider)
+    error_message = "email_provider must be graph, ses or dev."
+  }
+
+  validation {
+    condition = var.email_provider != "graph" || (
+      var.mail_graph_sender != "" && var.mail_graph_client_id != "" && var.mail_graph_certificate_set
+    )
+    error_message = "email_provider = \"graph\" needs mail_graph_sender, mail_graph_client_id and mail_graph_certificate_set = true. Finish docs/runbooks/mail-graph.md first: the deploy refuses to inject a secret that holds no value."
+  }
+}
+
+variable "mail_graph_sender" {
+  description = <<-EOT
+    The shared mailbox Graph sends as, e.g. `noreply-rova@qnsc.vn`. Required for email_provider = "graph". A public address, held in git.
+    Graph sends as exactly this mailbox: the Exchange role assignment is scoped to its PrimarySmtpAddress, so any other sender is a 403.
+
+    A NON-PROD ENVIRONMENT NEVER SENDS FROM THE PROD MAILBOX (decision 2026-10-18, HYBRID-INFRA-PLAN §7.4): develop sends as
+    `noreply-rova-dev@qnsc.vn`, scoped to the develop Service app; production sends as `noreply-rova@qnsc.vn`, scoped to the production Service app.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.mail_graph_sender == "" || can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.mail_graph_sender))
+    error_message = "mail_graph_sender must be a single bare email address (no display name)."
+  }
+
+  # A non-prod environment never sends from the prod mailbox, and production never from the dev one. Each is scoped to its own Service app in
+  # Exchange; this stops the wrong address being typed into the wrong environment's live/main.tf.
+  validation {
+    condition     = var.mail_graph_sender == "" || lower(trimspace(var.mail_graph_sender)) == (var.env == "production" ? "noreply-${var.product}@qnsc.vn" : "noreply-${var.product}-dev@qnsc.vn")
+    error_message = "mail_graph_sender must be noreply-rova@qnsc.vn in production and noreply-rova-dev@qnsc.vn in every other environment (a non-prod environment never sends from the prod mailbox)."
+  }
+}
+
+variable "mail_graph_client_id" {
+  description = <<-EOT
+    Application (client) id of the "Rova <Dev|Prod> Service" Entra app: certificate only (no client secret), worker only. It holds the Exchange
+    RBAC role "Application Mail.Send" scoped to `mail_graph_sender`, and NO Graph permission in Entra. NOT `entra_client_id`, the sign-in app
+    (delegated, client secret, API): a compromised API process must not hold a credential that can send mail. A public identifier, held in git.
+    Empty until the app exists (docs/runbooks/mail-graph.md).
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.mail_graph_client_id == "" || can(regex("^[0-9a-fA-F-]{36}$", var.mail_graph_client_id))
+    error_message = "mail_graph_client_id must be empty or an Entra application (client) id (a UUID)."
+  }
+}
+
+variable "mail_graph_certificate_set" {
+  description = <<-EOT
+    Inject `mail-graph-certificate` into the WORKER (never the api) as MAIL_GRAPH_CERTIFICATE.
+
+    OFF by default, for the same mechanical reason as `edge_client_ip_secret_set`: the deploy preflight refuses to deploy when an
+    injected Secrets Manager secret holds no value. Order, per environment (docs/runbooks/mail-graph.md):
+      1. generate a key and certificate with openssl, upload the public certificate to the Entra app;
+      2. put the PEM (the private key, then the certificate; raw or base64) into the standalone secret `<product>/<env>/mail-graph-certificate`
+         (NOT the app bundle: the API's task role reads the bundle, and must not be able to read this);
+      3. set this true, together with email_provider = "graph".
+  EOT
+  type        = bool
+  default     = false
 }
 
 variable "mail_from_email" {
@@ -536,11 +618,12 @@ variable "grafana_alerting" {
     `product_dashboards_folder_uid` are THREE DIFFERENT folders in the same
     shared Grafana stack — do not collapse them. A real bug caught before
     merge: the dashboard resource briefly reused `alerts_folder_uid`, which
-    would have filed rally's dashboard under the Alerts folder. A second
+    would have filed rova's dashboard under the Alerts folder. A second
     real bug, caught in production: `product_dashboards_folder_uid` used to
     be a `grafana_folder` resource created HERE, once per environment —
     since develop and prod are separate Terraform root modules with
-    separate state, that created two real, separate "Rally" folders. It is
+    separate state, that created two real, separate "Rally" folders (legacy
+    physical folder titles, do not rename). It is
     now qnsc-infra/live/observability's `rally_dashboards_folder_uid`
     output — a plain UID, created once, centrally, same as the other two.
   EOT
@@ -657,6 +740,40 @@ variable "edge_client_ip_secret_set" {
       2. put the SAME value into the `edge-client-ip-secret` key of `<product>/<env>/app` (the bundle);
       3. set this true.
     While false the API has no key: it ignores the signed headers and uses `cf-connecting-ip`, exactly as before.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "identity_v8_backfill_on_deploy" {
+  description = <<-EOT
+    Make the migrator commit the identity v8 backfill (`IDENTITY_V8_BACKFILL=commit`) as part of a deploy: after the migrations, before the
+    API rolls, failing the deploy (the previous tasks keep serving) if a preflight check or an assertion raises.
+
+    For PRODUCTION, whose migrator image only ever comes from a release tag: the cutover tag's own migrator is the one that can run the backfill
+    before the v8 API serves. Set true only in the production cutover change (together with `better_auth_secret_set`), and back to false in the
+    change after it: while true, every deploy re-runs the backfill's preflight against live data. DEVELOP leaves it false and runs the backfill by
+    hand (docs/runbooks/identity-v8-cutover.md). Idempotent either way.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "better_auth_secret_set" {
+  description = <<-EOT
+    Inject `better-auth-secret` into the API as BETTER_AUTH_SECRET: identity 8 (Better Auth) signs the session cookie and encrypts
+    what it stores with it, and refuses to start the API without a secret of at least 32 characters.
+
+    OFF by default. The key is declared either way; injecting it before the owner has put a value in makes the API task unable to
+    start. WHAT THE DEPLOY PREFLIGHT DOES AND DOES NOT CATCH: it refuses to deploy when an injected secret CONTAINER holds no value at
+    all. The app bundle is ONE container with many JSON keys, so a bundle that has a version but lacks the `better-auth-secret` key
+    passes the preflight and then fails at task start (ECS cannot resolve `<arn>:better-auth-secret::`), after the migrator ran.
+    Check the KEY, not the container, before setting this (docs/runbooks/identity-v8-cutover.md, step 3: `jq -e 'has("better-auth-secret")'`).
+    Order, per environment:
+      1. generate a value (`openssl rand -base64 48`) and put it into the `better-auth-secret` key of `<product>/<env>/app`;
+      2. set this true and apply;
+      3. only then deploy the identity 8 image (an image deployed before this is true cannot start its API).
+    The worker is never given it.
   EOT
   type        = bool
   default     = false
@@ -781,7 +898,8 @@ variable "idle_schedule" {
     The 7-day window bounds when AWS force-STARTS the instance, not how long it then runs.
     Stop it on Sunday, AWS starts it the following Sunday, and the next weekly pass is up
     to seven days after that. So a weekly re-stop bounds the exposure at seven days rather
-    than one. Measured on rally-prod under exactly that expression: 59 of 168 hours in a
+    than one. Measured on rally-prod (legacy physical instance name, do not
+    rename) under exactly that expression: 59 of 168 hours in a
     week published CloudWatch datapoints — a pre-launch database with no users, no tasks
     and no cache node running 35% of the time, roughly $4/mo for nothing.
 
@@ -921,9 +1039,9 @@ variable "tunnel_enabled" {
     target group would health-check a port the tunnel already owns, and traffic could
     arrive by two paths with different TLS termination.
 
-    REQUIRES `tunnel-token` in the environment's secret bundle — the connector token
-    from `cloudflared`. Absent, the sidecar is not produced and the api would have NO
-    ingress at all, so this variable and that secret must move together.
+    REQUIRES `cloudflare_account_id`: the stack creates the tunnel and its connector token
+    (`aws_secretsmanager_secret.tunnel_token`). Without it the sidecar is not produced and
+    the api would have NO ingress at all, so this variable and that one must move together.
 
     WHAT IS GIVEN UP: ALB access logs, the option of an origin-side AWS WAF, and the
     per-target-group CloudWatch alarms. `monitor_target_health` in particular has no
@@ -942,7 +1060,7 @@ variable "tunnel_routing_managed" {
     mapping), instead of leaving them to whatever was configured by hand.
 
     WHY THIS IS OPT-IN RATHER THAN THE DEFAULT. A tunnel with no ingress rule is inert:
-    it connects, reports healthy, and 503s every request — which is exactly how rally
+    it connects, reports healthy, and 503s every request — which is exactly how rova
     production went live. But turning routing on for a tunnel that is ALREADY SERVING is
     the dangerous direction: Cloudflare's tunnel-configuration API is a whole-document
     PUT, so a partial rule set silently discards anything the live configuration holds
@@ -1023,7 +1141,7 @@ variable "cpu_architecture" {
     an x86 runner multiplies build minutes by enough to outweigh the Fargate saving.
 
     NOT EVERY PRODUCT CAN TAKE THIS. It depends on every image in the task having an
-    arm64 build — including sidecars. rally qualifies: the app is `node:alpine`
+    arm64 build — including sidecars. rova qualifies: the app is `node:alpine`
     (multi-arch), and both sidecars publish arm64 (`cloudflare/cloudflared` and
     `amazon/aws-otel-collector`, checked 2026-08-17). qnsc-kb does NOT: `clamav/clamav`
     is amd64-only on every published tag.

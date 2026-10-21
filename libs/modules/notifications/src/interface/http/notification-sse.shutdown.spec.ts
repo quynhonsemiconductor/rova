@@ -14,7 +14,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { JwtAuthGuard } from '@platform';
+import { SessionAuthGuard } from '@platform';
 import { NotificationPubSubService } from '@platform/notifications';
 import { enableGracefulShutdown } from '@quynhonsemiconductor/platform-runtime';
 import { NotificationSseController } from './notification-sse.controller';
@@ -57,7 +57,7 @@ async function boot(opts: { withHook: boolean }): Promise<Harness> {
       },
     ],
   })
-    .overrideGuard(JwtAuthGuard)
+    .overrideGuard(SessionAuthGuard)
     .useValue(authenticated)
     .compile();
 

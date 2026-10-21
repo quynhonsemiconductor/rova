@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Stub git for the owner script's tests: the real git, plus one thing. After the script has paused for the release-please PR (RELEASE_PAUSED=yes
+# in its state), the first `fetch` publishes MOCK_TAG_AFTER_PAUSE on the bare origin, on origin/main's head: the release tag appears only
+# after the pause, as it does in production. Every other git call passes straight through.
+REAL=/usr/bin/git
+state="$XDG_STATE_HOME/rova-identity-v8/prod-state.env"
+if [ -n "${MOCK_TAG_AFTER_PAUSE:-}" ] && [[ " $* " == *" fetch "* ]] && [ -f "$state" ] && grep -q '^RELEASE_PAUSED=yes' "$state" &&
+   [ ! -e "$XDG_STATE_HOME/rova-identity-v8/.tag-published" ]; then
+  sha="$("$REAL" --git-dir="$MOCK_ORIGIN" rev-parse main)" && "$REAL" --git-dir="$MOCK_ORIGIN" tag "$MOCK_TAG_AFTER_PAUSE" "$sha" &&
+    touch "$XDG_STATE_HOME/rova-identity-v8/.tag-published"
+fi
+exec "$REAL" "$@"

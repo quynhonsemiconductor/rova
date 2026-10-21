@@ -11,10 +11,10 @@
  */
 import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import { InjectDrizzle, Span } from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
-import { AbstractOutboxRelay } from '@platform/outbox';
+import { AbstractOutboxRelay, dbDelay } from '@platform/outbox';
 import type { Claimed, OutboxLeaseTable } from '@platform/outbox';
 import { ScmLinkerService, ScmInstallationService } from '@modules/scm';
 import type { ScmProvider } from '@modules/scm';
@@ -73,7 +73,7 @@ export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
     return SCM_WEBHOOK_LEASE_MS;
   }
 
-  protected async selectDue(tx: DrizzleTx, limit: number, now: Date): Promise<ScmInboxRow[]> {
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<ScmInboxRow[]> {
     return tx
       .select({
         id: scmWebhookInbox.id,
@@ -87,8 +87,8 @@ export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
         and(
           eq(scmWebhookInbox.status, 'pending'),
           lt(scmWebhookInbox.attempts, this.maxAttempts),
-          lte(scmWebhookInbox.scheduledAt, now),
-          this.notLeased(now),
+          lte(scmWebhookInbox.scheduledAt, sql`now()`),
+          this.notLeased(),
         ),
       )
       .orderBy(asc(scmWebhookInbox.scheduledAt), asc(scmWebhookInbox.seq), asc(scmWebhookInbox.id))
@@ -110,7 +110,7 @@ export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
   protected async markSent(tx: DrizzleTx, row: Claimed<ScmInboxRow>): Promise<void> {
     await tx
       .update(scmWebhookInbox)
-      .set({ status: 'processed', processedAt: new Date() })
+      .set({ status: 'processed', processedAt: sql`now()` })
       .where(eq(scmWebhookInbox.id, row.id));
   }
 
@@ -119,7 +119,7 @@ export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
     row: Claimed<ScmInboxRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
     // `attempts` was spent at claim time.
     await tx
@@ -127,7 +127,7 @@ export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
       .set({
         status: newStatus,
         lastError,
-        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
       })
       .where(eq(scmWebhookInbox.id, row.id));
   }

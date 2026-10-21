@@ -23,7 +23,7 @@
  *      delivered the SNS envelope while the consumer parsed it as the bare event,
  *      reading `undefined` for every field.
  *
- * Local dev worked, which is what kept it hidden: `scripts/localstack/01-bootstrap.sh`
+ * Local dev worked, which is what kept it hidden: the LocalStack bootstrap (since removed)
  * subscribed all four queues, unfiltered, with raw delivery on. It was more generous
  * than the Terraform, so dev could not reproduce prod.
  *
@@ -41,11 +41,11 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { InjectDrizzle, Span } from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
-import { AbstractOutboxRelay } from '@platform/outbox';
+import { AbstractOutboxRelay, dbDelay } from '@platform/outbox';
 import type { Claimed, OutboxLeaseTable } from '@platform/outbox';
 import { AUDIT_REPOSITORY, type IAuditRepository } from '@modules/audit';
 import { outboxEvents } from '../../../../db/schema/messaging';
@@ -121,7 +121,7 @@ export class AuditProjectionRelay extends AbstractOutboxRelay<OutboxEventRow> {
     return AUDIT_LEASE_MS;
   }
 
-  protected async selectDue(tx: DrizzleTx, limit: number, now: Date): Promise<OutboxEventRow[]> {
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<OutboxEventRow[]> {
     return tx
       .select({
         id: outboxEvents.id,
@@ -139,8 +139,8 @@ export class AuditProjectionRelay extends AbstractOutboxRelay<OutboxEventRow> {
         and(
           eq(outboxEvents.status, 'pending'),
           lt(outboxEvents.attempts, this.maxAttempts),
-          lte(outboxEvents.scheduledAt, now),
-          this.notLeased(now),
+          lte(outboxEvents.scheduledAt, sql`now()`),
+          this.notLeased(),
         ),
       )
       .orderBy(asc(outboxEvents.createdAt), asc(outboxEvents.seq), asc(outboxEvents.id))
@@ -178,7 +178,7 @@ export class AuditProjectionRelay extends AbstractOutboxRelay<OutboxEventRow> {
   protected async markSent(tx: DrizzleTx, row: Claimed<OutboxEventRow>): Promise<void> {
     await tx
       .update(outboxEvents)
-      .set({ status: 'published', publishedAt: new Date() })
+      .set({ status: 'published', publishedAt: sql`now()` })
       .where(eq(outboxEvents.id, row.id));
   }
 
@@ -187,7 +187,7 @@ export class AuditProjectionRelay extends AbstractOutboxRelay<OutboxEventRow> {
     row: Claimed<OutboxEventRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
     // `attempts` was spent at claim time. Only a retry moves scheduledAt forward (the backoff).
     await tx
@@ -195,7 +195,7 @@ export class AuditProjectionRelay extends AbstractOutboxRelay<OutboxEventRow> {
       .set({
         status: newStatus,
         lastError,
-        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
       })
       .where(eq(outboxEvents.id, row.id));
   }

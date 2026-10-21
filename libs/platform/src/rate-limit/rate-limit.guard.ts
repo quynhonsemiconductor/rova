@@ -1,9 +1,8 @@
 import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { createHash } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
-import { clientIp } from '@quynhonsemiconductor/platform-http';
+import { clientIp, currentUserId, KEYED_BY_ADDRESS } from '@quynhonsemiconductor/platform-http';
 import { RateLimitedException } from '../errors/exceptions';
 import {
   RATE_LIMIT_METADATA_KEY,
@@ -19,7 +18,7 @@ import { failOpenLog, SecurityMetrics } from '@quynhonsemiconductor/observabilit
  *
  * Registered as APP_GUARD in PlatformModule so it applies to every route.
  * Behaviour can be overridden per-route:
- *   @RateLimit('AUTH_LOGIN')  — tighter tier
+ *   @RateLimit('STRICT')      — tighter tier
  *   @SkipRateLimit()          — bypass entirely (health probes, etc.)
  *
  * Key strategy
@@ -27,14 +26,11 @@ import { failOpenLog, SecurityMetrics } from '@quynhonsemiconductor/observabilit
  * Pre-auth (login, public routes): keyed by client IP.
  *   key = "{tier}:ip:{clientIp(req)}"
  *
- * Post-auth (protected routes where Passport has populated req.user):
+ * Post-auth (the request context holds a principal: identity's global SessionGuard, or ApiTokenGuard, ran BEFORE
+ * this one and called `setRequestPrincipal`; `RateLimitModule` is imported after both for that reason):
  * keyed by authenticated user ID — fairer for enterprise users behind NAT
  * or shared corporate egress IPs.
  *   key = "{tier}:uid:{userId}"
- *
- * Refresh (AUTH_REFRESH, keyBy: 'refreshToken'): keyed by SHA-256 of the
- * HttpOnly refresh-token cookie — per-session, NAT-safe without a decoded JWT.
- *   key = "{tier}:session:{sha256(cookie).slice(0,32)}"
  *
  * Response headers (RFC 6585 / IETF draft-ietf-httpapi-ratelimit-headers)
  * ────────────────────────────────────────────────────────────────────────
@@ -73,12 +69,9 @@ export class RateLimitGuard implements CanActivate {
         context.getClass(),
       ]) ?? 'DEFAULT';
 
-    const tierConfig = RATE_LIMIT_TIERS[tier] as (typeof RATE_LIMIT_TIERS)[typeof tier] & {
-      keyBy?: 'refreshToken';
-    };
-    const { limit, windowSeconds } = tierConfig;
+    const { limit, windowSeconds } = RATE_LIMIT_TIERS[tier];
 
-    const req = context.switchToHttp().getRequest<FastifyRequest & { user?: { sub?: string } }>();
+    const req = context.switchToHttp().getRequest<FastifyRequest>();
     const reply = context.switchToHttp().getResponse<FastifyReply>();
 
     // The CLIENT's address, by `clientIp()` and never `req.ip`: behind the Cloudflare Tunnel `req.ip` is cloudflared's
@@ -87,23 +80,15 @@ export class RateLimitGuard implements CanActivate {
     // `cf-connecting-ip`, else the first X-Forwarded-For entry, else the socket. One answer per request, so the
     // access log and idempotency agree with it.
     const ip = clientIp(req);
+    const userId = currentUserId();
 
     // ── Build tracking key ───────────────────────────────────────────────────
-    let identifier: string;
-    if (tierConfig.keyBy === 'refreshToken') {
-      // Per-session bucket: hash the HttpOnly cookie so raw tokens never appear
-      // in Redis keys. Falls back to IP when no cookie is present.
-      const rawCookie = (req.cookies as Record<string, string | undefined> | undefined)?.[
-        'refresh_token'
-      ];
-      identifier = rawCookie
-        ? `session:${createHash('sha256').update(rawCookie).digest('hex').slice(0, 32)}`
-        : `ip:${ip}`;
-    } else {
-      // Prefer authenticated user ID so corporate NAT users aren't penalised for
-      // each other. Fall back to IP for unauthenticated endpoints.
-      identifier = req.user?.sub ? `uid:${req.user.sub}` : `ip:${ip}`;
-    }
+    // Prefer authenticated user ID so corporate NAT users aren't penalised for each other. Fall back to IP for public routes.
+    // The authenticated user comes from the request context (`setRequestPrincipal`), not from `req.user`.
+    const identifier = userId ? `uid:${userId}` : `ip:${ip}`;
+    // Remembered on the request: a guard that authenticates AFTER this one (identity's SessionGuard, when this guard is registered
+    // in the wrong module) can tell the caller it ran too late.
+    if (!userId) (req as unknown as Record<symbol, unknown>)[KEYED_BY_ADDRESS] = true;
     const key = `${tier}:${identifier}`;
 
     // ── Consume one token from the bucket ────────────────────────────────────
@@ -123,7 +108,7 @@ export class RateLimitGuard implements CanActivate {
       // logs — tagged so the CloudWatch alarm in infra/live/* fires, because
       // "allowing every request" is invisible otherwise.
       this.logger.error(
-        failOpenLog('rate_limit', { err, key, tier, ip, userId: req.user?.sub }),
+        failOpenLog('rate_limit', { err, key, tier, ip, userId }),
         'Rate limit backend unavailable; allowing request',
       );
       this.securityMetrics.recordFailOpen('rate_limit');
@@ -142,7 +127,7 @@ export class RateLimitGuard implements CanActivate {
       const retryAfter = Math.max(resetAt - Math.floor(Date.now() / 1000), 1);
       setHeader('Retry-After', retryAfter);
 
-      this.logger.warn({ key, tier, ip, userId: req.user?.sub }, 'Rate limit exceeded');
+      this.logger.warn({ key, tier, ip, userId }, 'Rate limit exceeded');
 
       throw new RateLimitedException(`Rate limit exceeded (${tier}). Retry after ${retryAfter}s.`);
     }

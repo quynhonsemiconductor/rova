@@ -11,18 +11,18 @@
  * — a mocked repository cannot show that the row and its roster are actually gone, or that a team
  * holding real seeded work is actually refused.
  *
- * Bearer token from `AuthService.devLogin`: Bearer callers are CSRF-exempt by design, and the test app
- * has no `/v1` prefix and no cookie plugin (`reply.setCookie is not a function`).
+ * The session cookie from identity's test-login (`support/session.ts`). The test app is built without `bootstrapApp`, so it has
+ * no `/v1` prefix, no cookie plugin and no CSRF hook; a spec that needs those boots `createBootstrappedApp()`.
  */
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'crypto';
 
 import { AppModule } from '../../apps/api/src/app.module';
 import { DEVELOPER_ID, SEED_PROJECTS, TEAM_ALPHA_ID, WORKSPACE_ID } from '../../db/seeds/constants';
+import { signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -34,7 +34,7 @@ describe('deleting an archived team', () => {
     method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     url: string,
     payload?: Record<string, unknown>,
-  ) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+  ) => app.inject({ method, url, headers: { cookie: token }, payload });
 
   /** A throwaway team of this file's own, so no seeded fixture is ever mutated. */
   const makeTeam = async (extra: Record<string, unknown> = {}): Promise<string> => {
@@ -65,7 +65,7 @@ describe('deleting an archived team', () => {
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    token = (await app.get(AuthService).devLogin('admin@qnsc.dev')).accessToken;
+    token = await signIn(app, 'admin@qnsc.dev');
   }, 60_000);
 
   afterAll(async () => {

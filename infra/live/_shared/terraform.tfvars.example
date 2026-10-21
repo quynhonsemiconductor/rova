@@ -4,5 +4,5 @@
 # Prerequisite: qnsc-infra bootstrap must have been applied first.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Your GitHub organisation name or personal username (owner of rally-* repos)
+# Your GitHub organisation name or personal username (owner of the rova repo)
 github_org = "your-github-org"

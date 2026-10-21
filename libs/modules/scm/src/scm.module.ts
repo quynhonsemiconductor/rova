@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
-import { SECRET_RESOLVER } from '@quynhonsemiconductor/identity';
-import { SecretsManagerSecretResolver } from '@modules/identity';
+import { SECRET_RESOLVER, SecretsManagerSecretResolver } from '@platform';
 import { AccessModule } from '@modules/access';
 import { ScmService } from './application/scm.service';
 import { ScmLinkerService } from './application/scm-linker.service';

@@ -21,7 +21,6 @@
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -43,6 +42,7 @@ import {
   TEAM_ALPHA_ID,
 } from '../../db/seeds/constants';
 import { adminActor } from './support/flow-harness';
+import { signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -82,20 +82,14 @@ describe('split preview route (e2e)', () => {
   let lastIterationStoryId: string;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 
-    // Bearer, not the BFF cookie: `requiresCsrfProtection` exempts Bearer callers, and the test app
-    // has no cookie plugin registered (`reply.setCookie is not a function`).
-    token = (await app.get(AuthService).devLogin('admin@qnsc.dev', '127.0.0.1')).accessToken;
+    // The session cookie from test-login; this app has no CSRF hook (that is `bootstrapApp`'s).
+    token = await signIn(app, 'admin@qnsc.dev');
     actor = adminActor();
 
     const workItems = app.get(WorkItemsService);
@@ -121,7 +115,7 @@ describe('split preview route (e2e)', () => {
     return app.inject({
       method: 'GET',
       url: `/work-items/${id}/split-preview`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
     });
   }
 
@@ -152,7 +146,7 @@ describe('split preview route (e2e)', () => {
     const record = await app.inject({
       method: 'GET',
       url: `/work-items/${NXP_STORY_1_ID}`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
     });
     const item = JSON.parse(record.body) as {
       itemKey: string;

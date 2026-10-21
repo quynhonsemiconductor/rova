@@ -124,11 +124,7 @@ export const RESILIENCE_PRESETS: Record<ResiliencePreset, ResilienceOptions> = {
 };
 
 export const RESILIENCE_DEFAULTS: ResilienceOptions = {
-  patterns: [
-    ResiliencePattern.RETRY,
-    ResiliencePattern.CIRCUIT_BREAKER,
-    ResiliencePattern.TIMEOUT,
-  ],
+  patterns: [ResiliencePattern.RETRY, ResiliencePattern.CIRCUIT_BREAKER, ResiliencePattern.TIMEOUT],
   retry: { maxAttempts: 3, useJitter: true },
   timeout: { durationMs: 30_000 },
   circuitBreaker: { failureThreshold: 5, halfOpenAfterMs: 60_000 },

@@ -35,18 +35,16 @@ describe('forbiddenAction', () => {
   })
 
   it('leaves /auth/* alone — that caller renders its error inline', () => {
-    // A WRITE, so it would toast but for the exemption. Named against a route that really exists:
-    // this used to assert `/v1/auth/dev-login`, which nothing has served since the BFF split moved
-    // the passwordless login to `POST /v1/bff/dev-login`.
+    // A WRITE, so it would toast but for the exemption. The workspace switch is one: a 403 there means "you are not a
+    // member of that workspace", which the switcher reports itself.
     expect(forbiddenAction(403, 'POST', '/v1/auth/logout-all')).toBe('silent')
+    expect(forbiddenAction(403, 'POST', '/v1/auth/switch-workspace')).toBe('silent')
   })
 
-  it('does NOT exempt the BFF login paths, and that is unchanged behaviour', () => {
-    // The exemption has always been the literal `/auth/`, which `/v1/bff/login/sso` never matched —
-    // so this path was redirected to `/403` before and is toasted now. Asserted so the difference is
-    // recorded rather than discovered: the login form still renders its own inline error either way,
-    // and a toast beats ejecting someone out of the page they are trying to sign in from.
-    expect(forbiddenAction(403, 'POST', '/v1/bff/login/sso')).toBe('toast')
+  it("leaves identity 8's own surface (/api/auth/*) alone too", () => {
+    // Sign-in and sign-out are not typed-client calls, but a 403 from them (a refused Origin) must never toast over the
+    // login form, which renders `?error=<CODE>` itself.
+    expect(forbiddenAction(403, 'POST', '/api/auth/sign-in/social')).toBe('silent')
   })
 
   it('ignores every status that is not 403', () => {

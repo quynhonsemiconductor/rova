@@ -34,13 +34,12 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ACCESS_LEVEL_PERMISSIONS } from '@shared-kernel';
 import { AppModule } from '../../apps/api/src/app.module';
-import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import { SEEDED, grantProjectAccess } from './support/flow-harness';
+import { provisionUser, signIn } from './support/session';
 
 /**
  * `US-2` is the PAY project's seeded story key, and PAY's release id comes from the same fixture.
@@ -56,20 +55,13 @@ const PAY_RELEASE = SEEDED.pay.releaseId;
 
 describe('deep-link authorization (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    auth = app.get(AuthService);
   });
 
   afterAll(async () => {
@@ -77,7 +69,7 @@ describe('deep-link authorization (e2e)', () => {
   });
 
   function get(url: string, accessToken: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${accessToken}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: accessToken } });
   }
 
   /**
@@ -90,17 +82,8 @@ describe('deep-link authorization (e2e)', () => {
    * No Access principal the overview describes, rather than one arranged to look like it.
    */
   async function newPrincipal(): Promise<{ token: string; userId: string }> {
-    const claims: EntraClaims = {
-      oid: `deep-link-${randomUUID()}`,
-      email: `deep-link-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
-      displayName: 'E2E Deep Link Reader',
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const session = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    const userId = JSON.parse(
-      Buffer.from(session.accessToken.split('.')[1], 'base64url').toString(),
-    )['sub'] as string;
+    const session = await provisionUser(app, 'deep-link', 'E2E Deep Link Reader');
+    const userId = session.userId;
     return { token: session.accessToken, userId };
   }
 
@@ -159,7 +142,7 @@ describe('deep-link authorization (e2e)', () => {
     it('answers 404 for a key that does not exist, even for an admin', async () => {
       // Asserted with the most privileged principal available, so a 404 is genuinely "no such row"
       // and not a permission failure wearing a 404. `admin@qnsc.dev` is the seeded Workspace Admin.
-      const { accessToken } = await auth.devLogin('admin@qnsc.dev', '127.0.0.1');
+      const accessToken = await signIn(app, 'admin@qnsc.dev');
 
       const response = await get('/work-items/by-key?itemKey=US-999999', accessToken);
 
@@ -208,7 +191,7 @@ describe('deep-link authorization (e2e)', () => {
     });
 
     it('answers 404 for a release id that does not exist, even for an admin', async () => {
-      const { accessToken } = await auth.devLogin('admin@qnsc.dev', '127.0.0.1');
+      const accessToken = await signIn(app, 'admin@qnsc.dev');
 
       const response = await get(`/releases/${randomUUID()}`, accessToken);
 
