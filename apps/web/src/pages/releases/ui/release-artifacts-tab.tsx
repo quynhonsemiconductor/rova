@@ -14,7 +14,7 @@ import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { SelectionModal } from '@/shared/ui/selection-modal'
-import { defaultRecordHref } from '@/entities/work-item/model/record-href'
+import { recordHrefForClick } from '@/entities/work-item/model/record-href'
 
 /**
  * `MAX_LIMIT` on the shared page query. Past this the picker offers the first page only — the same
@@ -166,7 +166,8 @@ export function ReleaseArtifactsTab({
         // SAME rule the row's ID link uses (`defaultRecordHref`): a Feature / Epic by id on the
         // Portfolio surface, a work item by key — so a click and a new tab open the same record.
         onOpenItem={(item) => {
-          const href = defaultRecordHref(item.type, item.itemKey, item.id)
+          // Reports (once) when the row's type has no URL rule, instead of a silent no-op.
+          const href = recordHrefForClick(item.type, item.itemKey, item.id)
           if (href) void navigate({ href })
         }}
       />

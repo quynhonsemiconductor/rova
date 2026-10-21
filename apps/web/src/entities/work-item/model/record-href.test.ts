@@ -5,7 +5,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetReportedForTests } from '@/shared/lib/report-once'
-import { defaultRecordHref, recordHrefProblem, resolveRecordHref } from './record-href'
+import {
+  defaultRecordHref,
+  recordHrefForClick,
+  recordHrefProblem,
+  resolveRecordHref,
+} from './record-href'
 
 // `reportOnce` is session-wide by design; each test starts a fresh session.
 beforeEach(() => {
@@ -100,5 +105,29 @@ describe('recordHrefProblem (what useRecordHref reports) and encoding', () => {
   it('encodes the segment once (the path builder does it), so a key cannot change the route', () => {
     expect(defaultRecordHref('story', 'US/1?x#y')).toBe('/item/US%2F1%3Fx%23y')
     expect(defaultRecordHref('feature', 'FE-1', 'a/b')).toBe('/portfolio/a%2Fb')
+  })
+})
+
+describe('recordHrefForClick', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('returns the URL and reports nothing for a known record', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(recordHrefForClick('feature', 'FE-1', 'pf-1')).toBe('/portfolio/pf-1')
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('reports a click that resolves nowhere, instead of swallowing it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(recordHrefForClick('milestone', 'MS-1', 'ms-1')).toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('"milestone"'))
+  })
+
+  it('stays silent for an optimistic row with no key yet — that is normal, not a defect', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(recordHrefForClick('story', '')).toBeUndefined()
+    expect(warn).not.toHaveBeenCalled()
   })
 })

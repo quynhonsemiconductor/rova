@@ -1,5 +1,6 @@
 import { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
 import { entityDetailPath } from '@/shared/lib/entity-link'
+import { reportOnce } from '@/shared/lib/report-once'
 
 type AddressedType = WorkItemType | PortfolioItemType
 
@@ -120,4 +121,22 @@ export function resolveRecordHref(
   recordId?: string,
 ): string | undefined {
   return href || defaultRecordHref(type, itemKey, recordId)
+}
+
+/**
+ * For a CLICK handler (not render, so a side effect is fine): the record's URL, or — when that is a
+ * defect rather than an optimistic row — `undefined` after reporting it once, the way `useRecordHref`
+ * does for cells. So a row whose click resolves nowhere is visible, not a silent no-op.
+ */
+export function recordHrefForClick(
+  type: string,
+  itemKey: string,
+  recordId?: string,
+): string | undefined {
+  const href = defaultRecordHref(type, itemKey, recordId)
+  if (!href) {
+    const problem = recordHrefProblem(type, recordId)
+    if (problem) reportOnce(problem.key, problem.message)
+  }
+  return href
 }
