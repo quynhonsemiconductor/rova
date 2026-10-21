@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # =============================================================================
-# Rally API — Production Dockerfile
+# Rova API — Production Dockerfile
 # =============================================================================
 # Targets:
 #   api       → HTTP API server          (default / most common)

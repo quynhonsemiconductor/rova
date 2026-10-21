@@ -31,7 +31,7 @@ import { capacityPlanTeams, capacityPlans, projectTeams, teams } from '@db/schem
 import {
   WORKSPACE_ID,
   adminActor,
-  bootRallyApp,
+  bootRovaApp,
   makeActor,
   uniqueKey,
 } from './support/flow-harness';
@@ -55,7 +55,7 @@ describe('capacity plans (e2e)', () => {
   }
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     capacity = app.get(CapacityPlansService);
     projects = app.get(ProjectsService);
     releases = app.get(ReleasesService);

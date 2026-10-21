@@ -357,7 +357,7 @@ export function CapacityPlanDetailPage() {
   const { sortField, sortDir, toggle } = useTableSort<CapacityTeamSortField>()
 
   const table = useDataTable<CapacityPlanTeam, unknown, TeamColKey>(CAPACITY_TEAM_COLUMNS, {
-    storageKey: 'rally-capacity-team-columns',
+    storageKey: 'rally-capacity-team-columns', // legacy physical name, do not rename
     leadingWidth: 36,
     sort: {
       col: sortField ?? '',
@@ -372,7 +372,7 @@ export function CapacityPlanDetailPage() {
   // Its own column layout and storage key: the Items tab shows different columns, and sharing a
   // key would let one tab's resize silently rearrange the other.
   const itemTable = useDataTable<CapacityPlanItem, unknown, ItemColKey>(CAPACITY_ITEM_COLUMNS, {
-    storageKey: 'rally-capacity-item-columns',
+    storageKey: 'rally-capacity-item-columns', // legacy physical name, do not rename
     sort: {
       col: itemSortField ?? '',
       dir: itemSortDir ?? 'asc',

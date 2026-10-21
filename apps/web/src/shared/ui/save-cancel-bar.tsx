@@ -1,6 +1,6 @@
 /**
  * SaveCancelBar — floating action bar shown at the bottom of a detail page
- * when there are unsaved edits, matching Broadcom Rally's UX: fields don't
+ * when there are unsaved edits, matching Broadcom's Rally UX: fields don't
  * auto-save on every change, they accumulate locally until the user commits
  * (Save) or discards (Cancel) them.
  */

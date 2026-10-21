@@ -1,6 +1,6 @@
 # deploy/ecs — ECS deploy descriptors
 
-Rally's ECS **task definitions are infrastructure-owned**, not stored as standalone JSON templates here. This is deliberate and matches the OpenTofu↔deploy boundary in [TECH_STACK.md §3](https://github.com/quynhonsemiconductor/.github/blob/main/docs/TECH_STACK.md):
+Rova's ECS **task definitions are infrastructure-owned**, not stored as standalone JSON templates here. This is deliberate and matches the OpenTofu↔deploy boundary in [TECH_STACK.md §3](https://github.com/quynhonsemiconductor/.github/blob/main/docs/TECH_STACK.md):
 
 - **Baseline task definitions + services** are created by the `ecs-service` module, called as `module "api"` and `module "worker"` in [`infra/modules/stack/main.tf`](../../infra/modules/stack/main.tf) (family, CPU/mem, IAM task role, secrets, ALB target group, autoscaling).
 - **CI patches only the image** on each deploy: `aws ecs describe-task-definition` → swap the container image tag → `aws ecs register-task-definition` (new revision) → `aws ecs update-service`. See `.github/workflows/` (via `quynhonsemiconductor/ci`).

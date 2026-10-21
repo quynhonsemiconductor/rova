@@ -3,7 +3,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* ── Rally Design Tokens ────────────────────────────────────────────────────
+/* ── Rova Design Tokens ────────────────────────────────────────────────────
    Navy corporate palette. Single source of truth (FRONTEND_STRUCTURE §10).
    Light/dark via CSS variables — no inline hex values in components.
 ────────────────────────────────────────────────────────────────────────────── */

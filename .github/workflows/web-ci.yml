@@ -253,7 +253,7 @@ jobs:
       VITE_DEV_LOGIN: 'true'
       # Each spec logs in fresh — disable rate limiting so that never 429s.
       DISABLE_RATE_LIMIT: 'true'
-      # Rally is SSO-only; the E2E helper signs in via the passwordless test-login endpoint
+      # Rova is SSO-only; the E2E helper signs in via the passwordless test-login endpoint
       # (seeded accounts, NODE_ENV test/development only).
       NODE_ENV: test
 

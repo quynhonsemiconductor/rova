@@ -1,6 +1,6 @@
 /**
  * ListPageHeader — the title bar at the top of a {@link ListPageScaffold},
- * mirroring Broadcom Rally's screen header: a bold page title, an optional
+ * mirroring Broadcom's Rally screen header: a bold page title, an optional
  * context selector beside it (e.g. the Timeboxes TYPE dropdown / iteration
  * picker), and optional right-aligned controls (view toggle, saved views).
  */

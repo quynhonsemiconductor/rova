@@ -6,7 +6,7 @@
  * the thing being measured, so at the time the suite runs there is no report to read.
  *
  * Ported from opshub's `test/check-coverage-floors.ts` — see `coverage-floors.ts` for why
- * rally needs this too (rally/CLAUDE.md's "Coverage is a ratchet, not a target" section
+ * rova needs this too (rova/CLAUDE.md's "Coverage is a ratchet, not a target" section
  * documents having been burned by exactly this drift once already, caught only by hand).
  *
  * The comparison logic lives in `coverage-floors.ts` and is unit-tested — a drift check that

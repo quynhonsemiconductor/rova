@@ -22,7 +22,7 @@ import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { workItems, workflowStatuses } from '@db/schema/work';
 
-import { adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('blocked reason (e2e)', () => {
   let app: NestFastifyApplication;
@@ -53,7 +53,7 @@ describe('blocked reason (e2e)', () => {
   }
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     items = app.get(WorkItemsService);
     projects = app.get(ProjectsService);
     db = app.get<DrizzleDB>(DRIZZLE);
