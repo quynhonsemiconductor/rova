@@ -12,7 +12,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createEvent, fireEvent, render, screen } from '@testing-library/react'
 
-import { RecordLink, RecordOpener, isInAppPath } from './record-link'
+import { RecordOpener, isInAppPath } from './record-link'
 
 /** Fire a click and report whether the handler prevented the browser's default. */
 function click(el: HTMLElement, init: MouseEventInit = {}): boolean {
@@ -21,12 +21,12 @@ function click(el: HTMLElement, init: MouseEventInit = {}): boolean {
   return event.defaultPrevented
 }
 
-describe('RecordLink', () => {
+describe('RecordOpener with an in-app URL (the link)', () => {
   it('is a real link to the record', () => {
     render(
-      <RecordLink href="/item/US-120" onOpen={() => {}}>
+      <RecordOpener href="/item/US-120" onOpen={() => {}}>
         US-120
-      </RecordLink>,
+      </RecordOpener>,
     )
     expect(screen.getByRole('link', { name: 'US-120' }).getAttribute('href')).toBe('/item/US-120')
   })
@@ -34,9 +34,9 @@ describe('RecordLink', () => {
   it('routes a plain click to onOpen and prevents the full page load', () => {
     const onOpen = vi.fn()
     render(
-      <RecordLink href="/item/US-120" onOpen={onOpen}>
+      <RecordOpener href="/item/US-120" onOpen={onOpen}>
         US-120
-      </RecordLink>,
+      </RecordOpener>,
     )
     expect(click(screen.getByRole('link'))).toBe(true)
     expect(onOpen).toHaveBeenCalledTimes(1)
@@ -49,9 +49,9 @@ describe('RecordLink', () => {
   ])('leaves %s+click to the browser (new tab) and does not navigate this tab', (_, mods) => {
     const onOpen = vi.fn()
     render(
-      <RecordLink href="/item/US-120" onOpen={onOpen}>
+      <RecordOpener href="/item/US-120" onOpen={onOpen}>
         US-120
-      </RecordLink>,
+      </RecordOpener>,
     )
     expect(click(screen.getByRole('link'), mods)).toBe(false)
     expect(onOpen).not.toHaveBeenCalled()
@@ -62,9 +62,9 @@ describe('RecordLink', () => {
     const rowAux = vi.fn()
     render(
       <div onClick={rowClick} onAuxClick={rowAux}>
-        <RecordLink href="/item/US-1" onOpen={() => {}}>
+        <RecordOpener href="/item/US-1" onOpen={() => {}}>
           US-1
-        </RecordLink>
+        </RecordOpener>
       </div>,
     )
     const link = screen.getByRole('link')

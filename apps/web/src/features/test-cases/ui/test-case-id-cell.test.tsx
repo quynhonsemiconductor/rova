@@ -1,7 +1,7 @@
 /**
- * `TestCaseIdCell` renders `Button asChild` over a `RecordLink` (US-120). `asChild` only works if the
- * Button's classes land on the final `<a>` and the link keeps its click contract, so both are pinned
- * on the rendered element rather than assumed from the composition.
+ * `TestCaseIdCell` renders the Button link styling on a `RecordOpener` (US-120). Pinned on the
+ * rendered element: ONE real link carrying the styling, no nested button, and the link's click
+ * contract.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { createEvent, fireEvent, render, screen } from '@testing-library/react'

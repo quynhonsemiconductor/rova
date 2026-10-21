@@ -183,8 +183,8 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
               className="block font-mono text-ui-xs break-all"
               title={`${x.action} ${x.path}`}
             >
-              {/* A REAL space, not a margin: CSS never reaches the clipboard, so with only `mr-1.5` a copy
-                  read "Mapps/web/…". In a mono face the space is about the margin's width. */}
+              {/* A REAL space, not a margin: CSS never reaches the clipboard, so with a margin alone
+                  (`mr-1`) a copy read "Mapps/web/…". In a mono face the space is about as wide. */}
               <span className="inline-block text-foreground-subtle">{x.action}</span>{' '}
               {c.uri ? <ExtLink href={c.uri}>{x.path}</ExtLink> : x.path}
             </span>

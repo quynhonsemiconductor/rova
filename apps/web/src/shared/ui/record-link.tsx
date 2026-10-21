@@ -15,8 +15,11 @@ import { isNewTabClick } from '@/shared/lib/new-tab-click'
  *
  * Every click and middle-click stops propagation, so a row that also listens (select, open a
  * summary) does not ALSO react to a gesture aimed at the link.
+ *
+ * MODULE-PRIVATE on purpose: {@link RecordOpener} is the only way to render one, so its
+ * {@link isInAppPath} check cannot be bypassed by a direct call with an untrusted URL.
  */
-export function RecordLink({
+function RecordLink({
   href,
   onOpen,
   title,
