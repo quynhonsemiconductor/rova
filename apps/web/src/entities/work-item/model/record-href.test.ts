@@ -4,7 +4,7 @@
  * an id), and a type the rule does not know.
  */
 import { describe, expect, it } from 'vitest'
-import { defaultRecordHref } from './record-href'
+import { defaultRecordHref, resolveRecordHref } from './record-href'
 
 describe('defaultRecordHref', () => {
   it.each([
@@ -27,5 +27,16 @@ describe('defaultRecordHref', () => {
     ['an inherited property name', 'constructor', 'X-1', 'x-1'],
   ])('gives %s no URL', (_case, type, key, id) => {
     expect(defaultRecordHref(type, key, id)).toBeUndefined()
+  })
+})
+
+describe('resolveRecordHref', () => {
+  it('prefers an explicit URL', () => {
+    expect(resolveRecordHref('/portfolio/pf-9', 'feature', 'FE-9')).toBe('/portfolio/pf-9')
+  })
+
+  it('derives the URL when none is given — and when an EMPTY one is (`||`, not `??`)', () => {
+    expect(resolveRecordHref(undefined, 'story', 'US-9')).toBe('/item/US-9')
+    expect(resolveRecordHref('', 'story', 'US-9')).toBe('/item/US-9')
   })
 })

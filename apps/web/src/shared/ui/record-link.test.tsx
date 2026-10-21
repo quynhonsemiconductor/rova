@@ -12,7 +12,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createEvent, fireEvent, render, screen } from '@testing-library/react'
 
-import { RecordLink, RecordOpener } from './record-link'
+import { RecordLink, RecordOpener, isInAppPath } from './record-link'
 
 /** Fire a click and report whether the handler prevented the browser's default. */
 function click(el: HTMLElement, init: MouseEventInit = {}): boolean {
@@ -106,4 +106,41 @@ describe('RecordOpener', () => {
       '/portfolio/pf-1',
     )
   })
+})
+
+describe('isInAppPath', () => {
+  it.each(['/item/US-1', '/portfolio/pf-1', '/test-case/TC-1'])(
+    'admits the in-app path %s',
+    (href) => {
+      expect(isInAppPath(href)).toBe(true)
+    },
+  )
+
+  it.each([
+    'javascript:alert(1)',
+    'https://example.com/item/US-1',
+    '//example.com/item/US-1',
+    '/\\example.com/item/US-1',
+    'item/US-1',
+    '',
+  ])('refuses %s', (href) => {
+    expect(isInAppPath(href)).toBe(false)
+  })
+})
+
+describe('RecordOpener refuses a URL that is not an in-app path', () => {
+  it.each(['javascript:alert(1)', '//example.com/x'])(
+    'renders %s as the in-place button, never as a link',
+    (href) => {
+      const onOpen = vi.fn()
+      render(
+        <RecordOpener href={href} onOpen={onOpen}>
+          US-1
+        </RecordOpener>,
+      )
+      expect(screen.queryByRole('link')).toBeNull()
+      click(screen.getByRole('button', { name: 'US-1' }))
+      expect(onOpen).toHaveBeenCalledTimes(1)
+    },
+  )
 })

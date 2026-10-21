@@ -122,3 +122,23 @@ describe('an empty href is no URL', () => {
     expect(screen.getByRole('link').getAttribute('href')).toBe('/item/US-8')
   })
 })
+
+describe('IdCell with no URL to derive (an unaddressed type)', () => {
+  it('is a focusable button that opens in place once and never reaches the row', () => {
+    const onOpen = vi.fn()
+    const rowClick = vi.fn()
+    render(
+      <div onClick={rowClick}>
+        <IdCell type="iteration" itemKey="IT-3" onOpen={onOpen} />
+      </div>,
+    )
+    expect(screen.queryByRole('link')).toBeNull()
+    const button = screen.getByRole('button', { name: /IT-3/ })
+    button.focus()
+    expect(document.activeElement).toBe(button)
+
+    click(button)
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(rowClick).not.toHaveBeenCalled()
+  })
+})

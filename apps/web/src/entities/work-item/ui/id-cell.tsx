@@ -1,6 +1,6 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import type { WorkItemType } from '@/entities/work-item/model/types'
-import { defaultRecordHref } from '@/entities/work-item/model/record-href'
+import { resolveRecordHref } from '@/entities/work-item/model/record-href'
 import { RecordOpener } from '@/shared/ui/record-link'
 
 interface IdCellProps {
@@ -82,7 +82,7 @@ export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
 
   return (
     <RecordOpener
-      href={href || defaultRecordHref(type, itemKey, recordId)}
+      href={resolveRecordHref(href, type, itemKey, recordId)}
       onOpen={onOpen}
       title={itemKey}
       className={OPEN_CLASS}

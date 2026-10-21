@@ -1,5 +1,5 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
-import { defaultRecordHref } from '@/entities/work-item/model/record-href'
+import { resolveRecordHref } from '@/entities/work-item/model/record-href'
 import type { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
 import { RecordOpener } from '@/shared/ui/record-link'
 
@@ -78,8 +78,7 @@ export function WorkItemRefCell({
   }
 
   // Built only past the read-only branch: a cell without `onOpen` ignores the URL.
-  // `||`, not `??`: an empty `href` is no URL, and must not become `<a href="">` (the current page).
-  const target = href || defaultRecordHref(type, itemKey, recordId)
+  const target = resolveRecordHref(href, type, itemKey, recordId)
 
   if (variant === 'pill') {
     // `text-ui-sm`, matching the read-only rendering above and every other editable cell: this

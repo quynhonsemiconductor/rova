@@ -38,4 +38,10 @@ describe('TestCaseIdCell', () => {
     expect(onOpen).toHaveBeenCalledTimes(1)
     expect(rowClick).not.toHaveBeenCalled()
   })
+
+  it('gives a Test Case with no key yet (an optimistic row) no URL, never a bare /test-case/', () => {
+    render(<TestCaseIdCell testCaseKey="" onOpen={() => {}} />)
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.getByRole('button')).toBeTruthy()
+  })
 })

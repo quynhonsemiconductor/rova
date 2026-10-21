@@ -53,9 +53,28 @@ export function RecordLink({
 }
 
 /**
+ * Whether `href` is an in-app path (`/item/US-5`), the only thing a record link may carry. A
+ * `javascript:` URL, another scheme, or a protocol-relative `//host` is refused: the components below
+ * are the one place every ID and reference cell renders its URL, so this is where that contract is
+ * enforced rather than merely documented.
+ */
+export function isInAppPath(href: string): boolean {
+  // `/\` too: browsers read a backslash as a slash, so `/\host` is protocol-relative as well.
+  return href.startsWith('/') && !href.startsWith('//') && !href.startsWith('/\\')
+}
+
+/**
  * RecordOpener — `RecordLink` when the record's URL is known, otherwise a `<button>` that opens it
  * in place only. The ONE copy of that fallback, so the ID and reference cells cannot drift on it
  * (the button stops propagation for the same reason the link does).
+ *
+ * A URL that is not an in-app path ({@link isInAppPath}) is treated as no URL: the cell still opens
+ * in place, and nothing a caller passes can become a `javascript:` link.
+ *
+ * The element is a `<a>` or a `<button>` depending on `href`, so a cell whose URL appeared only
+ * AFTER mount would remount (dropping focus) and change role. Every cell computes its URL from the
+ * props it renders with, in the same render, so in practice it is decided on the first one — keep
+ * it that way rather than passing a URL that resolves asynchronously.
  */
 export function RecordOpener({
   href,
@@ -72,7 +91,7 @@ export function RecordOpener({
   ariaLabel?: string
   children: ReactNode
 }) {
-  if (href) {
+  if (href && isInAppPath(href)) {
     return (
       <RecordLink
         href={href}
