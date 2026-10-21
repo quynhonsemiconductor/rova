@@ -94,8 +94,11 @@ export function WorkItemRefCell({
   if (variant === 'pill') {
     // `text-ui-sm`, matching the read-only rendering above and every other editable cell: this
     // trigger was 12px, so opening the same value for edit made it grow.
+    // `border-solid`, not just `border`: `RecordOpener`'s reset carries `border-none` (a border-STYLE
+    // class), which tailwind-merge keeps beside `border` (a WIDTH class) — so the pill painted no
+    // border at all. `border-solid` is the same group as `border-none`, so it replaces it.
     const pillClass =
-      'flex w-full cursor-pointer items-center gap-1.5 truncate rounded border border-input px-2.5 py-1.5 text-ui-sm text-primary-light no-underline hover:bg-slate-50'
+      'flex w-full cursor-pointer items-center gap-1.5 truncate rounded border border-solid border-input px-2.5 py-1.5 text-ui-sm text-primary-light no-underline hover:bg-slate-50'
     const pillContent = (
       <>
         <TypeBadge type={type} size={16} />

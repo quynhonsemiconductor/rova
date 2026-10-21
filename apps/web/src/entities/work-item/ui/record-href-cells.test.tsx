@@ -164,3 +164,20 @@ describe('the label underline belongs to the opener, not the row', () => {
     expect(classes).not.toContain('group-hover:underline')
   })
 })
+
+describe('WorkItemRefCell pill keeps its border under the opener reset', () => {
+  it('replaces the reset border-none with border-solid, so the border paints', () => {
+    render(
+      <WorkItemRefCell
+        type="story"
+        itemKey="US-6"
+        title="Parent"
+        onOpen={() => {}}
+        variant="pill"
+      />,
+    )
+    const pill = screen.getByRole('link')
+    expect(pill.classList.contains('border-solid')).toBe(true)
+    expect(pill.classList.contains('border-none')).toBe(false)
+  })
+})

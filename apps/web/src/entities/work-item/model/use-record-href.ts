@@ -27,5 +27,7 @@ export function useRecordHref({
   useEffect(() => {
     if (problemKey && problemMessage) reportOnce(problemKey, problemMessage)
   }, [problemKey, problemMessage])
-  return enabled ? resolveRecordHref(href, type, itemKey, recordId) : undefined
+  // An explicit `href` is authoritative whatever `enabled` says; `enabled` only mutes the DERIVED
+  // URL and its report. (`||`: an empty `href` is no URL — `resolveRecordHref`'s rule.)
+  return href || (enabled ? resolveRecordHref(undefined, type, itemKey, recordId) : undefined)
 }

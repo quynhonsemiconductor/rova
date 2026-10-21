@@ -42,6 +42,13 @@ describe('useRecordHref', () => {
     expect(warn).not.toHaveBeenCalled()
   })
 
+  it('keeps an explicit href even when disabled — only the derived URL is muted', () => {
+    const { result } = renderHook(() =>
+      useRecordHref({ href: '/item/US-2', type: 'story', itemKey: 'US-2', enabled: false }),
+    )
+    expect(result.current).toBe('/item/US-2')
+  })
+
   it('does not report when the caller passed its own URL', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { result } = renderHook(() =>
