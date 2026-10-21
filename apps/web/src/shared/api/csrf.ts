@@ -1,7 +1,7 @@
 /**
  * CSRF token store.
  *
- * The API hands the SPA a session-bound token on every `GET /v1/bff/me` (see
+ * The API hands the SPA a session-bound token on every `GET /v1/auth/me` (see
  * `auth-bootstrap.ts`) and requires it in the `X-CSRF-Token` header on every
  * cookie-authenticated state-changing request. The matching secret lives in an
  * httpOnly cookie the browser cannot read, which is what makes the pair a

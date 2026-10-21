@@ -12,23 +12,36 @@ const OTHER_USER = '33333333-3333-3333-3333-333333333333';
 class FakeRepo {
   rows: ApiTokenRow[] = [];
   touched: string[] = [];
+  /** Requested lifetime per token id, as the service handed it to the INSERT. */
+  lifetimes = new Map<string, number>();
 
   create = vi.fn(
-    async (input: Omit<ApiTokenRow, 'id' | 'lastUsedAt' | 'revokedAt' | 'createdAt'>) => {
+    async (
+      input: Omit<ApiTokenRow, 'id' | 'lastUsedAt' | 'revokedAt' | 'createdAt' | 'expiresAt'> & {
+        expiresInDays: number;
+      },
+    ) => {
+      const { expiresInDays, ...columns } = input;
       const row: ApiTokenRow = {
         id: `token-${this.rows.length + 1}`,
         lastUsedAt: null,
         revokedAt: null,
         createdAt: new Date('2026-08-19T00:00:00.000Z'),
-        ...input,
+        // The database computes `expires_at` (now() + lifetime). This double only needs a Date there;
+        // the expiry instant itself is asserted against the database in api-tokens-db-clock.e2e.spec.ts.
+        expiresAt: new Date('2026-11-17T00:00:00.000Z'),
+        ...columns,
       };
+      this.lifetimes.set(row.id, expiresInDays);
       this.rows.push(row);
       return row;
     },
   );
 
-  findByPrefix = vi.fn(
-    async (prefix: string) => this.rows.find((r) => r.prefix === prefix) ?? null,
+  /** The lookup excludes revoked rows; expiry is decided by the database clock, which this double lacks. */
+  findLiveByPrefix = vi.fn(
+    async (prefix: string) =>
+      this.rows.find((r) => r.prefix === prefix && r.revokedAt === null) ?? null,
   );
 
   findById = vi.fn(
@@ -44,18 +57,18 @@ class FakeRepo {
     this.rows.filter((r) => r.workspaceId === workspaceId && r.revokedAt === null),
   );
 
-  revoke = vi.fn(async (workspaceId: string, id: string, at: Date) => {
+  revoke = vi.fn(async (workspaceId: string, id: string) => {
     const row = this.rows.find((r) => r.workspaceId === workspaceId && r.id === id);
     if (!row || row.revokedAt) return false;
-    row.revokedAt = at;
+    row.revokedAt = new Date();
     return true;
   });
 
-  revokeAllForUser = vi.fn(async (workspaceId: string, userId: string, at: Date) => {
+  revokeAllForUser = vi.fn(async (workspaceId: string, userId: string) => {
     const live = this.rows.filter(
       (r) => r.workspaceId === workspaceId && r.userId === userId && r.revokedAt === null,
     );
-    live.forEach((r) => (r.revokedAt = at));
+    live.forEach((r) => (r.revokedAt = new Date()));
     return live.length;
   });
 
@@ -92,14 +105,14 @@ describe('ApiTokensService', () => {
     });
 
     it('trims the name and defaults the lifetime to 90 days', async () => {
-      const now = new Date('2026-08-19T00:00:00.000Z');
-      const { token } = await service.mint(
-        { workspaceId: WORKSPACE, userId: USER, name: '  ci  ' },
-        now,
-      );
+      const { token } = await service.mint({
+        workspaceId: WORKSPACE,
+        userId: USER,
+        name: '  ci  ',
+      });
 
       expect(token.name).toBe('ci');
-      expect(token.expiresAt.toISOString()).toBe('2026-11-17T00:00:00.000Z');
+      expect(repo.lifetimes.get(token.id)).toBe(90);
     });
 
     it('refuses an unknown scope, naming it', async () => {
@@ -145,22 +158,15 @@ describe('ApiTokensService', () => {
       expect(repo.touched).toEqual([`${WORKSPACE}:${repo.rows[0].id}`]);
     });
 
-    it('returns null for an unknown, malformed, expired or revoked token', async () => {
+    it('returns null for an unknown, malformed or revoked token', async () => {
       // One outcome for every failure. Distinguishing "expired" from "never existed" tells an attacker
       // which of their guesses was once real.
       expect(await service.verify('rly_deadbeefdeadbeef')).toBeNull();
       expect(await service.verify('not-a-rally-token')).toBeNull();
 
-      const expired = await service.mint(
-        { workspaceId: WORKSPACE, userId: USER, name: 'expired', expiresInDays: 1 },
-        new Date('2026-08-19T00:00:00.000Z'),
-      );
-      expect(
-        await service.verify(expired.plaintext, new Date('2026-08-21T00:00:00.000Z')),
-      ).toBeNull();
-
+      // Expiry by database time is asserted in api-tokens-db-clock.e2e.spec.ts: the lookup excludes it.
       const revoked = await service.mint({ workspaceId: WORKSPACE, userId: USER, name: 'revoked' });
-      await service.revokeOwn(WORKSPACE, USER, repo.rows[1].id);
+      await service.revokeOwn(WORKSPACE, USER, repo.rows[repo.rows.length - 1].id);
       expect(await service.verify(revoked.plaintext)).toBeNull();
     });
 

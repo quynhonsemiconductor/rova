@@ -1,7 +1,7 @@
 variable "image_tag" {
   type        = string
-  default     = "latest"
-  description = "Container image tag to deploy for api & worker. CI overrides this with the release sha to pin prod images; defaults to 'latest' for a bare apply."
+  default     = "set-by-the-deploy-never-a-real-tag"
+  description = "Container image tag to deploy for api & worker. CI overrides this with the release tag to pin prod images. The default is an obviously invalid placeholder (NOT `latest`, which does not exist in the immutable repositories and which the module now rejects), so a bare `tofu plan` works but can never be mistaken for a deployable tag."
 }
 
 
@@ -153,17 +153,19 @@ variable "grafana_dashboards_folder_uid" {
     Empty until qnsc-infra's Dashboards folder is applied and its real UID
     backfilled here — same bootstrap sequencing grafana_alerting_folder_uid
     itself went through. Still unset: nothing in this repo currently reads
-    it directly (rally's own dashboards nest under
+    it directly (rova's own dashboards nest under
     grafana_rally_dashboards_folder_uid below, not this one).
   EOT
   type        = string
   default     = ""
 }
 
+# grafana_rally_dashboards_folder_uid is a legacy physical Grafana identifier:
+# do not rename — recreated as rova in the on-prem move.
 variable "grafana_rally_dashboards_folder_uid" {
   description = <<-EOT
     qnsc-infra's live/observability stack's `rally_dashboards_folder_uid`
-    output — rally's own dashboard SUBFOLDER, nested under the parent
+    output — rova's own dashboard SUBFOLDER, nested under the parent
     above. Same value in every environment; not a secret.
 
     Used to be a `grafana_folder` resource created per-environment inside
@@ -188,7 +190,7 @@ variable "grafana_alerting_folder_uid" {
     forces a destroy+recreate in the Terraform provider (not an in-place
     move, confirmed the hard way — qnsc-infra#98's re-parenting under a new
     "QNSC" company folder destroyed and recreated this folder, its
-    contents (including rally's own alert rule group and 2 dashboards),
+    contents (including rova's own alert rule group and 2 dashboards),
     AND `rally_dashboards_folder_uid` above, which depends on it). Every
     UID here needs re-backfilling whenever that happens again. A
     `terraform_remote_state` read against qnsc-infra's own state would
@@ -205,7 +207,7 @@ variable "grafana_slos_folder_uid" {
     the shared folder every product's SLOs live under. Same value in
     every environment; not a secret.
 
-    Was never set until this variable existed, which left rally's
+    Was never set until this variable existed, which left rova's
     grafana_slo resource in Grafana's own default SLO folder outside the
     QNSC company tree everything else here lives under.
   EOT

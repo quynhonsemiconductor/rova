@@ -2,7 +2,7 @@
  * Shared bootstrap + fixtures for the BA business-flow E2E suite.
  *
  * These specs boot the REAL rally `AppModule` (real Nest DI, real Drizzle
- * against the seeded `rova-postgres`) and drive the REAL application services,
+ * against the seeded compose `postgres` service) and drive the REAL application services,
  * exactly as the HTTP controllers do. Nothing is stubbed: the flows are proven
  * end-to-end against the same code and database the running server uses.
  *
@@ -53,6 +53,7 @@ import { NotificationsModule } from '@modules/notifications';
 import { AuditModule } from '@modules/audit';
 import { AuditProjectionRelay } from '../../../apps/worker/src/audit/audit-projection.relay';
 
+import { enableCorrelationId } from '@quynhonsemiconductor/platform-http';
 import { AppModule } from '../../../apps/api/src/app.module';
 import { NotificationRelayService } from '../../../apps/worker/src/notifications/notification-relay.service';
 import { EmailRelayService } from '../../../apps/worker/src/email/email-relay.service';
@@ -70,6 +71,10 @@ export const VIEWER_ID = '00000000-0000-7000-8000-000000000021';
 export async function bootRallyApp(): Promise<NestFastifyApplication> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+  // The request context used to come from AsyncLocalStorageMiddleware, which AppModule applied itself, so every app
+  // built from the module had it. It is `enableCorrelationId(app)` now (apps/api/src/bootstrap/app.bootstrap.ts),
+  // which a harness that builds the app without `bootstrapApp` must call for itself.
+  enableCorrelationId(app);
   // init() runs onModuleInit (DB pool, cache) without binding a port.
   await app.init();
   return app;
@@ -77,7 +82,7 @@ export async function bootRallyApp(): Promise<NestFastifyApplication> {
 
 /**
  * Boot just enough of the real Worker to exercise the notification + email
- * relay's actual fetchBatch/processRow/markSent/markFailed against the seeded
+ * relay's actual selectDue/deliver/markSent/markFailed against the seeded
  * DB — the same code the deployed Worker runs. Deliberately does NOT import
  * ScheduleModule.forRoot() or the full WorkerModule (AuditProjectionRelay,
  * ReportingModule, etc.): the @Cron decorators on relay() then have no
@@ -141,25 +146,16 @@ export async function bootAuditProjectionRelay(): Promise<{
 }
 
 /**
- * Build a `JwtPayload` actor exactly as the auth guard would after minting an
- * access token. The application services read only `sub` and `workspaceId`; the
- * remaining JWT fields — `permissions` included, see `viewerActor` below — are
- * inert values so the shape type-checks.
+ * Build a `JwtPayload` actor exactly as the auth guard would after authenticating a session. The
+ * application services read only `sub` and `workspaceId`; `permissions` — see `viewerActor` below — is an
+ * inert value so the shape type-checks.
  */
 export function makeActor(userId: string, permissions: string[] = []): JwtPayload {
   return {
     sub: userId,
-    contextId: WORKSPACE_ID,
     workspaceId: WORKSPACE_ID,
     permissions,
-    claims: { permissions },
     sessionId: 'e2e-session',
-    jti: 'e2e-jti',
-    iss: 'rova-e2e',
-    aud: 'rova',
-    iat: 0,
-    exp: 0,
-    authMethod: 'sso',
   };
 }
 

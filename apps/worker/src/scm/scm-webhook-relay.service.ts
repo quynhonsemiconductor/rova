@@ -2,8 +2,8 @@
  * ScmWebhookRelayService — drains scm.webhook_inbox and links PRs/commits to
  * work items via ScmLinkerService.
  *
- * Extends AbstractOutboxRelay (owns the polling loop, FOR UPDATE SKIP LOCKED
- * transaction, concurrency guard, and retry/backoff). This class provides only
+ * Extends AbstractOutboxRelay (lease-and-fence: a short claim transaction, the work with no
+ * transaction open, a fenced finish; it owns the polling loop, concurrency guard and retry/backoff). This class provides only
  * the SCM-specific behaviour: what to SELECT, how to process a row, and how to
  * mark it. Linking is idempotent (unique constraints), so retries/redelivery
  * never duplicate. The 5s cron is the delivery mechanism (no wake signal —
@@ -11,10 +11,11 @@
  */
 import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import { InjectDrizzle, Span } from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
-import { AbstractOutboxRelay } from '@platform/outbox';
+import { AbstractOutboxRelay, dbDelay } from '@platform/outbox';
+import type { Claimed, OutboxLeaseTable } from '@platform/outbox';
 import { ScmLinkerService, ScmInstallationService } from '@modules/scm';
 import type { ScmProvider } from '@modules/scm';
 import { scmWebhookInbox } from '../../../../db/schema/scm';
@@ -31,8 +32,18 @@ type ScmInboxRow = {
   payload: unknown;
 };
 
+/**
+ * Linking is database work. The slowest event is an `installation` that registers every repository of an
+ * organisation (two statements each), so the lease is generous for a database call and still short enough
+ * that `batchSize × lease` stays well inside the 15-minute strand bound.
+ */
+const SCM_WEBHOOK_LEASE_MS = 60_000;
+
 @Injectable()
 export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
+  /** Held for the SUM of the batch's leases (60 s each): 10 rows is 10 minutes if a worker dies. */
+  protected override readonly batchSize = 10;
+
   constructor(
     @InjectDrizzle() db: DrizzleDB,
     private readonly linker: ScmLinkerService,
@@ -47,7 +58,22 @@ export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
     return super.relay();
   }
 
-  protected async fetchBatch(tx: DrizzleTx): Promise<ScmInboxRow[]> {
+  protected readonly outbox: OutboxLeaseTable = {
+    table: scmWebhookInbox,
+    id: scmWebhookInbox.id,
+    status: scmWebhookInbox.status,
+    attempts: scmWebhookInbox.attempts,
+    lastError: scmWebhookInbox.lastError,
+    leaseToken: scmWebhookInbox.leaseToken,
+    lockedUntil: scmWebhookInbox.lockedUntil,
+    seq: scmWebhookInbox.seq,
+  };
+
+  protected override leaseMsFor(): number {
+    return SCM_WEBHOOK_LEASE_MS;
+  }
+
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<ScmInboxRow[]> {
     return tx
       .select({
         id: scmWebhookInbox.id,
@@ -61,15 +87,16 @@ export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
         and(
           eq(scmWebhookInbox.status, 'pending'),
           lt(scmWebhookInbox.attempts, this.maxAttempts),
-          lte(scmWebhookInbox.scheduledAt, new Date()),
+          lte(scmWebhookInbox.scheduledAt, sql`now()`),
+          this.notLeased(),
         ),
       )
-      .orderBy(asc(scmWebhookInbox.scheduledAt), asc(scmWebhookInbox.id))
-      .limit(this.batchSize)
+      .orderBy(asc(scmWebhookInbox.scheduledAt), asc(scmWebhookInbox.seq), asc(scmWebhookInbox.id))
+      .limit(limit)
       .for('update', { skipLocked: true });
   }
 
-  protected async processRow(row: ScmInboxRow): Promise<void> {
+  protected async deliver(row: Claimed<ScmInboxRow>): Promise<void> {
     // Both 'processed' and 'ignored' (unmapped repo / no keys) mean "handled";
     // markSent records completion. Idempotent upserts (linker) + upsert/dedup
     // (installation) make a retry after a mid-batch failure a safe no-op.
@@ -80,29 +107,28 @@ export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
     await this.linker.linkEvent(row.provider as ScmProvider, row.eventType, row.payload);
   }
 
-  protected async markSent(tx: DrizzleTx, rowId: string): Promise<void> {
+  protected async markSent(tx: DrizzleTx, row: Claimed<ScmInboxRow>): Promise<void> {
     await tx
       .update(scmWebhookInbox)
-      .set({ status: 'processed', processedAt: new Date() })
-      .where(eq(scmWebhookInbox.id, rowId));
+      .set({ status: 'processed', processedAt: sql`now()` })
+      .where(eq(scmWebhookInbox.id, row.id));
   }
 
   protected async markFailed(
     tx: DrizzleTx,
-    rowId: string,
-    newAttempts: number,
+    row: Claimed<ScmInboxRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
+    // `attempts` was spent at claim time.
     await tx
       .update(scmWebhookInbox)
       .set({
         status: newStatus,
-        attempts: newAttempts,
         lastError,
-        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
       })
-      .where(eq(scmWebhookInbox.id, rowId));
+      .where(eq(scmWebhookInbox.id, row.id));
   }
 }

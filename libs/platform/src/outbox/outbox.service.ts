@@ -8,7 +8,8 @@ import { currentTraceparent } from '@quynhonsemiconductor/observability';
 
 /**
  * Outbox writer — inserts domain events into outbox_events in the SAME transaction
- * as the aggregate state change. The outbox relay (worker) polls and publishes to SNS.
+ * as the aggregate state change. `AuditProjectionRelay` (worker) claims each row and projects it into
+ * `audit.audit_logs`; there is no topic or queue (see docs/DIVERGENCE.md).
  *
  * This is the transactional outbox pattern: no dual-write, no lost events.
  */
@@ -38,7 +39,8 @@ export class OutboxService {
       occurredAt: e.occurredAt,
       status: 'pending' as const,
       attempts: 0,
-      createdAt: new Date(),
+      // created_at is left to the column default (now(), the database clock): a host-stamped value would
+      // drift from the database clock the relay's due checks use.
       // Capture the producing request's trace so the relay can continue it. Null
       // when nothing is tracing, which the relay treats as "start a root span".
       traceparent: currentTraceparent(),

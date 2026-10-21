@@ -21,7 +21,7 @@ output "sg_app_id" { value = data.terraform_remote_state.runtime.outputs.sg_app_
 # Messaging — useful for verifying queue setup
 
 # Web (Cloudflare Pages) outputs — PAGES_PROJECT is published to GitHub env vars
-# for the rally-web CI (wrangler --project-name).
+# for the rova web CI (wrangler --project-name).
 output "web_pages_project" { value = try(module.web[0].project_name, null) }
 output "web_custom_domain" { value = try(module.web[0].custom_domain, null) }
 output "web_url" { value = try("https://${module.web[0].custom_domain}", null) }

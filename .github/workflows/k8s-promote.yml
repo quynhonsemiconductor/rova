@@ -21,12 +21,27 @@
 # =============================================================================
 name: Backend · K8s Promote
 
+# ── DISABLED (2026-10-12) ─────────────────────────────────────────────────────────────────────────────
+# This workflow does not run on a release tag any more. Its `push: tags` trigger is kept below, commented out,
+# to be restored. Why: the dev path it promotes from (k8s-deploy.yml) is disabled, so there is no `sha-<commit>`
+# image from the Kubernetes dev deploy to promote, and GITOPS_PROMOTE_TOKEN does not exist either. ECS
+# (backend-deploy.yml) is the live release path.
+#
+# It is ALSO disabled in the repository's Actions settings (state `disabled_manually`), which survives edits to
+# this file. To bring it back, both must be undone, together with k8s-deploy.yml, after both point at the on-prem
+# cluster and the gitops tokens exist (ONPREM-SERVER-SETUP-RUNBOOK §13, step 7):
+#   1. restore the `push: tags:` block below (delete the leading `# ` of the commented lines);
+#   2. `gh workflow enable k8s-promote.yml --repo quynhonsemiconductor/rova`.
+#
+# `workflow_dispatch` exists only because a workflow needs a trigger. The jobs below run for a tag ref alone
+# (`if: github.ref_type == 'tag'`), so dispatching it from a branch does nothing instead of promoting a branch name.
 on:
-  push:
-    # Semver only — no -rc suffix. Same tag shape backend-deploy.yml promotes on,
-    # so one release tag drives both platforms during the migration (§17b).
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+  # push:
+  #   # Semver only — no -rc suffix. Same tag shape backend-deploy.yml promotes on,
+  #   # so one release tag drives both platforms during the migration (§17b).
+  #   tags:
+  #     - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
 
 concurrency:
   # Serialize prod promotions for this product; the reusable sets the same group
@@ -42,12 +57,30 @@ jobs:
   # build. GITHUB_SHA on a tag push is the commit the tag points at.
   resolve:
     name: Resolve dev image tag
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
       source-tag: ${{ steps.tag.outputs.source-tag }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          persist-credentials: false
+
+      # IDENTITY 8 GUARD, the same as backend-deploy.yml's: this workflow is DISABLED today, but if it is ever restored a prod promotion of
+      # an identity 8 build must not run before prod is ready for it (docs/runbooks/identity-v8-cutover.md).
+      - name: Refuse a prod tag until prod is ready for identity 8
+        run: |
+          missing=""
+          for flag in better_auth_secret_set edge_client_ip_secret_set; do
+            grep -Eq "^[[:space:]]*${flag}[[:space:]]*=[[:space:]]*true([[:space:]]|$)" infra/live/prod/main.tf || missing="$missing $flag"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::infra/live/prod/main.tf does not set:${missing} = true. Prod is not ready for identity 8 yet: see docs/runbooks/identity-v8-cutover.md (production section)."
+            exit 1
+          fi
+
       - name: Compute the source (dev) tag
         id: tag
         run: |

@@ -34,7 +34,7 @@ service actually exports. A plausible-looking number that is not a real boundary
 rule reports OK forever while looking like coverage. `terraform_data.slow_request_bucket_is_real`
 in `infra/modules/stack/main.tf` fails the plan rather than letting that pass review, and
 `local.http_duration_boundaries_ms` in the same file is the list of legal values. That
-list mirrors `apps/api/src/otel.ts`; if one moves, both move.
+list mirrors `apps/api/src/main.ts`; if one moves, both move.
 
 ## First checks
 

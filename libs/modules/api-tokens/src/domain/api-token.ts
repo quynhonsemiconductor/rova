@@ -81,10 +81,12 @@ export function hashesMatch(a: string, b: string): boolean {
 export const DEFAULT_EXPIRY_DAYS = 90;
 export const MAX_EXPIRY_DAYS = 365;
 
-/** Resolve a requested lifetime to an absolute instant, or throw when it is out of bounds. */
-export function expiryFrom(now: Date, days: number = DEFAULT_EXPIRY_DAYS): Date {
+/**
+ * Refuse a lifetime outside the bounds. The expiry INSTANT is not computed here: it is `now()` plus the
+ * lifetime in the database's INSERT, so the stored clock is the database's, never the host's.
+ */
+export function assertExpiryDays(days: number): void {
   if (!Number.isInteger(days) || days < 1 || days > MAX_EXPIRY_DAYS) {
     throw new RangeError(`expiresInDays must be an integer between 1 and ${MAX_EXPIRY_DAYS}`);
   }
-  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 }

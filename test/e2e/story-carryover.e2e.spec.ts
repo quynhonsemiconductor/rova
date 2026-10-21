@@ -15,7 +15,6 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -38,7 +37,7 @@ import {
 } from '../../db/schema/work';
 import { SEED_PROJECTS, TEAM_ALPHA_ID, WORKSPACE_ID } from '../../db/seeds/constants';
 import { adminActor, grantProjectAccess } from './support/flow-harness';
-import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
+import { provisionUser, signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -87,18 +86,13 @@ describe('Story Target End Date + Carryover (Phase 7 CO)', () => {
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 
     db = app.get<DrizzleDB>(DRIZZLE);
-    token = (await app.get(AuthService).devLogin('admin@qnsc.dev', '127.0.0.1')).accessToken;
+    token = await signIn(app, 'admin@qnsc.dev');
     actor = adminActor();
     service = app.get(WorkItemsService);
     reporting = app.get(ReportingService);
@@ -149,7 +143,7 @@ describe('Story Target End Date + Carryover (Phase 7 CO)', () => {
     return { story, taskIds };
   }
 
-  const auth = (t = token) => ({ authorization: `Bearer ${t}` });
+  const auth = (t = token) => ({ cookie: t });
   const patch = (id: string, payload: Record<string, unknown>, t = token) =>
     app.inject({ method: 'PATCH', url: `/work-items/${id}`, headers: auth(t), payload });
   const carry = (id: string, payload: Record<string, unknown>, t = token) =>
@@ -649,17 +643,8 @@ describe('Story Target End Date + Carryover (Phase 7 CO)', () => {
   // ── Task 11 — export authz + parity ─────────────────────────────────────────
 
   async function ssoUser(prefix: string): Promise<{ userId: string; token: string }> {
-    const claims: EntraClaims = {
-      oid: `${prefix}-${randomUUID()}`,
-      email: `${prefix}-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
-      displayName: `E2E ${prefix}`,
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const session = await app.get(AuthService).ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    const userId = JSON.parse(
-      Buffer.from(session.accessToken.split('.')[1], 'base64url').toString(),
-    )['sub'] as string;
+    const session = await provisionUser(app, `${prefix}`, `E2E ${prefix}`);
+    const userId = session.userId;
     return { userId, token: session.accessToken };
   }
 

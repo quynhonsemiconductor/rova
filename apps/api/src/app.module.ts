@@ -1,11 +1,12 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { LoggerModule } from 'nestjs-pino';
-import { AppConfigService } from '@platform/config';
-import { RequestContextService } from '@platform/context/request-context';
-import { createLoggerOptions } from '@quynhonsemiconductor/observability';
-import { PlatformModule } from '@platform';
-import { IdentityModule } from '@modules/identity';
+import {
+  PlatformModule,
+  PreAuthRateLimitModule,
+  RateLimitModule,
+  RequestContextService,
+} from '@platform';
+import { AuthModule } from '@modules/identity';
 import { WorkspaceModule } from '@modules/workspace';
 import { AccessModule } from '@modules/access';
 import { ProjectsModule } from '@modules/projects';
@@ -26,32 +27,28 @@ import { ScmModule } from '@modules/scm';
 import { ApiTokensModule } from '@modules/api-tokens';
 import { TestCasesModule } from '@modules/test-cases';
 import { GlobalExceptionFilter, REQUEST_CONTEXT } from '@quynhonsemiconductor/platform-http';
+import { AuthApiErrorFilter } from '@quynhonsemiconductor/identity/nest';
 import { HttpLoggingInterceptor } from '@platform/http/http-logging.interceptor';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
-import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
 
 @Module({
   imports: [
-    // Pino structured logging — one shared factory (redaction, trace correlation,
-    // ALS business context) lives in @platform so api and worker cannot drift.
-    LoggerModule.forRootAsync({
-      inject: [AppConfigService],
-      useFactory: (config: AppConfigService) =>
-        createLoggerOptions({
-          serviceName: 'rova-api',
-          nodeEnv: config.get('NODE_ENV'),
-          serviceVersion: config.get('SERVICE_VERSION'),
-          level: config.get('LOG_LEVEL'),
-          pretty: config.get('LOG_PRETTY'),
-        }),
-    }),
+    // Logging is NOT wired here: `createHttpApp` (main.ts) registers the shared pino logger around this module.
 
     // Platform (config, db, auth, cache, outbox, observability)
     PlatformModule,
 
+    // GLOBAL GUARD ORDER IS MODULE ORDER, and it is load-bearing. ApiTokenGuard (api tokens) authenticates `Bearer rly_...` and
+    // tells identity's SessionGuard to stand aside, so PreAuthRateLimitModule (the address-keyed floor under traffic that never authenticates) is FIRST, ApiTokensModule comes BEFORE AuthModule (SessionGuard: sessions, the
+    // ban check, the principal); RateLimitModule comes AFTER both so the limiter keys by the user they wrote. Pinned by
+    // test/e2e/api-tokens.e2e.spec.ts and test/e2e/rate-limit-keying.e2e.spec.ts.
+    PreAuthRateLimitModule,
+    ApiTokensModule,
+    AuthModule,
+    RateLimitModule,
+
     // Bounded contexts
-    IdentityModule,
     WorkspaceModule,
     AccessModule,
     ProjectsModule,
@@ -69,15 +66,17 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
     CapacityModule,
     QualityModule,
     ScmModule,
-    ApiTokensModule,
     TestCasesModule,
   ],
   providers: [
-    // Bind the shared filter's request-context port to rally's ALS-backed service.
-    { provide: REQUEST_CONTEXT, useExisting: RequestContextService },
-
     // Global exception filter → stable RFC-9457-style error envelope
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
+    // identity's AuthApiErrorFilter injects `REQUEST_CONTEXT` (GlobalExceptionFilter no longer needs it: unbound it reads the
+    // same store). Bound to observability's request-context store, the one `enableCorrelationId` seeds.
+    { provide: REQUEST_CONTEXT, useExisting: RequestContextService },
+    // AFTER the global filter: Nest asks the LAST registered filter first. Maps an error raised through `auth.api.*` in our
+    // own controller (`setContext`: CONTEXT_FORBIDDEN is a 403) to the platform envelope instead of the global filter's 500.
+    { provide: APP_FILTER, useClass: AuthApiErrorFilter },
 
     // Global interceptor: structured HTTP access log (replaces pino-http autoLogging)
     { provide: APP_INTERCEPTOR, useClass: HttpLoggingInterceptor },
@@ -87,9 +86,4 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
     { provide: APP_PIPE, useClass: ZodValidationPipe },
   ],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer): void {
-    // AsyncLocalStorage middleware — sets correlationId + workspace/user stubs for every request
-    consumer.apply(AsyncLocalStorageMiddleware).forRoutes('*path');
-  }
-}
+export class AppModule {}

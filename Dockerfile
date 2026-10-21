@@ -22,12 +22,18 @@
 
 ARG NODE_VERSION=24
 ARG ALPINE_VERSION=3.22
-ARG PNPM_VERSION=10.33.2
+# Keep equal to `packageManager` in package.json and to PNPM_VERSION in the workflows.
+ARG PNPM_VERSION=11.28.5
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1 │ deps
 # Install ALL packages (dev + prod) so the builder has everything it needs.
 # The pnpm store is cached via BuildKit so subsequent builds skip downloads.
+#
+# Registry auth: pnpm 11 ignores `${NODE_AUTH_TOKEN}` in the committed project .npmrc, so each install
+# step writes a USER-level npmrc (NPM_CONFIG_USERCONFIG, a fresh mktemp file) holding the same
+# placeholder line. The file never contains the token: pnpm expands it from the NODE_AUTH_TOKEN
+# environment variable, which exists only inside that RUN (read from the BuildKit secret).
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS deps
 ARG PNPM_VERSION
@@ -36,19 +42,26 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .pnpmfile.cjs ./
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     --mount=type=secret,id=node_auth_token \
     export NODE_AUTH_TOKEN="$(cat /run/secrets/node_auth_token 2>/dev/null || true)" && \
     pnpm config set store-dir /root/.local/share/pnpm/store && \
-    HUSKY=0 pnpm install --frozen-lockfile
+    export NPM_CONFIG_USERCONFIG="$(mktemp)" && \
+    printf '%s\n' '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' > "$NPM_CONFIG_USERCONFIG" && \
+    HUSKY=0 pnpm install --frozen-lockfile && \
+    rm -f "$NPM_CONFIG_USERCONFIG"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2 │ prod-deps
 # Install production-only packages — this slim node_modules goes into the
 # final API and worker images.  Runs in parallel with the builder stage.
 # ─────────────────────────────────────────────────────────────────────────────
+FROM alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 AS rds-ca
+ADD https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /bundle.pem
+RUN chmod 0644 /bundle.pem
+
 FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS prod-deps
 ARG PNPM_VERSION
 
@@ -56,13 +69,16 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .pnpmfile.cjs ./
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     --mount=type=secret,id=node_auth_token \
     export NODE_AUTH_TOKEN="$(cat /run/secrets/node_auth_token 2>/dev/null || true)" && \
     pnpm config set store-dir /root/.local/share/pnpm/store && \
-    pnpm install --frozen-lockfile --prod --ignore-scripts
+    export NPM_CONFIG_USERCONFIG="$(mktemp)" && \
+    printf '%s\n' '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' > "$NPM_CONFIG_USERCONFIG" && \
+    pnpm install --frozen-lockfile --prod --ignore-scripts && \
+    rm -f "$NPM_CONFIG_USERCONFIG"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3 │ builder
@@ -73,6 +89,13 @@ FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS builder
 ARG PNPM_VERSION
 
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+
+# pnpm 11 runs an implicit `install` before every script when node_modules does not match the workspace.
+# Here it never does, on purpose: node_modules is copied from `deps` (root package only), while the full
+# source below includes apps/web, whose dependencies this image does not install. The check would try to
+# install the whole workspace for every `pnpm build:*` below, and fail on registry auth (the builder has
+# no token). pnpm 10 did not check; the build needs no install, so say so.
+ENV pnpm_config_verify_deps_before_run=false
 
 WORKDIR /app
 
@@ -111,6 +134,16 @@ RUN apk upgrade --no-cache \
 
 # Runtime tunables — override via docker run -e or Kubernetes env
 ENV NODE_ENV=production
+# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
+# default points at the baked file; a task definition may override it (on-prem:
+# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
+# CAs over time and a stale local copy would fail verification against new
+# instances instead of being silently wrong. Own stage so it is fetched once and
+# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
+# (nestjs/migrator) must read it.
+COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
+ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+
 ENV NODE_OPTIONS="--max-old-space-size=512"
 ENV PORT=3000
 ENV HOST=0.0.0.0
@@ -153,6 +186,16 @@ RUN apk upgrade --no-cache \
     && rm -rf /var/cache/apk/*
 
 ENV NODE_ENV=production
+# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
+# default points at the baked file; a task definition may override it (on-prem:
+# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
+# CAs over time and a stale local copy would fail verification against new
+# instances instead of being silently wrong. Own stage so it is fetched once and
+# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
+# (nestjs/migrator) must read it.
+COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
+ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+
 ENV NODE_OPTIONS="--max-old-space-size=256"
 
 WORKDIR /app
@@ -188,6 +231,16 @@ RUN apk upgrade --no-cache \
     && rm -rf /var/cache/apk/*
 
 ENV NODE_ENV=production
+# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
+# default points at the baked file; a task definition may override it (on-prem:
+# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
+# CAs over time and a stale local copy would fail verification against new
+# instances instead of being silently wrong. Own stage so it is fetched once and
+# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
+# (nestjs/migrator) must read it.
+COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
+ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+
 
 WORKDIR /app
 
@@ -199,6 +252,11 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 # Raw SQL migrations go into dist/db/migrations — matches __dirname in compiled migrate.js.
 COPY --from=builder /app/dist/db ./dist/db
 COPY --from=builder /app/db/migrations ./dist/db/migrations
+# The identity v8 backfill/rollback SQL sits next to the compiled runner (run.js reads it from __dirname). It must be IN THE IMAGE
+# BEFORE the identity v8 cutover change deploys, because the backfill (dry run, then --commit) has to run first: with empty v8 tables
+# every existing user's sign-in is refused. Run it with: node dist/db/identity-v8/cli.js backfill --tenant-id ... --staff-domains ...
+# (docs/runbooks/identity-v8-cutover.md).
+COPY --from=builder /app/db/identity-v8/*.sql ./dist/db/identity-v8/
 COPY --from=builder /app/package.json ./
 
 RUN addgroup --system --gid 1001 nodejs \

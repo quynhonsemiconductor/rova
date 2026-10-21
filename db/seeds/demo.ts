@@ -28,6 +28,7 @@ try {
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { pgOptions } from '../pg-ssl';
+import { log } from '../script-log';
 import { uuidv7 } from 'uuidv7';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import * as schema from '../schema';
@@ -68,6 +69,7 @@ import {
 import { userRoleAssignments } from '../schema/access';
 import { seedSystemRolesInto } from './reference';
 import { seedTenantBootstrapInto } from './bootstrap';
+import { mirrorIdentityUsers } from './identity-v8-users';
 import { seedSecondProject } from './second-project';
 import { seedReferenceExtras } from './reference-extras';
 import {
@@ -1296,7 +1298,7 @@ async function seedFlow() {
   // ── 14. Phase 6 report history ────────────────────────────────────────────
   await seedReportHistory();
 
-  console.log(
+  log.info(
     '✅  Demo flow seeded — Team Alpha, Story + Defect (team+iteration+release-linked), 3 Tasks, ' +
       '1 Iteration, 1 Release, 1 Milestone, plus capacity/labels/comments/time logs/watchers, ' +
       '2 Test Cases (one with 2 Results, one with none), and frozen Burndown + Release burnup history',
@@ -1517,7 +1519,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
   db = drizzle(pool, { schema });
 
   try {
-    console.log('Seeding...');
+    log.info('Seeding...');
 
     // ── Workspace + SSO connection (shared prod-safe bootstrap) ───────────────
     // The primary workspace and its Entra SSO connection are created by the same
@@ -1526,8 +1528,8 @@ export async function seed(connectionUrl?: string): Promise<void> {
 
     // ── Admin user ───────────────────────────────────────────────────────────
     // SSO-only: no password. The platform-admin email is seeded so the first
-    // Entra SSO login merges into this row (upsertBySsoIdentity matches by email)
-    // and PLATFORM_ADMIN_EMAILS auto-elevates it to workspace_admin.
+    // Entra SSO login finds this profile (matched by address) and PLATFORM_ADMIN_EMAILS
+    // auto-elevates it to workspace_admin.
     const adminEmail = process.env['ADMIN_EMAIL'] ?? 'admin@qnsc.dev';
     await db
       .insert(schema.users)
@@ -1581,6 +1583,9 @@ export async function seed(connectionUrl?: string): Promise<void> {
         { workspaceId: WORKSPACE_ID, userId: VIEWER_ID },
       ])
       .onConflictDoNothing();
+
+    // Each profile above also needs its identity 8 user (same id), or test-login would mint a stranger.
+    await mirrorIdentityUsers(db);
 
     // ── System roles ─────────────────────────────────────────────────────────
     // Reference catalogue (roles + permission grants). Shared with the prod-safe
@@ -1685,7 +1690,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
     // NXP had one iteration, which cannot express Velocity or an unscheduled backlog.
     await seedReferenceExtras(db);
 
-    console.log(
+    log.info(
       `✅  Test fixture seeded — 1 project (NXP), 3 users, 1 team, 1 iteration, 1 release, 1 milestone, 1 story + 1 defect + 3 tasks (one fully-linked flow)`,
     );
   } finally {

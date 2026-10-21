@@ -34,8 +34,9 @@ try {
 }
 
 import { Client } from 'pg';
-import { pgOptions } from './pg-ssl';
+import { pgOptions, tlsFromEnv } from './pg-ssl';
 import { resolveMigrationUrl } from './database-url';
+import { log } from './script-log';
 
 interface Target {
   role: string;
@@ -94,7 +95,12 @@ function assertSafePassword(role: string, passwordEnv: string, password: string)
 }
 
 /** Enable one role and verify it. Throws on anything unexpected. */
-async function enableRole(adminUrl: string, admin: Client, target: Target, password: string): Promise<void> {
+async function enableRole(
+  adminUrl: string,
+  admin: Client,
+  target: Target,
+  password: string,
+): Promise<void> {
   const { role } = target;
   assertSafeRole(role);
   assertSafePassword(role, target.passwordEnv, password);
@@ -140,7 +146,7 @@ async function enableRole(adminUrl: string, admin: Client, target: Target, passw
   appUrl.username = role;
   appUrl.password = password;
 
-  const app = new Client(pgOptions(appUrl.toString()));
+  const app = new Client(pgOptions(appUrl.toString(), tlsFromEnv()));
   await app.connect();
   let ddlAllowed = false;
   try {
@@ -161,7 +167,7 @@ async function enableRole(adminUrl: string, admin: Client, target: Target, passw
     );
   }
 
-  console.log(`✅  ${role} can log in, holds no privileged attributes, and cannot run DDL.`);
+  log.info(`✅  ${role} can log in, holds no privileged attributes, and cannot run DDL.`);
 }
 
 async function run(): Promise<void> {
@@ -172,30 +178,31 @@ async function run(): Promise<void> {
   try {
     adminUrl = resolveMigrationUrl();
   } catch (err) {
-    console.error(`❌  ${(err as Error).message}`);
+    log.error({ err }, (err as Error).message);
     process.exit(1);
   }
 
-  const requested = TARGETS.map((t) => ({ target: t, password: process.env[t.passwordEnv] })).filter(
-    (r): r is { target: Target; password: string } => Boolean(r.password),
-  );
+  const requested = TARGETS.map((t) => ({
+    target: t,
+    password: process.env[t.passwordEnv],
+  })).filter((r): r is { target: Target; password: string } => Boolean(r.password));
 
   if (requested.length === 0) {
-    console.error(
-      '❌  No role passwords supplied. Set at least one of: ' +
+    log.error(
+      'No role passwords supplied. Set at least one of: ' +
         `${TARGETS.map((t) => t.passwordEnv).join(', ')}.`,
     );
     process.exit(1);
   }
 
-  const admin = new Client(pgOptions(adminUrl));
+  const admin = new Client(pgOptions(adminUrl, tlsFromEnv()));
   await admin.connect();
   try {
     for (const { target, password } of requested) {
       await enableRole(adminUrl, admin, target, password);
     }
   } catch (err) {
-    console.error(`❌  ${(err as Error).message}`);
+    log.error({ err }, (err as Error).message);
     process.exitCode = 1;
   } finally {
     await admin.end();

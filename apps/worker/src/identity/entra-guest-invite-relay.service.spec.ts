@@ -51,11 +51,11 @@ const row = (o: Partial<Row> = {}): Row => ({
 });
 
 /** The invitation row the relay re-reads before it will mail a link. */
-type Invitation = { status: string; tokenHash: string; expiresAt: Date };
+type Invitation = { status: string; tokenHash: string; expiresInDays: number };
 const invitation = (o: Partial<Invitation> = {}): Invitation => ({
   status: 'pending',
   tokenHash: TOKEN_HASH,
-  expiresAt: new Date(Date.now() + 7 * 86_400_000),
+  expiresInDays: 7,
   ...o,
 });
 
@@ -108,11 +108,35 @@ function makeConfig(enabled = true): AppConfigService {
   } as unknown as AppConfigService;
 }
 
-/** Subclass that supplies the batch directly, so no database is needed to drive one pass. */
+/**
+ * Subclass that supplies the batch directly and stands in for the lease SQL (claim, renew, fence, reap), which
+ * the base spec and test/e2e/outbox-lease.e2e.spec.ts cover — so no database is needed to drive one pass.
+ */
 class TestRelay extends EntraGuestInviteRelayService {
   batch: Row[] = [];
-  protected override async fetchBatch(): Promise<Row[]> {
-    return this.batch;
+  protected override async selectDue(): Promise<Row[]> {
+    const rows = this.batch;
+    this.batch = []; // a pass keeps claiming until the queue is empty
+    return rows;
+  }
+  protected override reapAbandoned(): Promise<number> {
+    return Promise.resolve(0);
+  }
+  protected override stampLeases(
+    _tx: DrizzleTx,
+    ids: string[],
+  ): Promise<Map<string, { attempts: number; lockedUntil: Date }>> {
+    const lockedUntil = new Date(Date.now() + 180_000);
+    return Promise.resolve(new Map(ids.map((id) => [id, { attempts: 1, lockedUntil }])));
+  }
+  protected override renewLease(): Promise<Date | null> {
+    return Promise.resolve(new Date(Date.now() + 180_000));
+  }
+  protected override holdsLease(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+  protected override releaseLease(): Promise<void> {
+    return Promise.resolve();
   }
 }
 
@@ -226,19 +250,19 @@ describe('EntraGuestInviteRelayService', () => {
       expect(updatesTo(updates, guestInviteOutbox)[0]).toMatchObject({ inviteToken: null });
     });
 
-    it('reports the days REMAINING, not the configured TTL', async () => {
-      // The mail leaves after provisioning and possibly several backoff windows, so the configured
-      // TTL would overstate the window the invitee actually has.
+    it('forwards the days REMAINING that the database computed, not the configured TTL', async () => {
+      // The days-remaining value is computed in the invitation SELECT with the database's now(); the relay
+      // only forwards it. The SQL itself is pinned against PostgreSQL by test/e2e/invite-days-db-clock.e2e.spec.ts.
       const { relay, emailScheduler } = build(
         async () => ({ outcome: 'invited', guestObjectId: 'g1' }),
-        { invitation: invitation({ expiresAt: new Date(Date.now() + 2.2 * 86_400_000) }) },
+        { invitation: invitation({ expiresInDays: 5 }) },
       );
       relay.batch = [row()];
 
       await relay.relay();
 
       expect(emailScheduler.schedule).toHaveBeenCalledWith(
-        expect.objectContaining({ vars: expect.objectContaining({ expiresInDays: '3' }) }),
+        expect.objectContaining({ vars: expect.objectContaining({ expiresInDays: '5' }) }),
         expect.anything(),
       );
     });
@@ -347,10 +371,9 @@ describe('EntraGuestInviteRelayService', () => {
       const outbox = updatesTo(updates, guestInviteOutbox);
       expect(outbox[0]).toMatchObject({
         status: 'failed',
-        attempts: 1,
         lastError: expect.stringContaining('Request_BadRequest'),
       });
-      // A terminal row keeps its scheduled_at — fetchBatch never selects 'failed' again.
+      // A terminal row keeps its scheduled_at — selectDue never selects 'failed' again.
       expect(outbox[0]).not.toHaveProperty('scheduledAt');
     });
 
@@ -381,9 +404,12 @@ describe('EntraGuestInviteRelayService', () => {
       await relay.relay();
 
       const outbox = updatesTo(updates, guestInviteOutbox);
-      expect(outbox[0]).toMatchObject({ status: 'pending', attempts: 1 });
-      // A retry, so scheduled_at moves forward by the base class's backoff.
-      expect(outbox[0].scheduledAt).toBeInstanceOf(Date);
+      expect(outbox[0]).toMatchObject({ status: 'pending' });
+      // `attempts` is spent at CLAIM time, so the failure write does not touch it.
+      expect(outbox[0]).not.toHaveProperty('attempts');
+      // A retry, so scheduled_at moves forward by the base class's backoff. It is written as a database
+      // expression (now() + interval), not a host Date; test/e2e/outbox-lease.e2e.spec.ts checks the value.
+      expect(outbox[0].scheduledAt).toBeDefined();
     });
 
     it('a transient fault schedules no email and KEEPS the token for the retry', async () => {

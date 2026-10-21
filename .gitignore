@@ -54,3 +54,8 @@ junit.xml
 # Spurious npm lockfiles — this repo uses pnpm only
 package-lock.json
 **/package-lock.json
+
+# Local bring-up and checks (scripts/local): logs and pids.
+.local/
+# Env file for an isolated e2e stack (scripts/e2e/make-env.mjs). It holds only local values, but it is generated.
+.env.e2e

@@ -11,16 +11,17 @@ try {
 
 import { Pool } from 'pg';
 import { resolveMigrationUrl } from './database-url';
-import { pgOptions } from './pg-ssl';
+import { pgOptions, tlsFromEnv } from './pg-ssl';
+import { log } from './script-log';
 
 const url = resolveMigrationUrl();
 const host = new URL(url).hostname;
 if (!['localhost', '127.0.0.1'].includes(host)) {
-  console.error(`❌  Refusing to truncate non-local host: ${host}`);
+  log.error(`Refusing to truncate non-local host: ${host}`);
   process.exit(1);
 }
 
-const pool = new Pool({ ...pgOptions(url), max: 1 });
+const pool = new Pool({ ...pgOptions(url, tlsFromEnv()), max: 1 });
 
 async function run() {
   const { rows } = await pool.query<{ fq: string }>(`
@@ -29,18 +30,18 @@ async function run() {
     where schemaname not in ('pg_catalog', 'information_schema', 'drizzle')
   `);
   if (rows.length === 0) {
-    console.log('No tables to truncate.');
+    log.info('No tables to truncate.');
     return;
   }
   const list = rows.map((r) => r.fq).join(', ');
-  console.log(`Truncating ${rows.length} tables...`);
+  log.info(`Truncating ${rows.length} tables...`);
   await pool.query(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
-  console.log('✅  All data tables truncated.');
+  log.info('✅  All data tables truncated.');
 }
 
 run()
   .catch((e) => {
-    console.error(e);
+    log.error({ err: e }, 'Truncate failed');
     process.exit(1);
   })
   .finally(() => pool.end());

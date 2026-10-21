@@ -2,8 +2,8 @@
  * AuditProjectionRelay — polls `messaging.outbox_events` and projects each domain
  * event into an `audit.audit_logs` row.
  *
- * Extends AbstractOutboxRelay, which owns the polling loop, the coalescing guard,
- * transaction management, backoff and dead-letter logging. This class provides
+ * Extends AbstractOutboxRelay (lease-and-fence), which owns the polling loop, the coalescing guard,
+ * the claim and finish transactions, backoff and dead-letter logging. This class provides
  * only the projection: what to SELECT, how to map an event onto an audit row, and
  * how to mark rows.
  *
@@ -23,7 +23,7 @@
  *      delivered the SNS envelope while the consumer parsed it as the bare event,
  *      reading `undefined` for every field.
  *
- * Local dev worked, which is what kept it hidden: `scripts/localstack/01-bootstrap.sh`
+ * Local dev worked, which is what kept it hidden: the LocalStack bootstrap (since removed)
  * subscribed all four queues, unfiltered, with raw delivery on. It was more generous
  * than the Terraform, so dev could not reproduce prod.
  *
@@ -41,11 +41,12 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { and, asc, lt, eq } from 'drizzle-orm';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { InjectDrizzle, Span } from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
-import { AbstractOutboxRelay } from '@platform/outbox';
+import { AbstractOutboxRelay, dbDelay } from '@platform/outbox';
+import type { Claimed, OutboxLeaseTable } from '@platform/outbox';
 import { AUDIT_REPOSITORY, type IAuditRepository } from '@modules/audit';
 import { outboxEvents } from '../../../../db/schema/messaging';
 
@@ -58,6 +59,7 @@ type OutboxEventRow = {
   payload: unknown;
   occurredAt: Date;
   attempts: number;
+  traceparent: string | null;
 };
 
 /** The fields AuditProducer puts in an event payload — see `AuditEvent`. */
@@ -67,8 +69,14 @@ type AuditEventPayload = {
   changes?: { before?: unknown; after?: unknown };
 };
 
+/** A projection is one indexed insert: the lease only has to cover waiting behind earlier rows of the batch. */
+const AUDIT_LEASE_MS = 30_000;
+
 @Injectable()
 export class AuditProjectionRelay extends AbstractOutboxRelay<OutboxEventRow> {
+  /** Held for the SUM of the batch's leases (30 s each): 20 rows is 10 minutes if a worker dies. */
+  protected override readonly batchSize = 20;
+
   constructor(
     @InjectDrizzle() db: DrizzleDB,
     /**
@@ -98,7 +106,22 @@ export class AuditProjectionRelay extends AbstractOutboxRelay<OutboxEventRow> {
 
   // ── AbstractOutboxRelay implementation ────────────────────────────────────
 
-  protected async fetchBatch(tx: DrizzleTx): Promise<OutboxEventRow[]> {
+  protected readonly outbox: OutboxLeaseTable = {
+    table: outboxEvents,
+    id: outboxEvents.id,
+    status: outboxEvents.status,
+    attempts: outboxEvents.attempts,
+    lastError: outboxEvents.lastError,
+    leaseToken: outboxEvents.leaseToken,
+    lockedUntil: outboxEvents.lockedUntil,
+    seq: outboxEvents.seq,
+  };
+
+  protected override leaseMsFor(): number {
+    return AUDIT_LEASE_MS;
+  }
+
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<OutboxEventRow[]> {
     return tx
       .select({
         id: outboxEvents.id,
@@ -109,15 +132,23 @@ export class AuditProjectionRelay extends AbstractOutboxRelay<OutboxEventRow> {
         payload: outboxEvents.payload,
         occurredAt: outboxEvents.occurredAt,
         attempts: outboxEvents.attempts,
+        traceparent: outboxEvents.traceparent,
       })
       .from(outboxEvents)
-      .where(and(eq(outboxEvents.status, 'pending'), lt(outboxEvents.attempts, this.maxAttempts)))
-      .orderBy(asc(outboxEvents.createdAt), asc(outboxEvents.id))
-      .limit(this.batchSize)
+      .where(
+        and(
+          eq(outboxEvents.status, 'pending'),
+          lt(outboxEvents.attempts, this.maxAttempts),
+          lte(outboxEvents.scheduledAt, sql`now()`),
+          this.notLeased(),
+        ),
+      )
+      .orderBy(asc(outboxEvents.createdAt), asc(outboxEvents.seq), asc(outboxEvents.id))
+      .limit(limit)
       .for('update', { skipLocked: true });
   }
 
-  protected async processRow(row: OutboxEventRow): Promise<void> {
+  protected async deliver(row: Claimed<OutboxEventRow>): Promise<void> {
     const payload = (row.payload ?? {}) as AuditEventPayload;
 
     await this.auditRepo.create({
@@ -134,6 +165,9 @@ export class AuditProjectionRelay extends AbstractOutboxRelay<OutboxEventRow> {
       // unique index sees, so a row reprojected after a crash collides with itself
       // and is skipped rather than duplicated.
       sourceEventId: row.id,
+      // When the event HAPPENED, not when this pass projected it: a retried row is minutes (or, after an outage,
+      // hours) late, and the audit trail reads these timestamps.
+      occurredAt: row.occurredAt,
       // actorEmail is deliberately absent. AuditProducer's AuditActor carries only an
       // id, so the value the old consumer read was always undefined; the read model
       // resolves it with `coalesce(audit_logs.actor_email, users.email)` over a
@@ -141,27 +175,28 @@ export class AuditProjectionRelay extends AbstractOutboxRelay<OutboxEventRow> {
     });
   }
 
-  protected async markSent(tx: DrizzleTx, rowId: string): Promise<void> {
+  protected async markSent(tx: DrizzleTx, row: Claimed<OutboxEventRow>): Promise<void> {
     await tx
       .update(outboxEvents)
-      .set({ status: 'published', publishedAt: new Date() })
-      .where(eq(outboxEvents.id, rowId));
+      .set({ status: 'published', publishedAt: sql`now()` })
+      .where(eq(outboxEvents.id, row.id));
   }
 
   protected async markFailed(
     tx: DrizzleTx,
-    rowId: string,
-    newAttempts: number,
+    row: Claimed<OutboxEventRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    // outbox_events has no scheduledAt column, so this relay cannot defer a retry —
-    // it re-reads on the next 5s tick. The base class's computed backoff is unused
-    // here, unlike the email and notification outboxes.
-    _nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
+    // `attempts` was spent at claim time. Only a retry moves scheduledAt forward (the backoff).
     await tx
       .update(outboxEvents)
-      .set({ status: newStatus, attempts: newAttempts, lastError })
-      .where(eq(outboxEvents.id, rowId));
+      .set({
+        status: newStatus,
+        lastError,
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
+      })
+      .where(eq(outboxEvents.id, row.id));
   }
 }

@@ -15,6 +15,11 @@ overrides:
   # would reintroduce the two-copy type mismatch it exists to prevent.
   fastify: "5.12.5"
   "esbuild@<0.25.0": ">=0.25.0"
+  # GHSA-8r5x-fm3f-whwj (CVSS 9.8), GHSA-p8wg-vrv2-v86f (9.2), GHSA-xw65-4hp5-5hc7 (4.7) —
+  # JavaScript injection in handlebars' compiler, all fixed in 4.7.10. Transitive only, through
+  # @boundaries/elements (eslint-plugin-boundaries) at lint time; nothing here compiles untrusted
+  # templates. Capped below 5.0.0 so the override never crosses a major.
+  "handlebars@<4.7.10": ">=4.7.10 <5.0.0"
   # GHSA-rgw5-rvv9-x895 — HIGH (CVSS 7.5) DoS via unbounded intermediate arrays,
   # vulnerable <5.0.9, fixed 5.0.9. It explicitly BYPASSES the CVE-2026-14257
   # mitigation, which is what the previous pin here was for (GHSA-mh99-v99m-4gvg,
@@ -106,7 +111,7 @@ overrides:
   #
   # Raise this by hand again if the advisory names a later fix; there is no floor here doing
   # it automatically, and that is the trade for surviving the cooldown window.
-  "nanoid@>=3.0.0 <3.3.18": "3.3.19"
+  "nanoid@>=3.0.0 <3.3.18": "3.3.20"
   # GHSA-r28c-9q8g-f849 — postcss (line-return parsing), fixed in 8.5.18.
   # Transitive via the web build toolchain (vite / tailwind ecosystem). A newly
   # published advisory that also affects main; pinned via override.
@@ -196,7 +201,7 @@ overrides:
   # PINNED to 4.1.1 (fixed, published 2026-09-02) rather than a floor: the floor resolved 4.1.2,
   # published 2026-10-05T19:12Z — inside the 24h `minimumReleaseAge` cooldown the nanoid entry
   # above describes. Same trade as nanoid: raise by hand if the advisory names a later fix.
-  "fast-copy@>=4.0.0 <4.1.0": "4.1.1"
+  "fast-copy@>=4.0.0 <4.1.0": "4.2.0"
   # GHSA-68fv-2mgg-jv7q (CVSS 8.7) — event-loop DoS via indexed source-map section offsets, fixed
   # in 1.2.2. DEV / BUILD-ONLY: postcss, vite, tailwind, jsdom and coverage all read source maps
   # this repo generates. Every consumer declares `^1.x`; kept in 1.x.
@@ -225,6 +230,12 @@ allowBuilds:
   protobufjs: true
   ssh2: true
   unrs-resolver: true
+  # wrangler (apps/web devDependency, used by `wrangler pages deploy`) depends on workerd. Its postinstall
+  # only verifies/links the platform binary that the optional @cloudflare/workerd-* package already
+  # provides; `pages deploy` bundles with esbuild and never starts workerd. Denied on purpose, and written
+  # down because pnpm 11 exits with ERR_PNPM_IGNORED_BUILDS while the decision is unmade, which broke
+  # Web · Deploy (run 38140929326). Deliberately NOT in `onlyBuiltDependencies` beneath.
+  workerd: false
 onlyBuiltDependencies:
   - '@scarf/scarf'
   - '@swc/core'
@@ -235,3 +246,22 @@ onlyBuiltDependencies:
   - protobufjs
   - ssh2
   - unrs-resolver
+
+# pnpm's `minimumReleaseAge` is a cooldown against a hijacked THIRD-PARTY release: a malicious version is usually
+# caught and yanked within hours, so not installing anything younger than a day removes most of that exposure.
+#
+# SET EXPLICITLY (1440 minutes = 24 h). pnpm 11, which this repo runs, defaults to 24 h; pnpm 10 (opshub's) has NO
+# default. Written out, the behaviour does not depend on which pnpm reads the file, and matches opshub's.
+#
+# Our own `@quynhonsemiconductor/*` packages are published by this organisation, from app-platform, by a pipeline we
+# control, so the cooldown protects nothing there and costs a day on every release: platform-http 4.3.0 blocked this
+# repo's CI for ~22 hours on `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`. They are exempt, as a scope pattern (verified on
+# pnpm 10.33.2 and 11: a <24 h `@quynhonsemiconductor/*` version is refused without the exclusion and resolves with it).
+#
+# This does NOT exempt a third-party package that a first-party one depends on, and it does not touch Renovate: the
+# org preset (`quynhonsemiconductor/.github:renovate-config`) sets no `minimumReleaseAge`, so Renovate proposes our
+# packages as soon as they are published. If the org ever adds one, give the `^@quynhonsemiconductor/` rule in that
+# preset `"minimumReleaseAge": null`.
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - '@quynhonsemiconductor/*'

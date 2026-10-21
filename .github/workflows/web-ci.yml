@@ -30,8 +30,24 @@ on:
     types: [opened, synchronize, reopened]
 
 concurrency:
-  group: ci-web-${{ github.ref }}
-  cancel-in-progress: true
+  # A PUSH TO MAIN IS NEVER CANCELLED, and that takes a group of its own per commit. The group used to be
+  # `ci-web-${{ github.ref }}` with cancel-in-progress, so two commits landing on main close together shared
+  # `ci-web-refs/heads/main` and the second CANCELLED the first's run. The first commit's deploy then failed its
+  # "wait for Web · CI on this commit" gate: a green commit that could not deploy ("Canceling since a higher
+  # priority waiting request for ci-web-refs/heads/main exists").
+  #
+  # `cancel-in-progress: false` alone would NOT have fixed it: GitHub keeps ONE pending run per group and cancels
+  # every other pending one, so a third push still killed the second's run. Only a distinct group per commit
+  # keeps them all.
+  #
+  #   pull_request -> one group per PR, cancel in progress (a newer push to the PR supersedes the older run:
+  #                   unchanged behaviour; refs/pull/N/merge was already per PR)
+  #   push (main)  -> one group per COMMIT, never cancelled
+  #   anything else (schedule, dispatch) -> its own run id, so it can neither cancel nor be cancelled by a push
+  #
+  # `pr-title.yml` deliberately has its own group and is unaffected.
+  group: ci-web-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'push' && format('main-{0}', github.sha) || format('{0}-{1}', github.event_name, github.run_id)) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -40,28 +56,59 @@ permissions:
   # this change is making: nothing here needs it today (the openapi job reads
   # `github.event.pull_request.base.sha` straight off the payload, which needs no grant).
   pull-requests: read
-  packages: read       # pull @quynhonsemiconductor/* from GitHub Packages (via shared libs)
+  packages: read # pull @quynhonsemiconductor/* from GitHub Packages (via shared libs)
 
 env:
   # 24, matching .nvmrc and the Dockerfile — see backend-ci.yml for why this was 22.
   # Measured here too before bumping: statements 84.50 / branches 77.48 / functions 83.22 /
   # lines 88.32 against floors of 60, so the web suite has ample headroom on 24.
   NODE_VERSION: '24'
-  PNPM_VERSION: '10.33.2'
+  PNPM_VERSION: '11.28.5'
 
 jobs:
+  # Does this pull request change anything this workflow tests? A change that touches only files the matching DEPLOY workflow ignores
+  # (its `paths-ignore`) cannot affect what this workflow builds, so the heavy jobs are skipped and one cheap gate reports instead.
+  # A push to main ALWAYS runs everything (deploys wait for that run), and every doubt (API error, empty file list, any file not on
+  # the list) runs everything too: see actions/changed-paths in the ci repo.
+  # WEB CI IGNORES ONLY DOCS. Its E2E job builds and runs the REAL API and migrations, the only full-stack end-to-end in the repo, so
+  # a change to apps/api, libs or db must still run it. (Backend CI can skip web-only changes; the reverse is not true.)
+  changes:
+    name: Which parts changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.paths.outputs.run }}
+    steps:
+      - id: paths
+        uses: quynhonsemiconductor/ci/actions/changed-paths@v1
+        with:
+          ignore: |
+            **/*.md
+            docs/**
+            .claude/**
+          # A release-please PR: only when the author is the release bot (a branch name is chosen by whoever opens the PR, so the
+          # prefix alone proves nothing) AND the diff is the changelog, the manifest and `version` lines. The push to main it becomes
+          # runs everything. Renovate PRs are NOT skipped: an action bump must be exercised on its PR.
+          skip-heads: |
+            release-please--@qnsc-automation[bot]=CHANGELOG.md,.release-please-manifest.json,version-only:**/package.json
+
   # ─────────────────────────────────────────────────────────────────────────
   # 1. Lint + typecheck (fast gate — no deps needed)
   # ─────────────────────────────────────────────────────────────────────────
   quality:
     name: Lint & typecheck
+    needs: [changes]
+    if: ${{ needs.changes.outputs.run == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -76,11 +123,35 @@ jobs:
       - name: Typecheck
         run: pnpm --filter rova-web typecheck
 
+      # The deploy path, without credentials. Web · Deploy publishes with cloudflare/wrangler-action, which
+      # runs `pnpm exec wrangler --version` in apps/web and, if that fails, `pnpm add wrangler@4` AT RUN
+      # TIME. On pnpm 11 that add exits 1 (ERR_PNPM_IGNORED_BUILDS: workerd) and broke the develop deploy
+      # (run 38140929326). wrangler is now an exact devDependency of rova-web, so the action finds it and
+      # installs nothing. This runs the same action, same SHA as the shared web-deploy reusable, on a
+      # command that needs no Cloudflare account (bundling the Pages Functions), then asserts that nothing
+      # was installed into the workspace. If wrangler ever leaves the lockfile, or workerd's build decision
+      # is lost, the step fails here and not on the next push to main.
+      - name: Deploy tooling (wrangler) resolves on pnpm 11
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0  # v4.1.3
+        with:
+          workingDirectory: apps/web
+          packageManager: pnpm
+          command: pages functions build functions --outdir ${{ runner.temp }}/pages-functions
+
+      - name: The tooling step installed nothing, and produced a bundle
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- package.json apps/web/package.json pnpm-lock.yaml pnpm-workspace.yaml
+          test -s "$RUNNER_TEMP/pages-functions/index.js"
+          pnpm --filter rova-web exec wrangler --version
+
   # ─────────────────────────────────────────────────────────────────────────
   # 2. Unit tests (no DB — pure component/hook/util tests)
   # ─────────────────────────────────────────────────────────────────────────
   test:
     name: Unit tests
+    needs: [changes]
+    if: ${{ needs.changes.outputs.run == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -89,7 +160,7 @@ jobs:
     outputs:
       has_tests: ${{ steps.detect.outputs.has_tests }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -118,7 +189,7 @@ jobs:
 
       - name: Upload coverage
         if: always() && steps.detect.outputs.has_tests == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: coverage
           path: coverage/
@@ -132,12 +203,14 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   e2e:
     name: E2E (Playwright)
+    needs: [changes]
+    if: ${{ needs.changes.outputs.run == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:18.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -150,7 +223,7 @@ jobs:
           --health-retries 10
 
       redis:
-        image: redis:7-alpine
+        image: valkey/valkey:8.1.10-alpine
         ports: ['6379:6379']
         options: >-
           --health-cmd "redis-cli ping"
@@ -165,30 +238,27 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
       DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
       REDIS_URL: redis://localhost:6379
-      JWT_ISSUER: rova-api
-      JWT_AUDIENCE: rova-web
-      JWT_ACCESS_EXPIRY: 15m
-      JWT_REFRESH_EXPIRY: 30d
       CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
       COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
-      # Entra BFF OIDC — CI test-only placeholders (never used for real auth).
-      # The API boots BFF-only auth and validates these at startup.
+      # identity 8: the secret that signs its cookies, and the passwordless sign-in the E2E helper uses (identity
+      # refuses it unless NODE_ENV is test or development).
+      BETTER_AUTH_SECRET: ci-test-better-auth-secret-min-32-characters-ok
+      IDENTITY_TEST_LOGIN: enabled
+      # Entra — CI test-only placeholders (never used for real auth). The API validates them at startup.
       ENTRA_TENANT_ID: ci-test-tenant
       ENTRA_CLIENT_ID: ci-test-client
       ENTRA_CLIENT_SECRET: ci-test-secret
-      ENTRA_REDIRECT_URI: http://localhost:3000/v1/bff/callback
-      # Render the dev-login form (Vite build flag). The E2E helper signs in via
-      # the passwordless /v1/bff/dev-login form since CI has no Entra tenant.
+      # Render the dev-login form (Vite build flag). The E2E helper signs in via the form, which posts to
+      # identity's passwordless /api/auth/test-login, since CI has no Entra tenant.
       VITE_DEV_LOGIN: 'true'
-      # Rotating refresh tokens can't be shared across test contexts, so each
-      # spec logs in fresh — disable rate limiting so that never 429s.
+      # Each spec logs in fresh — disable rate limiting so that never 429s.
       DISABLE_RATE_LIMIT: 'true'
-      # Rally is SSO-only; the E2E helper signs in via the passwordless
-      # dev-login endpoint (seeded accounts, non-production only).
+      # Rally is SSO-only; the E2E helper signs in via the passwordless test-login endpoint
+      # (seeded accounts, NODE_ENV test/development only).
       NODE_ENV: test
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -196,22 +266,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
-
-      # Ephemeral ES256 keypair for the API (matches platform.module.ts). Test-only.
-      - name: Generate CI JWT keypair
-        run: |
-          node - << 'EOF'
-          const { generateKeyPairSync } = require('crypto');
-          const { privateKey, publicKey } = generateKeyPairSync('ec', {
-            namedCurve: 'P-256',
-            privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-            publicKeyEncoding:  { type: 'spki',  format: 'pem' },
-          });
-          const b64 = (s) => Buffer.from(s).toString('base64');
-          const fs  = require('fs');
-          fs.appendFileSync(process.env.GITHUB_ENV,
-            `JWT_PRIVATE_KEY=${b64(privateKey)}\nJWT_PUBLIC_KEY=${b64(publicKey)}\n`);
-          EOF
 
       - name: Migrate + seed database
         run: pnpm db:migrate
@@ -234,6 +288,22 @@ jobs:
           echo "API failed to start"; cat /tmp/api.log; exit 1
         env:
           PORT: '3000'
+          # The spec is served only when Swagger is explicitly enabled (it no longer piggybacks on NODE_ENV); the
+          # `codegen:check` step below reads it from this API. It only widens the API's own CSP header, which the
+          # SPA (served by Vite) and the E2E flows do not depend on.
+          SWAGGER_ENABLED: 'true'
+
+      # The SPA's API client is generated from the API's OpenAPI spec and COMMITTED, so it can silently fall behind a DTO change, or be
+      # hand-edited, with nothing to notice: `tsc` can pass against stale build info and a route the client has never heard of only fails
+      # at runtime. Regenerating from the running API and diffing is the cheapest proof the two agree. This used to run in Backend CI,
+      # which skips web-only changes; it lives here, next to the running API, so it runs for every change to either side.
+      # Fix a failure with `pnpm --filter rova-web codegen` against a local API, then commit.
+      - name: Generated web client matches the spec
+        run: |
+          curl -sf http://localhost:3000/api/docs-json -o "$RUNNER_TEMP/openapi.json"
+          pnpm --filter rova-web codegen:check
+        env:
+          OPENAPI_SPEC: ${{ runner.temp }}/openapi.json
 
       - name: Install Playwright browsers
         run: pnpm --filter rova-web exec playwright install --with-deps chromium
@@ -243,6 +313,10 @@ jobs:
         # adding to it, which is why the json report was missing and the flake step below had
         # nothing to read. playwright.config.ts picks `list` plus `json` when CI is set.
         run: pnpm --filter rova-web exec playwright test
+        env:
+          # The API above listens on :3000 (its PORT). The Vite proxy defaults to .env.example's PORT (3010), and this job
+          # has no .env, so point the proxy at the API that is actually running.
+          API_TARGET: http://localhost:3000
 
       # `always()`: the interesting case is a run that PASSED, because a pass hiding a retry is
       # exactly what went unnoticed. Never fails the job — see the script for why the ratchet
@@ -253,7 +327,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: playwright-report
           path: apps/web/test-results/
@@ -276,7 +350,7 @@ jobs:
       # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -289,13 +363,140 @@ jobs:
         run: pnpm --filter rova-web build
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: dist-${{ github.sha }}
           path: dist/
           retention-days: 3
 
   # Security scans (Trivy, CodeQL) → security.yml
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 5. Local quickstart — the README's "Local stack", executed.
+  #
+  # A clean clone must run with `cp .env.example .env` and the README's commands, nothing else. This job IS that
+  # clone: it copies the example, starts the compose stack, migrates (and seeds the demo users), boots the API and the
+  # worker from that `.env` with the README's own start scripts, boots the Vite server, and signs in with the dev login
+  # THROUGH the Vite proxy. Every other job passes its configuration as `env:` and would stay green while
+  # `.env.example` rotted; this one reads nothing else.
+  #
+  # What it caught on the day it was written: the migrate step connecting as a role that cannot log in, an empty
+  # JWT_PRIVATE_KEY and the four ENTRA_* the schema requires (the API did not boot), buckets named `rova-*` in the
+  # example and `rally-*` in the LocalStack hook (every upload NoSuchBucket), and a dev login switch in a file nobody
+  # copies. It lives in WEB CI because the drift runs both ways: a proxy-port edit in apps/web touches no backend file.
+  #
+  # The commands below mirror the README (test/env-example.spec.ts fails when the two stop agreeing).
+  # ─────────────────────────────────────────────────────────────────────────
+  quickstart:
+    name: local quickstart
+    needs: [changes]
+    if: ${{ needs.changes.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      LOGS: ${{ github.workspace }}/quickstart-logs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@v1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: cp .env.example .env
+        run: |
+          cp .env.example .env
+          mkdir -p "$LOGS"
+
+      # `--wait` returns when every healthcheck passes. The bucket setup is a one-shot (garage-init), so its exit status is read
+      # on the next step: 0 means both buckets, their lifecycle and CORS for localhost and 127.0.0.1 are set and each preflight passed.
+      - name: docker compose -f docker-compose.dev.yml up -d --wait
+        run: docker compose -f docker-compose.dev.yml up -d --wait --wait-timeout 240
+
+      - name: The bucket setup exited 0 (garage-init)
+        run: |
+          code=$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose -f docker-compose.dev.yml ps -aq garage-init)")
+          echo "garage-init exit code: $code"
+          test "$code" = 0 || { docker compose -f docker-compose.dev.yml logs garage-init; exit 1; }
+
+      - name: pnpm db:migrate
+        run: pnpm db:migrate
+
+      # `SEED_ON_DEPLOY=true` in the example is what makes the migrate step load the demo users. Without them the dev
+      # login is refused, so ask the database directly and fail by name rather than at a 401 later.
+      - name: The demo users exist
+        run: |
+          n=$(docker compose -f docker-compose.dev.yml exec -T postgres psql -U postgres -d rova_dev -Atc "select count(*) from identity.users where email = 'admin@qnsc.dev'")
+          echo "admin@qnsc.dev rows: $n"
+          test "$n" = 1
+
+      - name: Start the API, the worker and the web dev server
+        run: |
+          nohup pnpm start:dev        > "$LOGS/api.log"    2>&1 &
+          nohup pnpm start:dev:worker > "$LOGS/worker.log" 2>&1 &
+          nohup pnpm dev:web          > "$LOGS/web.log"    2>&1 &
+
+      # /readyz is the API's own probe (database and cache both up).
+      - name: The API answers /readyz
+        run: |
+          for _ in $(seq 1 90); do
+            if body=$(curl -sf http://localhost:3010/readyz); then
+              echo "$body"
+              echo "$body" | jq -e '.status == "ok" and .checks.database == "up" and .checks.cache == "up"'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::the API did not answer /readyz on :3010 within 3 minutes. Does .env.example boot? (the schema refuses a missing JWT key or ENTRA_* at start)"
+          exit 1
+
+      # The worker serves no HTTP, and `nest start --watch` keeps running after a config refusal, so the log is the
+      # signal: it must say its relays started and must not contain an error (a refusal names the variable).
+      - name: The worker started from the same .env
+        run: |
+          for _ in $(seq 1 60); do
+            grep -q "Email relay started" "$LOGS/worker.log" && break
+            sleep 2
+          done
+          grep -q "Email relay started" "$LOGS/worker.log" || { echo "::error::the worker did not start"; exit 1; }
+          sleep 10
+          if grep -aE '"level":"(error|fatal)"|ERROR|FATAL' "$LOGS/worker.log" "$LOGS/api.log"; then
+            echo "::error::an error in the API or worker log after boot"
+            exit 1
+          fi
+
+      # THROUGH THE VITE PROXY (:5173), not the API directly: this is the call a browser makes, and it is the one that
+      # breaks when the example's PORT and the proxy target disagree.
+      - name: Sign in with the test login and make an authenticated /v1 call, through the SPA's proxy
+        run: |
+          for _ in $(seq 1 30); do curl -sf http://localhost:5175/v1/healthz >/dev/null && break; sleep 2; done
+          curl -sf http://localhost:5175/v1/healthz || { echo "::error::/v1 through the Vite proxy failed: .env.example PORT must equal the proxy target in apps/web/vite.config.ts"; exit 1; }
+          # identity's session cookie is `__Secure-rova.session_token`: read it from the response headers and replay it by hand
+          # (a cookie jar will not send a Secure cookie over http).
+          curl -sf -D "$LOGS/headers.txt" -o /dev/null -H 'content-type: application/json' -H 'origin: http://localhost:5175' \
+            -d '{"email":"admin@qnsc.dev"}' http://localhost:5175/api/auth/test-login
+          cookie=$(grep -i '^set-cookie: __Secure-rova.session_token=' "$LOGS/headers.txt" | head -1 | sed -E 's/^[^:]*: ([^;]*).*/\1/' | tr -d '\r')
+          test -n "$cookie" || { echo "::error::test-login set no session cookie"; exit 1; }
+          me=$(curl -sf -H "cookie: $cookie" http://localhost:5175/v1/auth/me)
+          echo "$me" | jq '{email, role}'
+          echo "$me" | jq -e '.email == "admin@qnsc.dev" and .role == "workspace_admin"'
+          curl -sf -H "cookie: $cookie" -o /dev/null -w 'GET /v1/projects -> %{http_code}\n' http://localhost:5175/v1/projects
+
+      - name: Logs
+        if: always()
+        run: |
+          for f in api worker web; do echo "::group::$f.log"; tail -n 120 "$LOGS/$f.log" || true; echo "::endgroup::"; done
+          docker compose -f docker-compose.dev.yml ps || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          pkill -f "nest start" || true
+          pkill -f vite || true
+          docker compose -f docker-compose.dev.yml down -v || true
 
   # ── The aggregate gate ──────────────────────────────────────────────────────
   # `Web CI required` is THE required check for this workflow. See backend-ci.yml's
@@ -314,10 +515,22 @@ jobs:
   ci-required:
     name: Web CI required
     if: always()
-    needs: [quality, test, e2e, build]
+    needs: [changes, quality, test, e2e, build, quickstart]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@v1
+      # No `allow-skipped`, so a renamed or removed job still fails loudly. The two branches are exclusive:
+      #  * `changes` said run: every job must be `success`;
+      #  * otherwise: only `changes` itself must be `success` (the rest are skipped by design). If `changes` FAILED its output is
+      #    empty, this branch runs, and the gate fails: it cannot turn "could not decide" into a pass.
+      - name: Every job must have succeeded
+        if: ${{ needs.changes.outputs.run == 'true' }}
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@v1
         with:
           results: ${{ join(needs.*.result, ',') }}
+
+      - name: Nothing here to test (every changed file is ignorable)
+        if: ${{ needs.changes.outputs.run != 'true' }}
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@v1
+        with:
+          results: ${{ needs.changes.result }}

@@ -10,11 +10,11 @@
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
 import { SEED_PROJECTS, TEAM_ALPHA_ID } from '../../db/seeds/constants';
+import { signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -28,7 +28,7 @@ describe('DELETE /work-items/:id (the Backlog Delete)', () => {
     method: 'GET' | 'POST' | 'DELETE',
     url: string,
     payload?: Record<string, unknown>,
-  ) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+  ) => app.inject({ method, url, headers: { cookie: token }, payload });
 
   const create = async (token: string, body: Record<string, unknown>): Promise<string> => {
     const res = await as(token, 'POST', '/work-items', { projectId: NXP, ...body });
@@ -41,9 +41,8 @@ describe('DELETE /work-items/:id (the Backlog Delete)', () => {
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    const auth = app.get(AuthService);
-    adminToken = (await auth.devLogin('admin@qnsc.dev')).accessToken;
-    editorToken = (await auth.devLogin('dev@qnsc.dev')).accessToken;
+    adminToken = await signIn(app, 'admin@qnsc.dev');
+    editorToken = await signIn(app, 'dev@qnsc.dev');
   }, 60_000);
 
   afterAll(async () => {

@@ -30,20 +30,17 @@
  *     global prefix, so routes are mounted bare. A missing prefix reads as a 404, which must never be
  *     confused with a refusal — hence the explicit 403 / 404 / 200 assertions rather than "not 200".
  *   • No cookie plugin either, so `AuthService.devLogin` / `ssoLogin` for a bearer token rather than
- *     the BFF route (`reply.setCookie is not a function`). Bearer callers are CSRF-exempt by design.
+ *     `bootstrapApp` (this app has no cookie plugin, `/v1` prefix or CSRF hook).
  *   • A dedicated principal per test, never `dev@qnsc.dev`: `work.project_members` survives until the
  *     next reset, so granting a shared fixture user a level is a lasting edit that has broken other
  *     specs before.
  */
 import 'reflect-metadata';
-import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
-import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import {
   PAY_PROJECT_ID,
   SEED_PROJECTS,
@@ -53,6 +50,7 @@ import {
   WORKSPACE_ID,
 } from '../../db/seeds/constants';
 import { grantProjectAccess } from './support/flow-harness';
+import { provisionUser, signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -80,10 +78,9 @@ interface TeamRow {
 
 describe('user directory and team reads: authorization over HTTP (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
 
   function get(url: string, accessToken: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${accessToken}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: accessToken } });
   }
 
   /**
@@ -92,33 +89,17 @@ describe('user directory and team reads: authorization over HTTP (e2e)', () => {
    * grant anywhere until one is written. That is the negative principal the two findings describe.
    */
   async function newPrincipal(label: string): Promise<{ token: string; userId: string }> {
-    const claims: EntraClaims = {
-      oid: `${label}-${randomUUID()}`,
-      email: `${label}-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
-      displayName: `E2E ${label}`,
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    const userId = JSON.parse(Buffer.from(login.accessToken.split('.')[1], 'base64url').toString())[
-      'sub'
-    ] as string;
+    const login = await provisionUser(app, `${label}`, `E2E ${label}`);
+    const userId = login.userId;
     return { token: login.accessToken, userId };
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-
-    auth = app.get(AuthService);
   });
 
   afterAll(async () => {
@@ -151,7 +132,7 @@ describe('user directory and team reads: authorization over HTTP (e2e)', () => {
     // The other direction: a gate on a code nobody holds would break Settings > Members rather than
     // protect it. Asserting a field, not just the status, so a future response-shape change that
     // dropped the reason this route is gated at all is visible here.
-    const wa = await auth.devLogin('admin@qnsc.dev', '127.0.0.1');
+    const wa = { accessToken: await signIn(app, 'admin@qnsc.dev') };
 
     const response = await get(DIRECTORY, wa.accessToken);
 
@@ -252,7 +233,7 @@ describe('user directory and team reads: authorization over HTTP (e2e)', () => {
   });
 
   it('gives a Workspace Admin every team (null = UNRESTRICTED)', async () => {
-    const wa = await auth.devLogin('admin@qnsc.dev', '127.0.0.1');
+    const wa = { accessToken: await signIn(app, 'admin@qnsc.dev') };
 
     const response = await get(TEAM_LIST, wa.accessToken);
 

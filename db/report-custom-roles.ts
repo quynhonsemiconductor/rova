@@ -36,8 +36,13 @@
  */
 import { Pool } from 'pg';
 
-import { pgOptions } from './pg-ssl';
+import { pgOptions, tlsFromEnv } from './pg-ssl';
 import { SYSTEM_ROLE } from './permissions.catalog';
+
+/** A report is output a person reads, not a log: it goes to stdout as plain lines. */
+function out(line: string): void {
+  process.stdout.write(`${line}\n`);
+}
 
 export interface CustomRoleHolder {
   userId: string;
@@ -68,7 +73,7 @@ export interface CustomRoleReport {
 export async function reportCustomRoles(options: {
   databaseUrl: string;
 }): Promise<CustomRoleReport> {
-  const pool = new Pool(pgOptions(options.databaseUrl));
+  const pool = new Pool(pgOptions(options.databaseUrl, tlsFromEnv()));
   try {
     // Keyed on the SLUG, not on `is_system` — see the header. `SYSTEM_ROLE` is the catalogue's own
     // list, so a tier role added there later is automatically excluded here rather than becoming a
@@ -164,47 +169,47 @@ export async function reportCustomRoles(options: {
 async function main(): Promise<void> {
   const databaseUrl = process.env['DATABASE_URL'];
   if (!databaseUrl) {
-    console.error('DATABASE_URL is required');
+    process.stderr.write('DATABASE_URL is required\n');
     process.exit(1);
   }
 
   const report = await reportCustomRoles({ databaseUrl });
 
-  console.log('\n── Custom roles ────────────────────────────────────────────────');
+  out('\n── Custom roles ────────────────────────────────────────────────');
   if (report.customRoles.length === 0) {
-    console.log('  none');
+    out('  none');
   }
   for (const role of report.customRoles) {
     const scope = role.workspaceId ? `workspace ${role.workspaceId}` : 'GLOBAL template';
-    console.log(`\n  ${role.name} (${role.slug}) — ${scope}`);
-    console.log(`    permissions: ${role.permissions.join(', ') || '(none)'}`);
+    out(`\n  ${role.name} (${role.slug}) — ${scope}`);
+    out(`    permissions: ${role.permissions.join(', ') || '(none)'}`);
     if (role.holders.length === 0) {
-      console.log('    holders: none — safe to delete');
+      out('    holders: none — safe to delete');
     } else {
-      console.log(`    holders: ${role.holders.length}`);
+      out(`    holders: ${role.holders.length}`);
       for (const h of role.holders) {
         const where = h.scopeId ? `${h.scopeType}:${h.scopeId}` : h.scopeType;
-        console.log(`      • ${h.email ?? h.userId} @ ${where}`);
+        out(`      • ${h.email ?? h.userId} @ ${where}`);
       }
     }
   }
 
-  console.log('\n── Workspace-scoped assignments (excluding workspace_admin) ────');
+  out('\n── Workspace-scoped assignments (excluding workspace_admin) ────');
   if (report.workspaceScopedAssignments.length === 0) {
-    console.log('  none');
+    out('  none');
   }
   for (const a of report.workspaceScopedAssignments) {
-    console.log(`  • ${a.email ?? a.userId} holds ${a.roleName} (${a.roleSlug}) workspace-wide`);
+    out(`  • ${a.email ?? a.userId} holds ${a.roleName} (${a.roleSlug}) workspace-wide`);
   }
 
-  console.log(
+  out(
     `\n${report.safeToRemove ? '✅' : '⚠️ '} ${
       report.safeToRemove
         ? 'Nothing is held. The removal migration can delete these rows with no conversion.'
         : 'Rows ARE held. Each holder above needs a per-project equivalent BEFORE the removal migration.'
     }`,
   );
-  console.log(
+  out(
     'This report wrote nothing. Run it against every environment — an empty local result proves nothing.\n',
   );
 }

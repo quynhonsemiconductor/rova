@@ -23,7 +23,8 @@
  */
 import { Pool } from 'pg';
 
-import { pgOptions } from './pg-ssl';
+import { pgOptions, tlsFromEnv } from './pg-ssl';
+import { log } from './script-log';
 
 export interface BackfillResult {
   /** Rows that are accepted-equivalent and still have no timestamp. */
@@ -45,7 +46,7 @@ export async function backfillAcceptedDate(options: {
     options.connectionUrl ?? process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_URL;
   if (!url) throw new Error('backfill needs DATABASE_URL (or DATABASE_MIGRATION_URL).');
 
-  const pool = new Pool(pgOptions(url));
+  const pool = new Pool(pgOptions(url, tlsFromEnv()));
   try {
     /**
      * Candidates and their best available evidence, in one query.
@@ -120,19 +121,19 @@ if (process.argv[1]?.includes('backfill-accepted-date')) {
   backfillAcceptedDate({ dryRun })
     .then((result) => {
       const verb = dryRun ? 'would repair' : 'repaired';
-      console.log(
+      log.info(
         `accepted_date backfill: ${result.candidates} candidate(s), ${verb} ${dryRun ? result.candidates - result.unresolved.length : result.repaired}.`,
       );
       if (result.unresolved.length > 0) {
         // Named, not counted: these stay `unclassified` in Velocity, and that is the correct answer
         // until someone can say when they were accepted.
-        console.log(
+        log.info(
           `  no auditable transition for ${result.unresolved.length}: ${result.unresolved.slice(0, 20).join(', ')}${result.unresolved.length > 20 ? ', …' : ''}`,
         );
       }
     })
     .catch((error) => {
-      console.error(error);
+      log.error({ err: error }, 'accepted_date backfill failed');
       process.exit(1);
     });
 }
