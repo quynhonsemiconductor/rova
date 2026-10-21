@@ -30,6 +30,25 @@ describe('listResource', () => {
     expect(Object.isFrozen(loading.rows)).toBe(true)
   })
 
+  it('types rows as READONLY, so an in-place mutation does not even compile', () => {
+    const feed = listResource<number>({ data: undefined, isLoading: true })
+    // Each line is a compile error while `rows` is `readonly T[]`. If it is ever widened back to
+    // `T[]`, the directives go unused and `tsc -b` (CI's typecheck) fails here — the frozen array
+    // would otherwise throw only at runtime, in the loading/error states fixtures rarely reach.
+    const mutators = [
+      // @ts-expect-error — ReadonlyArray has no sort
+      () => feed.rows.sort(),
+      // @ts-expect-error — ReadonlyArray has no push
+      () => feed.rows.push(1),
+      // @ts-expect-error — ReadonlyArray has no splice
+      () => feed.rows.splice(0, 1),
+    ]
+    expect(mutators).toHaveLength(3)
+    // And at runtime the shared empty array is frozen: a write throws. (`sort` on an EMPTY array
+    // writes nothing, so `push` is the runtime witness.)
+    expect(() => (feed.rows as number[]).push(1)).toThrow(TypeError)
+  })
+
   it('passes a real answer through by reference, including a measured empty one', () => {
     const data: number[] = []
     expect(listResource<number>({ data }).rows).toBe(data)
