@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { isNewTabClick } from '@/shared/lib/new-tab-click'
 import { cn } from '@/shared/lib/utils'
 
@@ -122,13 +122,18 @@ export function RecordOpener({
   const classes = cn(RECORD_OPENER_RESET, className)
   // Decided ONCE: the warning and the branch below cannot disagree about the same URL.
   const linkHref = href && isInAppPath(href) ? href : undefined
-  if (import.meta.env.DEV && href && !linkHref) {
+  // In an effect, not during render (render stays pure; StrictMode would double it), and once per
+  // distinct refused URL rather than on every re-render.
+  const warned = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!import.meta.env.DEV || !href || linkHref || warned.current === href) return
+    warned.current = href
     // Safe either way (it opens in place), but a path builder returning a full URL or junk would
     // otherwise disable the new-tab behaviour silently, everywhere.
     console.warn(
       `RecordOpener: refused a URL that is not an in-app path, opening in place: ${href}`,
     )
-  }
+  }, [href, linkHref])
   if (linkHref) {
     return (
       <RecordLink

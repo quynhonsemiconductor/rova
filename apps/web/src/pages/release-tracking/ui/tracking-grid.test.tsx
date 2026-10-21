@@ -217,4 +217,18 @@ describe('TrackingGrid — ID link', () => {
     fireEvent.click(link)
     expect(navigate).toHaveBeenCalledWith({ href: link.getAttribute('href') })
   })
+
+  it('still opens a row whose kind the addressing rule does not know — as a work item, not a no-op', () => {
+    const odd = { ...row(1), id: 'x-1', itemKey: 'XX-1', issueType: 'unknown' }
+    renderGrid({
+      bucket: 'unparented',
+      report: {
+        ...report(1, 25, 1),
+        bucket: 'unparented',
+        rows: [odd],
+      } as unknown as ReleaseTrackingReport,
+    })
+    fireEvent.click(screen.getByTitle('XX-1'))
+    expect(navigate).toHaveBeenCalledWith({ to: '/item/$itemKey', params: { itemKey: 'XX-1' } })
+  })
 })

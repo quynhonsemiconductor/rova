@@ -31,6 +31,14 @@ import { TeamCell } from '@/shared/ui/team-cell'
 
 import { IssuesPanel } from './issues-panel'
 
+/**
+ * A row's detail URL — the ONE value both its ID cell's `href` and `openItem` use (US-120): Feature
+ * by id, an Unparented work item by key, both via `defaultRecordHref`.
+ */
+function rowHref(row: ReleaseTrackingRow): string | undefined {
+  return defaultRecordHref(row.issueType, row.itemKey, row.id)
+}
+
 type ColKey = 'rank' | 'id' | 'team' | 'issue' | 'name' | 'status'
 
 interface Ctx {
@@ -146,8 +154,8 @@ export function TrackingGrid({
             type={row.issueType}
             itemKey={row.itemKey}
             onOpen={() => ctx.openItem(row)}
-            // Same split as `openItem` (Feature by id, work item by key), derived by the cell.
-            recordId={row.id}
+            // The SAME `rowHref` `openItem` navigates to, so a click and a new tab cannot diverge.
+            href={rowHref(row)}
           />
         ),
       },
@@ -285,8 +293,11 @@ export function TrackingGrid({
       // the SAME URL the ID cell links to (`defaultRecordHref`), so a plain click and "Open link in
       // new tab" cannot resolve the one row to two different records. An in-app path, so the
       // router navigates in place rather than reloading the document.
-      const href = defaultRecordHref(row.issueType, row.itemKey, row.id)
+      const href = rowHref(row)
+      // No derivable URL (a kind the rule does not address) still opens — as a work item, the
+      // route every non-Feature row took before — rather than doing nothing.
       if (href) void navigate({ href })
+      else void navigate({ to: '/item/$itemKey', params: { itemKey: row.itemKey } })
     },
   }
 
