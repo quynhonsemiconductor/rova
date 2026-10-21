@@ -1,6 +1,6 @@
 # Go-live cost delta — what launch does to the AWS bill
 
-**Bottom line: go-live adds $58.87/mo to production, taking rally prod from ~$6/mo idle
+**Bottom line: go-live adds $58.87/mo to production, taking rova prod from ~$6/mo idle
 to ~$64/mo running.** None of it is waste — it is the price of a database that is
 awake, two tasks that answer requests, a cache that makes two security controls fail
 closed, and one alarm that notices when none of that is true.
@@ -55,7 +55,7 @@ with a defined end date.
 | CloudWatch alarms | 12 | 21 (autoscaling ×8, ingress ×1) | **+$0.90** |
 | **total** | | | **+$58.87/mo** |
 
-Rally production then runs at roughly **$64/mo** all-in (the delta plus the $4.14 storage
+Rova production then runs at roughly **$64/mo** all-in (the delta plus the $4.14 storage
 and ~$1.20 of secrets it already bills), excluding the rest of the shared platform layer
 and data transfer.
 
@@ -303,7 +303,7 @@ Worth stating, because it is where the money already is:
 | Config, KMS, ECR, S3 | ~12 | already minimised |
 | **subtotal** | **~123** | |
 
-**So the account lands near $200/mo with rally live** — ~$123 of shared platform and dev
+**So the account lands near $200/mo with rova live** — ~$123 of shared platform and dev
 plus ~$67 of production. Against a $150/mo target, the $50 gap is not in this document:
 every configurational item here has already been declined or is load-bearing. It is in
 the $62 of ALB and public IPv4 and the ~$44 dev environment, both of which are
@@ -315,7 +315,7 @@ opshub#85. That is documented in `runtime-dev/main.tf`.
 
 ## Recommendations
 
-**1. Set the budget expectation at ~$67/mo for rally prod,** on top of whatever dev and
+**1. Set the budget expectation at ~$67/mo for rova prod,** on top of whatever dev and
 the shared platform layer cost. A production environment with one task per service, a
 running database and a cache has a floor, and after declining $43.47/mo of checklist
 items this is close to it. The remaining items are load-bearing, not padding.

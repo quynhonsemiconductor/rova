@@ -4,8 +4,8 @@ Extracted from `CLAUDE.md` so the rule stays in the always-loaded notes and the
 incidents behind it stay one click away.
 
 Three rulings made on 2026-08-14, after an eight-slice audit cross-checked the code against BA main
-(`product-docs` `55e7dbb`) and against real Broadcom Rally. None is drift; none should be "fixed" on
-sight. The audit and its sourced Rally research are in
+(`product-docs` `55e7dbb`) and against Rally. None is drift; none should be "fixed" on
+sight. The audit and its sourced ALM research are in
 `product-docs/projects/mini-rally/09_Gap_Audit/`.
 
 - **There is NO `Viewer` level, and Rally disagrees.** The BA removed it (`product-docs` `55e7dbb`,
@@ -15,12 +15,12 @@ sight. The audit and its sourced Rally research are in
   never a stored value or a dropdown choice, only the absence of a row reached through `Remove`.
 
   Recorded because it will come up again, and because the next person to read Broadcom's docs will
-  reach for it. Real Rally's `ProjectPermission.Role` is No Access / Viewer / Editor / Project Admin,
+  reach for it. Rally's `ProjectPermission.Role` is No Access / Viewer / Editor / Project Admin,
   and its Viewer is load-bearing five ways: the documented answer to "make this user read-only", the
   **provisioning default** for a new user, one of four Quick Filter Toggles on the admin permission
   grid, the demotion target in the team-membership state machine, and a full-licence consumer whose
   only purpose is access control. So with `admin`/`editor`/absent alone, a read-only stakeholder or
-  auditor is either invisible or a full Editor — the two configurations Rally customers most often
+  auditor is either invisible or a full Editor — the two configurations Rally's customers most often
   need to avoid. If that becomes a real problem it needs a **new ruling**, not a quiet re-add: the
   CHECK constraint, `ACCESS_LEVEL_PERMISSIONS`, the DTO enums, the SPA's `access-levels.ts` mirror and
   the generated client all have to move together, and the last attempt showed what happens when one of

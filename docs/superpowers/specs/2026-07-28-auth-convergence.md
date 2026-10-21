@@ -1,13 +1,13 @@
 # Auth convergence: one model, two products
 
-Status: **rally side implemented** (#234, #238, #241). opshub side is the plan.
+Status: **rova side implemented** (#234, #238, #241). opshub side is the plan.
 Written 2026-07-28.
 
 ## Why this document exists
 
-rally and opshub are meant to stay boilerplate-identical, and their authentication
+rova and opshub are meant to stay boilerplate-identical, and their authentication
 mechanism already is — it lives in `@quynhonsemiconductor/identity`. Their **authorization** did
-not: rally authorized from a permission list embedded in the access token, opshub
+not: rova authorized from a permission list embedded in the access token, opshub
 from the database with scope dimensions. Both were internally coherent, so the
 question "which one is right?" kept getting re-litigated from taste rather than from
 evidence.
@@ -52,23 +52,23 @@ tagged `securityFailOpen` for the CloudWatch alarm.
 
 ## Which product was right about what
 
-Neither, wholly. The model above takes opshub's resolution timing and rally's
+Neither, wholly. The model above takes opshub's resolution timing and rova's
 decorator shape.
 
 | axis | winner | why |
 | --- | --- | --- |
-| resolution timing (DB per request, cached) | **opshub** | rally's token snapshot needed an epoch counter to expire early — a workaround, not a fix |
-| scope dimensions (`global/self/team/dept/region`) + delegation + expiry | **opshub** | rally only has workspace/project |
+| resolution timing (DB per request, cached) | **opshub** | rova's token snapshot needed an epoch counter to expire early — a workaround, not a fix |
+| scope dimensions (`global/self/team/dept/region`) + delegation + expiry | **opshub** | rova only has workspace/project |
 | fail policy | **opshub** | fail-closed resolution |
-| decorator shape (typed overloads, declarative scope, shared resolver) | **rally** | opshub's `scopeFrom` closures are unauditable and duplicated per route |
-| permission typing (catalogue + contract specs) | **rally** | opshub's keys are `string`, so a typo compiles |
-| isolation tests driving the real guard against a real DB | **rally** | opshub has none |
-| IdP → role mapping | **opshub** | rally has no equivalent; Entra owns "who is an admin" in one place |
+| decorator shape (typed overloads, declarative scope, shared resolver) | **rova** | opshub's `scopeFrom` closures are unauditable and duplicated per route |
+| permission typing (catalogue + contract specs) | **rova** | opshub's keys are `string`, so a typo compiles |
+| isolation tests driving the real guard against a real DB | **rova** | opshub has none |
+| IdP → role mapping | **opshub** | rova has no equivalent; Entra owns "who is an admin" in one place |
 
-## What rally did (done)
+## What rova did (done)
 
 - `#234` — one decision point. Migrated the last 25 routes onto `PolicyGuard`, then
-  deleted the legacy path. rally had **two decorators named `RequirePermission`**
+  deleted the legacy path. rova had **two decorators named `RequirePermission`**
   enforced by different guards; importing the wrong one compiled, and the
   route-policy ratchet counted both as policed.
 - `#238` — DB-resolved permissions. Deleted `claims.permissions`, the
@@ -84,7 +84,7 @@ decorator shape.
 - `#241` — pinned `@quynhonsemiconductor/identity` to exact `6.0.0`, which is also what proved
   the package's v6 trim was safe in a real consumer.
 
-Still open in rally: project scope is **additive** — a project-scoped role can add
+Still open in rova: project scope is **additive** — a project-scoped role can add
 permissions but cannot subtract a workspace-wide grant (`RALLY_HARDENING_PLAN.md`
 R3). opshub's scope evaluator does not have this limitation, so converging on its
 engine would close it.
@@ -112,11 +112,11 @@ Ordered; each item is a PR. Items 1 and 3 are independent of the infra work.
    `msal.ts` and the in-memory token store.
 7. **Entra revocation reconcile job.** Removing an App Role in Entra is currently
    observed only at the user's next login, because the hook is the only writer.
-8. **Isolation tests.** Port rally's `project-isolation.e2e.spec.ts` shape: drive the
+8. **Isolation tests.** Port rova's `project-isolation.e2e.spec.ts` shape: drive the
    real guard against a real seeded DB.
 
 opshub keeps: its resolver, `ScopeEvaluator`, delegation, expiry filter,
-fail-closed policy, and the Entra hook. It does **not** adopt rally's
+fail-closed policy, and the Entra hook. It does **not** adopt rova's
 project/workspace tier split.
 
 ## Things not to do
@@ -127,7 +127,7 @@ project/workspace tier split.
   contained an authorization guard; both products abandoned it, and its wildcard
   vocabulary was unusable by one of them. Share the *shape*, copy the code — see the
   admission test.
-- **Do not trust a principal's `permissions` array.** It is inert in rally. An e2e
+- **Do not trust a principal's `permissions` array.** It is inert in rova. An e2e
   fixture cannot grant itself anything by declaring one; it needs a real assignment
   (`ensureViewerGrant` in `test/e2e/support/flow-harness.ts`).
 - **Do not add a route without `@RequirePermission`** and assume it is closed.
