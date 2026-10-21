@@ -17,6 +17,7 @@ export function CellLink({
   onClick,
   href,
   title,
+  ariaLabel,
   className,
   wrap = false,
   children,
@@ -24,6 +25,8 @@ export function CellLink({
   onClick: () => void
   href?: string
   title?: string
+  /** The accessible name, kept the same whether the cell renders as a link or a button. */
+  ariaLabel?: string
   className?: string
   /** When true the text wraps across lines (`break-words`) instead of the
    *  default single-line `truncate`. Used by Name columns that wrap. */
@@ -37,7 +40,13 @@ export function CellLink({
   )
 
   return (
-    <RecordOpener href={href} onOpen={onClick} title={title} className={classes}>
+    <RecordOpener
+      href={href}
+      onOpen={onClick}
+      title={title}
+      ariaLabel={ariaLabel}
+      className={classes}
+    >
       {children}
     </RecordOpener>
   )

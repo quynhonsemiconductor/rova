@@ -83,6 +83,9 @@ describe('ArtifactTable', () => {
     ['epic', 'EP-2', '/portfolio/pf-2'],
   ])('links a %s row to its detail page', (type, itemKey, href) => {
     renderTable({ data: [{ ...ITEM, id: 'pf-2', type, itemKey }] })
-    expect(screen.getByRole('link', { name: new RegExp(itemKey) }).getAttribute('href')).toBe(href)
+    // By the link's title (the key), not a RegExp built from data.
+    const link = screen.getByTitle(itemKey)
+    expect(link.tagName).toBe('A')
+    expect(link.getAttribute('href')).toBe(href)
   })
 })

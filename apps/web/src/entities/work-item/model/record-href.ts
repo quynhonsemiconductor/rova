@@ -21,9 +21,10 @@ function isAddressedType(type: string): type is AddressedType {
 }
 
 /**
- * The detail path an ID / reference cell can derive on its own (US-120) — the ONE place the
- * id-vs-key addressing rule lives, so a grid mixing artifact kinds passes `recordId` unconditionally
- * instead of re-implementing the split.
+ * The detail path an ID / reference cell can derive on its own (US-120) — the one place the
+ * TYPE → id-or-key choice lives, so a grid mixing artifact kinds passes `recordId` unconditionally
+ * instead of re-implementing the split. The path strings themselves come from `entityDetailPath`,
+ * the same builder `entityLinkFor` uses, so the two cannot disagree on a route.
  *
  * A Story / Task / Defect is addressed by its KEY (`/item/US-5`). An Epic / Feature is addressed by
  * its own id (`/portfolio/<id>`), so it needs `recordId`. Timeboxes, projects and capacity plans
@@ -36,7 +37,8 @@ export function defaultRecordHref(
 ): string | undefined {
   if (!isAddressedType(type)) return undefined
   if (ADDRESSING[type] === 'key') {
-    // No key yet (an optimistic row) means no URL — never a bare `/item/` (as `entityLinkFor` does).
+    // No key yet (an optimistic row) means no URL — never a bare `/item/`. The same rule
+    // `entityLinkFor` applies (`!key` → `undefined`).
     return itemKey ? entityDetailPath.workItem(itemKey) : undefined
   }
   return recordId ? entityDetailPath.portfolioItem(recordId) : undefined
