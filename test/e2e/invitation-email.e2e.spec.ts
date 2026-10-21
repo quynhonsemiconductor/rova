@@ -50,7 +50,7 @@ import { emailOutbox } from '../../db/schema/messaging';
 import { workspaceInvitations } from '../../db/schema/workspace';
 import { users } from '../../db/schema/identity';
 import { account as identityAccount, user as identityUser } from '../../db/schema/identity-auth';
-import { ADMIN_USER_ID, bootRallyApp, WORKSPACE_ID } from './support/flow-harness';
+import { ADMIN_USER_ID, bootRovaApp, WORKSPACE_ID } from './support/flow-harness';
 
 describe('invitation email (real AppModule + seeded DB)', () => {
   let app: INestApplication;
@@ -73,7 +73,7 @@ describe('invitation email (real AppModule + seeded DB)', () => {
   }
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     workspaces = app.get(WorkspaceService);
     db = app.get<DrizzleDB>(DRIZZLE);
   });

@@ -253,7 +253,7 @@ export function MilestoneDetailPage() {
               {/* Projects / Teams / Releases — many-to-many (P3-MS-FR-007/008/009),
                   edited via the shared searchable multi-select dropdown (Selected /
                   Available groups + search), consistent with every other picker
-                  (Broadcom-Rally parity, replaces the old selection modal). */}
+                  (Broadcom Rally parity, replaces the old selection modal). */}
               <DetailField label={t('detail.projects')}>
                 <SearchableSelect
                   variant="field"

@@ -1,7 +1,7 @@
 /**
  * Iterations API hooks — TanStack Query wrappers.
  *
- * Rally "Iteration" is the timebox entity (formerly Sprint). State follows the
+ * Rally's "Iteration" is the timebox entity (formerly Sprint). State follows the
  * Rally vocabulary: planning → committed → accepted. Endpoints live under
  * /v1/iterations (see libs/modules/iterations).
  */
@@ -175,7 +175,7 @@ export function useIterations(projectId: string | undefined, teamId?: string) {
   })
 }
 
-// Committed iterations count across all projects (the Rally "active" timebox).
+// Committed iterations count across all projects (Rally's "active" timebox).
 export function useCommittedIterationsCount(projects: Array<{ id: string }>) {
   return useQuery({
     queryKey: iterationKeys.committedCount(projects.map((p) => p.id)),

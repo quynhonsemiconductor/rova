@@ -1,7 +1,7 @@
 /**
  * SearchableSelect — the single, shared dropdown for enum attributes (flow
  * state, schedule state, status, priority, severity …) AND entity references
- * (iteration, release, feature, milestone …), matching Broadcom Rally's field
+ * (iteration, release, feature, milestone …), matching Broadcom's Rally field
  * dropdown exactly:
  *   - editable  → a bordered select box (value + chevron); on click a popover
  *                 opens with a bordered search box and a plain-text option list
@@ -213,7 +213,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
   }, [options, query])
 
   // Grouping. Multi-select with NO explicit per-option groups → auto-split into
-  // "Selected" / "Available" (Broadcom-Rally parity): checked items float to a
+  // "Selected" / "Available" (Broadcom Rally parity): checked items float to a
   // Selected bucket on top, the rest under Available; rows move live as you
   // toggle. Otherwise group in declared order (options without `group` fall in
   // one leading bucket).

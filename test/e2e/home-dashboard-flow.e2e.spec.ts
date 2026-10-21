@@ -12,7 +12,7 @@ import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 import { IterationsService } from '@modules/iterations';
 
-import { adminActor, bootRallyApp, uniqueKey, ADMIN_USER_ID } from './support/flow-harness';
+import { adminActor, bootRovaApp, uniqueKey, ADMIN_USER_ID } from './support/flow-harness';
 
 describe('BA flow: Home dashboard aggregates (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
@@ -22,7 +22,7 @@ describe('BA flow: Home dashboard aggregates (real AppModule + seeded DB)', () =
   const actor = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
     iterations = app.get(IterationsService);

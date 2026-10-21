@@ -25,7 +25,7 @@ import type { EntraGuestInviteClient } from '@modules/workspace';
 import { guestInviteOutbox } from '../../db/schema/messaging';
 import { workspaceInvitations } from '../../db/schema/workspace';
 import { EntraGuestInviteRelayService } from '../../apps/worker/src/identity/entra-guest-invite-relay.service';
-import { ADMIN_USER_ID, WORKSPACE_ID, bootRallyApp } from './support/flow-harness';
+import { ADMIN_USER_ID, WORKSPACE_ID, bootRovaApp } from './support/flow-harness';
 
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
 
@@ -34,7 +34,7 @@ describe('invitation email "days remaining" is computed on the database clock (e
   let db: DrizzleDB;
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     db = app.get<DrizzleDB>(DRIZZLE);
   });
 

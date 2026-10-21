@@ -31,7 +31,7 @@ import { ReleasesService } from '@modules/releases';
 import { WorkItemsService } from '@modules/work-items';
 
 import { workItemTypeEnum } from '@db/schema/enums';
-import { ALL, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { ALL, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('BA flows: E2E-010 / E2E-016 deferred-scope guards', () => {
   let app: NestFastifyApplication;
@@ -42,7 +42,7 @@ describe('BA flows: E2E-010 / E2E-016 deferred-scope guards', () => {
   const admin = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     releases = app.get(ReleasesService);
     workItems = app.get(WorkItemsService);

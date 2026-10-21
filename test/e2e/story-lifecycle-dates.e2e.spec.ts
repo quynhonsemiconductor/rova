@@ -27,7 +27,7 @@ import {
   SEEDED,
   WORKSPACE_ID,
   adminActor,
-  bootRallyApp,
+  bootRovaApp,
   uniqueKey,
 } from './support/flow-harness';
 
@@ -133,7 +133,7 @@ describe('lifecycle dates (e2e)', () => {
     db.execute(sql`update work.tasks set state = ${state}::work.task_state where id = ${id}::uuid`);
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     db = app.get<DrizzleDB>(DRIZZLE);
     const tz = await db.execute<{ timezone: string }>(
       sql`select timezone from workspace.workspace_settings where workspace_id = ${WORKSPACE_ID}::uuid`,
