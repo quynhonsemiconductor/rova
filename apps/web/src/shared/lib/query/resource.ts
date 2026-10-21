@@ -79,7 +79,9 @@ interface ResourceBase {
  */
 export interface ListResource<T> extends ResourceBase {
   /**
-   * `readonly T[]`, so the compiler refuses an in-place mutation. Whenever there is no data —
+   * `readonly T[]`, so the compiler refuses an in-place mutation: `ReadonlyArray` has NO `sort`,
+   * `reverse`, `push`, `pop`, `shift`, `unshift`, `splice`, `fill` or `copyWithin` (`rows.sort(…)`
+   * is `TS2339`). Whenever there is no data —
    * loading, error, disabled, or `emptyListResource()` — `rows` is the shared FROZEN `NO_ROWS` array
    * (see there for why it must keep one reference), and `rows.sort(…)` / `rows.push(…)` would throw a
    * `TypeError` only in those states, which a fixture that resolves data never reaches. When data is

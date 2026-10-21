@@ -12,10 +12,11 @@
  * does not restart at 1.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
+const navigate = vi.fn()
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 import { TrackingGrid } from './tracking-grid'
 import type { ReleaseTrackingReport, ReleaseTrackingRow } from '@/features/reporting/api'
@@ -199,5 +200,21 @@ describe('TrackingGrid — ID link', () => {
       } as unknown as ReleaseTrackingReport,
     })
     expect(screen.getByTitle('US-9').getAttribute('href')).toBe('/item/US-9')
+  })
+
+  // A plain click and "Open link in new tab" must reach the SAME record: the click target is built
+  // by the same helper as the cell's href, so the two are compared directly.
+  it.each([
+    ['a Feature', { issueType: 'feature', id: 'f-1', itemKey: 'FE-1' }, 'direct'],
+    ['an Unparented work item', { issueType: 'story', id: 'wi-9', itemKey: 'US-9' }, 'unparented'],
+  ] as const)('opens %s at exactly the URL its ID cell links to', (_name, over, bucket) => {
+    const r = { ...row(1), ...over }
+    renderGrid({
+      bucket,
+      report: { ...report(1, 25, 1), bucket, rows: [r] } as unknown as ReleaseTrackingReport,
+    })
+    const link = screen.getByTitle(r.itemKey)
+    fireEvent.click(link)
+    expect(navigate).toHaveBeenCalledWith({ href: link.getAttribute('href') })
   })
 })
