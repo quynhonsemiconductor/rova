@@ -123,7 +123,10 @@ function pending<T>(q: QueryLike<T>): boolean {
  * another new `[]`, and hit React's "Too many re-renders" (minified error 301). Production, 2026-10-05:
  * opening the Tasks tab on US-120 replaced the page with the error boundary.
  *
- * Frozen so a caller that mutates it throws instead of corrupting every other empty resource.
+ * Frozen so a caller that changes its LENGTH (`push`, `pop`, `shift`, `unshift`, `splice`) throws
+ * instead of corrupting every other empty resource. `sort` / `reverse` / `fill` / `copyWithin`
+ * write nothing on an empty array and never throw — against those the only guard is the `readonly`
+ * compile error on `ListResource.rows`.
  */
 const NO_ROWS: readonly never[] = Object.freeze([])
 

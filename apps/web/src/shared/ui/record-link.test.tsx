@@ -148,6 +148,20 @@ describe('RecordOpener refuses a URL that is not an in-app path', () => {
     vi.restoreAllMocks()
   })
 
+  it.each([
+    ['https://example.com/a', 'scheme:https'],
+    ['//example.com/a', 'protocol-relative'],
+    ['item/US-1', 'not-a-path'],
+  ])('reports %s under the reason isInAppPath refused it for (%s)', (href, reason) => {
+    const warn = vi.mocked(console.warn)
+    render(
+      <RecordOpener href={href} onOpen={() => {}}>
+        US-1
+      </RecordOpener>,
+    )
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`(${reason},`))
+  })
+
   it('warns in development, naming the KIND of refused URL but not its content', () => {
     const warn = vi.mocked(console.warn)
     render(

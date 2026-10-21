@@ -103,7 +103,7 @@ export function recordHrefProblem(
 /**
  * The URL a cell renders: its explicit `href`, else the derived one. `||`, not `??`: an empty
  * `href` is no URL, and must not become `<a href="">` (the current page). Both ID and reference
- * cells call this, so the rule has one copy.
+ * cells reach it through `useRecordHref`, so the rule has one copy.
  */
 export function resolveRecordHref(
   href: string | undefined,

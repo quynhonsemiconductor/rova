@@ -92,24 +92,24 @@ export const RECORD_LABEL_LAYOUT = 'flex min-h-5 min-w-0 items-center break-word
  * enforced rather than merely documented.
  */
 export function isInAppPath(href: string): boolean {
-  // Refused outright, before any prefix check: the URL parser DELETES tab, LF and CR, so `/\n//host`
-  // passes `!startsWith('//')` here and still resolves to `//host`. No route path contains them.
-  if (/[\t\n\r]/.test(href)) return false
-  // `/\` too: browsers read a backslash as a slash, so `/\host` is protocol-relative as well.
-  return href.startsWith('/') && !href.startsWith('//') && !href.startsWith('/\\')
+  return hrefRefusal(href) === undefined
 }
 
 /**
- * The KIND of a refused URL, for de-duplicating its report. A broken path builder usually emits a
- * DIFFERENT bad URL per row (each id baked in), so keying by the URL itself would still log once
- * per row; keyed by shape, one defect is one report however many rows it breaks.
+ * Why `href` is NOT an in-app path, or `undefined` when it is. The ONE classifier: `isInAppPath`
+ * and the refusal report both read it, so a new refusal rule cannot leave the report mislabelling
+ * (and so de-duplicating) two different defects under one reason.
  */
-function refusedUrlShape(href: string): string {
+function hrefRefusal(href: string): string | undefined {
+  // Refused outright, before any prefix check: the URL parser DELETES tab, LF and CR, so `/\n//host`
+  // passes `!startsWith('//')` here and still resolves to `//host`. No route path contains them.
   if (/[\t\n\r]/.test(href)) return 'control-character'
+  // `/\` too: browsers read a backslash as a slash, so `/\host` is protocol-relative as well.
   if (href.startsWith('//') || href.startsWith('/\\')) return 'protocol-relative'
   const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(href)
   if (scheme) return `scheme:${scheme[1].toLowerCase()}`
-  return 'relative-path'
+  if (!href.startsWith('/')) return 'not-a-path'
+  return undefined
 }
 
 /**
@@ -157,7 +157,7 @@ export function RecordOpener({
       // The URL's SHAPE and length only, never its content: this branch exists because a caller
       // passed something unexpected, which could carry user text, an email or a token — a log line
       // must not become a copy of it. The shape already names the defect.
-      const shape = refusedUrlShape(href)
+      const shape = hrefRefusal(href) ?? 'unknown'
       reportOnce(
         `record-link:refused:${shape}`,
         `RecordOpener: refused a URL that is not an in-app path (${shape}, ${href.length} chars), opening in place`,
