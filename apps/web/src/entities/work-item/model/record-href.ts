@@ -103,7 +103,7 @@ export function recordHrefProblem(
   if (ADDRESSING[type] === 'id' && !recordId?.trim()) {
     return {
       key: `record-href:no-id:${type}`,
-      message: `defaultRecordHref: a "${type}" is addressed by id; pass \`recordId\`, or \`href\` (FeatureCell takes only \`href\`)`,
+      message: `defaultRecordHref: a "${type}" is addressed by id; pass \`recordId\`, or \`href\` if the cell only accepts \`href\``,
     }
   }
   return undefined
