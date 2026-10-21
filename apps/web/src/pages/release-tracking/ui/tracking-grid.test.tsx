@@ -219,6 +219,7 @@ describe('TrackingGrid — ID link', () => {
   })
 
   it('still opens a row whose kind the addressing rule does not know — as a work item, not a no-op', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {}) // unknown kind, on purpose
     const odd = { ...row(1), id: 'x-1', itemKey: 'XX-1', issueType: 'unknown' }
     renderGrid({
       bucket: 'unparented',
@@ -230,5 +231,6 @@ describe('TrackingGrid — ID link', () => {
     })
     fireEvent.click(screen.getByTitle('XX-1'))
     expect(navigate).toHaveBeenCalledWith({ to: '/item/$itemKey', params: { itemKey: 'XX-1' } })
+    warn.mockRestore()
   })
 })

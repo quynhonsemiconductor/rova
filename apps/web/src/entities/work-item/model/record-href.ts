@@ -51,7 +51,15 @@ export function defaultRecordHref(
   itemKey: string,
   recordId?: string,
 ): string | undefined {
-  if (!isAddressedType(type)) return undefined
+  if (!isAddressedType(type)) {
+    // Reached only when a cell has NO `href` of its own (`resolveRecordHref` is `href || …`), so an
+    // unknown type here means a caller forgot its URL or passed a mistyped type — the cell would
+    // silently lose its new-tab link. Development only; the cell still opens in place.
+    if (import.meta.env.DEV) {
+      console.warn(`defaultRecordHref: no URL rule for record type "${type}"; pass \`href\``)
+    }
+    return undefined
+  }
   if (ADDRESSING[type] === 'key') {
     // No key yet (an optimistic row) means no URL — never a bare `/item/`. The same rule
     // `entityLinkFor` applies (`!key` → `undefined`). A cell that renders such a row and LATER gets

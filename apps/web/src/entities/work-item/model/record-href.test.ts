@@ -3,10 +3,18 @@
  * Each branch is pinned: key-addressed (with and without a key), id-addressed (with and without
  * an id), and a type the rule does not know.
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultRecordHref, resolveRecordHref } from './record-href'
 
 describe('defaultRecordHref', () => {
+  // Unaddressed types warn in development (asserted below); keep the other cases' output clean.
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it.each([
     ['story', 'US-120', undefined, '/item/US-120'],
     ['task', 'TA-3', undefined, '/item/TA-3'],
@@ -38,5 +46,29 @@ describe('resolveRecordHref', () => {
   it('derives the URL when none is given — and when an EMPTY one is (`||`, not `??`)', () => {
     expect(resolveRecordHref(undefined, 'story', 'US-9')).toBe('/item/US-9')
     expect(resolveRecordHref('', 'story', 'US-9')).toBe('/item/US-9')
+  })
+})
+
+describe('defaultRecordHref diagnostics and encoding', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('warns in development when a type has no URL rule — a caller forgot its href', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(defaultRecordHref('Story', 'US-1')).toBeUndefined() // wrong casing: not a record kind
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('"Story"'))
+  })
+
+  it('does not warn for a type it addresses', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    defaultRecordHref('story', 'US-1')
+    defaultRecordHref('feature', 'FE-1', 'pf-1')
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('encodes the segment once (the path builder does it), so a key cannot change the route', () => {
+    expect(defaultRecordHref('story', 'US/1?x#y')).toBe('/item/US%2F1%3Fx%23y')
+    expect(defaultRecordHref('feature', 'FE-1', 'a/b')).toBe('/portfolio/a%2Fb')
   })
 })

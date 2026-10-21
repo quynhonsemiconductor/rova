@@ -137,13 +137,14 @@ export function RecordOpener({
   // distinct refused URL rather than on every re-render.
   const warned = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (!import.meta.env.DEV || !href || linkHref || warned.current === href) return
+    if (!href || linkHref || warned.current === href) return
     warned.current = href
     // Safe either way (it opens in place), but a path builder returning a full URL or junk would
-    // otherwise disable the new-tab behaviour silently, everywhere.
-    console.warn(
-      `RecordOpener: refused a URL that is not an in-app path, opening in place: ${href}`,
-    )
+    // otherwise disable the new-tab behaviour silently, everywhere — so it is reported in
+    // production too (an error there: it is a defect, not an authoring hint), once per URL.
+    const message = `RecordOpener: refused a URL that is not an in-app path, opening in place: ${href}`
+    if (import.meta.env.DEV) console.warn(message)
+    else console.error(message)
   }, [href, linkHref])
   if (linkHref) {
     return (

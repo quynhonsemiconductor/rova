@@ -108,6 +108,7 @@ describe.each<[string, (onOpen: () => void) => ReactElement]>([
     expect(click(screen.getByRole('link'), { metaKey: true })).toBe(false)
     expect(onOpen).not.toHaveBeenCalled()
     expect(rowClick).not.toHaveBeenCalled()
+    vi.restoreAllMocks()
   })
 })
 
@@ -125,6 +126,7 @@ describe('an empty href is no URL', () => {
 
 describe('IdCell with no URL to derive (an unaddressed type)', () => {
   it('is a focusable button that opens in place once and never reaches the row', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {}) // unaddressed type, on purpose
     const onOpen = vi.fn()
     const rowClick = vi.fn()
     render(
@@ -140,5 +142,6 @@ describe('IdCell with no URL to derive (an unaddressed type)', () => {
     click(button)
     expect(onOpen).toHaveBeenCalledTimes(1)
     expect(rowClick).not.toHaveBeenCalled()
+    vi.restoreAllMocks()
   })
 })
