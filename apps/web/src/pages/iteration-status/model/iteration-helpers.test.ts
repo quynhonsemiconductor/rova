@@ -49,6 +49,13 @@ describe('iterationStatusTotals', () => {
     expect(totals.taskEst).toBe(43.2)
     expect(totals.toDoSum).toBe(0.3)
   })
+
+  it('rounds an exact half-way sum UP, though the float sum lands just below it', () => {
+    // 8.45 + 2.10 is 10.549999999999999 as a double; rounding that alone printed 10.5.
+    const totals = iterationStatusTotals([{ planEstimate: 8.45 }, { planEstimate: 2.1 }])
+
+    expect(totals.planEst).toBe(10.6)
+  })
 })
 
 describe('sortStatusRows', () => {

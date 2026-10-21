@@ -369,6 +369,14 @@ async function seedScm(db: Db): Promise<void> {
       provider: 'github',
       revision: '9f2c1ab',
       name: 'feat(nx): bump workspace to v21',
+      // A real commit's length and shape (subject + wrapped body) on purpose: a one-line message
+      // never reproduced the US-120 Changesets defect, where the Message column sized the row to the
+      // whole message and pushed Changes / Author / Commit Timestamp off-screen (`backlog.e2e.ts`).
+      message:
+        'feat(nx): bump workspace to v21 and migrate the generators to the new project graph API\n\n' +
+        'Nx 21 removes the legacy workspace.json project configuration reader, so every generator ' +
+        'that still read it through readWorkspaceConfiguration is moved onto readProjectsConfigurationFromProjectGraph. ' +
+        'The migration script under tools/ rewrites the remaining callers and is idempotent.',
       uri: 'https://github.com/quynhonsemiconductor/rova/commit/9f2c1ab',
       repositoryFullName: 'quynhonsemiconductor/rova',
       authorName: 'Nghia-VanTrong',

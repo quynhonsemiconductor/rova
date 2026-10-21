@@ -486,7 +486,7 @@ test.describe('Capacity allocation', () => {
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
     await page.getByRole('link', { name: /^CP-2$/ }).click()
     await page.getByRole('tab', { name: /Features/ }).click()
-    await expect(page.getByRole('link', { name: 'FE-1' }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: 'FE-1', exact: true }).first()).toBeVisible()
     await expect(page.getByText('Draft')).toBeVisible()
 
     // ── Cleanup: move it back to CP-1, then restore CP-2's published state ───
@@ -512,7 +512,7 @@ test.describe('Capacity allocation', () => {
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
     await page.getByRole('link', { name: /^CP-1$/ }).click()
     await page.getByRole('tab', { name: /Features/ }).click()
-    await expect(page.getByRole('link', { name: 'FE-1' }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: 'FE-1', exact: true }).first()).toBeVisible()
     await removeFeature(page, 'FE-1')
   })
 })

@@ -27,7 +27,8 @@ export function defaultRecordHref(
   itemKey: string,
   recordId?: string,
 ): string | undefined {
-  if (KEY_ADDRESSED_TYPES.has(type)) return entityDetailPath.workItem(itemKey)
+  // No key yet (an optimistic row) means no URL — never a bare `/item/` (as `entityLinkFor` does).
+  if (KEY_ADDRESSED_TYPES.has(type)) return itemKey ? entityDetailPath.workItem(itemKey) : undefined
   if (recordId && ID_ADDRESSED_PORTFOLIO_TYPES.has(type)) {
     return entityDetailPath.portfolioItem(recordId)
   }

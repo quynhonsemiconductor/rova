@@ -71,7 +71,10 @@ export function iterationStatusTotals(rows: readonly TotalsRow[]): {
  * totals; compute it from the rows.
  */
 function roundToTenth(n: number): number {
-  return Math.round(n * 10) / 10
+  // Snap to whole hundredths first — the inputs' own grid — so a half-way sum rounds up as written.
+  // A float sum such as 8.45 + 2.10 is 10.549999…, which rounds DOWN on its own; adding
+  // `Number.EPSILON` does not help, as it is far below one ulp of any total above 1.
+  return Math.round(Math.round(n * 100) / 10) / 10
 }
 
 /** A row's sortable fields, in the shape the comparator reads. */

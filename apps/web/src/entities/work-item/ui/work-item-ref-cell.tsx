@@ -62,8 +62,6 @@ export function WorkItemRefCell({
     e.stopPropagation()
     onOpen?.()
   }
-  const target = href ?? defaultRecordHref(type, itemKey)
-
   if (!onOpen) {
     return (
       <span
@@ -79,6 +77,9 @@ export function WorkItemRefCell({
       </span>
     )
   }
+
+  // Built only past the read-only branch: a cell without `onOpen` ignores the URL.
+  const target = href ?? defaultRecordHref(type, itemKey)
 
   if (variant === 'pill') {
     // `text-ui-sm`, matching the read-only rendering above and every other editable cell: this

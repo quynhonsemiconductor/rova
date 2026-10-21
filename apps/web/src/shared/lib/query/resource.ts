@@ -124,6 +124,11 @@ function pending<T>(q: QueryLike<T>): boolean {
  */
 const NO_ROWS: readonly never[] = Object.freeze([])
 
+/** `NO_ROWS` as a list's `rows` — the ONE unsafe cast; see `ListResource.rows` for why it is `T[]`. */
+function noRows<T>(): T[] {
+  return NO_ROWS as unknown as T[]
+}
+
 /**
  * Wrap a list query. Pass the query result itself, not `query.data`.
  *
@@ -142,7 +147,7 @@ const NO_ROWS: readonly never[] = Object.freeze([])
  * optimisable, and `pnpm lint` fails on the one-line form.
  */
 export function listResource<T>(q: QueryLike<T[]>): ListResource<T> {
-  const rows = q.data ?? (NO_ROWS as unknown as T[])
+  const rows = q.data ?? noRows<T>()
   const isError = q.isError === true
   const isLoading = pending(q) && !isError
   return {
@@ -196,7 +201,7 @@ export function firstError(...parts: readonly ResourceBase[]): unknown {
  */
 export function emptyListResource<T>(): ListResource<T> {
   return {
-    rows: NO_ROWS as unknown as T[],
+    rows: noRows<T>(),
     phase: 'empty',
     isLoading: false,
     isError: false,

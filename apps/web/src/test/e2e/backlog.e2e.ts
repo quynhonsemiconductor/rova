@@ -163,3 +163,33 @@ test.describe('leaving a work-item detail', () => {
     await expect(page).toHaveURL(/\/$/)
   })
 })
+
+test.describe('work-item detail — Changesets', () => {
+  // US-120 (Production, 2026-10-06): each row is `minWidth: max-content`, so an unwrapped commit
+  // message sized the row to the whole message and pushed Changes / Author / Commit Timestamp off to
+  // the right. Fixture: US-1's seeded changeset carries a subject + body (`reference-extras.ts`).
+  test('a long commit message wraps inside its column instead of widening the row', async ({
+    page,
+  }) => {
+    await loginAndSelectProject(page)
+    await page.goto('/item/US-1')
+    await settle(page)
+    await page.getByRole('tab', { name: /Connections/ }).click()
+    await page.getByRole('tab', { name: /Changesets/ }).click()
+
+    const message = page.locator('span[title^="feat(nx): bump workspace to v21 and migrate"]')
+    await expect(message).toBeVisible()
+    const header = page.getByRole('button', { name: /^Message, / })
+
+    const messageBox = await message.boundingBox()
+    const headerBox = await header.boundingBox()
+    expect(messageBox && headerBox).toBeTruthy()
+    // Wrapped within the header's width, so it spans several lines rather than one long run.
+    expect(messageBox!.width).toBeLessThanOrEqual(headerBox!.width + 1)
+    expect(messageBox!.height).toBeGreaterThan(40)
+
+    // And the columns after it stay on screen.
+    const timestamp = await page.getByText('Commit Timestamp', { exact: true }).boundingBox()
+    expect(timestamp!.x + timestamp!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+  })
+})
