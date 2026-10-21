@@ -28,7 +28,7 @@ npx --yes @action-validator/cli@latest .github/workflows/backend-deploy.yml || \
 
 ## Task 1: ECS deployment circuit breaker + auto-rollback
 
-> **⚠️ SUPERSEDED (infra check).** The shared Terraform module `qnsc-tf-modules/modules/ecs-service` (tag `ecs-service-v1.3.0`, which rally/opshub deploy) **already declares** `deployment_circuit_breaker { enable = true, rollback = true }`. Setting it again from the deploy workflow is redundant and — because `--deployment-configuration` on `update-service` replaces the whole config — resets `maximumPercent`/`minimumHealthyPercent` to defaults on every deploy. **Single source of truth = Terraform.** The circuit-breaker CLI flag was therefore NOT shipped (removed from qnsc-ci #27). Auto-rollback still works — it's IaC-managed — and Task 4 (rollback-aware notify) detects and reports it. No workflow change for this task; the steps below are retained only as the original record.
+> **⚠️ SUPERSEDED (infra check).** The shared Terraform module `qnsc-tf-modules/modules/ecs-service` (tag `ecs-service-v1.3.0`, which rova/opshub deploy) **already declares** `deployment_circuit_breaker { enable = true, rollback = true }`. Setting it again from the deploy workflow is redundant and — because `--deployment-configuration` on `update-service` replaces the whole config — resets `maximumPercent`/`minimumHealthyPercent` to defaults on every deploy. **Single source of truth = Terraform.** The circuit-breaker CLI flag was therefore NOT shipped (removed from qnsc-ci #27). Auto-rollback still works — it's IaC-managed — and Task 4 (rollback-aware notify) detects and reports it. No workflow change for this task; the steps below are retained only as the original record.
 
 **File:** Modify `.github/workflows/backend-deploy.yml` (the two `aws ecs update-service … --force-new-deployment` steps: "Deploy API service", "Deploy Worker service").
 
@@ -72,7 +72,7 @@ leaving the bad revision serving traffic."
 
 > **Note (rollback detection depends on health signals):** the circuit breaker
 > trips on failed task health — the API service must have an ALB target-group
-> health check or container `HEALTHCHECK` (rally/opshub do, via ALB). No workflow
+> health check or container `HEALTHCHECK` (rova/opshub do, via ALB). No workflow
 > change needed; documented so the caller's service config is understood.
 
 ---
@@ -305,7 +305,7 @@ git push -u origin feat/deploy-hardening
 
 - [ ] **Step 2: Point ONE product's develop deploy at the feature ref, temporarily**
 
-In a throwaway branch of `rally`, change `.github/workflows/backend-deploy.yml`'s `uses:` from `@v1` to `@feat/deploy-hardening`, push to a branch, and let the develop deploy run (main-push path). Confirm: migrator task-def shows the deploying tag; deploy succeeds; attestation step runs and passes. Revert the throwaway branch (do not merge).
+In a throwaway branch of `rova`, change `.github/workflows/backend-deploy.yml`'s `uses:` from `@v1` to `@feat/deploy-hardening`, push to a branch, and let the develop deploy run (main-push path). Confirm: migrator task-def shows the deploying tag; deploy succeeds; attestation step runs and passes. Revert the throwaway branch (do not merge).
 
 - [ ] **Step 3: Synthetic rollback test (optional but recommended)**
 
@@ -317,7 +317,7 @@ On the same throwaway ref, introduce a deliberately failing image/health (e.g. b
 # open + merge the qnsc-ci PR
 gh pr create --repo QNSC-VN/qnsc-ci --base main --head feat/deploy-hardening \
   --title "feat(deploy): circuit-breaker rollback, migrator pinning, verified attestation" \
-  --body "Wave 1 of the release/CD hardening program. See rally docs/superpowers/plans/2026-07-13-release-cd-hardening-wave1.md."
+  --body "Wave 1 of the release/CD hardening program. See rova docs/superpowers/plans/2026-07-13-release-cd-hardening-wave1.md."
 # after merge, cut an IMMUTABLE minor release of qnsc-ci
 git -C <qnsc-ci> checkout main && git pull
 gh release create v1.4.0 --repo QNSC-VN/qnsc-ci --target main \
