@@ -303,7 +303,12 @@ export function StatusRow({
                   ? () => void navigate({ to: '/portfolio/$itemId', params: { itemId: featureId } })
                   : undefined
               }
-              href={featureId ? entityDetailPath.portfolioItem(featureId) : undefined}
+              // Same gate as `onOpen`: a reader without Portfolio access gets no URL either.
+              href={
+                canOpenPortfolio && featureId
+                  ? entityDetailPath.portfolioItem(featureId)
+                  : undefined
+              }
             />
           ) : (
             <span className="text-foreground-subtle" style={{ fontSize: 12 }}>

@@ -29,7 +29,6 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TeamCell } from '@/shared/ui/team-cell'
 
 import { IssuesPanel } from './issues-panel'
-import { entityDetailPath } from '@/shared/lib/entity-link'
 
 type ColKey = 'rank' | 'id' | 'team' | 'issue' | 'name' | 'status'
 
@@ -146,12 +145,8 @@ export function TrackingGrid({
             type={row.issueType}
             itemKey={row.itemKey}
             onOpen={() => ctx.openItem(row)}
-            // Same split as `openItem`: a Feature is a portfolio item (by id), anything else a work item.
-            href={
-              row.issueType === 'feature'
-                ? entityDetailPath.portfolioItem(row.id)
-                : entityDetailPath.workItem(row.itemKey)
-            }
+            // Same split as `openItem` (Feature by id, work item by key), derived by the cell.
+            recordId={row.id}
           />
         ),
       },

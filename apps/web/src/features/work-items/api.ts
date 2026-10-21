@@ -617,7 +617,7 @@ export function useWorkItemCounts(projects: Array<{ id: string }>) {
 
 export function useCommittedIterationsWorkItems(projectIds: string[], userId?: string) {
   return useQuery({
-    queryKey: ['work-items-committed-iterations', projectIds.sort(), userId],
+    queryKey: ['work-items-committed-iterations', [...projectIds].sort(), userId],
     queryFn: async () => {
       if (projectIds.length === 0) return []
       const results = await Promise.all(

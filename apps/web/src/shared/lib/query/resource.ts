@@ -87,9 +87,11 @@ export interface ListResource<T> extends ResourceBase {
    * BUT DO NOT MUTATE IT IN PLACE. Whenever there is no data — loading, error, disabled, or
    * `emptyListResource()` — `rows` is the shared FROZEN `NO_ROWS` array (see there for why it must
    * keep one reference), and `rows.sort(…)` / `rows.push(…)` throws a `TypeError`. That only
-   * happens while data is missing, so a fixture that resolves data will not catch it. Copy first:
-   * `[...rows].sort(…)`. When data is present, `rows` IS the query cache's array, which must not be
-   * mutated either.
+   * happens while data is missing, so a fixture that resolves data will not catch it. Copy first —
+   * and keep the copy reference-stable (memoise it, e.g. inside `useMemo`): `[...rows].sort(…)`
+   * computed inline on every render hands a fresh reference to consumers like `useRowRerank` and
+   * reintroduces the error-301 loop described on `NO_ROWS`. When data is present, `rows` IS the
+   * query cache's array, which must not be mutated either.
    */
   readonly rows: T[]
 }

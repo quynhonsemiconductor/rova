@@ -82,7 +82,8 @@ const renderRow = (
   {
     names = [ALICE, WA],
     offers = [ALICE],
-  }: { names?: (typeof ALICE)[]; offers?: (typeof ALICE)[] } = {},
+    canOpenPortfolio = true,
+  }: { names?: (typeof ALICE)[]; offers?: (typeof ALICE)[]; canOpenPortfolio?: boolean } = {},
 ) => {
   offersRef.current = offers
   return render(
@@ -96,7 +97,7 @@ const renderRow = (
       iterationOptions={[]}
       selectedIterationId="it-1"
       canEdit
-      canOpenPortfolio
+      canOpenPortfolio={canOpenPortfolio}
       colStyles={{}}
       dragEnabled={false}
       selected={false}
@@ -202,5 +203,20 @@ describe('StatusRow — Start Date (CO-01)', () => {
   it('leaves the cell empty on a Defect row', () => {
     renderRow({ type: 'defect', startDate: null } as Partial<IterationStatusItem>)
     expect(screen.queryByText('Not set')).toBeNull()
+  })
+})
+
+describe('StatusRow — Feature cell respects Portfolio access (§3.2:85)', () => {
+  const feature = { featureId: 'pf-1', featureKey: 'FE-2', featureTitle: 'Checkout' }
+
+  it('links the Feature to its portfolio detail for a reader who may open it', () => {
+    renderRow(feature)
+    expect(screen.getByRole('link', { name: /FE-2/ }).getAttribute('href')).toBe('/portfolio/pf-1')
+  })
+
+  it('renders the Feature as text, with no URL, for a reader without Portfolio access', () => {
+    renderRow(feature, { canOpenPortfolio: false })
+    expect(screen.getByText(/FE-2/)).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /FE-2/ })).toBeNull()
   })
 })

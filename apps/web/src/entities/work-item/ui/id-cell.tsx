@@ -23,10 +23,20 @@ interface IdCellProps {
    * middle-click and "Open link in new tab" work (US-120). A plain click still calls `onOpen`.
    *
    * Defaults to `/item/{itemKey}` for a Story / Task / Defect, whose detail route is addressed by
-   * key. Every other type (portfolio item, timebox, project, plan) is addressed by its own id or
-   * key and MUST pass it — without one the cell falls back to a button that opens in place only.
+   * key, and to `/portfolio/{recordId}` for an Epic / Feature given `recordId`. Every other type
+   * (timebox, project, plan) MUST pass it — without one the cell falls back to a button that opens
+   * in place only.
+   *
+   * Honoured only with `onOpen`: a cell without one is read-only text by design, and the URL is
+   * ignored.
    */
   href?: string
+  /**
+   * The record's own id. Pass it unconditionally from a grid that mixes artifact kinds: the cell
+   * derives the right URL from `type` (`defaultRecordHref`), so the id-vs-key rule is not
+   * re-implemented per grid.
+   */
+  recordId?: string
 }
 
 /**
@@ -48,7 +58,7 @@ const KEY_CLASS =
 const OPEN_CLASS =
   'group flex min-w-0 cursor-pointer items-start gap-1 border-none bg-transparent p-0 text-left no-underline'
 
-export function IdCell({ type, itemKey, onOpen, href }: IdCellProps) {
+export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
   if (onOpen === undefined) {
     return (
       <span className="inline-flex min-w-0 items-start gap-1" title={itemKey}>
@@ -70,7 +80,7 @@ export function IdCell({ type, itemKey, onOpen, href }: IdCellProps) {
     </>
   )
 
-  const target = href ?? defaultRecordHref(type, itemKey)
+  const target = href ?? defaultRecordHref(type, itemKey, recordId)
   if (target) {
     return (
       <RecordLink href={target} onOpen={onOpen} title={itemKey} className={OPEN_CLASS}>

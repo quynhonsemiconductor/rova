@@ -18,6 +18,14 @@ describe('defaultRecordHref', () => {
     expect(defaultRecordHref('feature', 'FE-1')).toBeUndefined()
     expect(defaultRecordHref('release', 'RL-1')).toBeUndefined()
   })
+
+  it('addresses an Epic / Feature by its id when given one — and only those types', () => {
+    expect(defaultRecordHref('feature', 'FE-1', 'pf-1')).toBe('/portfolio/pf-1')
+    expect(defaultRecordHref('epic', 'EP-1', 'pf-2')).toBe('/portfolio/pf-2')
+    // A work item stays key-addressed even when a grid passes its id unconditionally.
+    expect(defaultRecordHref('story', 'US-1', 'wi-1')).toBe('/item/US-1')
+    expect(defaultRecordHref('release', 'RL-1', 'rl-1')).toBeUndefined()
+  })
 })
 
 describe('IdCell / WorkItemRefCell carry the record URL', () => {
@@ -31,6 +39,11 @@ describe('IdCell / WorkItemRefCell carry the record URL', () => {
     expect(screen.getByRole('link', { name: /FE-1/ }).getAttribute('href')).toBe('/portfolio/abc')
   })
 
+  it('IdCell derives a portfolio URL from recordId, so a mixed grid needs no per-row split', () => {
+    render(<IdCell type="feature" itemKey="FE-1" onOpen={() => {}} recordId="pf-1" />)
+    expect(screen.getByRole('link', { name: /FE-1/ }).getAttribute('href')).toBe('/portfolio/pf-1')
+  })
+
   it('IdCell stays a button when no URL is known, and plain text when it cannot be opened', () => {
     const { rerender } = render(<IdCell type="feature" itemKey="FE-1" onOpen={() => {}} />)
     expect(screen.queryByRole('link')).toBeNull()
@@ -38,6 +51,14 @@ describe('IdCell / WorkItemRefCell carry the record URL', () => {
     rerender(<IdCell type="story" itemKey="US-1" />)
     expect(screen.queryByRole('link')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  // The cell a permission gate relies on (Iteration Status' Feature column, §3.2:85): no `onOpen`
+  // means read-only text, and a URL passed anyway must not become a link.
+  it('WorkItemRefCell without onOpen ignores href and renders text', () => {
+    render(<WorkItemRefCell type="feature" itemKey="FE-2" href="/portfolio/pf-1" />)
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.getByText(/FE-2/)).toBeTruthy()
   })
 
   it('WorkItemRefCell links both variants', () => {
