@@ -23,8 +23,10 @@ function isAddressedType(type: string): type is AddressedType {
 /**
  * The detail path an ID / reference cell can derive on its own (US-120) — the one place the
  * TYPE → id-or-key choice lives, so a grid mixing artifact kinds passes `recordId` unconditionally
- * instead of re-implementing the split. The path strings themselves come from `entityDetailPath`,
- * the same builder `entityLinkFor` uses, so the two cannot disagree on a route.
+ * instead of re-implementing the split. The path strings come from `entityDetailPath`, which
+ * `entityLinkFor` also uses — but `entityLinkFor` makes no type → id-or-key choice of its own: its
+ * callers name the route kind outright (capacity plan, iteration, milestone, release), none of them
+ * a work item or portfolio item.
  *
  * A Story / Task / Defect is addressed by its KEY (`/item/US-5`). An Epic / Feature is addressed by
  * its own id (`/portfolio/<id>`), so it needs `recordId`. Timeboxes, projects and capacity plans
