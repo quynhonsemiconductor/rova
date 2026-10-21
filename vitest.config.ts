@@ -122,6 +122,7 @@ export default defineConfig({
         'libs/modules/scm/src/infrastructure/github/github-rest.client.ts',
         'libs/modules/scm/src/infrastructure/github/github-rest.mapper.ts',
         'libs/modules/team-status/src/application/team-status.service.ts',
+        'libs/modules/test-cases/src/application/test-activity-enrichment.ts',
         'libs/modules/test-cases/src/application/test-cases.service.ts',
         'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/test-cases/src/application/test-case-types.service.ts',
