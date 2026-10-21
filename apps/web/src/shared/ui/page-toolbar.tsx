@@ -27,7 +27,7 @@ export interface PageToolbarSearch {
  * filter / fields bar across every grid page (Backlog, Quality, Releases,
  * Milestones, Timeboxes, Iteration Status …).
  *
- * Mirrors Broadcom Rally's work-item toolbar: a search box, primary actions,
+ * Mirrors Broadcom's Rally work-item toolbar: a search box, primary actions,
  * a collapsible "Show Filters" control with an active-count badge, an optional
  * "Show Fields" column menu, and an optional export button — laid out in one
  * consistent order so no page hand-rolls its own arrangement.

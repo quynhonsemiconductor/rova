@@ -1,6 +1,6 @@
 /**
  * Calendar — a single-month day picker grid (month title + prev/next, weekday
- * header, day cells), matching Broadcom Rally's date popover. Built on
+ * header, day cells), matching Broadcom's Rally date popover. Built on
  * `date-fns`; presentational only — the parent owns the selected value and
  * handles `onSelect`. Used inside {@link DateField}'s popover.
  */

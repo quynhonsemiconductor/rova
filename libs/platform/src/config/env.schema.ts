@@ -53,6 +53,10 @@ export const EnvSchema = z
     DATABASE_USER: z.string().optional(),
     DATABASE_PASSWORD: z.string().optional(),
     DATABASE_SSLMODE: z.string().default('require'),
+    // Path to the CA bundle database certificates must chain to (RDS global bundle in the
+    // image today, the CNPG ca.crt on-prem). REQUIRED in production: without it the
+    // process refuses to connect (see db/pg-ssl.ts) instead of encrypting unverified.
+    DATABASE_SSL_CA: emptyToUndefined(z.string().optional()),
 
     DATABASE_POOL_MIN: z.coerce.number().int().positive().default(2),
     DATABASE_POOL_MAX: z.coerce.number().int().positive().default(20),
@@ -96,7 +100,7 @@ export const EnvSchema = z
     IDENTITY_TEST_LOGIN: emptyToUndefined(z.enum(['enabled']).optional()),
 
     // Cookie signing. Distinct from CSRF_SECRET on purpose: this one signs every
-    // cookie rally sets, so rotating it invalidates all of them. Sharing one value
+    // cookie rova sets, so rotating it invalidates all of them. Sharing one value
     // between the two made a cookie-hygiene rotation read as a CSRF change (and
     // vice versa) in the audit trail.
     COOKIE_SECRET: z.string().min(32),
@@ -133,8 +137,8 @@ export const EnvSchema = z
     AWS_REGION: z.string().default('ap-southeast-1'),
     /**
      * Custom AWS service endpoint. Set ONLY in local dev / CI to target an
-     * emulator such as LocalStack (e.g. http://localhost:4566). Leave UNSET in
-     * real AWS environments so the SDK uses the default regional endpoints.
+     * AWS emulator (none ships with the local stack; S3 is Garage via STORAGE_ENDPOINT).
+     * Leave UNSET in real AWS environments so the SDK uses the default regional endpoints.
      */
     AWS_ENDPOINT_URL: z.string().url().optional(),
     /**
@@ -212,7 +216,11 @@ export const EnvSchema = z
      * 'ses' requires MAIL_FROM_EMAIL + IAM role with ses:SendEmail.
      * 'resend' requires RESEND_API_KEY + a verified domain in the Resend dashboard.
      */
-    EMAIL_PROVIDER: z.enum(['graph', 'ses', 'resend', 'dev']).default('dev'),
+    EMAIL_PROVIDER: z.enum(['graph', 'smtp', 'ses', 'resend', 'dev']).default('dev'),
+    /**
+     * 'smtp' sends through a plain SMTP relay: Mailpit in development (`MAIL_SMTP_HOST`/`MAIL_SMTP_PORT`, sender `MAIL_FROM_EMAIL`).
+     * Development only: refused when NODE_ENV=production here and by platform-mail's smtp-guard.
+     */
     /**
      * The shared mailbox mail goes out as (`noreply-rova@qnsc.vn`). Required for 'graph'; not a secret. Graph sends as this mailbox and no
      * other (the Exchange role assignment is scoped to it); the display name is the mailbox's own, so MAIL_FROM_NAME does not apply.
@@ -235,6 +243,10 @@ export const EnvSchema = z
      * the certificate, so the move is: mount the token, set this, delete the certificate.
      */
     MAIL_GRAPH_FEDERATED_TOKEN_FILE: emptyToUndefined(z.string().min(1).optional()),
+    /** SMTP relay host for EMAIL_PROVIDER=smtp: Mailpit's compose service name in a container, `localhost` on the host. */
+    MAIL_SMTP_HOST: emptyToUndefined(z.string().min(1).optional()),
+    /** SMTP relay port for EMAIL_PROVIDER=smtp: Mailpit's SMTP port (1025 in the container). */
+    MAIL_SMTP_PORT: emptyToUndefined(z.coerce.number().int().min(1).max(65535).optional()),
     /** Display name that appears in the From header, e.g. "Mini Rova". */
     MAIL_FROM_NAME: z.string().default('Mini Rova'),
     /** Verified sender address — used by all providers. Required when EMAIL_PROVIDER != 'dev'. */
@@ -243,7 +255,7 @@ export const EnvSchema = z
     RESEND_API_KEY: z.string().optional(),
     /** Reply-To address shown in email clients. Defaults to a no-reply alias. */
     MAIL_REPLY_TO: z.string().email().optional(),
-    /** Public base URL used to build password-reset and invitation links (e.g. https://app.rally.io). */
+    /** Public base URL used to build password-reset and invitation links (e.g. https://app.rova.io). */
     APP_BASE_URL: z.string().url().default('http://localhost:5173'),
 
     // Observability
@@ -341,9 +353,12 @@ export const EnvSchema = z
     SSO_JIT_ENABLED: booleanish(true),
     /**
      * Comma-separated SSO (Entra) emails auto-granted workspace_admin on first login.
-     * Example: "nghiavt@qnsc.vn,quangld@qnsc.vn"
+     * Example: "alice@example.test,bob@example.test"
      */
     PLATFORM_ADMIN_EMAILS: z.string().default(''),
+    // No schema-level requirement here ON PURPOSE: the worker shares this schema and
+    // never sees the roster (the bundle key is injected into the API only), and it must
+    // boot without it. The API asserts its own copy at boot — apps/api/bootstrap.
   })
   .superRefine((env, ctx) => {
     /**
@@ -433,6 +448,23 @@ export const EnvSchema = z
         message:
           'MAIL_GRAPH_CLIENT_ID is required when EMAIL_PROVIDER is "graph": the "Rova <Env> Service" app that holds the ' +
           'Exchange "Application Mail.Send" role for the mailbox (not the sign-in app, ENTRA_CLIENT_ID).',
+      });
+    }
+    if (env.EMAIL_PROVIDER === 'smtp' && env.NODE_ENV === 'production') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_PROVIDER'],
+        message:
+          'EMAIL_PROVIDER=smtp is for development only (Mailpit): an unauthenticated relay must never send in production. ' +
+          'Use graph in production.',
+      });
+    }
+    if (env.EMAIL_PROVIDER === 'smtp' && (!env.MAIL_SMTP_HOST || !env.MAIL_SMTP_PORT)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAIL_SMTP_HOST'],
+        message:
+          'MAIL_SMTP_HOST and MAIL_SMTP_PORT are required when EMAIL_PROVIDER is "smtp" (Mailpit: localhost and 1120 on the host, mailpit and 1025 in a container).',
       });
     }
     if (env.EMAIL_PROVIDER !== 'dev' && env.EMAIL_PROVIDER !== 'graph' && !env.MAIL_FROM_EMAIL) {

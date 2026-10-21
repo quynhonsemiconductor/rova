@@ -4,7 +4,7 @@ import { Tabs as TabsPrimitive } from 'radix-ui'
 import { cn } from '@/shared/lib/utils'
 
 /**
- * Tabs — Rally's single source of truth for tabbed navigation.
+ * Tabs — Rova's single source of truth for tabbed navigation.
  *
  * Built on Radix Tabs (roving focus, arrow-key nav, aria wiring) and styled as
  * the app's standard underline tab bar. Replaces the 5+ hand-rolled tab bars in

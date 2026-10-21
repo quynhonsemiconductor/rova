@@ -3,7 +3,7 @@
  *
  * Ported from opshub's `test/coverage-floors.ts`, which exists because opshub's floors sat
  * 5-8 points below actual coverage while a comment claimed they were "set just below current
- * coverage" — nothing enforced that claim. Rally has the same failure mode, already
+ * coverage" — nothing enforced that claim. Rova has the same failure mode, already
  * documented in this repo's CLAUDE.md ("Coverage is a ratchet, not a target"): the floors sat
  * ~11 points under real coverage for two phases (70/66/62/70 against 82/77/81/83), so a
  * ten-point regression would have passed. This is the automated version of the manual

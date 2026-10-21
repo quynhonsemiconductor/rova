@@ -11,14 +11,23 @@
 import { describe, expect, it, vi } from 'vitest';
 
 // The counter is created when the module loads, so the mock must be in place before the import below.
-const { passFailedAdd } = vi.hoisted(() => ({ passFailedAdd: vi.fn() }));
+const { passFailedAdd, claimMissingAdd } = vi.hoisted(() => ({
+  passFailedAdd: vi.fn(),
+  claimMissingAdd: vi.fn(),
+}));
 vi.mock('@opentelemetry/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@opentelemetry/api')>();
+  const add: Record<string, ReturnType<typeof vi.fn>> = {
+    'outbox.relay.pass_failed': passFailedAdd,
+    'outbox.relay.claim_missing': claimMissingAdd,
+  };
   return {
     ...actual,
     metrics: {
       ...actual.metrics,
-      getMeter: () => ({ createCounter: () => ({ add: passFailedAdd }) }),
+      getMeter: () => ({
+        createCounter: (name: string) => ({ add: add[name] ?? vi.fn() }),
+      }),
     },
   };
 });
@@ -85,7 +94,7 @@ class TestRelay extends AbstractOutboxRelay<TestRow, string> {
     attempts: number;
     status: 'pending' | 'failed';
     error: string;
-    nextAttemptAt: Date;
+    delayMs: number;
   }> = [];
   stampedAttempts = new Map<string, number>();
   reaped = 0;
@@ -104,6 +113,9 @@ class TestRelay extends AbstractOutboxRelay<TestRow, string> {
   }
 
   protected readonly outbox = {} as OutboxLeaseTable;
+
+  /** Ids the claim SELECTs but whose UPDATE ... RETURNING does not stamp (missing from RETURNING). */
+  unstamped = new Set<string>();
 
   /** Queue rows for the next claim. */
   load(rows: TestRow[]): void {
@@ -135,12 +147,19 @@ class TestRelay extends AbstractOutboxRelay<TestRow, string> {
     _tx: DrizzleTx,
     ids: string[],
     _token: string,
-    lockedUntil: Date,
-  ): Promise<Map<string, number>> {
-    const map = new Map(ids.map((id) => [id, this.byId.get(id)!.attempts + 1]));
-    this.stampedAttempts = map;
+    leaseMs: number,
+  ): Promise<Map<string, { attempts: number; lockedUntil: Date }>> {
+    const attempts = new Map(ids.map((id) => [id, this.byId.get(id)!.attempts + 1]));
+    this.stampedAttempts = attempts;
+    const lockedUntil = new Date(Date.now() + leaseMs);
     this.heldUntil.push(lockedUntil);
-    return Promise.resolve(map);
+    return Promise.resolve(
+      new Map(
+        ids
+          .filter((id) => !this.unstamped.has(id))
+          .map((id) => [id, { attempts: attempts.get(id)!, lockedUntil }]),
+      ),
+    );
   }
 
   /** The `locked_until` each claim stamped. */
@@ -154,14 +173,8 @@ class TestRelay extends AbstractOutboxRelay<TestRow, string> {
     return this.leaseMs;
   }
 
-  /** How long the claim lock takes to acquire. */
-  beforeSelectWaitMs = 0;
-
   protected async beforeSelect(): Promise<void> {
     this.beforeSelectCalls += 1;
-    if (this.beforeSelectWaitMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, this.beforeSelectWaitMs));
-    }
   }
 
   protected renewLease(row: Claimed<TestRow>): Promise<Date | null> {
@@ -223,10 +236,10 @@ class TestRelay extends AbstractOutboxRelay<TestRow, string> {
     row: Claimed<TestRow>,
     status: 'pending' | 'failed',
     error: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
     if (this.markFailedThrows) return Promise.reject(new Error('could not record the failure'));
-    this.failed.push({ id: row.id, attempts: row.attempts, status, error, nextAttemptAt });
+    this.failed.push({ id: row.id, attempts: row.attempts, status, error, delayMs });
     return Promise.resolve();
   }
 }
@@ -283,12 +296,33 @@ describe('AbstractOutboxRelay — no transaction across the external call', () =
   });
 });
 
+describe('AbstractOutboxRelay — a row the claim did not stamp is not dropped silently', () => {
+  it('logs the row id and the relay name, counts it, and skips delivering it', async () => {
+    const { relay } = make();
+    relay.unstamped.add('b');
+    relay.load([
+      { id: 'a', attempts: 0 },
+      { id: 'b', attempts: 0 },
+    ]);
+    const errorLog = vi.spyOn(relay['logger'], 'error');
+    claimMissingAdd.mockClear();
+
+    await relay.relay();
+
+    expect(relay.delivered).toEqual(['a']);
+    expect(errorLog).toHaveBeenCalledWith(
+      { rowId: 'b', relay: 'TestRelay' },
+      expect.stringContaining('missing from RETURNING'),
+    );
+    expect(claimMissingAdd).toHaveBeenCalledTimes(1);
+    expect(claimMissingAdd).toHaveBeenCalledWith(1, { relay: 'TestRelay' });
+  });
+});
+
 describe('AbstractOutboxRelay — attempts are spent at claim', () => {
   it('counts the claim as an attempt, so markFailed sees attempt 1 on the first failure', async () => {
     const { relay } = make();
     relay.load([{ id: 'a', attempts: 0, deliver: 'fail' }]);
-    const before = Date.now();
-
     await relay.relay();
 
     expect(relay.failed).toHaveLength(1);
@@ -297,8 +331,8 @@ describe('AbstractOutboxRelay — attempts are spent at claim', () => {
     expect(call.status).toBe('pending');
     // attempt 1 -> ~30s. Immediate retry is the defect backoff replaced: five of them fit inside a
     // brief outage and the fifth dead-letters the row for good.
-    expect(call.nextAttemptAt.getTime()).toBeGreaterThanOrEqual(before + 29_000);
-    expect(call.nextAttemptAt.getTime()).toBeLessThanOrEqual(before + 31_000);
+    expect(call.delayMs).toBeGreaterThanOrEqual(29_000);
+    expect(call.delayMs).toBeLessThanOrEqual(31_000);
   });
 
   it('dead-letters once the claimed attempt is the last one', async () => {
@@ -342,14 +376,10 @@ describe('AbstractOutboxRelay — failure classification', () => {
   it('honours Retry-After when it is longer than the backoff', async () => {
     const { relay } = make();
     relay.load([{ id: 'a', attempts: 0, deliver: 'retry-after' }]);
-    const before = Date.now();
-
     await relay.relay();
 
     expect(relay.failed[0].status).toBe('pending');
-    expect(relay.failed[0].nextAttemptAt.getTime()).toBeGreaterThanOrEqual(
-      before + 5 * 60_000 - 1_000,
-    );
+    expect(relay.failed[0].delayMs).toBeGreaterThanOrEqual(5 * 60_000 - 1_000);
   });
 });
 
@@ -357,28 +387,24 @@ describe('AbstractOutboxRelay — Retry-After is clamped, never an Invalid Date'
   it('clamps a huge hint to the maximum', async () => {
     const { relay } = make();
     relay.load([{ id: 'a', attempts: 0, deliver: 'huge-retry-after' }]);
-    const before = Date.now();
-
     await relay.relay();
 
-    const at = relay.failed[0].nextAttemptAt;
-    expect(Number.isNaN(at.getTime())).toBe(false);
-    expect(at.getTime()).toBeLessThanOrEqual(before + MAX_RETRY_AFTER_MS + 2_000);
-    expect(at.getTime()).toBeGreaterThanOrEqual(before + MAX_RETRY_AFTER_MS - 2_000);
+    const at = relay.failed[0].delayMs;
+    expect(Number.isNaN(at)).toBe(false);
+    expect(at).toBeLessThanOrEqual(MAX_RETRY_AFTER_MS + 2_000);
+    expect(at).toBeGreaterThanOrEqual(MAX_RETRY_AFTER_MS - 2_000);
   });
 
   it('falls back to ordinary backoff for a non-finite hint, and still records the failure', async () => {
     const { relay } = make();
     relay.load([{ id: 'a', attempts: 0, deliver: 'bad-retry-after' }]);
-    const before = Date.now();
-
     await relay.relay();
 
     expect(relay.failed).toHaveLength(1);
-    const at = relay.failed[0].nextAttemptAt.getTime();
+    const at = relay.failed[0].delayMs;
     expect(Number.isNaN(at)).toBe(false);
-    expect(at).toBeGreaterThanOrEqual(before + 29_000);
-    expect(at).toBeLessThanOrEqual(before + 31_000);
+    expect(at).toBeGreaterThanOrEqual(29_000);
+    expect(at).toBeLessThanOrEqual(31_000);
   });
 });
 
@@ -386,15 +412,11 @@ describe('AbstractOutboxRelay — DeferError is not an attempt', () => {
   it('puts the row back to pending and REFUNDS the attempt (the BOUND on deferring belongs to the caller)', async () => {
     const { relay } = make();
     relay.load([{ id: 'a', attempts: 4, deliver: 'defer' }]); // the claim makes it the 5th (the last)
-    const before = Date.now();
-
     await relay.relay();
 
     expect(relay.refunded).toEqual(['a']);
     expect(relay.failed[0]).toMatchObject({ id: 'a', status: 'pending', attempts: 4 });
-    expect(relay.failed[0].nextAttemptAt.getTime()).toBeGreaterThanOrEqual(
-      before + 5 * 60_000 - 1_000,
-    );
+    expect(relay.failed[0].delayMs).toBeGreaterThanOrEqual(5 * 60_000 - 1_000);
     expect(relay.sent).toEqual([]);
   });
 
@@ -431,20 +453,6 @@ describe('AbstractOutboxRelay — a batch is held for the SUM of its leases', ()
     const held = relay.heldUntil[0].getTime() - before;
     expect(held).toBeGreaterThanOrEqual(270_000 - 1_000);
     expect(held).toBeLessThanOrEqual(270_000 + 2_000);
-  });
-
-  it('measures the hold from AFTER the claim lock was acquired, so waiting for it does not shorten the hold', async () => {
-    const { relay } = make();
-    relay.leaseMs = 90_000;
-    relay.beforeSelectWaitMs = 300;
-    relay.load([{ id: 'a', attempts: 0 }]);
-    const before = Date.now();
-
-    await relay.relay();
-
-    // Without the fix the hold was stamped from a `now` taken before the wait: ~90 s from `before`.
-    const held = relay.heldUntil[0].getTime() - before;
-    expect(held).toBeGreaterThanOrEqual(90_000 + 250);
   });
 
   it('keeps claiming until the queue is empty, so small batches cost no throughput', async () => {

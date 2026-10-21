@@ -746,11 +746,11 @@ describe('WorkspaceService', () => {
     it('skips the guest queue for an internal address and emails INLINE, flag on', async () => {
       // A directory member has nothing to provision — the same-tenant Graph collision the relay
       // resolves as "nothing to do" — so the invitation must not wait on that hop.
-      await service.inviteMember('ws-1', 'namnh@qnsc.vn', undefined, 'actor-1');
+      await service.inviteMember('ws-1', 'alice@qnsc.vn', undefined, 'actor-1');
 
       expect(guestInviteScheduler.schedule).not.toHaveBeenCalled();
       expect(emailScheduler.schedule).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'namnh@qnsc.vn', template: 'workspace-invitation' }),
+        expect.objectContaining({ to: 'alice@qnsc.vn', template: 'workspace-invitation' }),
         expect.anything(),
       );
     });
@@ -774,17 +774,17 @@ describe('WorkspaceService', () => {
 
     it('resend also skips the guest enqueue for an internal address', async () => {
       invitationRepo.findById.mockResolvedValue(
-        mockInvitation({ email: 'namnh@qnsc.vn', lastSentAt: new Date(Date.now() - 120_000) }),
+        mockInvitation({ email: 'alice@qnsc.vn', lastSentAt: new Date(Date.now() - 120_000) }),
       );
       invitationRepo.rotateForResend.mockResolvedValue(
-        mockInvitation({ email: 'namnh@qnsc.vn', resendCount: 1 }),
+        mockInvitation({ email: 'alice@qnsc.vn', resendCount: 1 }),
       );
 
       await service.resendInvitation('ws-1', 'inv-1', 'actor-1');
 
       expect(guestInviteScheduler.schedule).not.toHaveBeenCalled();
       expect(emailScheduler.schedule).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'namnh@qnsc.vn' }),
+        expect.objectContaining({ to: 'alice@qnsc.vn' }),
         expect.anything(),
       );
     });
@@ -835,16 +835,16 @@ describe('WorkspaceService', () => {
     it('rotates the token and returns the accept URL WITHOUT emailing', async () => {
       const originalSentAt = new Date(Date.now() - 120_000);
       invitationRepo.findById.mockResolvedValue(
-        mockInvitation({ email: 'namnh@qnsc.vn', lastSentAt: originalSentAt }),
+        mockInvitation({ email: 'alice@qnsc.vn', lastSentAt: originalSentAt }),
       );
       invitationRepo.rotateForResend.mockResolvedValue(
-        mockInvitation({ email: 'namnh@qnsc.vn', resendCount: 1, lastSentAt: originalSentAt }),
+        mockInvitation({ email: 'alice@qnsc.vn', resendCount: 1, lastSentAt: originalSentAt }),
       );
 
       const link = await service.buildInvitationLink('ws-1', 'inv-1', 'actor-1');
 
       expect(link.inviteUrl).toMatch(/^http:\/\/localhost:5173\/accept-invitation\?token=.+$/);
-      expect(link.email).toBe('namnh@qnsc.vn');
+      expect(link.email).toBe('alice@qnsc.vn');
       expect(emailScheduler.schedule).not.toHaveBeenCalled();
     });
 

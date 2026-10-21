@@ -44,7 +44,7 @@ grep -qs 'npm.pkg.github.com/:_authToken' ~/.npmrc || echo '//npm.pkg.github.com
 
 export NODE_AUTH_TOKEN="$(gh auth token)"      # per shell (or wire via direnv)
 cp .env.example .env                           # every value is already wired, secrets are local placeholders
-docker compose -f docker-compose.dev.yml up -d --wait    # Postgres, Valkey, LocalStack (S3), OTel collector
+docker compose -f docker-compose.dev.yml up -d --wait    # Postgres, Valkey, Garage (S3), Mailpit, OTel collector, and the bucket setup (garage-init)
 pnpm install                                   # root (backend) + apps/web
 pnpm db:migrate                                # migrations + the RBAC catalogue + the demo users (SEED_ON_DEPLOY=true in .env)
 ```
@@ -52,12 +52,12 @@ pnpm db:migrate                                # migrations + the RBAC catalogue
 Then one terminal per process:
 
 ```bash
-pnpm start:dev          # API    → http://localhost:3000   (/readyz, /v1/*, /api/docs)
+pnpm start:dev          # API    → http://localhost:3010   (/readyz, /v1/*, /api/docs)
 pnpm start:dev:worker   # worker → relays and cron jobs; serves no HTTP
-pnpm dev:web            # SPA    → http://localhost:5173   (proxies /v1 to :3000)
+pnpm dev:web            # SPA    → http://localhost:5175   (proxies /v1 to :3010)
 ```
 
-Check it: `curl -s localhost:3000/readyz` answers `{"status":"ok", …}` (the API's own probe), and `curl -s localhost:5173/v1/healthz` answers **through the SPA's proxy**, which is what proves Vite and the API agree on the port.
+Check it: `curl -s localhost:3010/readyz` answers `{"status":"ok", …}` (the API's own probe), and `curl -s localhost:5175/v1/healthz` answers **through the SPA's proxy**, which is what proves Vite and the API agree on the port.
 
 The API and the worker validate against one schema, so one `.env` serves both and neither refuses the other's variables. `.env.example` marks every variable `[both]`, `[API]`, `[WORKER]` or `[web]`. The repo-root `.env` also serves the SPA (Vite exposes only `VITE_`-prefixed variables), so there is no second file to create.
 
@@ -65,45 +65,55 @@ The API and the worker validate against one schema, so one `.env` serves both an
 
 The login page has a "Sign in with Microsoft" button and, because `.env.example` sets `VITE_DEV_LOGIN=true`, a passwordless **dev login**: an email field for a seeded account, backed by identity's `POST /api/auth/test-login`. It is for local and non-production use only: identity loads that route only with `IDENTITY_TEST_LOGIN=enabled` AND `NODE_ENV` of `test` or `development`, and the env schema refuses it in production. The demo users `db:migrate` seeded:
 
-| email | role |
-| --- | --- |
-| `admin@qnsc.dev` | workspace_admin (platform admin) |
-| `dev@qnsc.dev` | no workspace-wide role (0 permissions): a member of Team Alpha, assigned the sample work items |
-| `viewer@qnsc.dev` | the same, as the read-only fixture |
+| email             | role                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| `admin@qnsc.dev`  | workspace_admin (platform admin)                                                               |
+| `dev@qnsc.dev`    | no workspace-wide role (0 permissions): a member of Team Alpha, assigned the sample work items |
+| `viewer@qnsc.dev` | the same, as the read-only fixture                                                             |
 
-**In the browser:** open http://localhost:5173, type `admin@qnsc.dev` in the dev-login field and submit.
+**In the browser:** open http://localhost:5175, type `admin@qnsc.dev` in the dev-login field and submit.
 
 **With curl** (an API call without a browser; the session is an opaque `__Secure-rova.session_token` cookie; a cookie jar will not send a `Secure` cookie over http, so replay it by hand):
 
 ```bash
-cookie=$(curl -s -D - -o /dev/null -H 'content-type: application/json' -d '{"email":"admin@qnsc.dev"}' localhost:3000/api/auth/test-login \
+cookie=$(curl -s -D - -o /dev/null -H 'content-type: application/json' -d '{"email":"admin@qnsc.dev"}' localhost:3010/api/auth/test-login \
   | sed -n 's/^set-cookie: \(__Secure-rova.session_token=[^;]*\).*/\1/ip' | tr -d '\r')
-curl -s -H "cookie: $cookie" localhost:3000/v1/auth/me
+curl -s -H "cookie: $cookie" localhost:3010/v1/auth/me
 ```
 
-**With Microsoft (optional).** The env schema requires `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` in every environment, so `.env.example` carries placeholders that let the API boot and sign nobody in. To use Microsoft locally, register a **dev** app in a tenant you control, separate from production's: platform *Web*, redirect URI `http://localhost:5173/api/auth/callback/microsoft`, delegated `openid profile email`, and a client secret. Put the real tenant id, client id and secret in `.env` and restart the API. The redirect is on the SPA origin because the browser lands there and the session cookie is set on that response.
+**With Microsoft (optional).** The env schema requires `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` in every environment, so `.env.example` carries placeholders that let the API boot and sign nobody in. To use Microsoft locally, register a **dev** app in a tenant you control, separate from production's: platform _Web_, redirect URI `http://localhost:5175/api/auth/callback/microsoft`, delegated `openid profile email`, and a client secret. Put the real tenant id, client id and secret in `.env` and restart the API. The redirect is on the SPA origin because the browser lands there and the session cookie is set on that response.
 
-### Ports, and running beside opshub
+### Ports, and running beside the other products
 
-These are the defaults. opshub's stack is offset from them (API 3001, Postgres 5433, Valkey 6380, LocalStack 4567, OTel 4319/8890) so both run at once. The two SPAs are the exception: both want 5173.
+Each product owns its own block, so opshub, rova and the knowledge base all run at once. The full table is in the org's
+"Local development" page (`.github`); the defaults here are the rova column.
 
-| | rova | opshub |
-| --- | --- | --- |
-| API | 3000 | **3001** |
-| SPA (Vite) | 5173 | 5173 |
-| Postgres | 5432 | **5433** |
-| Valkey | 6379 | **6380** |
-| LocalStack (S3) | 4566 | **4567** |
-| OTel collector (OTLP / Prometheus) | 4318 / 8889 | **4319** / **8890** |
+|                                    | rova (this repo)    | opshub      | knowledge base |
+| ---------------------------------- | ------------------- | ----------- | -------------- |
+| API                                | **3010**            | 3001        | 8000           |
+| SPA (Vite)                         | **5175**            | 5174        | 5173           |
+| Postgres                           | **5420**            | 5410        | 5432           |
+| Valkey                             | **6320**            | 6310        | 6379           |
+| Object storage (S3)                | **4620** (Garage)   | 4610        | 4570 (Garage)  |
+| OTel collector (OTLP / Prometheus) | **4420** / **8420** | 4410 / 8410 | (none)         |
+| Mailpit (SMTP / UI)                | **1120** / **8120** | 1110 / 8110 | (none)         |
 
-The Vite server uses `strictPort`: a second SPA fails with "Port 5173 is already in use" instead of quietly moving to 5174, where the sign-in redirect (`APP_BASE_URL`, whose `/api/auth/callback/microsoft` is the Entra redirect URI) and the upload bucket's CORS would no longer match. To run both SPAs, start one of them elsewhere and tell **its** API the new origin on the command line (a variable in the environment beats `.env`):
+#### Isolated e2e stack
+
+The e2e suite truncates the database it points at, and several people and agents test at once, so an e2e stack never uses the
+fixed ports above. `scripts/e2e/run.sh` starts its own compose project (`rova-e2e-<random>`, or `COMPOSE_PROJECT_NAME`) with
+`docker-compose.e2e.yml`, which publishes **ephemeral loopback ports**: Docker picks them, the runner finds them with
+`docker compose port`, and writes them into `.env.e2e` for the harness. The web and API ports are free ports the OS picks for that run.
 
 ```bash
-APP_BASE_URL=http://localhost:5174 CORS_ORIGINS=http://localhost:5174 pnpm start:dev
-pnpm dev:web --port 5174
+scripts/e2e/run.sh                                    # migrate, run the whole e2e suite, stop the stack (volumes kept)
+scripts/e2e/run.sh test/e2e/golden-journey.e2e.spec.ts   # or just the files you name
+E2E_KEEP=1 scripts/e2e/run.sh                         # keep the stack up for a manual look; prints nothing, see .env.e2e
+docker compose -p <project> --env-file .env.e2e -f docker-compose.dev.yml -f docker-compose.e2e.yml down -v   # remove its data too
 ```
 
-(File uploads in the browser need LocalStack's bucket CORS to allow that origin too: `WEB_ORIGIN` in `scripts/localstack/01-bootstrap.sh`.)
+`.env.e2e` is generated and git-ignored: `node scripts/e2e/make-env.mjs .env.e2e` writes it from `.env.example`. The org's
+"Local development" page (`.github`) has the dev port table and the e2e rule for every product.
 
 ### Run a second copy
 
@@ -111,22 +121,25 @@ Two checkouts, or a branch you want to keep running beside your main one, need t
 API and web ports. Every port is bound to `127.0.0.1` and read from `.env`. In the second copy's `.env`:
 
 1. `COMPOSE_PROJECT_NAME=rova-2`: the containers, volumes and network take this prefix. Every checkout or worktree sets its own.
-2. Give each `*_HOST_PORT` a free number: `POSTGRES_HOST_PORT`, `VALKEY_HOST_PORT`, `LOCALSTACK_HOST_PORT`, `OTEL_OTLP_HOST_PORT`, `OTEL_METRICS_HOST_PORT`.
-3. Put the same Postgres, Valkey and LocalStack numbers into `DATABASE_URL`, `REDIS_URL`, `STORAGE_ENDPOINT`, `AWS_ENDPOINT_URL`, and the OTLP port into `OTEL_EXPORTER_OTLP_ENDPOINT`. The app reads URLs, not the `*_HOST_PORT` values.
+2. Give each `*_HOST_PORT` a free number: `POSTGRES_HOST_PORT`, `VALKEY_HOST_PORT`, `STORAGE_HOST_PORT`, `OTEL_OTLP_HOST_PORT`, `OTEL_METRICS_HOST_PORT`, `MAILPIT_SMTP_HOST_PORT`, `MAILPIT_UI_HOST_PORT`.
+3. Put the same Postgres, Valkey and storage numbers into `DATABASE_URL`, `REDIS_URL` and `STORAGE_ENDPOINT`, and the OTLP port into `OTEL_EXPORTER_OTLP_ENDPOINT`. The app reads URLs, not the `*_HOST_PORT` values.
 4. The API: `PORT`. The SPA's proxy and the dev CSP follow it (or set `API_TARGET` to point the proxy somewhere else).
-5. The web: `WEB_DEV_PORT`. LocalStack's bucket CORS follows it. Then `APP_BASE_URL=http://localhost:<WEB_DEV_PORT>` and `CORS_ORIGINS=http://localhost:<WEB_DEV_PORT>`, so sign-in redirects and the API's CORS match the new origin.
+5. The web: `WEB_DEV_PORT`. Garage's bucket CORS follows it (the `garage-init` job reads it). Then `APP_BASE_URL=http://localhost:<WEB_DEV_PORT>` and `CORS_ORIGINS=http://localhost:<WEB_DEV_PORT>`, so sign-in redirects and the API's CORS match the new origin.
 
 For real Microsoft sign-in on the new web port, register `http://localhost:<WEB_DEV_PORT>/api/auth/callback/microsoft` as a redirect URI on your dev app; the test login needs none of this.
 
-Then run the same commands as above. The Playwright config's `baseURL` is pinned to 5173, so `pnpm --filter rova-web test:e2e` runs in one copy at a time.
+Then run the same commands as above. The Playwright config's `baseURL` is pinned to 5175, so `pnpm --filter rova-web test:e2e` runs in one copy at a time.
 
 ### Useful
 
 - `pnpm db:seed` loads only the baseline (roles, workspace, the platform admin); `pnpm db:seed:test` adds the one-project demo fixture; `pnpm db:studio` opens Drizzle Studio.
 - Telemetry: `docker compose -f docker-compose.dev.yml logs otel`, or `curl -s localhost:8889/metrics | grep queue_`. No collector? `OTEL_ENABLED=false` in `.env`.
 - Mail is `EMAIL_PROVIDER=dev`: messages are written to the API log and not sent (`LOG_DEV_EMAIL_CONTENT=true` includes the body, links included).
-- Uploads go to LocalStack's `rova-attachments` and `rova-public-assets` buckets; `aws --endpoint-url http://localhost:4566 s3 ls` (any credentials).
+- Uploads go to Garage's `rova-attachments` and `rova-public-assets` buckets. List them with `aws`, `AWS_DEFAULT_REGION=auto`, `--endpoint-url http://localhost:4620`, and the `STORAGE_ACCESS_KEY_ID` and `STORAGE_SECRET_ACCESS_KEY` values from `.env` as the credentials (the keys are local-only and public, see `.env.example`).
+- The bucket setup is a one-shot job: `docker compose -f docker-compose.dev.yml ps -a garage-init` shows `Exited (0)` when the buckets, their lifecycle and CORS for both loopback origins were set and each preflight was checked. A non-zero exit is the failure; the job's log names the step.
+- Uploads survive a restart of the storage node. To check it: upload with the stack up, run `docker compose -f docker-compose.dev.yml restart garage`, and list the bucket again. Garage keeps its data in the `garagedata` volume. `make check` does not restart anything, so it does not run this check.
 - Reset everything: `docker compose -f docker-compose.dev.yml down -v`, then `up -d --wait` and `pnpm db:migrate` again.
+- Upgrading an existing checkout to PostgreSQL 18: a 17 data directory will not start on the 18.6 image. The container stops with `Error: in 18+, these Docker images are configured to store database data in a format which is compatible with "pg_ctlcluster" (specifically, using major-version-specific directory names).`. Run `docker compose -f docker-compose.dev.yml down -v` once in that checkout, which **drops that checkout's local data** (its own project volumes only). To keep the data, first run `pg_dumpall` against the 17 container, then restore it into the 18 container. Then `up -d --wait` starts a fresh 18.6 database.
 - Upgrading an existing checkout (before `name: rova`): the containers were named `rova-postgres`, `rova-valkey`, `rova-localstack` and `rova-otel`, outside any project. Remove the four containers by name with `docker rm -f rova-postgres rova-valkey rova-localstack rova-otel`. Do not run `docker compose down -v` against an old project name: that removes volumes in whichever checkout owns that name. The old data stays in its volume, `<dir>_postgres_data`: the old project was named after the checkout folder (for example `rovalog`, volume `rovalog_postgres_data`), so the new `rova` project does not reuse it. To keep that data, run with `COMPOSE_PROJECT_NAME=<dir>`; to start fresh, use the default. Each checkout or worktree sets its own `COMPOSE_PROJECT_NAME`; never share one.
 - Least-privilege database roles locally, the way CI runs: see the comment above `DATABASE_URL` in `.env.example`.
 - Tests: `pnpm test` (unit), `pnpm test:e2e` (needs the stack and a migrated, seeded database).

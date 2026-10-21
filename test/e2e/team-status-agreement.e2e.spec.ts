@@ -42,7 +42,7 @@ import { WorkItemsService } from '@modules/work-items';
 import { TeamStatusService } from '@modules/team-status';
 import { ReportingService } from '@modules/reporting';
 
-import { SEEDED, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { SEEDED, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('Team Status agrees with Team Capacity (e2e)', () => {
   let app: NestFastifyApplication;
@@ -96,7 +96,7 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
   }
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     db = app.get<DrizzleDB>(DRIZZLE);
     items = app.get(WorkItemsService);
     iterationsSvc = app.get(IterationsService);

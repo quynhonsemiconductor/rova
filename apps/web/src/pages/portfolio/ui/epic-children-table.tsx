@@ -117,7 +117,7 @@ export function EpicChildrenTable({
   const { sortField, sortDir, toggle } = useTableSort<EpicSortField>()
 
   const table = useDataTable<PortfolioItem, unknown, EpicChildColKey>(EPIC_CHILD_COLUMNS, {
-    storageKey: 'rally-portfolio-epic-children-columns',
+    storageKey: 'rally-portfolio-epic-children-columns', // legacy physical name, do not rename
     // The select/drag gutter is 48px wide and sits before every column; without it the computed
     // table width is short by exactly that, and the horizontal scroll region ends early.
     leadingWidth: 48,

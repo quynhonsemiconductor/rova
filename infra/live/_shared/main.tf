@@ -79,7 +79,7 @@ module "ecr" {
 }
 
 # ── GitHub OIDC ───────────────────────────────────────────────────────────────
-# Owns ALL rally AWS deploy roles: API (per-env), ECR push, infra plan/apply.
+# Owns ALL rova AWS deploy roles: API (per-env), ECR push, infra plan/apply.
 # The web SPA deploys to Cloudflare Pages (see live/*/main.tf module "web"), so
 # it needs no AWS deploy role here.
 module "iam_oidc" {
@@ -106,19 +106,19 @@ module "iam_oidc" {
   }
 
   app_repo_names         = ["rova"] # monorepo: was rally-api
-  infra_repo_name        = "rova"   # monorepo: infra lives in rally/infra/
+  infra_repo_name        = "rova"   # monorepo: infra lives in rova/infra/
   ecr_repository_pattern = "rova-*"
   ecs_passrole_pattern   = "rova-*" # shared ecs-service names roles <cluster>-<service>-task
   tags                   = { Layer = "shared" }
 
-  # infra_plan_subjects / infra_apply_subjects: rally's infra-apply jobs run in
+  # infra_plan_subjects / infra_apply_subjects: rova's infra-apply jobs run in
   # the shared/develop/production GitHub Environments (see infra-apply.yml), which
   # exactly match the module defaults — so no override is needed.
 
-  # Blast-radius guardrail: explicit-Deny on the rally infra-apply role so a buggy
-  # rally apply cannot destroy the platform's own foundations (state bucket, lock
+  # Blast-radius guardrail: explicit-Deny on the rova infra-apply role so a buggy
+  # rova apply cannot destroy the platform's own foundations (state bucket, lock
   # table, OIDC provider, CMK) or mint IAM users — all of which are owned by
-  # qnsc-infra bootstrap, never by rally.
+  # qnsc-infra bootstrap, never by rova.
   infra_apply_guardrail = {
     state_bucket_arn     = "arn:aws:s3:::qnsc-tofu-state"
     lock_table_arn       = "arn:aws:dynamodb:ap-southeast-1:${data.aws_caller_identity.current.account_id}:table/qnsc-tofu-locks"
@@ -229,7 +229,7 @@ resource "aws_iam_role_policy" "deploy_rds_prod_guard" {
 # The domain identity itself (aws_sesv2_email_identity + its DKIM/mail-from Cloudflare records) moved
 # to qnsc-infra/live/edge (2026-08-31) — see that stack for why. This stack only owns the bounce/
 # complaint feedback loop below, which IS product-scoped: each product tags its sends with its own
-# configuration set and drains its own queue. `rally`'s IAM send grant (infra/modules/stack/main.tf)
+# configuration set and drains its own queue. `rova`'s IAM send grant (infra/modules/stack/main.tf)
 # constructs the identity ARN directly (arn:aws:ses:<region>:<account>:identity/<domain>) rather than
 # reading it from here, so this stack has no dependency on qnsc-infra/edge having applied first.
 

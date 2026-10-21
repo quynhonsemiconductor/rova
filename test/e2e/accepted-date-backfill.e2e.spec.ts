@@ -19,7 +19,7 @@ import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 
 import { backfillAcceptedDate } from '../../db/backfill-accepted-date';
-import { ADMIN_USER_ID, SEEDED, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { ADMIN_USER_ID, SEEDED, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('accepted_date backfill (e2e)', () => {
   let app: NestFastifyApplication;
@@ -50,7 +50,7 @@ describe('accepted_date backfill (e2e)', () => {
   }
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     db = app.get<DrizzleDB>(DRIZZLE);
     const rows = await db.execute<{
       schedule_state: string;

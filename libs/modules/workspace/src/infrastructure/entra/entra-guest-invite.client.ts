@@ -1,8 +1,8 @@
 /**
  * EntraGuestInviteClient — creates a Microsoft Entra B2B GUEST for an invited external
- * collaborator, so they can sign in with any real mailbox while Rally's own invitation stays the
+ * collaborator, so they can sign in with any real mailbox while Rova's own invitation stays the
  * authorization gate. Entra does the mailbox verification (their Microsoft work account, Google
- * federation, or an emailed one-time passcode); Rally never holds a credential for them.
+ * federation, or an emailed one-time passcode); Rova never holds a credential for them.
  *
  * Flow, app-only (no user in the loop):
  *   1. Client-credentials token — POST {authority}/{tenant}/oauth2/v2.0/token with
@@ -201,7 +201,7 @@ export class EntraGuestInviteClient {
          */
         inviteRedirectUrl: this.config.get('APP_BASE_URL'),
         /**
-         * Rally sends its own invitation email, carrying the token that is the actual
+         * Rova sends its own invitation email, carrying the token that is the actual
          * authorization gate — two emails would be two different calls to action for one
          * invitation. `false` is Graph's documented default; stated explicitly because a default
          * that changes silently would double-mail every invitee.

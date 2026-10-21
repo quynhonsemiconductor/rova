@@ -127,7 +127,7 @@ jobs:
         if: steps.touched.outputs.infra == 'true'
         # Shared with backend-deploy and three other repos — see `quynhonsemiconductor/ci`.
         # A rate limit is retried there rather than reported as a failed upstream run.
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@v1
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           workflow: infra-apply.yml
           label: Infrastructure · Apply
@@ -160,7 +160,7 @@ jobs:
       actions: read
     steps:
       - name: Wait for Web · CI on this commit
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@v1
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           workflow: web-ci.yml
           branch: main
@@ -192,7 +192,7 @@ jobs:
       actions: read
     steps:
       - name: Wait for Backend · Deploy of this tag
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@v1
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           workflow: backend-deploy.yml
           branch: ${{ github.ref_name }}
@@ -214,7 +214,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: quynhonsemiconductor/ci/.github/workflows/web-deploy.yml@v1
+    uses: quynhonsemiconductor/ci/.github/workflows/web-deploy.yml@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
     with:
       product: rova
       # Must equal `packageManager` in package.json: pnpm/action-setup refuses to run when the two differ

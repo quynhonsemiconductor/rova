@@ -93,7 +93,8 @@ export class NotificationSchedulerService {
         type: template as string,
         vars: vars,
         resourceId,
-        scheduledAt: scheduledAt ?? new Date(),
+        // Omitted when the caller gives no time: the column's DB default (now()) stamps it on the database clock.
+        ...(scheduledAt ? { scheduledAt } : {}),
         idempotencyKey,
       })
       .onConflictDoNothing({ target: notificationOutbox.idempotencyKey });

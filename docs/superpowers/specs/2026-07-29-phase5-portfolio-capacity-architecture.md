@@ -4,7 +4,7 @@
 **Date:** 2026-07-29
 **Status:** Proposal for review
 **Inputs:** BA SRS `04_Developement_tracking/Phase 5/{01_Portfolio_Items,02_Capacity_Planning}/SRS.md`
-(BA-closed 2026-07-28), verified against Broadcom Rally TechDocs.
+(BA-closed 2026-07-28), verified against Rally's TechDocs.
 
 ---
 
@@ -24,7 +24,7 @@
 - **The one genuinely new backend concept** is the Capacity Plan's *fixed allocation*:
   a value frozen at planning time that must not drift when child estimates change.
   That is a real column, not a rollup.
-- **Two SRS gaps to settle with the BA before build:** the Rally **cutline** and
+- **Two SRS gaps to settle with the BA before build:** Rally's **cutline** and
   Feature **planned start/end + status colour**. Both are cheap now and expensive later.
 
 ---
@@ -183,7 +183,7 @@ level. Conflating them is the mistake `enums.ts` D1/D2 already warns about.
 ## 4. The estimate mapping — do not hard-code
 
 The SRS calls `XS=1, S=3, M=5, L=8, XL=13` **temporary mockup data** and defers the real
-configuration to `Settings > Workspace > Project Management`. Real Rally makes this a
+configuration to `Settings > Workspace > Project Management`. Rally makes this a
 workspace-admin setting.
 
 **Therefore: ship it as configuration from day one, even without the UI.**
@@ -440,7 +440,7 @@ configurable estimate map). Get those reviewed before slice 2.
 
 ## 10. Open questions for the BA
 
-Three, in priority order. The first two are gaps against real Rally that are cheap now.
+Three, in priority order. The first two are gaps against Rally that are cheap now.
 
 1. **Cutline.** Rally's Capacity Plan Items tab draws a cutline: sort by rank ascending
    and a line marks where cumulative estimate exhausts capacity — above it fits, below
@@ -461,8 +461,8 @@ Three, in priority order. The first two are gaps against real Rally that are che
    `Project Management` UI exists — the alternative is Phase 5 shipping with no usable
    estimate fallback at all.
 
-Also worth noting, not blocking: the SRS labels the Rally `Initiative` level as **Epic**.
+Also worth noting, not blocking: the SRS labels Rally's `Initiative` level as **Epic**.
 Rally has no "Epic" in its portfolio hierarchy (`Feature → Initiative → Theme`); Epic is
 Jira vocabulary. The SRS says the relabel is deliberate. Keep the mapping visible in
-code comments and API docs so a future Rally-alignment effort does not have to rediscover
+code comments and API docs so a future ALM-alignment effort does not have to rediscover
 it.

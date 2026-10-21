@@ -80,7 +80,7 @@ concurrency:
   # land in the develop group and could run concurrently with a develop apply — two applies,
   # two different state files, one lock table, and the failure only shows up as a lock
   # timeout at the worst moment.
-  group: infra-apply-${{ github.repository }}-${{ (github.ref_type == 'tag' || inputs.target == 'prod') && 'prod' || 'develop' }}
+  group: infra-apply-${{ github.repository }}-${{ ((github.event_name != 'workflow_dispatch' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && inputs.target == 'prod')) && 'prod' || 'develop' }}
   cancel-in-progress: false
 
 permissions:
@@ -113,14 +113,24 @@ jobs:
     steps:
       - name: Refuse a prod apply that is not for a release tag
         env:
+          EVENT: ${{ github.event_name }}
           TARGET: ${{ inputs.target }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # Production is applied when the ref is a tag or the dispatch asks for it: exactly apply-prod's `if`.
+          # Production is applied by a dispatch that asks for it, or by a tag push: exactly apply-prod's `if`. A dispatch
+          # from a tag with target=develop is not a prod apply.
           prod=false
-          if [ "$REF_TYPE" = tag ] || [ "$TARGET" = prod ]; then prod=true; fi
+          if [ "$EVENT" = workflow_dispatch ]; then
+            if [ "$TARGET" = prod ]; then prod=true; fi
+          elif [ "$REF_TYPE" = tag ]; then prod=true; fi
+          # Develop applies run from a branch. A dispatch from a tag with target=develop would apply _shared from that
+          # tag's code and then skip develop: refuse it before anything applies.
+          if [ "$EVENT" = workflow_dispatch ] && [ "$REF_TYPE" = tag ] && [ "$TARGET" != prod ]; then
+            echo "::error title=develop apply refused::A dispatch from tag '$REF_NAME' with target '$TARGET' would apply _shared from that tag's code and skip develop. Develop applies run from a branch. Nothing was applied. Run it from main: gh workflow run infra-apply.yml --ref main -f target=develop"
+            exit 1
+          fi
           release=false
           if [ "$REF_TYPE" = tag ] && [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then release=true; fi
           if [ "$prod" = true ] && [ "$release" = false ]; then
@@ -160,7 +170,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@v1
+      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rova-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
@@ -198,7 +208,7 @@ jobs:
       # (piped, never written out): byte for byte the plan the next step applies. See
       # docs/runbooks/infra-destructive-guard.md.
       - name: destructive-guard (tfplan)
-        uses: quynhonsemiconductor/ci/actions/destructive-guard@v1
+        uses: quynhonsemiconductor/ci/actions/destructive-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           working-directory: infra/live/_shared
           plan-file: tfplan
@@ -227,7 +237,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@v1
+      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rova-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
@@ -286,7 +296,7 @@ jobs:
       # docs/runbooks/infra-destructive-guard.md.
       - name: destructive-guard (tfplan-pass1)
         if: steps.pass1.outputs.planned == 'true'
-        uses: quynhonsemiconductor/ci/actions/destructive-guard@v1
+        uses: quynhonsemiconductor/ci/actions/destructive-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           working-directory: infra/live/develop
           plan-file: tfplan-pass1
@@ -317,7 +327,7 @@ jobs:
       # (piped, never written out): byte for byte the plan the next step applies. See
       # docs/runbooks/infra-destructive-guard.md.
       - name: destructive-guard (tfplan)
-        uses: quynhonsemiconductor/ci/actions/destructive-guard@v1
+        uses: quynhonsemiconductor/ci/actions/destructive-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           working-directory: infra/live/develop
           plan-file: tfplan
@@ -380,7 +390,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   apply-prod:
     needs: apply-shared
-    if: github.ref_type == 'tag' || inputs.target == 'prod'
+    if: (github.event_name != 'workflow_dispatch' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && inputs.target == 'prod')
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 45
@@ -394,7 +404,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@v1
+      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rova-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
@@ -448,6 +458,16 @@ jobs:
           # (e.g. v1.4.2), so an infra apply never resets the task def to :latest.
           TF_VAR_image_tag:            ${{ github.ref_name }}
 
+      # TASK 0.3 / §17b: refuse a prod plan that destroys or replaces a database, secret, parameter group or target
+      # group unless the stack's .allow-data-destroy names that address with a reason. It reads the saved plan, so it
+      # judges exactly what the next step applies.
+      - name: plan-guard (tfplan-pass1)
+        if: steps.pass1.outputs.planned == 'true'
+        uses: quynhonsemiconductor/ci/actions/plan-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        with:
+          plan-file: tfplan-pass1
+          working-directory: infra/live/prod
+
       # Refuse a saved plan that DELETES or REPLACES a DNS, edge, mail-identity, certificate or key resource (the
       # 2026-10-09 outage) unless this run is allowed to: the PR being merged carries the label `allow-dns-destroy`
       # (ON TAG RUNS THE LOOKUP RESOLVES TO THE RELEASE PR, so a destructive prod change needs the label on the
@@ -456,7 +476,7 @@ jobs:
       # docs/runbooks/infra-destructive-guard.md.
       - name: destructive-guard (tfplan-pass1)
         if: steps.pass1.outputs.planned == 'true'
-        uses: quynhonsemiconductor/ci/actions/destructive-guard@v1
+        uses: quynhonsemiconductor/ci/actions/destructive-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           working-directory: infra/live/prod
           plan-file: tfplan-pass1
@@ -482,6 +502,15 @@ jobs:
           # (e.g. v1.4.2), so an infra apply never resets the task def to :latest.
           TF_VAR_image_tag:            ${{ github.ref_name }}
 
+      # TASK 0.3 / §17b: refuse a prod plan that destroys or replaces a database, secret, parameter group or target
+      # group unless the stack's .allow-data-destroy names that address with a reason. It reads the saved plan, so it
+      # judges exactly what the next step applies.
+      - name: plan-guard (tfplan)
+        uses: quynhonsemiconductor/ci/actions/plan-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        with:
+          plan-file: tfplan
+          working-directory: infra/live/prod
+
       # Refuse a saved plan that DELETES or REPLACES a DNS, edge, mail-identity, certificate or key resource (the
       # 2026-10-09 outage) unless this run is allowed to: the PR being merged carries the label `allow-dns-destroy`
       # (ON TAG RUNS THE LOOKUP RESOLVES TO THE RELEASE PR, so a destructive prod change needs the label on the
@@ -489,7 +518,7 @@ jobs:
       # (piped, never written out): byte for byte the plan the next step applies. See
       # docs/runbooks/infra-destructive-guard.md.
       - name: destructive-guard (tfplan)
-        uses: quynhonsemiconductor/ci/actions/destructive-guard@v1
+        uses: quynhonsemiconductor/ci/actions/destructive-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           working-directory: infra/live/prod
           plan-file: tfplan

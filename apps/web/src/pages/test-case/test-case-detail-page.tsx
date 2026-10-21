@@ -29,6 +29,7 @@ import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
 import { DetailField, DetailReadonlyValue } from '@/shared/ui/detail/detail-field'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { VerdictBadge } from '@/features/test-cases/ui/verdict-badge'
+import { RecordTypeBadge } from '@/features/test-cases/ui/record-type-badge'
 import { ProjectCell } from '@/shared/ui/project-cell'
 import { useRecordProject } from '@/shared/lib/deep-link-project'
 import { PageSpinner } from '@/shared/ui/spinner'
@@ -181,6 +182,7 @@ export function TestCaseDetailPage() {
   return (
     <DetailLayout
       onBack={back}
+      badge={<RecordTypeBadge type="testCase" />}
       itemKey={testCase.testCaseKey}
       copyLink={{
         key: testCase.testCaseKey,

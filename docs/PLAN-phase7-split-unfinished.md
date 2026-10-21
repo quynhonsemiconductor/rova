@@ -45,7 +45,7 @@ Broadcom Rally / from the mockup goes in `CLAUDE.md`, exactly as Phase 7 Test Ca
 
 1. **Target-Iteration team rule differs from the mockup** (D8): a team-less (shared) Iteration is a
    legal target for a team-owned Story. The mockup requires exact team equality.
-2. **Broadcom Rally splits into "the next iteration" automatically; we require an explicit target
+2. **Rally splits into "the next iteration" automatically; we require an explicit target
    choice** from the valid set. The SRS mandates the selector (§5.2), so this is BA-driven.
 3. **No Actual-hour time series exists.** Rally attributes worked hours by their own timestamps.
    Rova's `tasks.actual_hours` is a single manual scalar — `0052_task_actual_hours_manual.sql`

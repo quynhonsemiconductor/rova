@@ -11,7 +11,7 @@ try {
 
 import { Pool } from 'pg';
 import { resolveMigrationUrl } from './database-url';
-import { pgOptions } from './pg-ssl';
+import { pgOptions, tlsFromEnv } from './pg-ssl';
 import { log } from './script-log';
 
 const url = resolveMigrationUrl();
@@ -21,7 +21,7 @@ if (!['localhost', '127.0.0.1'].includes(host)) {
   process.exit(1);
 }
 
-const pool = new Pool({ ...pgOptions(url), max: 1 });
+const pool = new Pool({ ...pgOptions(url, tlsFromEnv()), max: 1 });
 
 async function run() {
   const { rows } = await pool.query<{ fq: string }>(`

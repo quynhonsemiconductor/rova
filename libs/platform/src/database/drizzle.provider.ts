@@ -58,6 +58,8 @@ export class DrizzleProvider implements OnModuleInit, OnModuleDestroy {
         DATABASE_USER: config.get('DATABASE_USER'),
         DATABASE_PASSWORD: config.get('DATABASE_PASSWORD'),
         DATABASE_SSLMODE: config.get('DATABASE_SSLMODE'),
+        DATABASE_SSL_CA: config.get('DATABASE_SSL_CA'),
+        NODE_ENV: config.get('NODE_ENV'),
       }),
       // `min` DOES NOT PRE-CREATE CONNECTIONS, and this option used to be here on the
       // belief that it did. Read pg-pool's source before changing it back: in

@@ -25,8 +25,8 @@
  * (`NO_CONNECTION` from our login box, `AADSTS50020` from Microsoft's). The email is therefore
  * scheduled HERE, by the only component that knows the guest is ready, in the same transaction that
  * marks the row `sent`. That is why the docblock this replaced was wrong to call a directory write
- * "not latency-critical" on the grounds that "the invitee has a Rally email to act on either way":
- * the Rally email is UNUSABLE until the guest exists, so it must not exist any earlier.
+ * "not latency-critical" on the grounds that "the invitee has a Rova email to act on either way":
+ * the Rova email is UNUSABLE until the guest exists, so it must not exist any earlier.
  *
  * Cadence is 10s, not the SCM backfill's 30s, for that same reason — the wait is now the invitee's,
  * not a background job's — and `wakeGuestInviteRelay` makes the ordinary case immediate, with the
@@ -36,7 +36,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { createHash } from 'node:crypto';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import {
   InjectDrizzle,
   Span,
@@ -47,7 +47,7 @@ import {
 import type { DrizzleDB, DrizzleTx } from '@platform';
 import { EmailSchedulerService } from '@platform/email';
 import { NotificationPubSubService } from '@platform/notifications';
-import { AbstractOutboxRelay, NonRetryableError } from '@platform/outbox';
+import { AbstractOutboxRelay, NonRetryableError, dbDelay } from '@platform/outbox';
 import type { Claimed, OutboxLeaseTable } from '@platform/outbox';
 import { EntraGuestInviteClient, PermanentGuestInviteError } from '@modules/workspace';
 import type { GuestInviteOutcome } from '@modules/workspace';
@@ -156,7 +156,7 @@ export class EntraGuestInviteRelayService
     return { inviteToken: null };
   }
 
-  protected async selectDue(tx: DrizzleTx, limit: number, now: Date): Promise<GuestInviteRow[]> {
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<GuestInviteRow[]> {
     return tx
       .select({
         id: guestInviteOutbox.id,
@@ -172,8 +172,8 @@ export class EntraGuestInviteRelayService
         and(
           eq(guestInviteOutbox.status, 'pending'),
           lt(guestInviteOutbox.attempts, this.maxAttempts),
-          lte(guestInviteOutbox.scheduledAt, now),
-          this.notLeased(now),
+          lte(guestInviteOutbox.scheduledAt, sql`now()`),
+          this.notLeased(),
         ),
       )
       .orderBy(
@@ -235,7 +235,7 @@ export class EntraGuestInviteRelayService
        */
       await tx
         .update(workspaceInvitations)
-        .set({ entraGuestObjectId: outcome.guestObjectId, updatedAt: new Date() })
+        .set({ entraGuestObjectId: outcome.guestObjectId, updatedAt: sql`now()` })
         .where(eq(workspaceInvitations.id, row.invitationId));
     }
 
@@ -262,7 +262,7 @@ export class EntraGuestInviteRelayService
       .update(guestInviteOutbox)
       .set({
         status: 'sent',
-        sentAt: new Date(),
+        sentAt: sql`now()`,
         /**
          * A non-fatal explanation on a SENT row: without it, "sent, yet the invitation carries no
          * guest id" has no answer on the row itself, and that is the ordinary outcome for a staff
@@ -307,7 +307,10 @@ export class EntraGuestInviteRelayService
       .select({
         status: workspaceInvitations.status,
         tokenHash: workspaceInvitations.tokenHash,
-        expiresAt: workspaceInvitations.expiresAt,
+        // Days remaining, computed by the database's own now() in this statement (not the host clock). Floored at 1: a
+        // "0 days" invitation reads as already dead, and an invitation whose window has closed is refused at accept time
+        // anyway.
+        expiresInDays: sql<number>`greatest(1, ceil(extract(epoch from (${workspaceInvitations.expiresAt} - now())) / 86400))::int`,
       })
       .from(workspaceInvitations)
       .where(eq(workspaceInvitations.id, row.invitationId))
@@ -336,12 +339,8 @@ export class EntraGuestInviteRelayService
     /**
      * Days REMAINING, from the invitation's own `expires_at` — not `INVITATION_TTL_DAYS`. The mail
      * leaves after provisioning and possibly after several backoff windows, so the configured TTL
-     * would overstate the window the invitee actually has. Floored at 1: a "0 days" invitation reads
-     * as already dead, and an invitation whose window has closed is refused at accept time anyway.
+     * would overstate the window the invitee actually has.
      */
-    const msRemaining = invitation.expiresAt.getTime() - Date.now();
-    const expiresInDays = Math.max(1, Math.ceil(msRemaining / 86_400_000));
-
     await this.emailScheduler.schedule(
       {
         to: row.email,
@@ -349,7 +348,7 @@ export class EntraGuestInviteRelayService
         vars: {
           inviteUrl: `${this.config.get('APP_BASE_URL')}/accept-invitation?token=${row.inviteToken}`,
           workspaceName: workspace.name,
-          expiresInDays: String(expiresInDays),
+          expiresInDays: String(invitation.expiresInDays),
           recipientEmail: row.email,
         },
         // Identical to `WorkspaceService.inviteMember`'s key, on purpose — see above.
@@ -380,7 +379,7 @@ export class EntraGuestInviteRelayService
     row: Claimed<GuestInviteRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
     // `attempts` was spent at claim time.
     await tx
@@ -390,7 +389,7 @@ export class EntraGuestInviteRelayService
         lastError,
         // Only a retry moves scheduledAt forward; a terminal row keeps its last one, and
         // selectDue never selects 'failed' again.
-        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
         // A retry still needs the token to build the email it may yet send; a terminal row never
         // will, so it must not keep a live credential (migration 0124).
         ...(newStatus === 'failed' ? { inviteToken: null } : {}),

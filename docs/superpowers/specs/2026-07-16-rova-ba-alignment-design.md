@@ -1,4 +1,4 @@
-# Rally ↔ BA Business Alignment — Design Spec
+# Rova ↔ BA Business Alignment — Design Spec
 
 Date: 2026-07-16
 Source of truth: `product-docs/projects/mini-rally` (BA docs + SRS Phase 0–3 + mockup).

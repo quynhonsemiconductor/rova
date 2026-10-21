@@ -292,3 +292,54 @@ describe('EnvSchema — EMAIL_PROVIDER=graph (Microsoft 365 mail)', () => {
     expect(result.success && result.data.MAIL_GRAPH_FEDERATED_TOKEN_FILE).toBe('/var/run/token');
   });
 });
+
+describe('EnvSchema — EMAIL_PROVIDER=smtp (Mailpit, development only)', () => {
+  const smtp = {
+    EMAIL_PROVIDER: 'smtp',
+    MAIL_SMTP_HOST: 'localhost',
+    MAIL_SMTP_PORT: '1120',
+    MAIL_FROM_EMAIL: 'noreply@qnsc.vn',
+  };
+
+  it('needs the relay host and port, and a sender', () => {
+    const missing = EnvSchema.safeParse(
+      env({ EMAIL_PROVIDER: 'smtp', MAIL_FROM_EMAIL: 'noreply@qnsc.vn' }),
+    );
+    expect(missing.success).toBe(false);
+    expect(
+      !missing.success && missing.error.issues.some((i) => i.path[0] === 'MAIL_SMTP_HOST'),
+    ).toBe(true);
+    expect(EnvSchema.safeParse(env(smtp)).success).toBe(true);
+  });
+
+  it('refuses the relay in production, whatever else is set', () => {
+    const result = EnvSchema.safeParse(env({ ...smtp, NODE_ENV: 'production' }));
+    expect(result.success).toBe(false);
+    expect(
+      !result.success && result.error.issues.some((i) => i.message.includes('development only')),
+    ).toBe(true);
+  });
+
+  it('rejects a port that is not a port', () => {
+    expect(EnvSchema.safeParse(env({ ...smtp, MAIL_SMTP_PORT: '70000' })).success).toBe(false);
+  });
+});
+
+describe('EnvSchema — platform admin roster', () => {
+  // The roster is NOT required at the schema level: the worker shares this schema and
+  // never receives the bundle key (it is injected into the API only), so production
+  // with an empty roster must still parse — the worker boots on it. Production also
+  // requires an https APP_BASE_URL; satisfy the unrelated rules so these assertions
+  // isolate the roster.
+  const prod = env({ NODE_ENV: 'production', APP_BASE_URL: 'https://rova.example' });
+
+  it('parses a production environment without the roster — the worker boots on it', () => {
+    expect(EnvSchema.safeParse(prod).success).toBe(true);
+  });
+
+  it('parses a production environment with the roster set — the API reads it', () => {
+    const result = EnvSchema.safeParse({ ...prod, PLATFORM_ADMIN_EMAILS: 'devops@qnsc.vn' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.PLATFORM_ADMIN_EMAILS).toBe('devops@qnsc.vn');
+  });
+});
