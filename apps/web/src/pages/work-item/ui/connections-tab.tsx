@@ -80,14 +80,18 @@ const CONNECTION_COLUMNS: ColumnSpec<ScmConnection, ScmCtx, ConnColKey>[] = [
     locked: true,
     grow: true,
     cellClassName: 'flex min-w-0 items-center px-2',
-    // Name is plain text; the Url column carries the link (matches Rally).
+    // Name is plain text; the Url column carries the link (matches Rally). A `grow` free-text
+    // column, so it needs `WrapBox` for the same reason Message does: unwrapped, a long PR title
+    // sizes the row and pushes Type / Url / Creation Date off-screen.
     cell: (c) => (
-      <span className="flex min-w-0 items-center gap-1.5">
-        <span className="break-words whitespace-normal text-foreground" title={c.name}>
-          {c.name}
+      <WrapBox>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 break-words whitespace-normal text-foreground" title={c.name}>
+            {c.name}
+          </span>
+          {c.state ? <span className="text-ui-xs text-foreground-subtle">({c.state})</span> : null}
         </span>
-        {c.state ? <span className="text-ui-xs text-foreground-subtle">({c.state})</span> : null}
-      </span>
+      </WrapBox>
     ),
   },
   {

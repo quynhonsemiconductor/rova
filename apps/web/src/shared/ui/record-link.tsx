@@ -62,17 +62,25 @@ export function RecordOpener({
   onOpen,
   title,
   className,
+  ariaLabel,
   children,
 }: {
   href: string | undefined
   onOpen: () => void
   title?: string
   className?: string
+  ariaLabel?: string
   children: ReactNode
 }) {
   if (href) {
     return (
-      <RecordLink href={href} onOpen={onOpen} title={title} className={className}>
+      <RecordLink
+        href={href}
+        onOpen={onOpen}
+        title={title}
+        className={className}
+        ariaLabel={ariaLabel}
+      >
         {children}
       </RecordLink>
     )
@@ -84,7 +92,10 @@ export function RecordOpener({
         e.stopPropagation()
         onOpen()
       }}
+      // Middle-click fires `auxclick`, not `click` — stopped here too, exactly as the link does.
+      onAuxClick={(e) => e.stopPropagation()}
       title={title}
+      aria-label={ariaLabel}
       className={className}
     >
       {children}

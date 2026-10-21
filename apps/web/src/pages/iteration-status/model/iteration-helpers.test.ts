@@ -56,6 +56,10 @@ describe('iterationStatusTotals', () => {
 
     expect(totals.planEst).toBe(10.6)
   })
+
+  it('shows hundredths at one decimal place — the product decision, not a precision loss bug', () => {
+    expect(iterationStatusTotals([{ planEstimate: 14.52 }]).planEst).toBe(14.5)
+  })
 })
 
 describe('sortStatusRows', () => {

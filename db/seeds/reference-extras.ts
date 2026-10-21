@@ -343,7 +343,10 @@ async function seedScm(db: Db): Promise<void> {
         provider: 'github',
         type: 'pull_request',
         externalId: '4821',
-        name: 'feat(nx): upgrade to v21',
+        // A real PR title's length, on purpose — see the changeset message below (`backlog.e2e.ts`).
+        name:
+          'feat(nx): upgrade the workspace to Nx v21, move every generator onto the project graph API ' +
+          'and drop the legacy workspace.json reader',
         url: 'https://github.com/quynhonsemiconductor/rova/pull/4821',
         state: 'open',
       },

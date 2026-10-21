@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createEvent, fireEvent, render, screen } from '@testing-library/react'
 
 import { isNewTabClick } from '@/shared/lib/new-tab-click'
-import { RecordLink } from './record-link'
+import { RecordLink, RecordOpener } from './record-link'
 
 /** Fire a click and report whether the handler prevented the browser's default. */
 function click(el: HTMLElement, init: MouseEventInit = {}): boolean {
@@ -86,5 +86,37 @@ describe('RecordLink', () => {
     fireEvent(link, new MouseEvent('auxclick', { bubbles: true, button: 1 }))
     expect(rowClick).not.toHaveBeenCalled()
     expect(rowAux).not.toHaveBeenCalled()
+  })
+})
+
+describe('RecordOpener', () => {
+  it('without a URL is a button that, like the link, lets no click or middle-click reach the row', () => {
+    const rowClick = vi.fn()
+    const rowAux = vi.fn()
+    const onOpen = vi.fn()
+    render(
+      <div onClick={rowClick} onAuxClick={rowAux}>
+        <RecordOpener href={undefined} onOpen={onOpen} ariaLabel="Open FE-1">
+          FE-1
+        </RecordOpener>
+      </div>,
+    )
+    const button = screen.getByRole('button', { name: 'Open FE-1' })
+    click(button)
+    fireEvent(button, new MouseEvent('auxclick', { bubbles: true, button: 1 }))
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(rowClick).not.toHaveBeenCalled()
+    expect(rowAux).not.toHaveBeenCalled()
+  })
+
+  it('with a URL is the link, carrying the same accessible name', () => {
+    render(
+      <RecordOpener href="/portfolio/pf-1" onOpen={() => {}} ariaLabel="Open FE-1">
+        FE-1
+      </RecordOpener>,
+    )
+    expect(screen.getByRole('link', { name: 'Open FE-1' }).getAttribute('href')).toBe(
+      '/portfolio/pf-1',
+    )
   })
 })

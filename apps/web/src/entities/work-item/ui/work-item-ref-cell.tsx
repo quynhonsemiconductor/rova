@@ -25,10 +25,12 @@ interface WorkItemRefCellProps {
   onOpen?: () => void
   /**
    * Detail URL for Ctrl/Cmd+click, middle-click and "Open link in new tab" (US-120). Defaults to
-   * `/item/{itemKey}` for a Story / Task / Defect; a portfolio reference (Feature) is addressed by
-   * id and must pass its own. Without one the reference opens in place only.
+   * `/item/{itemKey}` for a Story / Task / Defect, and to `/portfolio/{recordId}` for an Epic /
+   * Feature given `recordId`. Without either the reference opens in place only.
    */
   href?: string
+  /** The record's own id, so an Epic / Feature is addressed by id exactly as `IdCell` does it. */
+  recordId?: string
   /**
    * Visual treatment:
    * - `inline` (default) — bare glyph + text for use inside grid cells.
@@ -55,6 +57,7 @@ export function WorkItemRefCell({
   title,
   onOpen,
   href,
+  recordId,
   variant = 'inline',
 }: WorkItemRefCellProps) {
   const label = title ? `${itemKey}: ${title}` : itemKey
@@ -75,7 +78,7 @@ export function WorkItemRefCell({
   }
 
   // Built only past the read-only branch: a cell without `onOpen` ignores the URL.
-  const target = href ?? defaultRecordHref(type, itemKey)
+  const target = href ?? defaultRecordHref(type, itemKey, recordId)
 
   if (variant === 'pill') {
     // `text-ui-sm`, matching the read-only rendering above and every other editable cell: this

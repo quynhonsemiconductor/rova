@@ -164,17 +164,34 @@ test.describe('leaving a work-item detail', () => {
   })
 })
 
-test.describe('work-item detail — Changesets', () => {
+test.describe('work-item detail — Connections tab', () => {
   // US-120 (Production, 2026-10-06): each row is `minWidth: max-content`, so an unwrapped commit
   // message sized the row to the whole message and pushed Changes / Author / Commit Timestamp off to
   // the right. Fixture: US-1's seeded changeset carries a subject + body (`reference-extras.ts`).
-  test('a long commit message wraps inside its column instead of widening the row', async ({
+  test('long PR titles and commit messages wrap inside their columns, not widening the row', async ({
     page,
   }) => {
     await loginAndSelectProject(page)
     await page.goto('/item/US-1')
     await settle(page)
     await page.getByRole('tab', { name: /Connections/ }).click()
+
+    // Connections (the default sub-tab): the PR title is the same kind of `grow` free-text column.
+    const title = page.locator('span[title^="feat(nx): upgrade the workspace to Nx v21"]')
+    const nameHeader = page.getByRole('button', { name: /^Name, / })
+    const created = page.getByText('Creation Date', { exact: true })
+    await expect(title).toBeVisible()
+    await expect(nameHeader).toBeVisible()
+    await expect(created).toBeVisible()
+    const titleBox = await title.boundingBox()
+    const nameHeaderBox = await nameHeader.boundingBox()
+    const createdBox = await created.boundingBox()
+    expect(titleBox).not.toBeNull()
+    expect(nameHeaderBox).not.toBeNull()
+    expect(createdBox).not.toBeNull()
+    expect(titleBox!.width).toBeLessThanOrEqual(nameHeaderBox!.width + 1)
+    expect(createdBox!.x + createdBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+
     await page.getByRole('tab', { name: /Changesets/ }).click()
 
     const message = page.locator('span[title^="feat(nx): bump workspace to v21 and migrate"]')

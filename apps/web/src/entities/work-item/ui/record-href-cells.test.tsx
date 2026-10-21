@@ -65,6 +65,11 @@ describe('IdCell / WorkItemRefCell carry the record URL', () => {
     expect(screen.getByText(/FE-2/)).toBeTruthy()
   })
 
+  it('WorkItemRefCell derives a portfolio URL from recordId, as IdCell does', () => {
+    render(<WorkItemRefCell type="feature" itemKey="FE-2" onOpen={() => {}} recordId="pf-2" />)
+    expect(screen.getByRole('link').getAttribute('href')).toBe('/portfolio/pf-2')
+  })
+
   it('WorkItemRefCell links both variants', () => {
     const { rerender } = render(
       <WorkItemRefCell type="story" itemKey="US-6" title="Parent" onOpen={() => {}} />,
