@@ -44,7 +44,8 @@ export function defaultRecordHref(
   if (!isAddressedType(type)) return undefined
   if (ADDRESSING[type] === 'key') {
     // No key yet (an optimistic row) means no URL — never a bare `/item/`. The same rule
-    // `entityLinkFor` applies (`!key` → `undefined`).
+    // `entityLinkFor` applies (`!key` → `undefined`). A cell that renders such a row and LATER gets
+    // its key flips <button> → <a>: see the first-render note on `RecordOpener`.
     return itemKey ? entityDetailPath.workItem(itemKey) : undefined
   }
   return recordId ? entityDetailPath.portfolioItem(recordId) : undefined

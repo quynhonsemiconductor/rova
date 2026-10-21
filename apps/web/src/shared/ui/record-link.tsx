@@ -67,6 +67,13 @@ const RECORD_OPENER_RESET =
   'group cursor-pointer border-none bg-transparent p-0 text-left no-underline'
 
 /**
+ * The link treatment for the LABEL inside an opener: link colour, underline only on hover of the
+ * whole opener (`group-hover`, which is why the reset carries `group`). One constant, so the ID and
+ * reference cells cannot drift when the link look next changes.
+ */
+export const RECORD_LINK_LABEL = 'text-primary-light underline-offset-2 group-hover:underline'
+
+/**
  * Whether `href` is an in-app path (`/item/US-5`), the only thing a record link may carry. A
  * `javascript:` URL, another scheme, or a protocol-relative `//host` is refused: the components below
  * are the one place every ID and reference cell renders its URL, so this is where that contract is
@@ -93,7 +100,8 @@ export function isInAppPath(href: string): boolean {
  * props it renders with, in the same render, so for a row that arrives with its data the element is
  * decided on the first one. The one exception the rule itself allows: a work-item row rendered
  * before it HAS a key gets no URL (`defaultRecordHref`), and would flip `<button>` → `<a>` when the
- * key arrives. No surface renders such a row today; a new one that does accepts that remount.
+ * key arrives. No surface renders such a row today; a new one that does accepts that remount. (The
+ * empty-key branch of `defaultRecordHref` points back here.)
  * Do not pass a URL that resolves asynchronously otherwise.
  */
 export function RecordOpener({

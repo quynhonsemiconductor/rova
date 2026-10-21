@@ -1,7 +1,8 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import type { WorkItemType } from '@/entities/work-item/model/types'
 import { resolveRecordHref } from '@/entities/work-item/model/record-href'
-import { RecordOpener } from '@/shared/ui/record-link'
+import { RECORD_LINK_LABEL, RecordOpener } from '@/shared/ui/record-link'
+import { cn } from '@/shared/lib/utils'
 
 interface IdCellProps {
   /** Work-item type — drives the leading {@link TypeBadge} glyph. */
@@ -74,9 +75,7 @@ export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
       {/* `min-h-5` (in `KEY_CLASS`) so a one-line key sits CENTRED against the type glyph rather than
           riding its top edge, which is the same rule the team and owner cells follow. A wrapped key
           still starts level with the glyph. */}
-      <span className={`${KEY_CLASS} text-primary-light underline-offset-2 group-hover:underline`}>
-        {itemKey}
-      </span>
+      <span className={cn(KEY_CLASS, RECORD_LINK_LABEL)}>{itemKey}</span>
     </>
   )
 
