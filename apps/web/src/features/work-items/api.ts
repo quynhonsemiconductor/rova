@@ -615,27 +615,6 @@ export function useWorkItemCounts(projects: Array<{ id: string }>) {
   })
 }
 
-export function useCommittedIterationsWorkItems(projectIds: string[], userId?: string) {
-  return useQuery({
-    // Copy before sorting: `sort()` mutates in place, and `projectIds` is the caller's array.
-    queryKey: ['work-items-committed-iterations', [...projectIds].sort(), userId],
-    queryFn: async () => {
-      if (projectIds.length === 0) return []
-      const results = await Promise.all(
-        projectIds.map(async (projectId) => {
-          const { data } = await apiClient.GET('/v1/work-items', {
-            params: { query: { projectId, assigneeId: userId, limit: 50 } },
-          })
-          return (data as { data: WorkItem[] } | undefined)?.data ?? []
-        }),
-      )
-      return results.flat()
-    },
-    enabled: projectIds.length > 0,
-    staleTime: 30_000,
-  })
-}
-
 // ── Watchers (P1-23) ──────────────────────────────────────────────────────────
 
 export function useWatchers(workItemId: string | undefined) {

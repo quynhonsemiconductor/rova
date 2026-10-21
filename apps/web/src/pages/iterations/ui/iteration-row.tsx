@@ -91,6 +91,8 @@ export function IterationRow({
           type="iteration"
           itemKey={it.iterationKey ?? '--'}
           onOpen={onOpen}
+          // Not gated: `onOpen` is a REQUIRED prop here, so every row opens and its URL cannot drift
+          // from the click. Addressed by id, so an iteration with no key yet still has a real page.
           href={entityDetailPath.iteration(it.id)}
         />
       </div>

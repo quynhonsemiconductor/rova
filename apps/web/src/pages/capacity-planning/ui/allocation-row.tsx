@@ -15,7 +15,6 @@ import { useCapacityWarningText } from '@/features/capacity-planning/warning-lab
 import { type AllocColKey } from '../model/columns'
 import { EstimateTierIcon } from './estimate-tier-badge'
 import { CapacityItemActions } from './capacity-item-actions'
-import { entityDetailPath } from '@/shared/lib/entity-link'
 
 /**
  * One allocated Feature inside its team's sub-table (or the Unallocated bucket's).
@@ -191,7 +190,7 @@ export function AllocationRow({
           type="feature"
           itemKey={allocation.itemKey}
           onOpen={() => onOpenFeature(allocation.portfolioItemId)}
-          href={entityDetailPath.portfolioItem(allocation.portfolioItemId)}
+          recordId={allocation.portfolioItemId}
         />
       </div>
 
