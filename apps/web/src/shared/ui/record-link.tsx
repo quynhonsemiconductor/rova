@@ -73,15 +73,15 @@ function RecordLink({
 const RECORD_OPENER_RESET =
   'group/record cursor-pointer border-none bg-transparent p-0 text-left no-underline'
 
+/** The link COLOUR and underline offset every record link shares, opener label or `CellLink`. */
+export const RECORD_LINK_COLOUR = 'text-primary-light underline-offset-2'
+
 /**
  * The link treatment for the LABEL inside an opener: link colour, underline only on hover of the
  * opener itself. A NAMED group (`group/record`): a bare `group-hover:` matches ANY ancestor `group`,
  * and most grid rows carry one, so every ID in a row underlined when the row was hovered. One constant, so the ID and
  * reference cells cannot drift when the link look next changes.
  */
-/** The link COLOUR and underline offset every record link shares, opener label or `CellLink`. */
-export const RECORD_LINK_COLOUR = 'text-primary-light underline-offset-2'
-
 export const RECORD_LINK_LABEL = cn(RECORD_LINK_COLOUR, 'group-hover/record:underline')
 
 /**
