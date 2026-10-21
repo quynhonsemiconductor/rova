@@ -34,7 +34,6 @@ export interface ActivityRow extends ActivityLike {
   createdAt: string
   actorId: string | null
   actorName: string | null
-  entityType?: string
 }
 
 /**
@@ -111,18 +110,19 @@ export function ActivityHistoryTab({
   }
 
   const grid = actionLayout ? ACTION_GRID : GRID
-  const headers = actionLayout
+  // Keyed by a stable column id, not the label: two translated labels may coincide.
+  const headers: [id: string, label: string][] = actionLayout
     ? [
-        actionLayout.columns.time,
-        actionLayout.columns.actor,
-        actionLayout.columns.action,
-        actionLayout.columns.details,
+        ['time', actionLayout.columns.time],
+        ['actor', actionLayout.columns.actor],
+        ['action', actionLayout.columns.action],
+        ['details', actionLayout.columns.details],
       ]
     : [
-        t('common:revision', 'Revision'),
-        t('common:description', 'Description'),
-        t('common:creationDate', 'Creation Date'),
-        t('common:user', 'User'),
+        ['revision', t('common:revision', 'Revision')],
+        ['description', t('common:description', 'Description')],
+        ['creationDate', t('common:creationDate', 'Creation Date')],
+        ['user', t('common:user', 'User')],
       ]
 
   return (
@@ -136,8 +136,8 @@ export function ActivityHistoryTab({
         <div
           className={`grid ${grid} border-b border-border-strong bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wider text-muted-foreground uppercase`}
         >
-          {headers.map((label) => (
-            <span key={label}>{label}</span>
+          {headers.map(([id, label]) => (
+            <span key={id}>{label}</span>
           ))}
         </div>
 

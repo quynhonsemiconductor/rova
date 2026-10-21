@@ -22,7 +22,6 @@ function row(over: Partial<ActivityRow>): ActivityRow {
     createdAt: '2026-10-16T09:00:00.000Z',
     actorId: 'u-actor',
     actorName: 'Linh Tran',
-    entityType: 'test_result',
     action: 'test_result.updated',
     changes: null,
     metadata: { subjectKey: 'TR-4' },
@@ -56,7 +55,6 @@ describe('Test activity history', () => {
     renderHistory([
       row({
         id: 'a',
-        entityType: 'test_case',
         action: 'test_case.created',
         metadata: { subjectKey: 'TC-12', name: 'Login works' },
       }),
@@ -105,7 +103,6 @@ describe('Test activity history', () => {
   it('a person whose name did not resolve reads "Unknown user", never an id', () => {
     renderHistory([
       row({
-        entityType: 'test_case',
         changes: { field: 'ownerId', old: null, new: TESTER_A },
         metadata: { subjectKey: 'TC-12', oldName: null, newName: null },
       }),
@@ -121,7 +118,6 @@ describe('Test activity history', () => {
       row({ id: 'v', changes: { field: 'verdict', old: 'pass', new: 'blocked' } }),
       row({
         id: 'vi',
-        entityType: 'test_case',
         changes: { field: 'validationInput', old: 'a', new: 'b' },
         metadata: { subjectKey: 'TC-12' },
       }),
