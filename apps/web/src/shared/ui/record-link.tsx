@@ -76,8 +76,10 @@ const RECORD_OPENER_RESET =
  * and most grid rows carry one, so every ID in a row underlined when the row was hovered. One constant, so the ID and
  * reference cells cannot drift when the link look next changes.
  */
-export const RECORD_LINK_LABEL =
-  'text-primary-light underline-offset-2 group-hover/record:underline'
+/** The link COLOUR and underline offset every record link shares, opener label or `CellLink`. */
+export const RECORD_LINK_COLOUR = 'text-primary-light underline-offset-2'
+
+export const RECORD_LINK_LABEL = cn(RECORD_LINK_COLOUR, 'group-hover/record:underline')
 
 /**
  * The label's LAYOUT inside an ID / reference cell: one line centred against the type glyph
@@ -157,7 +159,8 @@ export function RecordOpener({
       // The URL's SHAPE and length only, never its content: this branch exists because a caller
       // passed something unexpected, which could carry user text, an email or a token — a log line
       // must not become a copy of it. The shape already names the defect.
-      const shape = hrefRefusal(href) ?? 'unknown'
+      // Never undefined here: this branch runs only when `isInAppPath` refused, i.e. there IS a reason.
+      const shape = hrefRefusal(href)
       reportOnce(
         `record-link:refused:${shape}`,
         `RecordOpener: refused a URL that is not an in-app path (${shape}, ${href.length} chars), opening in place`,

@@ -77,11 +77,10 @@ import { TeamAvatar } from '@/shared/ui/team-cell'
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 import { SelectionModal } from '@/shared/ui/selection-modal'
 import { useRankPortfolioItem } from '@/features/portfolio/api'
-import { entityLinkFor } from '@/shared/lib/entity-link'
+import { entityDetailPath, entityLinkFor } from '@/shared/lib/entity-link'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 import { PublishPlanModal } from './ui/publish-plan-modal'
 import { EditCapacityPlanModal } from './ui/edit-capacity-plan-modal'
-import { entityDetailPath } from '@/shared/lib/entity-link'
 
 export function CapacityPlanDetailPage() {
   const { t } = useTranslation('capacity')

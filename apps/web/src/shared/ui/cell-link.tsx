@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/shared/lib/utils'
-import { RecordOpener } from '@/shared/ui/record-link'
+import { RECORD_LINK_COLOUR, RecordOpener } from '@/shared/ui/record-link'
 
 /**
  * CellLink — the shared link affordance for table/list cells whose text opens a
@@ -37,7 +37,9 @@ export function CellLink({
   // only underline a child of the `group/record` opener, and here the opener IS the text, so the
   // underline must be its own `hover:`.
   const classes = cn(
-    'block text-left text-primary-light underline-offset-2 hover:underline',
+    'block text-left',
+    RECORD_LINK_COLOUR,
+    'hover:underline',
     wrap ? 'break-words whitespace-normal' : 'truncate',
     className,
   )
