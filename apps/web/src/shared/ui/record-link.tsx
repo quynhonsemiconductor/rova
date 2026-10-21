@@ -74,6 +74,12 @@ const RECORD_OPENER_RESET =
 export const RECORD_LINK_LABEL = 'text-primary-light underline-offset-2 group-hover:underline'
 
 /**
+ * The label's LAYOUT inside an ID / reference cell: one line centred against the type glyph
+ * (`min-h-5`), wrapping when long. Each cell adds only its type scale (mono key vs body text).
+ */
+export const RECORD_LABEL_LAYOUT = 'flex min-h-5 min-w-0 items-center break-words whitespace-normal'
+
+/**
  * Whether `href` is an in-app path (`/item/US-5`), the only thing a record link may carry. A
  * `javascript:` URL, another scheme, or a protocol-relative `//host` is refused: the components below
  * are the one place every ID and reference cell renders its URL, so this is where that contract is

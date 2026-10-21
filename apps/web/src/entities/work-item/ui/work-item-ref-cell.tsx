@@ -1,7 +1,7 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { resolveRecordHref } from '@/entities/work-item/model/record-href'
 import type { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
-import { RECORD_LINK_LABEL, RecordOpener } from '@/shared/ui/record-link'
+import { RECORD_LABEL_LAYOUT, RECORD_LINK_LABEL, RecordOpener } from '@/shared/ui/record-link'
 import { cn } from '@/shared/lib/utils'
 
 interface WorkItemRefCellProps {
@@ -116,14 +116,7 @@ export function WorkItemRefCell({
       <TypeBadge type={type} size={16} />
       {/* `min-h-5` so a one-line reference centres against its type glyph instead of riding its top
           edge — the same rule the team, owner and ID cells follow. */}
-      <span
-        className={cn(
-          'flex min-h-5 min-w-0 items-center text-ui-sm break-words whitespace-normal',
-          RECORD_LINK_LABEL,
-        )}
-      >
-        {label}
-      </span>
+      <span className={cn(RECORD_LABEL_LAYOUT, 'text-ui-sm', RECORD_LINK_LABEL)}>{label}</span>
     </>
   )
   return (

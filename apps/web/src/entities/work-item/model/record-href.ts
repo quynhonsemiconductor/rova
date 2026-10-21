@@ -3,6 +3,13 @@ import { entityDetailPath } from '@/shared/lib/entity-link'
 
 type AddressedType = WorkItemType | PortfolioItemType
 
+// The two enums must not share a VALUE: the map below is keyed by value, so a shared one would
+// collapse two entries into one with no error and flip a record kind to the wrong scheme. A shared
+// value makes `Extract<…>` non-`never`, and this line then fails to compile.
+const enumsAreDisjoint: [Extract<WorkItemType, PortfolioItemType>] extends [never] ? true : never =
+  true
+void enumsAreDisjoint
+
 /**
  * How each record kind is addressed. A `Record` over BOTH enums, so a member added to either enum
  * is a COMPILE error here until someone decides how it is addressed — it cannot fall through to

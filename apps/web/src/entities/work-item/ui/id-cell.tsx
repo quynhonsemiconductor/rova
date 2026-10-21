@@ -1,7 +1,7 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import type { WorkItemType } from '@/entities/work-item/model/types'
 import { resolveRecordHref } from '@/entities/work-item/model/record-href'
-import { RECORD_LINK_LABEL, RecordOpener } from '@/shared/ui/record-link'
+import { RECORD_LABEL_LAYOUT, RECORD_LINK_LABEL, RecordOpener } from '@/shared/ui/record-link'
 import { cn } from '@/shared/lib/utils'
 
 interface IdCellProps {
@@ -51,8 +51,7 @@ interface IdCellProps {
  * `styleFor('id')`; this component only lays out badge + key.
  */
 /** Shared by both renderings, so the glyph/key pairing cannot drift between them. */
-const KEY_CLASS =
-  'flex min-h-5 min-w-0 items-center font-mono text-ui-md break-words whitespace-normal'
+const KEY_CLASS = cn(RECORD_LABEL_LAYOUT, 'font-mono text-ui-md')
 
 // `items-start` + no `overflow-hidden`: the key wraps, so the type glyph must stay
 // on its first line and the control must be allowed to grow.
