@@ -120,6 +120,13 @@ export function RecordOpener({
   children: ReactNode
 }) {
   const classes = cn(RECORD_OPENER_RESET, className)
+  if (import.meta.env.DEV && href && !isInAppPath(href)) {
+    // Safe either way (it opens in place), but a path builder returning a full URL or junk would
+    // otherwise disable the new-tab behaviour silently, everywhere.
+    console.warn(
+      `RecordOpener: refused a URL that is not an in-app path, opening in place: ${href}`,
+    )
+  }
   if (href && isInAppPath(href)) {
     return (
       <RecordLink

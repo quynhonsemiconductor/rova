@@ -24,9 +24,7 @@ export interface ArtifactTableItem {
   /**
    * A work-item type (Story / Task / Defect) or a portfolio type (Epic / Feature) — the only kinds a
    * Milestone or Release links. `string` because both API shapes declare it so; every kind listed
-   * here is addressed by `defaultRecordHref`. Pinned per kind through this table in
-   * `artifact-table.test.tsx` ("links a … row to its detail page"), and per branch — including an
-   * Epic / Feature with no id — in `model/record-href.test.ts`.
+   * here is addressed by `defaultRecordHref`.
    */
   type: string
   title: string

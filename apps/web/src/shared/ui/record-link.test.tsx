@@ -9,7 +9,7 @@
  *  - a modified click is NOT prevented and does NOT call `onOpen`, so the current tab stays put
  *    while the browser opens the new one.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createEvent, fireEvent, render, screen } from '@testing-library/react'
 
 import { RecordOpener, isInAppPath } from './record-link'
@@ -134,6 +134,24 @@ describe('isInAppPath', () => {
 })
 
 describe('RecordOpener refuses a URL that is not an in-app path', () => {
+  // The dev warning is asserted once below; the other cases only need the fallback.
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('warns in development, naming the refused URL', () => {
+    const warn = vi.mocked(console.warn)
+    render(
+      <RecordOpener href="https://example.com/x" onOpen={() => {}}>
+        US-1
+      </RecordOpener>,
+    )
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('https://example.com/x'))
+  })
+
   it.each(['javascript:alert(1)', '//example.com/x'])(
     'renders %s as the in-place button, never as a link',
     (href) => {

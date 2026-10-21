@@ -9,6 +9,11 @@ describe('isNewTabClick', () => {
     expect(isNewTabClick(plain)).toBe(false)
   })
 
+  it('is false for keyboard activation — Enter on a link fires a click with button 0, no modifiers', () => {
+    const enter = new MouseEvent('click', { button: 0, detail: 0 })
+    expect(isNewTabClick(enter)).toBe(false)
+  })
+
   it.each([
     ['Ctrl', { ctrlKey: true }],
     ['Cmd', { metaKey: true }],
