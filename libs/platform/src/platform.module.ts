@@ -40,7 +40,7 @@ import { StorageService } from './storage/storage.service';
   imports: [
     AppConfigModule,
     DatabaseModule,
-    // Shared Valkey/Redis cache primitive (@quynhonsemiconductor/platform-cache). Rally runs
+    // Shared Valkey/Redis cache primitive (@quynhonsemiconductor/platform-cache). Rova runs
     // in `required` mode: a REDIS_URL must be configured for the process to boot.
     CacheModule.forRootAsync({
       inject: [AppConfigService],
