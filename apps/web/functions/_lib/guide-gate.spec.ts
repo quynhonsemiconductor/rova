@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
+import { EDGE_IP_HEADER, EDGE_SIG_HEADER } from '@quynhonsemiconductor/platform-http/edge'
 import { GUIDE_SECURITY_HEADERS, guardGuide, hasSessionCookie, loginRedirect } from './guide-gate'
+import type { ProxyEnv } from './proxy'
 
 const API_ORIGIN = 'https://rova-api-dev.qnsc.vn'
+const SECRET = 'e'.repeat(40)
+const ENV: ProxyEnv = { API_ORIGIN, EDGE_CLIENT_IP_SECRET: SECRET }
 const SPA = 'https://rova-dev.qnsc.vn'
 const SESSION = '__Host-rova_session=abc123'
 
@@ -53,35 +57,43 @@ describe('loginRedirect', () => {
 })
 
 describe('guardGuide', () => {
-  it('is a 500 when API_ORIGIN is missing, and serves nothing', async () => {
+  it.each<[string, ProxyEnv]>([
+    ['API_ORIGIN', { EDGE_CLIENT_IP_SECRET: SECRET }],
+    ['EDGE_CLIENT_IP_SECRET', { API_ORIGIN }],
+  ])('is a 500 naming %s when it is missing, and serves nothing', async (name, env) => {
+    const fetchImpl = apiAnswering(200)
     const next = vi.fn(page)
-    const res = await guardGuide(guideRequest(), undefined, next)
+    const res = await guardGuide(guideRequest(), env, next, { fetchImpl })
     expect(res.status).toBe(500)
+    expect(await res.text()).toContain(name)
+    expect(fetchImpl).not.toHaveBeenCalled()
     expect(next).not.toHaveBeenCalled()
   })
 
   it('redirects to login without calling the API when there is no session cookie', async () => {
     const fetchImpl = apiAnswering(200)
     const next = vi.fn(page)
-    const res = await guardGuide(guideRequest('/guide/', null), API_ORIGIN, next, { fetchImpl })
+    const res = await guardGuide(guideRequest('/guide/', null), ENV, next, { fetchImpl })
     expect(res.status).toBe(302)
     expect(fetchImpl).not.toHaveBeenCalled()
     expect(next).not.toHaveBeenCalled()
   })
 
-  it('checks the session against /v1/bff/me with the reader cookie and edge forwarding', async () => {
+  it('checks the session against /v1/bff/me with the reader cookie and the signed address', async () => {
     const fetchImpl = apiAnswering(200)
-    await guardGuide(guideRequest(), API_ORIGIN, page, { fetchImpl })
+    await guardGuide(guideRequest(), ENV, page, { fetchImpl })
     const sent = fetchImpl.mock.calls[0]![0] as Request
     expect(sent.method).toBe('GET')
     expect(sent.url).toBe(`${API_ORIGIN}/v1/bff/me`)
     expect(sent.headers.get('cookie')).toBe(SESSION)
-    expect(sent.headers.get('x-forwarded-for')).toBe('203.0.113.7')
-    expect(sent.headers.get('x-forwarded-host')).toBe('rova-dev.qnsc.vn')
+    expect(sent.headers.get('accept')).toBe('application/json')
+    expect(sent.headers.get(EDGE_IP_HEADER)).toBe('203.0.113.7')
+    expect(sent.headers.get(EDGE_SIG_HEADER)).toBeTruthy()
+    expect(sent.headers.get('x-forwarded-for')).toBeNull()
   })
 
   it('serves the page with the guide security headers when the session is valid', async () => {
-    const res = await guardGuide(guideRequest(), API_ORIGIN, page, { fetchImpl: apiAnswering(200) })
+    const res = await guardGuide(guideRequest(), ENV, page, { fetchImpl: apiAnswering(200) })
     expect(res.status).toBe(200)
     expect(await res.text()).toBe('<html>guide</html>')
     for (const [name, value] of Object.entries(GUIDE_SECURITY_HEADERS)) {
@@ -93,7 +105,7 @@ describe('guardGuide', () => {
     const headers = new Headers()
     headers.append('set-cookie', '__Host-rova_session=rotated; Path=/; Secure; HttpOnly')
     headers.append('set-cookie', '__Host-rova_csrf=new; Path=/; Secure')
-    const res = await guardGuide(guideRequest(), API_ORIGIN, page, {
+    const res = await guardGuide(guideRequest(), ENV, page, {
       fetchImpl: apiAnswering(200, headers),
     })
     expect(res.headers.getSetCookie()).toEqual([
@@ -104,7 +116,7 @@ describe('guardGuide', () => {
 
   it.each([401, 403])('redirects to login when the API answers %i', async (status) => {
     const next = vi.fn(page)
-    const res = await guardGuide(guideRequest(), API_ORIGIN, next, {
+    const res = await guardGuide(guideRequest(), ENV, next, {
       fetchImpl: apiAnswering(status),
     })
     expect(res.status).toBe(302)
@@ -116,7 +128,7 @@ describe('guardGuide', () => {
     'fails closed with a 503 when the API answers %i',
     async (status) => {
       const next = vi.fn(page)
-      const res = await guardGuide(guideRequest(), API_ORIGIN, next, {
+      const res = await guardGuide(guideRequest(), ENV, next, {
         fetchImpl: apiAnswering(status),
       })
       expect(res.status).toBe(503)
@@ -128,7 +140,7 @@ describe('guardGuide', () => {
   it('fails closed with a 503 when the session check throws', async () => {
     const next = vi.fn(page)
     const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('network down'))
-    const res = await guardGuide(guideRequest(), API_ORIGIN, next, { fetchImpl })
+    const res = await guardGuide(guideRequest(), ENV, next, { fetchImpl })
     expect(res.status).toBe(503)
     expect(next).not.toHaveBeenCalled()
   })
@@ -141,7 +153,7 @@ describe('guardGuide', () => {
         signal.addEventListener('abort', () => reject(signal.reason))
       })
     })
-    const res = await guardGuide(guideRequest(), API_ORIGIN, next, { fetchImpl, timeoutMs: 10 })
+    const res = await guardGuide(guideRequest(), ENV, next, { fetchImpl, timeoutMs: 10 })
     expect(res.status).toBe(503)
     expect(next).not.toHaveBeenCalled()
   })

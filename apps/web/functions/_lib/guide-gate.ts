@@ -13,8 +13,11 @@
  *
  * Fails CLOSED. Any answer other than 200 / 401 / 403 — a 5xx, a timeout, a network error — serves a
  * 503 and never the content. Pure and injectable like `proxy.ts`, so every branch is unit-testable.
+ *
+ * The check goes through `proxyToApi`, so it carries the same signed visitor address as every `/v1/*`
+ * call; that is why the gate needs `EDGE_CLIENT_IP_SECRET` as well as `API_ORIGIN`.
  */
-import { buildProxyRequest } from './proxy'
+import { proxyToApi, type ProxyEnv } from './proxy'
 
 export const SESSION_COOKIE = '__Host-rova_session'
 const GUIDE_ROOT = '/guide/'
@@ -73,15 +76,11 @@ function unavailable(): Response {
   })
 }
 
-/** The session check, built through the proxy's own request builder so cookies and forwarding agree. */
-function sessionCheckRequest(request: Request, apiOrigin: string): Request {
-  const me = new Request(new URL('/v1/bff/me', request.url), {
-    method: 'GET',
-    headers: request.headers,
-  })
-  const proxied = buildProxyRequest(me, apiOrigin)
-  proxied.headers.set('accept', 'application/json')
-  return proxied
+/** `GET /v1/bff/me` on the SPA origin, carrying the reader's own headers; `proxyToApi` takes it from here. */
+function sessionCheckRequest(request: Request): Request {
+  const headers = new Headers(request.headers)
+  headers.set('accept', 'application/json')
+  return new Request(new URL('/v1/bff/me', request.url), { method: 'GET', headers })
 }
 
 function withGuideHeaders(response: Response, setCookies: readonly string[]): Response {
@@ -100,22 +99,25 @@ export interface GuideGateDeps {
 
 export async function guardGuide(
   request: Request,
-  apiOrigin: string | undefined,
+  env: ProxyEnv,
   next: () => Promise<Response>,
   { fetchImpl = fetch, timeoutMs = SESSION_CHECK_TIMEOUT_MS }: GuideGateDeps = {},
 ): Promise<Response> {
-  if (!apiOrigin) {
-    return new Response('Guide gate misconfigured: API_ORIGIN is not set', { status: 500 })
-  }
   if (!hasSessionCookie(request)) return loginRedirect(request)
 
+  let reachedApi = false
   let session: Response
   try {
-    const check = sessionCheckRequest(request, apiOrigin)
-    session = await fetchImpl(new Request(check, { signal: AbortSignal.timeout(timeoutMs) }))
+    session = await proxyToApi(sessionCheckRequest(request), env, (proxied) => {
+      reachedApi = true
+      return fetchImpl(new Request(proxied, { signal: AbortSignal.timeout(timeoutMs) }))
+    })
   } catch {
     return unavailable()
   }
+  // `proxyToApi` answered without calling the API: its 500 names the missing variable. Serve that, not
+  // a 503, so a misconfigured deploy says what is wrong; the content stays unserved either way.
+  if (!reachedApi) return session
 
   if (session.status === 401 || session.status === 403) return loginRedirect(request)
   if (session.status !== 200) return unavailable()
