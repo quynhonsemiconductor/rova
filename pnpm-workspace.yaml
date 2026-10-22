@@ -13,7 +13,7 @@ overrides:
   # root primitive, CVSS 5.4). Raised 5.10.0 -> 5.12.3. Still an EXACT pin, for the reason the
   # note below gives: the value's job is to keep ONE fastify copy in the tree, so a range here
   # would reintroduce the two-copy type mismatch it exists to prevent.
-  fastify: "5.12.5"
+  fastify: "5.12.7"
   "esbuild@<0.25.0": ">=0.25.0"
   # GHSA-8r5x-fm3f-whwj (CVSS 9.8), GHSA-p8wg-vrv2-v86f (9.2), GHSA-xw65-4hp5-5hc7 (4.7) —
   # JavaScript injection in handlebars' compiler, all fixed in 4.7.10. Transitive only, through
@@ -89,7 +89,10 @@ overrides:
   # RAISED 3.4.13 -> 3.4.16 for GHSA-p98j-92pf-mc4p (CVSS 2.3): a node-removing `afterSanitize`
   # hook in IN_PLACE mode left the detached subtree's event handlers armed — the same sink as
   # above, so it is the same production exposure. Introduced in 3.4.13, fixed in 3.4.16.
-  "dompurify@<3.4.16": ">=3.4.16"
+  #
+  # RAISED 3.4.16 -> 3.4.17 for GHSA-cg2g-xh64-v4q7 (CVSS 9.2) and GHSA-mrv2-3pqr-j5jr (CVSS 7.6),
+  # both published 2026-10-22, fixed in 3.4.17. Same direct-deps-of-apps/web production sink.
+  "dompurify@<3.4.17": ">=3.4.17"
   # GHSA-2v37-7h3g-55p8 — nanoid, "custom generators can loop indefinitely when size is
   # zero". Reached only via postcss -> nanoid, i.e. the web BUILD toolchain, and postcss
   # calls it with a fixed non-zero size — so the zero-size path is not reachable here.
