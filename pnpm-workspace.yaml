@@ -13,7 +13,7 @@ overrides:
   # root primitive, CVSS 5.4). Raised 5.10.0 -> 5.12.3. Still an EXACT pin, for the reason the
   # note below gives: the value's job is to keep ONE fastify copy in the tree, so a range here
   # would reintroduce the two-copy type mismatch it exists to prevent.
-  fastify: "5.12.5"
+  fastify: "5.12.7"
   "esbuild@<0.25.0": ">=0.25.0"
   # GHSA-8r5x-fm3f-whwj (CVSS 9.8), GHSA-p8wg-vrv2-v86f (9.2), GHSA-xw65-4hp5-5hc7 (4.7) —
   # JavaScript injection in handlebars' compiler, all fixed in 4.7.10. Transitive only, through
