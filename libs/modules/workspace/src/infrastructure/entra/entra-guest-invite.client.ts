@@ -1,8 +1,8 @@
 /**
  * EntraGuestInviteClient — creates a Microsoft Entra B2B GUEST for an invited external
- * collaborator, so they can sign in with any real mailbox while Rally's own invitation stays the
+ * collaborator, so they can sign in with any real mailbox while Rova's own invitation stays the
  * authorization gate. Entra does the mailbox verification (their Microsoft work account, Google
- * federation, or an emailed one-time passcode); Rally never holds a credential for them.
+ * federation, or an emailed one-time passcode); Rova never holds a credential for them.
  *
  * Flow, app-only (no user in the loop):
  *   1. Client-credentials token — POST {authority}/{tenant}/oauth2/v2.0/token with
@@ -19,7 +19,23 @@
  * `GithubAppAuthService` (the precedent for an app-only token cache) uses `fetch` too.
  */
 import { Injectable, Logger } from '@nestjs/common';
-import { AppConfigService, ResilienceService, ResiliencePreset } from '@platform';
+import {
+  AppConfigService,
+  ResilienceService,
+  ResiliencePreset,
+  RetryAfterError,
+  retryAfterMsFrom,
+} from '@platform';
+
+/**
+ * One execution of the Graph call — the token request AND the invitation — must finish inside this, and the
+ * requests carry an `AbortSignal` for it. It equals `ResiliencePreset.EXTERNAL_API`'s per-execution timeout on
+ * purpose: that timeout rejects the caller's promise but cannot stop a `fetch` already in flight, so without the
+ * signal a POST that outlived it could still land on Graph after the relay's lease had lapsed and another worker
+ * had taken the row. (An invitation is idempotent on Graph's side, but a late request is still a request nobody
+ * is waiting for.)
+ */
+export const GRAPH_CALL_TIMEOUT_MS = 30_000;
 
 /** Refresh a cached app token this long before it actually expires. */
 const TOKEN_REFRESH_BUFFER_MS = 60_000;
@@ -134,6 +150,9 @@ export class EntraGuestInviteClient {
     );
 
     if (result.kind === 'refused') throw new PermanentGuestInviteError(result.detail);
+    // Thrown OUTSIDE `execute`, like a refusal, for the same reason: inside it the resilience layer would retry a
+    // throttled call in milliseconds (and count it against the breaker) instead of honouring the server's wait.
+    if (result.kind === 'throttled') throw new RetryAfterError(result.detail, result.retryAfterMs);
     return result.outcome;
   }
 
@@ -155,10 +174,17 @@ export class EntraGuestInviteClient {
   private async postInvitation(
     request: GuestInviteRequest,
     credentials: EntraAppCredentials,
-  ): Promise<{ kind: 'ok'; outcome: GuestInviteOutcome } | { kind: 'refused'; detail: string }> {
-    const token = await this.getAppToken(credentials);
+  ): Promise<
+    | { kind: 'ok'; outcome: GuestInviteOutcome }
+    | { kind: 'refused'; detail: string }
+    | { kind: 'throttled'; detail: string; retryAfterMs: number }
+  > {
+    // ONE deadline for the whole execution: the token request and the POST share it.
+    const signal = AbortSignal.timeout(GRAPH_CALL_TIMEOUT_MS);
+    const token = await this.getAppToken(credentials, signal);
 
     const res = await fetch(`${GRAPH_BASE_URL}/invitations`, {
+      signal,
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -175,7 +201,7 @@ export class EntraGuestInviteClient {
          */
         inviteRedirectUrl: this.config.get('APP_BASE_URL'),
         /**
-         * Rally sends its own invitation email, carrying the token that is the actual
+         * Rova sends its own invitation email, carrying the token that is the actual
          * authorization gate — two emails would be two different calls to action for one
          * invitation. `false` is Graph's documented default; stated explicitly because a default
          * that changes silently would double-mail every invitee.
@@ -234,7 +260,14 @@ export class EntraGuestInviteClient {
       return { kind: 'refused', detail };
     }
 
-    // 5xx, 429, 408 — throw so retry + circuit breaker + the outbox's own backoff all apply.
+    // 429 / 503 WITH a Retry-After: Graph told us how long to wait. Hand that to the relay (RetryAfterError, clamped
+    // there) rather than retrying inside the resilience layer, which would hit the same throttle again in ms.
+    if (res.status === 429 || res.status === 503) {
+      const retryAfterMs = retryAfterMsFrom(res.headers);
+      if (retryAfterMs !== undefined) return { kind: 'throttled', detail, retryAfterMs };
+    }
+
+    // 5xx, 429, 408 without a hint — throw so retry + circuit breaker + the outbox's own backoff all apply.
     throw new Error(detail);
   }
 
@@ -246,13 +279,17 @@ export class EntraGuestInviteClient {
    * already gets that call's retry and breaker accounting. Wrapping it separately would count one
    * outage twice.
    */
-  private async getAppToken(credentials: EntraAppCredentials): Promise<string> {
+  private async getAppToken(
+    credentials: EntraAppCredentials,
+    signal: AbortSignal,
+  ): Promise<string> {
     const hit = this.cachedToken;
     if (hit && hit.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) return hit.token;
 
     const { tenantId, clientId, clientSecret } = credentials;
 
     const res = await fetch(`${LOGIN_HOST}/${tenantId}/oauth2/v2.0/token`, {
+      signal,
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({

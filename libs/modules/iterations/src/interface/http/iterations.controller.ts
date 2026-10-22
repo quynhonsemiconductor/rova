@@ -438,6 +438,8 @@ export class IterationsController {
         planEstimate: query.planEstimate,
         taskEstimate: query.taskEstimate,
         toDo: query.toDo,
+        startDate: query.startDate,
+        targetEndDate: query.targetEndDate,
       },
       args,
     );

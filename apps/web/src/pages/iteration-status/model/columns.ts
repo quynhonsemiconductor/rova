@@ -11,6 +11,8 @@ export type ColKey =
   | 'name'
   | 'feature'
   | 'iteration'
+  | 'startDate'
+  | 'targetEndDate'
   | 'state'
   | 'flowState'
   | 'block'
@@ -30,6 +32,10 @@ export const ITERATION_STATUS_COLUMNS: ColumnSpec<unknown, unknown, ColKey>[] = 
   { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150 },
   { key: 'feature', label: 'Feature', defaultWidth: 200, minWidth: 120 },
   { key: 'iteration', label: 'Iteration', defaultWidth: 160, minWidth: 120 },
+  // Phase 7 CO-01 — the Story's system-managed first In-Progress date, read-only.
+  { key: 'startDate', label: 'Start Date', defaultWidth: 108, minWidth: 96 },
+  // Phase 7 CO-03 — the Story's Target End Date, read-only here (edited on Story Detail).
+  { key: 'targetEndDate', label: 'Target End', defaultWidth: 108, minWidth: 96 },
   { key: 'state', label: 'Schedule State', defaultWidth: 132, minWidth: 132 },
   { key: 'flowState', label: 'Flow State', defaultWidth: 132, minWidth: 120 },
   // 60px fitted the CONTENT (one status glyph) but not the HEADER: 'Block' plus its sort caret
@@ -56,6 +62,8 @@ export const HEADER_META: DataTableHeaderColumn<ColKey>[] = [
   { key: 'name', label: 'Name', sortCol: 'name' },
   { key: 'feature', label: 'Feature' },
   { key: 'iteration', label: 'Iteration' },
+  { key: 'startDate', label: 'Start Date' },
+  { key: 'targetEndDate', label: 'Target End' },
   { key: 'state', label: 'Schedule State', sortCol: 'scheduleState' },
   { key: 'flowState', label: 'Flow State', sortCol: 'flowState' },
   { key: 'block', label: 'Block', sortCol: 'block', align: 'center' },

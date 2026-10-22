@@ -61,8 +61,6 @@ import { CapacityPlansController } from '../libs/modules/capacity/src/interface/
 import { CollaborationController } from '../libs/modules/collaboration/src/interface/http/collaboration.controller';
 import { PortfolioCollaborationController } from '../libs/modules/collaboration/src/interface/http/portfolio-collaboration.controller';
 import { AuthController } from '../libs/modules/identity/src/interface/http/auth.controller';
-import { BffController } from '../libs/modules/identity/src/interface/http/bff/bff.controller';
-import { IdentityController } from '../libs/modules/identity/src/interface/http/identity.controller';
 import { IterationsController } from '../libs/modules/iterations/src/interface/http/iterations.controller';
 import { MilestonesController } from '../libs/modules/milestones/src/interface/http/milestones.controller';
 import { NotificationPreferencesController } from '../libs/modules/notifications/src/interface/http/notification-preferences.controller';
@@ -95,10 +93,8 @@ const CONTROLLERS = [
   AccessController,
   AuditController,
   AuthController,
-  BffController,
   CapacityPlansController,
   CollaborationController,
-  IdentityController,
   IterationsController,
   MilestonesController,
   NotificationPreferencesController,
@@ -345,6 +341,13 @@ const AUDIENCE: Record<string, Audience> = {
   'ReportingController.getReleaseTracking': 'admin',
   'ReportingController.getTeamCapacity': 'admin',
   'ReportingController.getVelocity': 'admin',
+  // Phase 7 Carryover — the dedicated report (`report:view`) and the four CSV exports, which carry
+  // the NEW `report:export` (rulings R1/R4: Workspace Admin + Project Admin, never Editor).
+  'ReportingController.getCarryover': 'admin',
+  'ReportingController.exportCarryover': 'admin',
+  'ReportingController.exportIterationBurndown': 'admin',
+  'ReportingController.exportTeamCapacity': 'admin',
+  'ReportingController.exportVelocity': 'admin',
 
   // ── ScmController ── the integration is workspace configuration; the two per-item reads are
   // the work-item detail's SCM panel and belong to whoever can see the item.
@@ -405,6 +408,10 @@ const AUDIENCE: Record<string, Audience> = {
   // is the one being MODIFIED. Audience `editor` for the same reason as the preview: splitting is an
   // Editor action (§3.2:79), and the two routes must not disagree about who the feature is for.
   'WorkItemsController.splitWorkItem': 'editor',
+  // Phase 7 Carryover — the Target End picker feed and the same-ID Carryover write. Story editors
+  // (incl. an Editor on their own Team) hold `work_item:view` / `work_item:edit`.
+  'WorkItemsController.getCarryoverOptions': 'editor',
+  'WorkItemsController.carryOverWorkItem': 'editor',
   'WorkItemsController.getTaskTotals': 'editor',
   'WorkItemsController.getWorkItem': 'editor',
   'WorkItemsController.listAttachments': 'editor',
@@ -623,8 +630,8 @@ const MIN_PROJECT_TIER_ROUTES_COVERED = 139;
  * inventory is held by the exhaustiveness assertions below, which name what changed.
  */
 const MIN_ROUTES_FOUND = 200;
-/** `git ls-files 'libs/**\/*.controller.ts' 'apps/**\/*.controller.ts'` minus HealthController. */
-const CONTROLLER_COUNT = 26;
+/** `git ls-files 'libs/**\/*.controller.ts' 'apps/**\/*.controller.ts'` minus PublicConfigController (the one public route; it carries no permission). */
+const CONTROLLER_COUNT = 24;
 
 interface DiscoveredRoute {
   key: string;
@@ -638,7 +645,7 @@ interface DiscoveredRoute {
 function discoverRoutes(): DiscoveredRoute[] {
   const routes: DiscoveredRoute[] = [];
   for (const ctor of CONTROLLERS) {
-    const prototype = ctor.prototype as Record<string, unknown>;
+    const prototype = ctor.prototype as unknown as Record<string, unknown>;
     for (const name of Object.getOwnPropertyNames(prototype)) {
       if (name === 'constructor') continue;
       const handler = prototype[name];
@@ -1008,6 +1015,12 @@ const READ_AUDIENCE_EXCEPTIONS: Record<string, string> = {
    */
   'AccessController.getMyProjectPermissions':
     'self-scoped: the subject reads their own permissions',
+  /**
+   * "Who am I": the SPA's one start-up read (profile, effective permissions, workspaces, CSRF token), addressed by the
+   * caller's own id. It was `BffController.me`, which `@ApiExcludeController` kept out of this sweep; `AuthController.me`
+   * declares its response type, so it is measured, and it is self-scoped by construction (`@SelfScoped`).
+   */
+  'AuthController.me': 'self-scoped: the subject reads their own profile and grants',
 };
 
 /**
@@ -1080,7 +1093,7 @@ interface RouteSchema {
 function discoverResponseSchemas(): RouteSchema[] {
   const out: RouteSchema[] = [];
   for (const ctor of CONTROLLERS) {
-    const prototype = ctor.prototype as Record<string, unknown>;
+    const prototype = ctor.prototype as unknown as Record<string, unknown>;
     for (const name of Object.getOwnPropertyNames(prototype)) {
       if (name === 'constructor') continue;
       const handler = prototype[name];

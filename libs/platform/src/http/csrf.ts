@@ -1,4 +1,4 @@
-import { BFF_SESSION_COOKIE } from '../auth/bff-session-resolver';
+import { SESSION_COOKIE } from '../auth/session-cookie';
 
 /** Header the SPA echoes the CSRF token in. Mirrored in the CORS allow-list. */
 export const CSRF_HEADER = 'x-csrf-token';
@@ -14,21 +14,16 @@ export const CSRF_SECRET_COOKIE = '__Host-rova_csrf';
 const SAFE_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE']);
 
 /**
- * Routes that must stay reachable without a CSRF token.
+ * Routes that must stay reachable without a CSRF token. Each is a deliberate exemption with a reason, not an oversight:
  *
- * Each entry is a deliberate exemption, not an oversight:
- *  - the login starters run BEFORE any session exists, so there is no token to
- *    issue yet (they are also protected by the OIDC `state` double-submit);
- *  - the dev-login shortcut is the same, and is already hard-blocked in production;
- *  - the SCM webhook is called by GitHub, not a browser: it carries no cookie and
- *    is authenticated by an HMAC signature instead.
+ *  - `/api/auth/` is identity 8's own surface (sign-in, sign-out, the workspace switch `context/set`). It is mounted
+ *    outside `/v1` and runs BEFORE any session exists for a sign-in, so there is no token to issue; Better Auth
+ *    enforces its own Origin check on every state-changing request there (`disableOriginCheck: false`, pinned by
+ *    identity), with `trustedOrigins` the SPA origin only.
+ *  - the SCM webhook is called by GitHub, not a browser: it carries no cookie and is authenticated by an HMAC
+ *    signature instead.
  */
-const EXEMPT_PATHS: readonly string[] = [
-  '/v1/bff/login/sso',
-  '/v1/bff/login/start',
-  '/v1/bff/dev-login',
-  '/v1/scm/webhook',
-];
+const EXEMPT_PATHS: readonly string[] = ['/api/auth', '/v1/scm/webhook'];
 
 /** True when `url`'s path (query stripped) is an exempt route. */
 function isExemptPath(url: string): boolean {
@@ -46,7 +41,7 @@ function hasBearerToken(authorization: string | string[] | undefined): boolean {
  * Whether this request must present a valid CSRF token.
  *
  * CSRF is only possible when the browser attaches a credential **ambiently** — for
- * rova, the `__Host-rova_session` cookie. So the check applies exactly when all
+ * rova, the identity session cookie (`SESSION_COOKIE`). So the check applies exactly when all
  * of the following hold:
  *
  *  1. the method can change state;
@@ -69,6 +64,6 @@ export function requiresCsrfProtection(req: {
 }): boolean {
   if (SAFE_METHODS.has(req.method.toUpperCase())) return false;
   if (hasBearerToken(req.headers['authorization'])) return false;
-  if (!req.cookies?.[BFF_SESSION_COOKIE]) return false;
+  if (!req.cookies?.[SESSION_COOKIE]) return false;
   return !isExemptPath(req.url);
 }

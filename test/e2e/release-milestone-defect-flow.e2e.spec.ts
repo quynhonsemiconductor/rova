@@ -23,7 +23,7 @@ import { ReleasesService } from '@modules/releases';
 import { WorkItemsService } from '@modules/work-items';
 import { TeamService } from '@modules/workspace';
 
-import { ALL, SEEDED, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { ALL, SEEDED, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('BA flows: releases + milestones + defect lifecycle (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
@@ -37,7 +37,7 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
   const actor = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
     releases = app.get(ReleasesService);

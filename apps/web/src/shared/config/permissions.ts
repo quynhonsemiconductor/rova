@@ -67,6 +67,8 @@ export const PERMISSION = {
   QUALITY_VIEW: 'quality:view',
   // Reports (Iteration Burndown / Velocity / Team Capacity) and Release Tracking.
   REPORT_VIEW: 'report:view',
+  // CSV export of the four reports (Phase 7 Carryover, R1/R4) — Workspace Admin + Project Admin only.
+  REPORT_EXPORT: 'report:export',
 
   // The three codes `shared/config/nav.ts` gates nav entries and their routes on. They were
   // MISSING from this mirror while the nav table used the bare strings — the identical drift

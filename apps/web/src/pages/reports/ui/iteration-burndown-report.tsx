@@ -16,7 +16,7 @@ import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from '
 import { BRAND } from '@/shared/config/brand'
 import { useIterationOptions } from '@/features/iterations/api'
 import { listResource } from '@/shared/lib/query/resource'
-import { useIterationBurndown } from '@/features/reporting/api'
+import { hasCarryoverActivity, useIterationBurndown } from '@/features/reporting/api'
 import { iterationsInScope, reportScopeLabel } from '@/features/reporting/scope'
 import { IterationPicker } from '@/shared/ui/timebox-picker'
 import {
@@ -28,6 +28,8 @@ import {
   axisLabel,
 } from '@/shared/ui/chart'
 
+import { CarryoverBadge } from './carryover-badge'
+import { ReportExportButton } from './report-export-button'
 import { ReportSurface } from './report-surface'
 import { splitMarkerLines } from './split-marker-lines'
 import { SplitMarkerContext, SplitMarkerLegend } from './split-markers'
@@ -37,9 +39,12 @@ import { EmptyState } from '@/shared/ui/empty-state'
 export function IterationBurndownReport({
   projectId,
   teamId,
+  onOpenCarryover,
 }: {
   projectId: string
   teamId: string | undefined
+  /** Phase 7 CO-08 — the badge's View report opens the Carryover report on this Iteration. */
+  onOpenCarryover?: (iterationId: string) => void
 }) {
   const { t } = useTranslation(['reports', 'common', 'split-story'])
   /**
@@ -162,6 +167,12 @@ export function IterationBurndownReport({
         <>
           <span className="text-ui-xs font-semibold text-foreground-subtle">{t('iteration')}</span>
           <IterationPicker iterations={iterations} selectedId={selectedId} onSelect={select} />
+          <ReportExportButton
+            projectId={projectId}
+            request={
+              selectedId ? { report: 'burndown', projectId, teamId, iterationId: selectedId } : null
+            }
+          />
           {/**
            * `data !== undefined` FIRST, and that is the whole point of the guard.
            *
@@ -263,8 +274,22 @@ export function IterationBurndownReport({
           />
         }
         footer={
-          notes.length > 0 ? (
-            <p className="mt-2 text-center text-ui-xs text-foreground-subtle">{notes.join(' ')}</p>
+          // `null` when there is nothing to show, so `ChartFrame` skips its footer wrapper — the
+          // contract the pre-Carryover code kept (PR 653 review, round 2).
+          hasCarryoverActivity(data?.carryover) || notes.length > 0 ? (
+            <>
+              {/* Phase 7 CO-08 — compact Carryover context; the series and Split markers are untouched. */}
+              <CarryoverBadge
+                summary={data?.carryover}
+                onOpenReport={() => selectedId && onOpenCarryover?.(selectedId)}
+                className="mx-auto mt-2"
+              />
+              {notes.length > 0 ? (
+                <p className="mt-2 text-center text-ui-xs text-foreground-subtle">
+                  {notes.join(' ')}
+                </p>
+              ) : null}
+            </>
           ) : null
         }
       >

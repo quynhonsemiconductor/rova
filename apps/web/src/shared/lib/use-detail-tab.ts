@@ -31,7 +31,7 @@ import { useRouter, useRouterState } from '@tanstack/react-router'
  *
  * APPLIED TO the three pages of the chain the defect was reported against — Work Item, Test Case,
  * Test Result. The other detail surfaces (Releases, Milestones, Portfolio, Projects, Capacity Plan,
- * Iteration) still hold their tab in `useState` and still lose it on Back; tracked as issue #644
+ * Iteration) still hold their tab in `useState` and still lose it on Back; tracked as issue 644
  * rather than batched in here, so the fix stays the size of the defect.
  */
 export function useDetailTab<T extends string>(

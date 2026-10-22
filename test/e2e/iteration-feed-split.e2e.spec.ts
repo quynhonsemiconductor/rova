@@ -35,13 +35,12 @@
  *   • `test/e2e/authz-cluster.e2e.spec.ts` holds the gate half of the §3.2 rows. This file holds the
  *     POPULATION half, which is the property the split exists for and which no gate test can see.
  *
- * Bearer tokens from `AuthService.devLogin`: Bearer callers are CSRF-exempt by design, and the test
+ * The session cookie from identity's test-login (`support/session.ts`). The test
  * app has no `/v1` prefix and no cookie plugin (`reply.setCookie is not a function`).
  */
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
@@ -51,6 +50,7 @@ import {
   SEED_PROJECTS,
   TEAM_ALPHA_ID,
 } from '../../db/seeds/constants';
+import { signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -80,20 +80,13 @@ interface CompactIteration {
 
 describe('the iteration feed split (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    auth = app.get(AuthService);
   });
 
   afterAll(async () => {
@@ -101,13 +94,13 @@ describe('the iteration feed split (e2e)', () => {
   });
 
   async function tokenFor(email: string): Promise<string> {
-    const { accessToken } = await auth.devLogin(email, '127.0.0.1');
-    expect(accessToken, `dev-login for ${email}`).toBeTruthy();
+    const accessToken = await signIn(app, email);
+    expect(accessToken, `test-login for ${email}`).toBeTruthy();
     return accessToken;
   }
 
   function get(url: string, token: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: token } });
   }
 
   const RECORD = `/iterations?projectId=${NXP}`;

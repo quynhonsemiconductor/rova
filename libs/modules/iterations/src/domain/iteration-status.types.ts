@@ -48,7 +48,7 @@ export interface IterationStatusItem {
    */
   teamId: string | null;
   isBlocked: boolean;
-  /** work_items.blocked_reason — surfaced beside the Block flag (Rally "Blocked Reason"). */
+  /** work_items.blocked_reason — surfaced beside the Block flag (Rally's "Blocked Reason"). */
   blockedReason: string | null;
   /** work_items.story_points (Plan Estimate). */
   planEstimate: number | null;
@@ -71,7 +71,7 @@ export interface IterationStatusItem {
    * they owned read `No Entry` while the id sat in the database. A name belongs to the row.
    */
   assigneeName: string | null;
-  /** work_items.dev_owner_id — Rally "Dev Owner" (distinct from Owner/assignee). */
+  /** work_items.dev_owner_id — Rally's "Dev Owner" (distinct from Owner/assignee). */
   devOwnerId: string | null;
   /** As `assigneeName`, for the Dev Owner column. */
   devOwnerName: string | null;
@@ -79,16 +79,22 @@ export interface IterationStatusItem {
   /** The linked Feature's id — the Feature column links to portfolio detail, not
    * to `/item/:key`: a Feature is a portfolio item, so no work-item key resolves it. */
   featureId: string | null;
-  /** Nearest ancestor Feature key (Rally "Feature" column); null when none. */
+  /** Nearest ancestor Feature key (Rally's "Feature" column); null when none. */
   featureKey: string | null;
   /** Nearest ancestor Feature title, for the chip tooltip. */
   featureTitle: string | null;
-  /** Count of non-deleted child defects (Rally "Defects"). */
+  /** Count of non-deleted child defects (Rally's "Defects"). */
   defectCount: number;
-  /** Count of child defects not yet accepted/released (Rally "Defect Status"). */
+  /** Count of child defects not yet accepted/released (Rally's "Defect Status"). */
   openDefectCount: number;
-  /** Milestones directly assigned to this item (Rally "Milestones"). */
+  /** Milestones directly assigned to this item (Rally's "Milestones"). */
   milestones: { id: string; name: string }[];
+  /**
+   * Phase 7 Carryover — `YYYY-MM-DD`. `startDate` is the Story's system-managed first In-Progress
+   * date (CO-01, migration 0132); `targetEndDate` is its forecast (CO-03). Both null on a Defect.
+   */
+  startDate: string | null;
+  targetEndDate: string | null;
 }
 
 export interface IterationStatusFilters {
@@ -118,4 +124,10 @@ export interface IterationStatusFilters {
   taskEstimate?: string;
   /** Exact match on the child-task to-do-hours rollup, fixed(2) string. */
   toDo?: string;
+  /**
+   * Phase 7 Carryover text filters — case-insensitive SUBSTRING on the `YYYY-MM-DD` text, so `2026-10`
+   * narrows to a month, the way the ID and Name filters narrow by fragment.
+   */
+  startDate?: string;
+  targetEndDate?: string;
 }

@@ -82,6 +82,28 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
+      # IDENTITY 8 GUARD (tags only). Prod's migrator image and its SPA only come from a release tag, and a tag that carries identity 8 is
+      # refused unless prod is READY for it (docs/runbooks/identity-v8-cutover.md, the production section). There is no freeze: this step
+      # is the whole gate. Two flags must be true in infra/live/prod/main.tf on the tagged commit:
+      #   - better_auth_secret_set: the v8 API cannot start without BETTER_AUTH_SECRET; the circuit breaker would roll the API back to v7
+      #     while the worker stays v8 and the SPA (published by the web deploy of the same tag) is already v8;
+      #   - edge_client_ip_secret_set: without it the API falls back to cf-connecting-ip, which behind the Pages Function is ONE Cloudflare
+      #     address for every visitor, so the new address-keyed rate limit and identity's own sign-in limits become company-wide on the
+      #     morning everyone signs in again.
+      # Failing HERE, before the migrator and before any publish, leaves prod exactly as it was. The cutover release is the first tag cut
+      # with both flags true. `identity_v8_backfill_on_deploy = true` in the same change makes that tag's migrator commit the backfill.
+      - name: Refuse a prod tag until prod is ready for identity 8
+        if: github.ref_type == 'tag'
+        run: |
+          missing=""
+          for flag in better_auth_secret_set edge_client_ip_secret_set; do
+            grep -Eq "^[[:space:]]*${flag}[[:space:]]*=[[:space:]]*true([[:space:]]|$)" infra/live/prod/main.tf || missing="$missing $flag"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::infra/live/prod/main.tf does not set:${missing} = true. This tag carries identity 8 and prod is not ready for it: see docs/runbooks/identity-v8-cutover.md (production section)."
+            exit 1
+          fi
+
       - name: Does this commit change infrastructure?
         id: touched
         run: |
@@ -105,7 +127,7 @@ jobs:
         if: steps.touched.outputs.infra == 'true'
         # Shared with backend-deploy and three other repos — see `quynhonsemiconductor/ci`.
         # A rate limit is retried there rather than reported as a failed upstream run.
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@v1
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           workflow: infra-apply.yml
           label: Infrastructure · Apply
@@ -138,7 +160,7 @@ jobs:
       actions: read
     steps:
       - name: Wait for Web · CI on this commit
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@v1
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           workflow: web-ci.yml
           branch: main
@@ -147,8 +169,42 @@ jobs:
           missing-message: >-
             No Web · CI run was found for this commit.
 
+  # ───────────────────────────────────────────────────────────────────────────
+  # Backend gate (tags only) — the SPA of a release must not go live ahead of that release's API.
+  #
+  # The web deploy and the backend deploy of one tag are independent workflows. The backend one runs a migration, rolls ECS and can
+  # be rolled back by the circuit breaker; the web one publishes in a minute. Without this the SPA of the tag (identity 8: it calls
+  # /api/auth/* and /v1/auth/me) could be live against the previous API for the whole backend deploy, or for good if that deploy
+  # is rolled back. On develop the gap is a known maintenance window (docs/runbooks/identity-v8-cutover.md); prod has none.
+  # `branch` is the tag name: the backend run for a tag has the tag as its head ref (the develop run's is `main`).
+  # ───────────────────────────────────────────────────────────────────────────
+  wait-for-backend:
+    name: Wait for this tag's Backend · Deploy
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    # LONGER than the infrastructure gate's 120: this waits for the backend deploy, which itself waits for apply-prod and the `production`
+    # environment's required reviewer, then migrates (and on the cutover tag runs the backfill) and rolls. If this expires first the
+    # web deploy fails, and a re-run is the way out, but a SPA that goes live ahead of its API is the failure this job exists to prevent
+    # (a v8 SPA against a v7 API). When it does expire: re-run the web jobs once the backend deploy is green (runbook).
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Wait for Backend · Deploy of this tag
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        with:
+          workflow: backend-deploy.yml
+          branch: ${{ github.ref_name }}
+          label: prod Backend · Deploy
+          if-missing: fail
+          missing-message: >-
+            No Backend · Deploy run was found for this tag. Publishing the SPA without its API is the failure this gate exists for.
+
   deploy:
-    needs: [wait-for-infra, wait-for-ci]
+    needs: [wait-for-infra, wait-for-ci, wait-for-backend]
+    # `wait-for-backend` is skipped on a push to main; a skipped need must not skip the deploy.
+    if: ${{ !cancelled() && !failure() }}
     # Must match the UNION of every inner job's own permissions in the reusable
     # web-deploy.yml, not just its top-level default (contents: read) — GitHub
     # validates a reusable call's whole permission chain at trigger time, and
@@ -158,9 +214,12 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: quynhonsemiconductor/ci/.github/workflows/web-deploy.yml@v1
+    uses: quynhonsemiconductor/ci/.github/workflows/web-deploy.yml@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
     with:
       product: rova
+      # Must equal `packageManager` in package.json: pnpm/action-setup refuses to run when the two differ
+      # ("Multiple versions of pnpm specified"). The reusable's default is 10.33.2.
+      pnpm_version: '11.28.5'
       # Monorepo: run wrangler from the web package dir so it discovers the
       # file-based Pages Functions (apps/web/functions/**) and bundles the
       # /v1/* BFF reverse-proxy. web_dist_path is relative to working_directory.

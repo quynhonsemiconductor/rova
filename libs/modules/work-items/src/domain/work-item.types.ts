@@ -80,6 +80,17 @@ export interface WorkItem {
   devOwnerId: string | null;
   defectState: string | null;
   fixedInBuild: string | null;
+  /**
+   * Phase 7 Carryover (migration 0132). `YYYY-MM-DD` strings — Drizzle returns `date` columns as
+   * strings, and no timezone belongs on a calendar date.
+   *
+   * `startDate` / `actualEndDate`: system-managed first entry into `in_progress` / `accepted` (Story)
+   * or `in_progress` / `completed` (Task), stamped by trigger. Always null on a Defect.
+   * `targetEndDate`: the Story editor's forecast; always null on a Task or Defect.
+   */
+  startDate: string | null;
+  actualEndDate: string | null;
+  targetEndDate: string | null;
 }
 
 export interface WorkItemFilters {
@@ -252,6 +263,12 @@ export interface UpdateWorkItemInput {
   devOwnerId?: string | null;
   defectState?: string | null;
   fixedInBuild?: string | null;
+  /**
+   * Phase 7 Carryover (plan D7) — the Story's forecast date, `YYYY-MM-DD`, or `null` to clear it.
+   * Story-only and validated in `WorkItemsService` against the picker rule; a date after the current
+   * Iteration is refused (it needs a confirmed Carryover, `POST /work-items/:id/carryover`).
+   */
+  targetEndDate?: string | null;
 }
 
 /** Aggregated task time totals for the Tasks-tab totals row. */

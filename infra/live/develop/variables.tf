@@ -10,8 +10,8 @@ variable "cloudflare_api_token" {
   description = <<-EOT
     Cloudflare API token (Zone:DNS:Edit on qnsc.vn). Supplied via
     TF_VAR_cloudflare_api_token in CI. Leave empty to skip Cloudflare provider
-    auth. The zone ID itself is NOT an input here — it's read from qnsc-infra
-    bootstrap via _shared remote state (one source of truth, like kms_key_arn).
+    auth. The zone ID is NOT an input here — it is exported by the _shared stack, from its
+    required, validated `cloudflare_zone_id` variable (CI: vars.CLOUDFLARE_ZONE_ID).
   EOT
 }
 
@@ -28,16 +28,6 @@ variable "alarm_emails" {
   # individual leaving. Confirm the subscription once from inside that mailbox — AWS
   # delivers nothing until someone clicks the link.
   default = ["devops@qnsc.vn"]
-}
-
-variable "platform_admin_emails" {
-  description = <<-EOT
-    Emails auto-granted workspace_admin on every SSO login. A variable rather than a
-    literal in the stack so the two environments can differ (and so adding a
-    colleague is a values change, not a module change).
-  EOT
-  type        = list(string)
-  default     = ["nghiavt@qnsc.vn", "quangld@qnsc.vn", "hieuvbm@qnsc.vn", "anhntn@qnsc.vn"]
 }
 
 // ── Public identifiers, held in git on purpose ────────────────────────────────
@@ -142,7 +132,7 @@ variable "grafana_alerting_folder_uid" {
     forces a destroy+recreate in the Terraform provider (not an in-place
     move, confirmed the hard way — qnsc-infra#98's re-parenting under a new
     "QNSC" company folder destroyed and recreated this folder, its
-    contents (including rally's own alert rule group and 2 dashboards),
+    contents (including rova's own alert rule group and 2 dashboards),
     AND `rally_dashboards_folder_uid` below, which depends on it). Every
     UID here needs re-backfilling whenever that happens again. A
     `terraform_remote_state` read against qnsc-infra's own state would
@@ -163,17 +153,19 @@ variable "grafana_dashboards_folder_uid" {
     Empty until qnsc-infra's Dashboards folder is applied and its real UID
     backfilled here — same bootstrap sequencing grafana_alerting_folder_uid
     itself went through. Still unset: nothing in this repo currently reads
-    it directly (rally's own dashboards nest under
+    it directly (rova's own dashboards nest under
     grafana_rally_dashboards_folder_uid below, not this one).
   EOT
   type        = string
   default     = ""
 }
 
+# grafana_rally_dashboards_folder_uid is a legacy physical Grafana identifier:
+# do not rename — recreated as rova in the on-prem move.
 variable "grafana_rally_dashboards_folder_uid" {
   description = <<-EOT
     qnsc-infra's live/observability stack's `rally_dashboards_folder_uid`
-    output — rally's own dashboard SUBFOLDER, nested under the parent
+    output — rova's own dashboard SUBFOLDER, nested under the parent
     above. Same value in every environment; not a secret.
 
     Used to be a `grafana_folder` resource created per-environment inside
@@ -193,7 +185,7 @@ variable "grafana_slos_folder_uid" {
     the shared folder every product's SLOs live under. Same value in
     every environment; not a secret.
 
-    Was never set until this variable existed, which left rally's
+    Was never set until this variable existed, which left rova's
     grafana_slo resource in Grafana's own default SLO folder outside the
     QNSC company tree everything else here lives under.
   EOT

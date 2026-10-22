@@ -22,10 +22,8 @@
  * NO `/v1` prefix — the test app is built without the bootstrap that sets the global prefix.
  */
 import 'reflect-metadata';
-import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AccessService } from '@modules/access';
@@ -33,50 +31,33 @@ import { WORKSPACE_MEMBER_REPOSITORY, type IWorkspaceMemberRepository } from '@m
 import { PERMISSION, ROLE_PERMISSIONS, SYSTEM_ROLE } from '@shared-kernel';
 import { AppModule } from '../../apps/api/src/app.module';
 import { NXP_STORY_1_ID, SEED_PROJECTS, TEAM_ALPHA_ID } from '../../db/seeds/constants';
-import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import { ADMIN_USER_ID, WORKSPACE_ID, grantProjectAccess } from './support/flow-harness';
+import { provisionUser, signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 const URL = `/work-items/${NXP_STORY_1_ID}/split-preview`;
 
 describe('split preview: authorization over HTTP (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
   let access: AccessService;
 
   /** A fresh SSO principal, so no shared fixture user is mutated by a grant. */
   async function freshPrincipal(label: string): Promise<{ token: string; userId: string }> {
-    const claims: EntraClaims = {
-      oid: `${label}-${randomUUID()}`,
-      email: `${label}-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
-      displayName: `E2E ${label}`,
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    const userId = JSON.parse(Buffer.from(login.accessToken.split('.')[1], 'base64url').toString())[
-      'sub'
-    ] as string;
+    const login = await provisionUser(app, `${label}`, `E2E ${label}`);
+    const userId = login.userId;
     return { token: login.accessToken, userId };
   }
 
   function get(token: string) {
-    return app.inject({ method: 'GET', url: URL, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'GET', url: URL, headers: { cookie: token } });
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-
-    auth = app.get(AuthService);
     access = app.get(AccessService);
   });
 
@@ -95,7 +76,7 @@ describe('split preview: authorization over HTTP (e2e)', () => {
     // `viewer@qnsc.dev` — the No Access principal. 403, not 401: the caller is authenticated and
     // identified, and it is the PERMISSION that is missing. A 401 would mean the guard order
     // regressed; a 404 would mean the URL is wrong (see the no-prefix note above).
-    const session = await auth.devLogin('viewer@qnsc.dev', '127.0.0.1');
+    const session = { accessToken: await signIn(app, 'viewer@qnsc.dev') };
     const response = await get(session.accessToken);
     expect(response.statusCode, response.body).toBe(403);
   });
@@ -146,7 +127,7 @@ describe('split preview: authorization over HTTP (e2e)', () => {
     // `dev@qnsc.dev` is seeded `editor` on NXP AND a member of Team Alpha, which US-1 belongs to.
     // Read-only use of a shared fixture user: nothing here grants it anything, so no later spec sees
     // a changed principal (the `read-scoping.e2e.spec.ts` lesson).
-    const session = await auth.devLogin('dev@qnsc.dev', '127.0.0.1');
+    const session = { accessToken: await signIn(app, 'dev@qnsc.dev') };
     const response = await get(session.accessToken);
     expect(response.statusCode, response.body).toBe(200);
     const result = JSON.parse(response.body) as { eligible: boolean };

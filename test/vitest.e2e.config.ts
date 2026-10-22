@@ -7,10 +7,11 @@ import swc from 'unplugin-swc';
 // this, so ConfigModule's Zod validation failed on any machine without these
 // vars already exported in the shell (e.g. ENTRA_* — commented out by default
 // in .env.example for local dev-login-only setups).
+// E2E_ENV_FILE picks an isolated stack's env (scripts/e2e/make-env.mjs writes .env.e2e); default is the local .env.
 try {
-  process.loadEnvFile('.env');
+  process.loadEnvFile(process.env.E2E_ENV_FILE ?? '.env');
 } catch {
-  /* no .env file — CI injects vars directly */
+  /* no env file — CI injects vars directly */
 }
 
 // E2E config: runs tests against a live API + real DB.
@@ -44,7 +45,7 @@ export default defineConfig({
     // safely without per-spec DB/channel isolation, which this suite does not do.
     fileParallelism: false,
     env: {
-      // Entra BFF OIDC — test-only placeholders, same values as vitest.config.ts.
+      // Entra — test-only placeholders, same values as vitest.config.ts.
       // .env intentionally leaves these commented out for local dev-login-only
       // setups (no real SSO configured); the e2e AppModule still needs
       // ConfigModule's Zod schema to validate, so supply harmless placeholders
@@ -61,10 +62,13 @@ export default defineConfig({
       ENTRA_TENANT_ID: process.env['ENTRA_TENANT_ID'] ?? 'test-tenant',
       ENTRA_CLIENT_ID: 'test-client',
       ENTRA_CLIENT_SECRET: 'test-secret',
-      ENTRA_REDIRECT_URI: 'http://localhost:3000/v1/bff/callback',
+      // identity 8: the passwordless sign-in the suites use (identity itself refuses it unless NODE_ENV is test/development)
+      // and the secret that signs its cookies. Test-only values.
+      IDENTITY_TEST_LOGIN: 'enabled',
+      BETTER_AUTH_SECRET: 'e2e-better-auth-secret-at-least-32-chars!',
       // Override .env's EMAIL_PROVIDER=ses: the email relay e2e coverage
       // exercises the real EmailRelayService/ResilienceService code path, but
-      // must not depend on SES/LocalStack actually being reachable — the
+      // must not depend on SES actually being reachable — the
       // 'dev' provider logs instead of sending, keeping the suite hermetic.
       EMAIL_PROVIDER: 'dev',
     },

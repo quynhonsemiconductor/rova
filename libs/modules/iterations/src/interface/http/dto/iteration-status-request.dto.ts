@@ -53,6 +53,9 @@ export const IterationStatusQuerySchema = PageQuerySchema.extend({
   planEstimate: numericFilter,
   taskEstimate: numericFilter,
   toDo: numericFilter,
+  // Phase 7 Carryover — text filters over the two Story date columns (substring of `YYYY-MM-DD`).
+  startDate: z.string().trim().max(10).optional(),
+  targetEndDate: z.string().trim().max(10).optional(),
 });
 
 export class IterationStatusQueryDto extends createZodDto(IterationStatusQuerySchema) {}

@@ -8,6 +8,13 @@
 export const EMAIL_PROVIDER = Symbol('EMAIL_PROVIDER');
 
 /**
+ * The hard deadline of one send by a provider that owns its retries (Graph): at this point `EmailService` aborts the provider's signal. It equals the EMAIL
+ * resilience preset's per-call timeout. The relay's lease is NOT derived from it: `EmailRelayService.leaseMsFor` uses `leaseForResilience(EMAIL)` (about 4 minutes,
+ * sized for the wrapped providers), which outlasts this deadline by a wide margin, so a send is never still running when its lease lapses.
+ */
+export const EMAIL_SEND_TIMEOUT_MS = 30_000;
+
+/**
  * Email category controls which RFC-compliance headers are added by the
  * transport layer:
  *
@@ -64,6 +71,15 @@ export interface EmailSendResult {
   messageId: string | null;
 }
 
+/** What the caller can hand a send besides the message. */
+export interface EmailSendOptions {
+  /**
+   * Aborted when the caller's deadline passes. A provider that can cancel (Graph) cancels the request, its in-place retries and any wait; one
+   * that cannot ignores it.
+   */
+  signal?: AbortSignal;
+}
+
 export interface IEmailProvider {
-  send(payload: EmailPayload): Promise<EmailSendResult>;
+  send(payload: EmailPayload, options?: EmailSendOptions): Promise<EmailSendResult>;
 }

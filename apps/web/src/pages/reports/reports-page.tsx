@@ -23,11 +23,15 @@ import { CompactSelect } from '@/shared/ui/native-select'
 import { PageHeader } from '@/shared/ui/page-header'
 import { EmptyState } from '@/shared/ui/empty-state'
 
+import { CarryoverReport } from './ui/carryover-report'
 import { IterationBurndownReport } from './ui/iteration-burndown-report'
 import { TeamCapacityReport } from './ui/team-capacity-report'
 import { VelocityReport } from './ui/velocity-report'
+import type { CarryoverDirection } from '@/features/reporting/api'
+import { rememberIteration } from './model/use-selected-iteration'
 
-const REPORT_TYPES = ['burndown', 'velocity', 'capacity'] as const
+// Phase 7 CO-10 adds `carryover` — the dedicated report the Burndown/Capacity badges open.
+const REPORT_TYPES = ['burndown', 'velocity', 'capacity', 'carryover'] as const
 type ReportType = (typeof REPORT_TYPES)[number]
 
 export function ReportsPage() {
@@ -40,6 +44,7 @@ export function ReportsPage() {
       ? (saved as ReportType)
       : 'burndown'
   })
+  const [direction, setDirection] = useState<CarryoverDirection>('all')
   function changeType(next: ReportType) {
     setType(next)
     localStorage.setItem(STORAGE_KEYS.REPORTS_TYPE, next)
@@ -48,6 +53,17 @@ export function ReportsPage() {
   const projectId = project?.projectId
   // `undefined` is All Teams — the aggregate, not "no filter".
   const teamId = team?.teamId
+
+  /**
+   * The badge's `View report →` (CO-BR-34): the Carryover report on the SAME Iteration. Every
+   * iteration report reads its selection through `useSelectedIteration`, which honours the
+   * persisted last-viewed id — `rememberIteration` writes it through that hook's own key builder.
+   * Read at the report's MOUNT (the type switch mounts it fresh), so the hand-over cannot be stale.
+   */
+  function openCarryover(iterationId: string) {
+    if (projectId) rememberIteration(projectId, iterationId)
+    changeType('carryover')
+  }
 
   if (!projectId) {
     return (
@@ -84,9 +100,29 @@ export function ReportsPage() {
       />
 
       <div className="flex min-h-0 flex-1 flex-col p-4">
-        {type === 'burndown' && <IterationBurndownReport projectId={projectId} teamId={teamId} />}
+        {type === 'burndown' && (
+          <IterationBurndownReport
+            projectId={projectId}
+            teamId={teamId}
+            onOpenCarryover={openCarryover}
+          />
+        )}
         {type === 'velocity' && <VelocityReport projectId={projectId} teamId={teamId} />}
-        {type === 'capacity' && <TeamCapacityReport projectId={projectId} teamId={teamId} />}
+        {type === 'capacity' && (
+          <TeamCapacityReport
+            projectId={projectId}
+            teamId={teamId}
+            onOpenCarryover={openCarryover}
+          />
+        )}
+        {type === 'carryover' && (
+          <CarryoverReport
+            projectId={projectId}
+            teamId={teamId}
+            direction={direction}
+            onDirectionChange={setDirection}
+          />
+        )}
       </div>
     </div>
   )

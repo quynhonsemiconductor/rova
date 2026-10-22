@@ -93,3 +93,11 @@ describe('CapacityItemRow warnings', () => {
     expect(screen.queryByRole('img', { name: /Capacity/i })).toBeNull()
   })
 })
+
+// US-120: see `allocation-row.test.tsx` — the same cell, on the Features tab.
+describe('CapacityItemRow — ID link', () => {
+  it('links the Feature key to its portfolio detail page', () => {
+    renderRow()
+    expect(screen.getByTitle('FE-1').getAttribute('href')).toBe('/portfolio/fe-1')
+  })
+})

@@ -1,7 +1,7 @@
-# API tokens — connecting another application to Rally
+# API tokens — connecting another application to Rova
 
 Machine credentials for CI, scripts and agents. A user mints one, stores it, and sends it as a bearer
-token; Rally treats it as that user, narrowed to whatever scopes the token was given.
+token; Rova treats it as that user, narrowed to whatever scopes the token was given.
 
 Implemented in migration 0125. The design rationale is in the migration comment; the integration
 pitfalls are in `CLAUDE.md`. This file is how to use it.
@@ -31,7 +31,7 @@ the route itself. Administering everyone's tokens is a different pair of routes 
 
 ```bash
 # Interactive session required — a token cannot mint a token (see "Refusals" below).
-curl -sX POST https://rally.example/v1/me/api-tokens \
+curl -sX POST https://rova.example/v1/me/api-tokens \
   -H "Authorization: Bearer $YOUR_ACCESS_TOKEN" \
   -H 'content-type: application/json' \
   -d '{"name": "agent-forge orchestrator", "expiresInDays": 90, "scopes": ["work_item:view"]}'
@@ -49,15 +49,15 @@ curl -sX POST https://rally.example/v1/me/api-tokens \
 ```
 
 `token` appears **once**. It is stored only as a sha256 hash, so it cannot be shown again — a lost
-token is revoked and replaced, not recovered. That is also real Rally's behaviour.
+token is revoked and replaced, not recovered. That is also Rally's behaviour.
 
 ## Use it
 
 ```bash
-curl https://rally.example/v1/work-items -H "Authorization: Bearer rly_XSm1…"
+curl https://rova.example/v1/work-items -H "Authorization: Bearer rly_XSm1…"
 ```
 
-Same header as an access token. Rally distinguishes the two by the `rly_` prefix, so nothing else in a
+Same header as an access token. Rova distinguishes the two by the `rly_` prefix, so nothing else in a
 client has to change.
 
 ## Scopes narrow, they never grant
@@ -67,7 +67,7 @@ the intersection: **your permissions ∩ the token's scopes**. Consequences wort
 
 - A token can never exceed the person who minted it. Granting yourself more later does not widen an
   existing token; minting a new one does.
-- Revoking a grant in Rally takes effect on the token's **next request** — permissions are resolved
+- Revoking a grant in Rova takes effect on the token's **next request** — permissions are resolved
   from the database every time, never read from the credential.
 - An unknown permission code is rejected at mint, naming the code. It is not silently ignored, because
   at use time a typo and a missing permission are indistinguishable.
@@ -102,11 +102,11 @@ working immediately rather than at expiry.
 
 ## Recommendations for a long-lived integration
 
-1. **Use a dedicated service account**, not a person's login. In real Rally, API keys are deleted with
+1. **Use a dedicated service account**, not a person's login. In Rally, API keys are deleted with
    the user — tie an unattended integration to an individual and it breaks the day their account
    changes. A service principal also makes the audit trail name the integration rather than a colleague.
 2. **Scope it to what it does.** A reader gets `work_item:view`; nothing else needs to be possible.
 3. **Store it like a password**: environment variable or secret manager, never in the repository, never
-   in a log. Rally's own log redactor drops the field, but that only protects Rally's logs.
+   in a log. Rova's own log redactor drops the field, but that only protects Rova's logs.
 4. **Rotate on a schedule you choose**, not when it expires. `lastUsedAt` in the token list tells you
    whether an old token is still in use before you revoke it.

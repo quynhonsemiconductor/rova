@@ -3,11 +3,19 @@
  * external collaborator as a Microsoft Entra B2B guest via Graph, then writes the returned guest
  * `oid` back onto the invitation.
  *
- * Extends AbstractOutboxRelay, which owns the polling loop, `FOR UPDATE SKIP LOCKED`, the attempt
- * counter, the exponential backoff and the dead-letter log. Modelled on `EmailRelayService`; the
- * one thing it adds is `isPermanentFailure`, because a Graph REFUSAL (a malformed address, B2B
- * invitations switched off, a missing `User.Invite.All` grant) answers the same on all five tries
- * and belongs in `status = 'failed'` immediately rather than after fifteen minutes of retries.
+ * Extends AbstractOutboxRelay (lease-and-fence), which owns the polling loop, the claim and fenced
+ * finish transactions, the attempt counter, the exponential backoff and the dead-letter log. Modelled
+ * on `EmailRelayService`; the one thing it adds is that a Graph REFUSAL (a malformed address, B2B
+ * invitations switched off, a missing `User.Invite.All` grant) answers the same on all five tries and
+ * belongs in `status = 'failed'` immediately rather than after fifteen minutes of retries: `deliver`
+ * rethrows `PermanentGuestInviteError` as the base class's `NonRetryableError`.
+ *
+ * THE GRAPH CALL RUNS WITH NO TRANSACTION OPEN. (This file used to say it did, and it did not: the call
+ * ran inside the relay's `FOR UPDATE SKIP LOCKED` transaction, which sat idle in transaction for as long
+ * as Graph took. Past the worker role's idle_in_transaction_session_timeout the session was killed, the
+ * attempt counter rolled back, and the row was retried for ever.) The call is a `ResiliencePreset.EXTERNAL_API`
+ * call — four executions of at most 30 s, each with an `AbortSignal` — and the lease is derived from that
+ * preset, so it always outlasts the call.
  *
  * IT ALSO SCHEDULES THE INVITATION EMAIL (migration 0124), which is the ordering the invitee
  * depends on. `inviteMember` used to write both outbox rows and two independent relays drained them:
@@ -17,8 +25,8 @@
  * (`NO_CONNECTION` from our login box, `AADSTS50020` from Microsoft's). The email is therefore
  * scheduled HERE, by the only component that knows the guest is ready, in the same transaction that
  * marks the row `sent`. That is why the docblock this replaced was wrong to call a directory write
- * "not latency-critical" on the grounds that "the invitee has a Rally email to act on either way":
- * the Rally email is UNUSABLE until the guest exists, so it must not exist any earlier.
+ * "not latency-critical" on the grounds that "the invitee has a Rova email to act on either way":
+ * the Rova email is UNUSABLE until the guest exists, so it must not exist any earlier.
  *
  * Cadence is 10s, not the SCM backfill's 30s, for that same reason — the wait is now the invitee's,
  * not a background job's — and `wakeGuestInviteRelay` makes the ordinary case immediate, with the
@@ -28,12 +36,19 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { createHash } from 'node:crypto';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
-import { InjectDrizzle, Span, AppConfigService } from '@platform';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
+import {
+  InjectDrizzle,
+  Span,
+  AppConfigService,
+  ResiliencePreset,
+  leaseForResilience,
+} from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
 import { EmailSchedulerService } from '@platform/email';
 import { NotificationPubSubService } from '@platform/notifications';
-import { AbstractOutboxRelay } from '@platform/outbox';
+import { AbstractOutboxRelay, NonRetryableError, dbDelay } from '@platform/outbox';
+import type { Claimed, OutboxLeaseTable } from '@platform/outbox';
 import { EntraGuestInviteClient, PermanentGuestInviteError } from '@modules/workspace';
 import type { GuestInviteOutcome } from '@modules/workspace';
 import { guestInviteOutbox } from '../../../../db/schema/messaging';
@@ -52,28 +67,16 @@ type GuestInviteRow = {
 
 @Injectable()
 export class EntraGuestInviteRelayService
-  extends AbstractOutboxRelay<GuestInviteRow>
+  extends AbstractOutboxRelay<GuestInviteRow, GuestInviteOutcome>
   implements OnModuleInit, OnModuleDestroy
 {
-  /** One directory write at a time — Graph throttles, and a batch here is 10 directory writes. */
-  protected override readonly batchSize = 10;
+  /**
+   * Graph throttles, and a batch is held for the SUM of its rows' leases (3 min each): 5 rows is 15 minutes if
+   * a worker dies holding them.
+   */
+  protected override readonly batchSize = 5;
 
   private unsubscribeRelayWake?: () => Promise<void>;
-
-  /**
-   * The outcome produced by the current pass, keyed by row id and consumed in `markSent`.
-   *
-   * `processRow` has no transaction handle by design (the base class runs it outside the row's
-   * write so a network call cannot hold the transaction open), and the guest `oid` — plus, since
-   * migration 0124, the invitation EMAIL — has to land in the SAME write that marks the row sent.
-   * Stashing per-pass state in a Map is the existing pattern for exactly this — see
-   * `ScmBackfillRelayService.counts`. The whole row is stashed, not just its invitation id, because
-   * building the email needs the invited address and the raw token as well.
-   */
-  private readonly outcomes = new Map<
-    string,
-    { row: GuestInviteRow; outcome: GuestInviteOutcome }
-  >();
 
   constructor(
     @InjectDrizzle() db: DrizzleDB,
@@ -118,7 +121,7 @@ export class EntraGuestInviteRelayService
    * because consent was revoked, it dead-letters LOUDLY: `DEAD_LETTER_FIELD` is what the CloudWatch
    * alarm matches, and cancel-and-re-invite is the operator's fix. Silence with an alarm beats silence
    * without one. The cost is one indexed partial-index lookup per 10s per worker for a dormant
-   * feature, which is what the other four relays already pay.
+   * feature, which is what the other five relays already pay.
    */
   @Cron('*/10 * * * * *', { name: 'entra-guest-invite-relay' })
   @Span('entra.guestInvite.relay')
@@ -128,7 +131,32 @@ export class EntraGuestInviteRelayService
 
   // ── AbstractOutboxRelay implementation ────────────────────────────────────
 
-  protected async fetchBatch(tx: DrizzleTx): Promise<GuestInviteRow[]> {
+  protected readonly outbox: OutboxLeaseTable = {
+    table: guestInviteOutbox,
+    id: guestInviteOutbox.id,
+    status: guestInviteOutbox.status,
+    attempts: guestInviteOutbox.attempts,
+    lastError: guestInviteOutbox.lastError,
+    leaseToken: guestInviteOutbox.leaseToken,
+    lockedUntil: guestInviteOutbox.lockedUntil,
+    seq: guestInviteOutbox.seq,
+  };
+
+  /** One Graph invitation: ResiliencePreset.EXTERNAL_API (four executions of 30 s) plus the margin. */
+  protected override leaseMsFor(): number {
+    return leaseForResilience(ResiliencePreset.EXTERNAL_API);
+  }
+
+  /**
+   * A reaped (abandoned) row is dead-lettered WITHOUT `markFailed`, so it must lose its raw bearer token the same
+   * way a terminal failure does (migration 0124: a row holds a live credential only between enqueue and the Graph
+   * call). Merged into the reaper's UPDATE; without it the token of an abandoned invitation stayed in the table.
+   */
+  protected override reapColumns(): Record<string, unknown> {
+    return { inviteToken: null };
+  }
+
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<GuestInviteRow[]> {
     return tx
       .select({
         id: guestInviteOutbox.id,
@@ -144,17 +172,35 @@ export class EntraGuestInviteRelayService
         and(
           eq(guestInviteOutbox.status, 'pending'),
           lt(guestInviteOutbox.attempts, this.maxAttempts),
-          lte(guestInviteOutbox.scheduledAt, new Date()),
+          lte(guestInviteOutbox.scheduledAt, sql`now()`),
+          this.notLeased(),
         ),
       )
-      .orderBy(asc(guestInviteOutbox.scheduledAt), asc(guestInviteOutbox.id))
-      .limit(this.batchSize)
+      .orderBy(
+        asc(guestInviteOutbox.scheduledAt),
+        asc(guestInviteOutbox.seq),
+        asc(guestInviteOutbox.id),
+      )
+      .limit(limit)
       .for('update', { skipLocked: true });
   }
 
-  protected async processRow(row: GuestInviteRow): Promise<void> {
-    const outcome = await this.client.invite({ email: row.email, displayName: row.displayName });
-    this.outcomes.set(row.id, { row, outcome });
+  /**
+   * The Graph call. NO transaction is open. A Graph refusal is rethrown as `NonRetryableError`, which the
+   * base class dead-letters on the FIRST attempt — by ERROR TYPE, never by message text: the client raises
+   * `PermanentGuestInviteError` for a status Graph cannot answer differently next time (a rejected address —
+   * `+` and ~25 other characters are refused outright — B2B invitations disabled tenant-wide, or a missing
+   * `User.Invite.All` consent), and throws a plain `Error` for 5xx / 429 / 408 / network faults, which keep
+   * the full retry budget.
+   */
+  protected async deliver(row: Claimed<GuestInviteRow>): Promise<GuestInviteOutcome> {
+    let outcome: GuestInviteOutcome;
+    try {
+      outcome = await this.client.invite({ email: row.email, displayName: row.displayName });
+    } catch (err) {
+      if (err instanceof PermanentGuestInviteError) throw new NonRetryableError(err.message);
+      throw err;
+    }
 
     if (outcome.outcome === 'already-in-directory') {
       this.logger.log(
@@ -162,37 +208,19 @@ export class EntraGuestInviteRelayService
         'No Entra guest created — the invited address already resolves to a directory object',
       );
     }
+    return outcome;
   }
 
-  protected async markSent(tx: DrizzleTx, rowId: string): Promise<void> {
-    const stashed = this.outcomes.get(rowId);
-    this.outcomes.delete(rowId);
-    const outcome = stashed?.outcome;
-
-    await tx
-      .update(guestInviteOutbox)
-      .set({
-        status: 'sent',
-        sentAt: new Date(),
-        /**
-         * A non-fatal explanation on a SENT row: without it, "sent, yet the invitation carries no
-         * guest id" has no answer on the row itself, and that is the ordinary outcome for a staff
-         * mailbox. Cleared on the success path so a retry that finally worked does not keep an
-         * earlier note.
-         */
-        lastError: outcome?.outcome === 'already-in-directory' ? outcome.detail : null,
-        /**
-         * Scrubbed the moment it can no longer be needed. The email is scheduled below in this same
-         * transaction, so a `sent` row never keeps a live bearer credential — see migration 0124's
-         * security assessment, of which this is the load-bearing half.
-         */
-        inviteToken: null,
-      })
-      .where(eq(guestInviteOutbox.id, rowId));
-
-    if (!stashed) return;
-
-    if (outcome?.outcome === 'invited' && outcome.guestObjectId) {
+  /**
+   * The writes that must commit atomically with the row going to `sent`, in the fenced finish transaction:
+   * the guest's `oid` on the invitation and the invitation EMAIL (migration 0124).
+   */
+  protected async settle(
+    row: Claimed<GuestInviteRow>,
+    outcome: GuestInviteOutcome,
+    tx: DrizzleTx,
+  ): Promise<void> {
+    if (outcome.outcome === 'invited' && outcome.guestObjectId) {
       /**
        * The guest's `oid` in OUR tenant, on the invitation, in the SAME transaction as the sent
        * marker — the two facts must not be able to disagree.
@@ -207,8 +235,8 @@ export class EntraGuestInviteRelayService
        */
       await tx
         .update(workspaceInvitations)
-        .set({ entraGuestObjectId: outcome.guestObjectId, updatedAt: new Date() })
-        .where(eq(workspaceInvitations.id, stashed.row.invitationId));
+        .set({ entraGuestObjectId: outcome.guestObjectId, updatedAt: sql`now()` })
+        .where(eq(workspaceInvitations.id, row.invitationId));
     }
 
     /**
@@ -222,7 +250,34 @@ export class EntraGuestInviteRelayService
      *
      * A FAILURE deliberately schedules nothing; `markFailed` says why.
      */
-    await this.scheduleInviteEmail(tx, stashed.row);
+    await this.scheduleInviteEmail(tx, row);
+  }
+
+  protected async markSent(
+    tx: DrizzleTx,
+    row: Claimed<GuestInviteRow>,
+    outcome: GuestInviteOutcome,
+  ): Promise<void> {
+    await tx
+      .update(guestInviteOutbox)
+      .set({
+        status: 'sent',
+        sentAt: sql`now()`,
+        /**
+         * A non-fatal explanation on a SENT row: without it, "sent, yet the invitation carries no
+         * guest id" has no answer on the row itself, and that is the ordinary outcome for a staff
+         * mailbox. Cleared on the success path so a retry that finally worked does not keep an
+         * earlier note.
+         */
+        lastError: outcome.outcome === 'already-in-directory' ? outcome.detail : null,
+        /**
+         * Scrubbed the moment it can no longer be needed. The email is scheduled in this same
+         * transaction (`settle`), so a `sent` row never keeps a live bearer credential — see
+         * migration 0124's security assessment, of which this is the load-bearing half.
+         */
+        inviteToken: null,
+      })
+      .where(eq(guestInviteOutbox.id, row.id));
   }
 
   /**
@@ -252,7 +307,10 @@ export class EntraGuestInviteRelayService
       .select({
         status: workspaceInvitations.status,
         tokenHash: workspaceInvitations.tokenHash,
-        expiresAt: workspaceInvitations.expiresAt,
+        // Days remaining, computed by the database's own now() in this statement (not the host clock). Floored at 1: a
+        // "0 days" invitation reads as already dead, and an invitation whose window has closed is refused at accept time
+        // anyway.
+        expiresInDays: sql<number>`greatest(1, ceil(extract(epoch from (${workspaceInvitations.expiresAt} - now())) / 86400))::int`,
       })
       .from(workspaceInvitations)
       .where(eq(workspaceInvitations.id, row.invitationId))
@@ -281,12 +339,8 @@ export class EntraGuestInviteRelayService
     /**
      * Days REMAINING, from the invitation's own `expires_at` — not `INVITATION_TTL_DAYS`. The mail
      * leaves after provisioning and possibly after several backoff windows, so the configured TTL
-     * would overstate the window the invitee actually has. Floored at 1: a "0 days" invitation reads
-     * as already dead, and an invitation whose window has closed is refused at accept time anyway.
+     * would overstate the window the invitee actually has.
      */
-    const msRemaining = invitation.expiresAt.getTime() - Date.now();
-    const expiresInDays = Math.max(1, Math.ceil(msRemaining / 86_400_000));
-
     await this.emailScheduler.schedule(
       {
         to: row.email,
@@ -294,7 +348,7 @@ export class EntraGuestInviteRelayService
         vars: {
           inviteUrl: `${this.config.get('APP_BASE_URL')}/accept-invitation?token=${row.inviteToken}`,
           workspaceName: workspace.name,
-          expiresInDays: String(expiresInDays),
+          expiresInDays: String(invitation.expiresInDays),
           recipientEmail: row.email,
         },
         // Identical to `WorkspaceService.inviteMember`'s key, on purpose — see above.
@@ -322,39 +376,24 @@ export class EntraGuestInviteRelayService
    */
   protected async markFailed(
     tx: DrizzleTx,
-    rowId: string,
-    newAttempts: number,
+    row: Claimed<GuestInviteRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
-    this.outcomes.delete(rowId);
+    // `attempts` was spent at claim time.
     await tx
       .update(guestInviteOutbox)
       .set({
         status: newStatus,
-        attempts: newAttempts,
         lastError,
         // Only a retry moves scheduledAt forward; a terminal row keeps its last one, and
-        // fetchBatch never selects 'failed' again.
-        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+        // selectDue never selects 'failed' again.
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
         // A retry still needs the token to build the email it may yet send; a terminal row never
         // will, so it must not keep a live credential (migration 0124).
         ...(newStatus === 'failed' ? { inviteToken: null } : {}),
       })
-      .where(eq(guestInviteOutbox.id, rowId));
-  }
-
-  /**
-   * A Graph refusal is terminal on the first attempt.
-   *
-   * By ERROR TYPE, never by message text: the client raises `PermanentGuestInviteError` for a
-   * status Graph cannot answer differently next time (a rejected address — `+` and ~25 other
-   * characters are refused outright — B2B invitations disabled tenant-wide, or a missing
-   * `User.Invite.All` consent), and throws a plain `Error` for 5xx / 429 / 408 / network faults,
-   * which keep the full retry budget.
-   */
-  protected override isPermanentFailure(err: unknown): boolean {
-    return err instanceof PermanentGuestInviteError;
+      .where(eq(guestInviteOutbox.id, row.id));
   }
 }

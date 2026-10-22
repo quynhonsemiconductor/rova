@@ -1558,11 +1558,11 @@ None of these blocks Phase A. Each is asked at the phase that needs it.
   `test-case-types.service.spec.ts`).
 - [x] **§0's five declared divergences recorded** — **as a CLAUDE.md section, not
   `docs/DIVERGENCE.md`.** Confirmed with the user before writing: `docs/DIVERGENCE.md` is scoped
-  entirely to Rally-vs-opshub architectural divergence (tenancy, permission vocabulary, scope
-  dimensions) — writing Rally-vs-Broadcom-product divergence there would be a category error. The
+  entirely to rova-vs-opshub architectural divergence (tenancy, permission vocabulary, scope
+  dimensions) — writing rova-vs-Broadcom-product divergence there would be a category error. The
   established convention for THIS kind of divergence is an inline CLAUDE.md prose section (see
   "Declared divergences from the BA, in Capacity Planning" / "...in the access model"), so "Declared
-  divergences from Rally, in Test Cases" follows that shape instead. The plan's own literal text is
+  divergences from rova, in Test Cases" follows that shape instead. The plan's own literal text is
   now stale on this point; recorded here rather than silently deviating.
 - [x] **`CLAUDE.md` gains a Test Case section**: the trigger, the nullable `work_item_id` reading,
   the `entity_ref_type` widening and its refusals, the `Not Run` / `Not run yet` exception to

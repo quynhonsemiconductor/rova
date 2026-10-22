@@ -1,5 +1,11 @@
 import type { BurndownHistoryState, BurndownPoint, SplitMarker } from './burndown';
 import type {
+  CarryoverDirectionFilter,
+  CarryoverRow,
+  CarryoverSummary,
+  CarryoverTrendPoint,
+} from './carryover';
+import type {
   BurnupHistoryState,
   BurnupPoint,
   ChartUnit,
@@ -71,6 +77,11 @@ export interface IterationBurndownReport {
   splitOut: SplitMarker[];
   /** `CARRY IN` — work that ARRIVED in this timebox from an earlier one (SRS §10.3). */
   carryIn: SplitMarker[];
+  /**
+   * Phase 7 Carryover (CO-08) — the compact Carryover badge. `null` when no Carryover touched this
+   * timebox; the chart series and the Split markers are untouched by it.
+   */
+  carryover: CarryoverSummary | null;
 }
 
 // ── Velocity ────────────────────────────────────────────────────────────────
@@ -116,6 +127,26 @@ export interface TeamCapacityReport {
   /** The two absences the empty state has to tell apart (Team Capacity SRS §6). */
   hasCapacity: boolean;
   hasTaskHours: boolean;
+  /** Phase 7 Carryover (CO-09) — the same compact badge as Burndown. `null` when none. */
+  carryover: CarryoverSummary | null;
+}
+
+// ── Carryover report (Phase 7 CO-10) ─────────────────────────────────────────
+
+export interface CarryoverReport {
+  context: ReportContext;
+  timebox: ReportTimebox;
+  direction: CarryoverDirectionFilter;
+  /** KPIs — measured over EVERY involving event; Direction never changes them (CO-BR-41). */
+  kpis: {
+    carryIn: number;
+    carryOut: number;
+    transferredTodoHours: number;
+    /** Percentage, one decimal; `0` when there is nothing to divide by. */
+    carryoverRate: number;
+  };
+  trend: CarryoverTrendPoint[];
+  rows: CarryoverRow[];
 }
 
 // ── Release Tracking ────────────────────────────────────────────────────────

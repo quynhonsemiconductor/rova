@@ -80,16 +80,85 @@ beforeEach(() => {
   tasks.mockReturnValue({ data: [task()], isLoading: false, isError: false })
 })
 
-function renderTab() {
-  return render(
+function tabElement() {
+  return (
     <TasksTab
       workItemId="wi-1"
       projectId="proj-record"
       parentTeamId="team-parent"
       readOnly={false}
-    />,
+    />
   )
 }
+
+function renderTab() {
+  return render(tabElement())
+}
+
+describe('TasksTab — mounting before the task list has loaded (Production, 2026-10-05)', () => {
+  // `useRowRerank` re-syncs during render whenever its `items` reference changes. A fresh `[]` per
+  // render while the query was pending or failed made that re-sync fire on EVERY render, and React
+  // threw #301 ("Too many re-renders") — on US-120 the whole page became the error boundary.
+  // React 19 REPORTS a render error rather than re-throwing it out of `render()`, so assert on what
+  // reached the DOM: a crashed root unmounts to an empty container.
+  //
+  // The FIRST render cannot loop — `useRowRerank` seeds its synced copy from it. The loop needs a
+  // second render while the data is still missing, which in the browser is any sibling feed (teams,
+  // members, totals) resolving first. `rerender` stands in for that.
+  //
+  // `mockImplementation`, not `mockReturnValue`: a live `useQuery` hands back a NEW result object per
+  // render, so the fixture must too.
+  it('survives a re-render while the query is still pending', () => {
+    tasks.mockImplementation(() => ({ data: undefined, isLoading: true, isError: false }))
+    const { container, rerender } = renderTab()
+    rerender(tabElement())
+    expect(container.firstChild).not.toBeNull()
+  })
+
+  it('survives a re-render after a failed read', () => {
+    tasks.mockImplementation(() => ({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('x'),
+    }))
+    const { container, rerender } = renderTab()
+    rerender(tabElement())
+    expect(container.firstChild).not.toBeNull()
+  })
+})
+
+/**
+ * Phase 7 CO-02 AC5 — the Task list shows the SAME persisted lifecycle dates Task Detail does: the
+ * same row field, through the same read-only `DateField` and the same `Not set` placeholder the
+ * sidebar uses (`detail-sidebar.test.tsx` "lifecycle dates" pins that side).
+ */
+describe('TasksTab — lifecycle dates (CO-02)', () => {
+  it('renders Start Date and Actual End Date columns, read-only', () => {
+    tasks.mockReturnValue({
+      data: [task({ startDate: '2026-09-02', actualEndDate: '2026-09-05' } as Partial<WorkItem>)],
+      isLoading: false,
+      isError: false,
+    })
+    renderTab()
+    expect(screen.getByText('Start Date')).toBeTruthy()
+    expect(screen.getByText('Actual End Date')).toBeTruthy()
+    expect(screen.getByText('2026-09-02')).toBeTruthy()
+    expect(screen.getByText('2026-09-05')).toBeTruthy()
+    // Read-only: no date control is offered in the row (the cell is plain text, named by its header).
+    expect(screen.queryByRole('button', { name: /task ta-1 (start|actual end) date/i })).toBeNull()
+  })
+
+  it('reads Not set before the Task has entered In-Progress or Completed', () => {
+    tasks.mockReturnValue({
+      data: [task({ startDate: null, actualEndDate: null } as Partial<WorkItem>)],
+      isLoading: false,
+      isError: false,
+    })
+    renderTab()
+    expect(screen.getAllByText('Not set')).toHaveLength(2)
+  })
+})
 
 describe("TasksTab — the Project column is the record's project (P6-E2E-003)", () => {
   it('resolves the projectId it was handed, not the selected project', () => {

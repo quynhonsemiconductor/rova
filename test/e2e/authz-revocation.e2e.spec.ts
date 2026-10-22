@@ -6,7 +6,7 @@
  * underpins every business flow but proves no single one. Recorded explicitly so
  * the coverage matrix can tell "deliberately not a flow" from "untraced".
  *
- * History, because it explains the shape of these assertions. Rally used to embed
+ * History, because it explains the shape of these assertions. Rova used to embed
  * `claims.permissions` in every access token and authorize from that snapshot, so
  * revoking a role left the issued token working for up to `JWT_ACCESS_EXPIRY`.
  * That was patched with an authorization epoch: a counter bumped on every change,
@@ -21,29 +21,24 @@
  * (and back) across an admin action, on the SAME bearer token.
  *
  * This boots the REAL `AppModule` (real Nest DI, real Drizzle against the seeded
- * `rova-postgres`, real Valkey) and drives REAL HTTP requests through
+ * the compose `postgres` service, real Valkey) and drives REAL HTTP requests through
  * `app.inject()`, so the guard chain, the cached resolution and the route all run
- * exactly as in production. The ONLY stub is the Microsoft signature check
- * (`EntraTokenVerifier.verify`), which cannot be satisfied locally.
+ * exactly as in production. Nothing is stubbed: sessions come from identity's test-login.
  *
  * Prereqs: docker deps up (`docker compose -f docker-compose.dev.yml up -d`) and
  * the DB seeded (`pnpm db:seed`).
  */
 import 'reflect-metadata';
-import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AccessService } from '@modules/access';
 import type { JwtPayload } from '@platform';
 import { ACCESS_LEVEL_PERMISSIONS } from '@shared-kernel';
 import { AppModule } from '../../apps/api/src/app.module';
-import { SEED_PROJECTS } from '../../db/seeds/constants';
+import { SEED_PROJECTS, WORKSPACE_ID } from '../../db/seeds/constants';
 import { grantProjectAccess } from './support/flow-harness';
-
-const TENANT = process.env['ENTRA_TENANT_ID'] ?? 'dev-tenant';
-const DOMAIN = (process.env['SSO_ALLOWED_EMAIL_DOMAINS'] ?? 'qnsc.vn').split(',')[0].trim();
+import { provisionUser } from './support/session';
 
 /**
  * The probe must be gated by a WORKSPACE-tier permission a JIT-provisioned user
@@ -60,40 +55,21 @@ const PROBE_ROUTE = '/audit-logs';
  */
 const SEEDED_ADMIN_ID = '00000000-0000-7000-8000-000000000002';
 
-interface DecodedAccessToken {
-  sub: string;
-  contextId: string | null;
-  claims: Record<string, unknown>;
-}
-
-function decodeAccessToken(token: string): DecodedAccessToken {
-  const payload = token.split('.')[1];
-  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as DecodedAccessToken;
-}
-
 describe('Permission changes take effect on the next request (real AppModule)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
   let access: AccessService;
 
-  /** Log in a brand-new JIT-provisioned SSO user, so each test owns its principal. */
+  /** A brand-new provisioned user (identity user + profile + workspace seat), so each test owns its principal. */
   async function loginFreshUser() {
-    const claims: EntraClaims = {
-      oid: `e2e-authz-${randomUUID()}`,
-      email: `authz-e2e-${randomUUID().slice(0, 8)}@${DOMAIN}`,
-      displayName: 'E2E Authz User',
-      externalTenantId: TENANT,
-      roles: [],
-    };
-    const result = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    return { result, token: decodeAccessToken(result.accessToken) };
+    const result = await provisionUser(app, 'e2e-authz', 'E2E Authz User');
+    return { result, token: { sub: result.userId, contextId: WORKSPACE_ID } };
   }
 
   function probe(accessToken: string) {
     return app.inject({
       method: 'GET',
       url: PROBE_ROUTE,
-      headers: { authorization: `Bearer ${accessToken}` },
+      headers: { cookie: accessToken },
     });
   }
 
@@ -102,19 +78,13 @@ describe('Permission changes take effect on the next request (real AppModule)', 
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     // inject() drives the real Fastify router, which must be ready first.
     await app.getHttpAdapter().getInstance().ready();
 
-    auth = app.get(AuthService);
     access = app.get(AccessService);
   });
 
@@ -122,14 +92,21 @@ describe('Permission changes take effect on the next request (real AppModule)', 
     await app?.close();
   });
 
-  it('mints tokens that carry no permissions at all', async () => {
-    // The absence IS the fix. While a token carried its own permission list, every
+  it('issues a session that carries no permissions at all', async () => {
+    // The absence IS the design. While a token carried its own permission list, every
     // authorization answer was as old as the token, and an epoch counter had to
-    // exist to expire it early.
-    const { token } = await loginFreshUser();
+    // exist to expire it early. Identity 8's session is an opaque row: `PolicyGuard`
+    // reads the database per request.
+    const { result } = await loginFreshUser();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/auth/get-session',
+      headers: { cookie: result.accessToken },
+    });
 
-    expect(token.claims['permissions']).toBeUndefined();
-    expect(token.claims['authzEpoch']).toBeUndefined();
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain('permissions');
+    expect(res.body).not.toContain('authzEpoch');
   });
 
   it('a GRANT takes effect on the same token, on the very next request', async () => {
@@ -139,7 +116,7 @@ describe('Permission changes take effect on the next request (real AppModule)', 
     expect((await probe(result.accessToken)).statusCode).toBe(403);
 
     // 2. The admin action that used to require the victim to refresh.
-    await access.elevateToWorkspaceAdmin(token.sub, token.contextId!);
+    await access.elevateToWorkspaceAdmin(token.sub, token.contextId);
 
     // 3. Same bearer token, no refresh, no re-login: allowed now.
     expect((await probe(result.accessToken)).statusCode).toBe(200);
@@ -147,17 +124,17 @@ describe('Permission changes take effect on the next request (real AppModule)', 
 
   it('a REVOCATION takes effect on the same token, on the very next request', async () => {
     const { result, token } = await loginFreshUser();
-    await access.elevateToWorkspaceAdmin(token.sub, token.contextId!);
+    await access.elevateToWorkspaceAdmin(token.sub, token.contextId);
     expect((await probe(result.accessToken)).statusCode).toBe(200);
 
     // Revoke the workspace-scoped assignments that grant left behind. The actor is
     // the seeded workspace admin — this proves the effect on the VICTIM's
     // authorization, not the admin's own (covered by sso-rbac).
-    const assignments = await access.getUserAssignments(token.contextId!, token.sub);
+    const assignments = await access.getUserAssignments(token.contextId, token.sub);
     const workspaceScoped = assignments.filter((a) => a.scopeType === 'workspace');
     expect(workspaceScoped.length).toBeGreaterThan(0);
     for (const assignment of workspaceScoped) {
-      await access.revokeRole(actorFor(token.contextId!), assignment.id);
+      await access.revokeRole(actorFor(token.contextId), assignment.id);
     }
 
     // The token is still perfectly valid — it just no longer authorizes this route.
@@ -180,14 +157,14 @@ describe('Permission changes take effect on the next request (real AppModule)', 
     const { token } = await loginFreshUser();
     const projectId = SEED_PROJECTS[0].id;
 
-    const before = await access.getProjectPermissions(token.sub, token.contextId!, projectId);
+    const before = await access.getProjectPermissions(token.sub, token.contextId, projectId);
 
     await grantProjectAccess(app, token.sub, projectId, 'admin');
 
     // Asserted as a delta rather than a hardcoded code: naming one would only prove the
     // catalogue's contents. What matters is that the new grant is visible AT ONCE — no token
     // refresh, no TTL wait — and that whatever baseline existed survived the union.
-    const after = await access.getProjectPermissions(token.sub, token.contextId!, projectId);
+    const after = await access.getProjectPermissions(token.sub, token.contextId, projectId);
     const added = after.filter((code) => !before.includes(code));
 
     expect(added.length).toBeGreaterThan(0);

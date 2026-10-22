@@ -46,6 +46,10 @@ export interface DateFieldProps {
   variant?: 'cell' | 'field'
   /** Extra classes for the trigger / read-only span. */
   className?: string
+  /** Optional, additive: days the picker must render disabled (see {@link Calendar}). */
+  isDateDisabled?: (iso: string) => boolean
+  /** Month the calendar opens on when there is no value (`yyyy-MM-dd`). */
+  defaultMonth?: string | null
 }
 
 export function DateField({
@@ -56,6 +60,8 @@ export function DateField({
   ariaLabel = 'Date',
   variant = 'cell',
   className,
+  isDateDisabled,
+  defaultMonth,
 }: DateFieldProps) {
   const [open, setOpen] = useState(false)
   const close = useCallback(() => setOpen(false), [])
@@ -112,6 +118,8 @@ export function DateField({
       >
         <Calendar
           value={value}
+          defaultMonth={defaultMonth}
+          isDateDisabled={isDateDisabled}
           onSelect={(iso) => {
             onChange(iso)
             setOpen(false)

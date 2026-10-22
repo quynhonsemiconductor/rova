@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
 
 import { RELEASE_TRACKING_MAX_PAGE_SIZE } from '../../../domain/release-tracking';
+import { CARRYOVER_DIRECTION_FILTERS } from '../../../domain/carryover';
 
 /**
  * Every report query carries `projectId` and an OPTIONAL `teamId`, and nothing else about
@@ -58,6 +59,16 @@ export const TeamCapacityQuerySchema = z.object({
 });
 export class TeamCapacityQueryDto extends createZodDto(TeamCapacityQuerySchema) {}
 
+// ── GET /reports/carryover (Phase 7 CO-10) ───────────────────────────────────
+
+export const CarryoverQuerySchema = z.object({
+  ...scope,
+  iterationId: z.string().uuid(),
+  // Narrows the ROWS only (CO-BR-41) — never a KPI. Default `all`.
+  direction: z.enum(CARRYOVER_DIRECTION_FILTERS).optional(),
+});
+export class CarryoverQueryDto extends createZodDto(CarryoverQuerySchema) {}
+
 // ── GET /reports/release-tracking (+ /burnup) ────────────────────────────────
 
 export const CHART_UNITS = ['points', 'count'] as const;
@@ -91,7 +102,7 @@ export const ReleaseTrackingQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
   /**
    * `"<field>[:asc|:desc]"` over the whole bucket — `rank`, `id`, `team` or `name`
-   * (RT-AC-05, plus the `name` Rally-parity divergence). Parsed by the shared `parseSort`
+   * (RT-AC-05, plus the `name` agile-ALM-parity divergence). Parsed by the shared `parseSort`
    * against `RELEASE_TRACKING_SORT_FIELDS`, so an unknown field falls back to rank order
    * instead of failing the request.
    */

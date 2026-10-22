@@ -1,11 +1,13 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { createPrivateKey, type KeyObject } from 'node:crypto';
 import { SignJWT } from 'jose';
-import { AppConfigService } from '@platform';
-import { SECRET_RESOLVER, type ISecretResolver } from '@quynhonsemiconductor/identity';
+import { AppConfigService, RetryAfterError } from '@platform';
+import { githubCallSignal } from './github-http';
+import { rateLimitWaitMs } from './github-rest.client';
+import { SECRET_RESOLVER, type ISecretResolver } from '@platform';
 
 /**
- * Authenticates as the "Rally SCM" GitHub App and mints short-lived installation
+ * Authenticates as the "Rally SCM" GitHub App (legacy physical name, do not rename) and mints short-lived installation
  * access tokens for REST calls (backfill). Flow:
  *   1. App JWT — RS256, signed with the App private key (iss = App ID, ≤10 min).
  *   2. Installation id — GET /repos/{o}/{r}/installation (Bearer app JWT).
@@ -45,9 +47,13 @@ export class GithubAppAuthService {
   }
 
   /** Resolve the App installation id for a repo (owner/name). */
-  async resolveInstallationId(fullName: string): Promise<string> {
+  async resolveInstallationId(fullName: string, signal?: AbortSignal): Promise<string> {
     const [owner, repo] = fullName.split('/');
-    const body = await this.appRequest<{ id: number }>(`/repos/${owner}/${repo}/installation`);
+    const body = await this.appRequest<{ id: number }>(
+      `/repos/${owner}/${repo}/installation`,
+      'GET',
+      signal,
+    );
     return String(body.id);
   }
 
@@ -66,13 +72,14 @@ export class GithubAppAuthService {
   }
 
   /** Get a cached (or fresh) installation access token. */
-  async getInstallationToken(installationId: string): Promise<string> {
+  async getInstallationToken(installationId: string, signal?: AbortSignal): Promise<string> {
     const hit = this.tokenCache.get(installationId);
     if (hit && hit.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) return hit.token;
 
     const body = await this.appRequest<{ token: string; expires_at: string }>(
       `/app/installations/${installationId}/access_tokens`,
       'POST',
+      signal,
     );
     this.tokenCache.set(installationId, {
       token: body.token,
@@ -83,7 +90,11 @@ export class GithubAppAuthService {
 
   // ── internals ────────────────────────────────────────────────────────────
 
-  private async appRequest<T>(path: string, method: 'GET' | 'POST' = 'GET'): Promise<T> {
+  private async appRequest<T>(
+    path: string,
+    method: 'GET' | 'POST' = 'GET',
+    signal?: AbortSignal,
+  ): Promise<T> {
     const jwt = await this.mintAppJwt();
     const res = await fetch(`${this.apiBaseUrl}${path}`, {
       method,
@@ -92,12 +103,14 @@ export class GithubAppAuthService {
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },
+      signal: githubCallSignal(signal),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(
-        `GitHub App request ${method} ${path} failed (${res.status}): ${text.slice(0, 200)}`,
-      );
+      const message = `GitHub App request ${method} ${path} failed (${res.status}): ${text.slice(0, 200)}`;
+      const wait = rateLimitWaitMs(res);
+      if (wait !== undefined) throw new RetryAfterError(message, wait);
+      throw new Error(message);
     }
     return (await res.json()) as T;
   }

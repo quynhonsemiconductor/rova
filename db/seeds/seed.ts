@@ -27,6 +27,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { pgOptions } from '../pg-ssl';
+import { log } from '../script-log';
 import * as schema from '../schema';
 import { userRoleAssignments } from '../schema/access';
 import { ADMIN_USER_ID, WORKSPACE_ID } from './constants';
@@ -36,12 +37,13 @@ import { seedTenantBootstrapInto } from './bootstrap';
 import { resetFixtureTables } from './reset';
 
 export { seed } from './demo';
+import { mirrorIdentityUsers } from './identity-v8-users';
 export { seedSystemRoles } from './reference';
 export { seedTenantBootstrap } from './bootstrap';
 
 /**
  * Dev baseline: RBAC catalogue + QNSC workspace + SSO + a single platform-admin
- * user so dev-login works. NO demo projects/work items — a clean develop DB.
+ * user so test-login works. NO demo projects/work items — a clean develop DB.
  * Prod-safe pieces (roles + workspace) mirror the deploy path; the admin row is
  * a dev convenience (in prod the admin JIT-provisions on first SSO login).
  * Idempotent (fixed UUIDs + onConflictDoNothing).
@@ -53,11 +55,11 @@ export async function seedBaseline(connectionUrl?: string): Promise<void> {
   const pool = new Pool({ ...pgOptions(url), max: 1 });
   const db = drizzle(pool, { schema });
   try {
-    console.log('Seeding baseline (roles + workspace + admin)…');
+    log.info('Seeding baseline (roles + workspace + admin)…');
     await seedSystemRolesInto(db);
     await seedTenantBootstrapInto(db);
 
-    // Platform-admin user + workspace membership (dev-login target).
+    // Platform-admin user + workspace membership (test-login target).
     const adminEmail = process.env['ADMIN_EMAIL'] ?? 'admin@qnsc.dev';
     await db
       .insert(schema.users)
@@ -74,6 +76,7 @@ export async function seedBaseline(connectionUrl?: string): Promise<void> {
       .insert(schema.workspaceMembers)
       .values({ workspaceId: WORKSPACE_ID, userId: ADMIN_USER_ID })
       .onConflictDoNothing();
+    await mirrorIdentityUsers(db);
 
     // workspace_admin role (prefer the workspace-owned copy over the global template).
     const rows = await db
@@ -103,7 +106,7 @@ export async function seedBaseline(connectionUrl?: string): Promise<void> {
         .onConflictDoNothing();
     }
 
-    console.log('✅  Baseline seeded — roles + QNSC workspace + admin. No fixtures.');
+    log.info('✅  Baseline seeded — roles + QNSC workspace + admin. No fixtures.');
   } finally {
     await pool.end();
   }
@@ -127,7 +130,7 @@ if (process.argv[1]?.endsWith('seed.ts') || process.argv[1]?.endsWith('seed.js')
   const withFixtures = process.argv.includes('--fixtures') || process.argv.includes('--test');
   const run = withFixtures ? resetFixtureTables().then(() => seed()) : seedBaseline();
   run.catch((e) => {
-    console.error(e);
+    log.error({ err: e }, 'Seed failed');
     process.exit(1);
   });
 }

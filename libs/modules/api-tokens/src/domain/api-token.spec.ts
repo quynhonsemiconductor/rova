@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_EXPIRY_DAYS,
   MAX_EXPIRY_DAYS,
-  expiryFrom,
+  assertExpiryDays,
   hashToken,
   hashesMatch,
   mintToken,
@@ -48,7 +48,7 @@ describe('prefixOf', () => {
     expect(prefixOf(minted.plaintext)).toBe(minted.prefix);
   });
 
-  it('rejects anything that is not a Rally token', () => {
+  it('rejects anything that is not a Rova token', () => {
     expect(prefixOf('eyJhbGciOiJFUzI1NiJ9.e30.sig')).toBeNull();
     expect(prefixOf('rly_short')).toBeNull();
     expect(prefixOf('')).toBeNull();
@@ -69,25 +69,19 @@ describe('hashesMatch', () => {
   });
 });
 
-describe('expiryFrom', () => {
-  const now = new Date('2026-08-19T00:00:00.000Z');
-
-  it('defaults to 90 days', () => {
-    const expiry = expiryFrom(now);
-    expect(expiry.toISOString()).toBe('2026-11-17T00:00:00.000Z');
+describe('assertExpiryDays', () => {
+  it('accepts a lifetime from one day up to the cap', () => {
+    expect(() => assertExpiryDays(DEFAULT_EXPIRY_DAYS)).not.toThrow();
+    expect(() => assertExpiryDays(1)).not.toThrow();
+    expect(() => assertExpiryDays(MAX_EXPIRY_DAYS)).not.toThrow();
     expect(DEFAULT_EXPIRY_DAYS).toBe(90);
-  });
-
-  it('accepts a custom lifetime up to the cap', () => {
-    expect(expiryFrom(now, 1).toISOString()).toBe('2026-08-20T00:00:00.000Z');
-    expect(expiryFrom(now, MAX_EXPIRY_DAYS).getTime()).toBeGreaterThan(now.getTime());
   });
 
   it('refuses a lifetime past the cap, zero, negative or fractional', () => {
     // The cap is the whole point of having expiry at all: real Rally's keys never expire, which is why
     // nobody rotates them. An unbounded `expiresInDays` would reproduce that.
     for (const days of [0, -1, 1.5, MAX_EXPIRY_DAYS + 1, Number.NaN]) {
-      expect(() => expiryFrom(now, days)).toThrow(RangeError);
+      expect(() => assertExpiryDays(days)).toThrow(RangeError);
     }
   });
 });

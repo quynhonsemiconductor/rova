@@ -23,6 +23,7 @@ import { MilestonesService } from '@modules/milestones';
 import { TEST_CASE_REPOSITORY } from '@modules/test-cases/domain/ports/test-case.repository';
 import { TEST_RESULT_REPOSITORY } from '@modules/test-cases/domain/ports/test-result.repository';
 import { STORY_SPLIT_REPOSITORY } from '../domain/ports/story-split.repository';
+import { ITERATION_TRANSITION_REPOSITORY } from '../domain/ports/iteration-transition.repository';
 
 // Workspace isolation is enforced at the application layer via `getWorkItem`'s
 // `item.workspaceId !== workspaceId` guard. These tests exercise that boundary
@@ -80,6 +81,9 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
   devOwnerId: null,
   defectState: null,
   fixedInBuild: null,
+  startDate: null,
+  actualEndDate: null,
+  targetEndDate: null,
   ...o,
 });
 
@@ -355,6 +359,11 @@ describe('WorkItemsService — workspace isolation', () => {
           // asserts workspace isolation on the read paths and never splits anything.
           provide: STORY_SPLIT_REPOSITORY,
           useValue: { create: vi.fn().mockResolvedValue({ id: 'split-1' }) },
+        },
+        {
+          // Phase 7 Carryover's event log — present so the service can be constructed.
+          provide: ITERATION_TRANSITION_REPOSITORY,
+          useValue: { create: vi.fn().mockResolvedValue({ id: 'transition-1' }) },
         },
       ],
     }).compile();

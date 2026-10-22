@@ -44,6 +44,8 @@ vi.mock('@/features/work-items/api', () => ({
   useSetWorkItemMilestones: () => ({ mutateAsync: vi.fn() }),
   useTaskTotals: () => ({ data: undefined }),
   useStoryOptions: (...args: unknown[]) => storyOptions(...args),
+  // Phase 7 CO-03 — the Target End picker's feed; nothing eligible, so the field is read-only here.
+  useCarryoverOptions: () => ({ data: undefined }),
 }))
 vi.mock('@/features/releases/api', () => ({ useReleases: () => ({ data: [] }) }))
 vi.mock('@/features/portfolio/api', () => ({
@@ -129,6 +131,48 @@ function openOptions(label: string): string[] {
 }
 
 const has = (options: string[], text: string) => options.some((o) => o.includes(text))
+
+/**
+ * Phase 7 CO-01 / CO-02 — the system-managed lifecycle dates are SHOWN, read-only, and blank reads
+ * `Not set` (SRS §5.1). A Defect carries none of them (plan D12).
+ */
+describe('DetailSidebar — lifecycle dates', () => {
+  beforeEach(setup)
+
+  it('shows Not set on a Story before either date is stamped (CO-01 AC5)', () => {
+    renderSidebar({ startDate: null, actualEndDate: null } as Partial<WorkItem>)
+    expect(screen.getByText('Start Date')).toBeInTheDocument()
+    expect(screen.getByText('Actual End Date')).toBeInTheDocument()
+    // Start Date, Actual End Date and (CO-03) the unset Target End Date.
+    expect(screen.getAllByText('Not set')).toHaveLength(3)
+  })
+
+  it('shows the stamped dates as read-only text, not a picker (CO-01 AC1/AC3)', () => {
+    renderSidebar({ startDate: '2026-09-01', actualEndDate: '2026-09-12' } as Partial<WorkItem>)
+    expect(screen.getByText('2026-09-01')).toBeInTheDocument()
+    expect(screen.getByText('2026-09-12')).toBeInTheDocument()
+    // Read-only `DateField` renders text, never the trigger button that opens the calendar.
+    expect(screen.queryByRole('button', { name: 'Start Date' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Actual End Date' })).toBeNull()
+  })
+
+  it('shows a Task its own dates (CO-02)', () => {
+    renderSidebar({
+      type: 'task',
+      parentId: null,
+      startDate: '2026-09-02',
+      actualEndDate: null,
+    } as Partial<WorkItem>)
+    expect(screen.getByText('2026-09-02')).toBeInTheDocument()
+    expect(screen.getByText('Not set')).toBeInTheDocument()
+  })
+
+  it('shows no lifecycle dates on a Defect (plan D12)', () => {
+    renderSidebar({ type: 'defect' } as Partial<WorkItem>)
+    expect(screen.queryByText('Start Date')).toBeNull()
+    expect(screen.queryByText('Actual End Date')).toBeNull()
+  })
+})
 
 /**
  * DEV OWNER IS A SECOND, INDEPENDENT RESPONSIBILITY (`WID-FR-007` / `WID-FR-016`, BA `c42df59`).

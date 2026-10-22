@@ -37,8 +37,8 @@ import {
  * Usage with a preset:
  * ```ts
  * const data = await this.resilience.execute(
- *   'sns.publishEvent',
- *   () => this.sns.send(cmd),
+ *   'entra.graph.createInvitation',
+ *   () => this.postInvitation(request),
  *   ResiliencePreset.EXTERNAL_API,
  * );
  * ```
@@ -65,7 +65,7 @@ export class ResilienceService implements OnModuleDestroy {
   constructor(private readonly config: AppConfigService) {
     this.enabled = config.get('RESILIENCE_ENABLED') === true;
 
-    const meter = metrics.getMeter('rally-resilience', '1.0.0');
+    const meter = metrics.getMeter('rally-resilience', '1.0.0'); // legacy physical name, do not rename
     this.successCounter = meter.createCounter('resilience.success', {
       description: 'Successful resilient operations',
     });
@@ -85,7 +85,7 @@ export class ResilienceService implements OnModuleDestroy {
    * Execute `operation` wrapped in the resolved resilience policy for `name`.
    *
    * @param name    Unique policy name (also used as OTel attribute). Should be a
-   *                static string like `'sns.publishEvent'` — NOT constructed
+   *                static string like `'entra.graph.createInvitation'` — NOT constructed
    *                from user input (cardinality).
    * @param operation   Async function to protect.
    * @param optionsOrPreset   `ResiliencePreset` enum value, `ResilienceOptions`

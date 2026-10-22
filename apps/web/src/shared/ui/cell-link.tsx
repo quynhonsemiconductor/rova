@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/shared/lib/utils'
+import { RECORD_LINK_COLOUR, RecordOpener } from '@/shared/ui/record-link'
 
 /**
  * CellLink — the shared link affordance for table/list cells whose text opens a
@@ -8,37 +9,50 @@ import { cn } from '@/shared/lib/utils'
  * underline) and so grids stay link-only: the row itself never navigates, only
  * this link does. Stops propagation so it works inside rows that still carry
  * other handlers.
+ *
+ * Pass `href` (the record's detail path) so the link also opens in a new tab on
+ * Ctrl/Cmd+click or middle-click (US-120).
  */
 export function CellLink({
   onClick,
+  href,
   title,
+  ariaLabel,
   className,
   wrap = false,
   children,
 }: {
   onClick: () => void
+  href?: string
   title?: string
+  /** The accessible name, kept the same whether the cell renders as a link or a button. */
+  ariaLabel?: string
   className?: string
   /** When true the text wraps across lines (`break-words`) instead of the
    *  default single-line `truncate`. Used by Name columns that wrap. */
   wrap?: boolean
   children: ReactNode
 }) {
+  // Not `RECORD_LINK_LABEL`: its `group-hover/record:underline` is a DESCENDANT selector — it can
+  // only underline a child of the `group/record` opener, and here the opener IS the text, so the
+  // underline must be its own `hover:`.
+  const classes = cn(
+    'block text-left',
+    RECORD_LINK_COLOUR,
+    'hover:underline',
+    wrap ? 'break-words whitespace-normal' : 'truncate',
+    className,
+  )
+
   return (
-    <button
-      type="button"
+    <RecordOpener
+      href={href}
+      onOpen={onClick}
       title={title}
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick()
-      }}
-      className={cn(
-        'block text-left text-primary-light underline-offset-2 hover:underline',
-        wrap ? 'break-words whitespace-normal' : 'truncate',
-        className,
-      )}
+      ariaLabel={ariaLabel}
+      className={classes}
     >
       {children}
-    </button>
+    </RecordOpener>
   )
 }

@@ -1,5 +1,5 @@
 -- ============================================================
--- Rally — Postgres container init script
+-- rova — Postgres container init script
 -- Runs at container init (docker-entrypoint-initdb.d) via the
 -- postgres superuser BEFORE any application connections.
 --

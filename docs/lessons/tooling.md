@@ -88,7 +88,7 @@ not a function`, so use `AuthService.devLogin` for a bearer token), the **Valida
   place to add the keyboard sensor. Capacity Planning's grip already did this correctly and was the
   model.
 - **`EMPTY_VALUE` (`'--'`) is the only placeholder for an absent value**, per its own docblock ("not an
-  em-dash, because that is what real Rally renders"). 15 em-dash literals had drifted back in, two of
+  em-dash, because that is what Rally renders"). 15 em-dash literals had drifted back in, two of
   them colliding *within one screen* — Portfolio detail rendered `'--'` in the sidebar beside `'—'` in
   both children tables. When replacing these, note that the string also appears in prose comments; a
   blind find-and-replace edits those too.
@@ -120,14 +120,13 @@ not a function`, so use `AuthService.devLogin` for a bearer token), the **Valida
      EMAIL_PROVIDER != 'dev'". Unset, `resolveFromEmail` returns `''`, every send fails with
      `Email address not verified "Mini Rally" <>`, and after three failures the email circuit
      breaker opens and stays open for the process — so the relay never delivers and the test waits
-     out its 10s. Set `MAIL_FROM_EMAIL` and verify it in localstack:
-     `docker exec -i rova-localstack awslocal ses verify-email-identity --email-address <addr>`.
+     out its 10s. Set `MAIL_FROM_EMAIL`. Locally, use `EMAIL_PROVIDER=smtp` (Mailpit, http://localhost:8120): it needs no verified identity, and the message shows in the Mailpit UI.
      (The breaker is in-process, so restarting the API clears it; the failed rows are not retried
      and can be deleted.)
   2. **A live worker is a competing consumer** of `messaging.notification_outbox` and claims the
      rows the test is waiting for. Stop `pnpm start:dev:worker` before a BE e2e run.
      Neither is a product defect, and both look exactly like one. Check
-     `docker ps` first: localstack dying mid-session produces the same symptom.
+     `docker ps` first: a dead Mailpit or Postgres mid-session produces the same symptom.
 - **Run `pnpm lint`, not path-scoped `eslint`.** CI lints `{apps/api,apps/worker,libs,db}/**/*.ts` in one
   pass; linting only the paths you touched misses rules that fire elsewhere in that glob — and
   `no-unused-vars` exempts `^_` for ARGUMENTS only, not for destructured variables, so the

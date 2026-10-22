@@ -44,8 +44,8 @@ import {
   SEEDED,
   WORKSPACE_ID,
   adminActor,
-  bootRallyApp,
-  bootRallyWorkerRelays,
+  bootRovaApp,
+  bootRovaWorkerRelays,
   grantProjectAccess,
   uniqueKey,
 } from './support/flow-harness';
@@ -64,7 +64,7 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
   const admin = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     teams = app.get(TeamService);
     workItems = app.get(WorkItemsService);
@@ -466,11 +466,11 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
 // The suite above proves the producer contract (API → notification_outbox)
 // and the read model (in_app_notifications → NotificationsService). This
 // block proves the middle: the real NotificationRelayService/EmailRelayService
-// fetchBatch → processRow → markSent/markFailed cycle, preference suppression
+// selectDue → deliver → markSent/markFailed cycle, preference suppression
 // at delivery time, the notification→email cascade, and retry/backoff on a
 // forced failure — none of which the producer-only suite above can reach
 // (the "P4.1 notifications" suite header explicitly scoped this out).
-describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFailed', () => {
+describe('BA flows: Worker relay — real selectDue/deliver/markSent/markFailed', () => {
   let workerModule: TestingModule;
   let notificationRelay: NotificationRelayService;
   let emailRelay: EmailRelayService;
@@ -479,7 +479,7 @@ describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFai
   const admin = adminActor();
 
   beforeAll(async () => {
-    const worker = await bootRallyWorkerRelays();
+    const worker = await bootRovaWorkerRelays();
     workerModule = worker.module;
     notificationRelay = worker.notificationRelay;
     emailRelay = worker.emailRelay;
@@ -610,7 +610,7 @@ describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFai
     expect(delivered).toBeDefined();
 
     // Both relays are booted with their Valkey wake-signal subscriptions live
-    // (see bootRallyWorkerRelays()), so EmailSchedulerService.schedule()'s
+    // (see bootRovaWorkerRelays()), so EmailSchedulerService.schedule()'s
     // wake publish can trigger the email relay to drain this row before this
     // test's own explicit emailRelay.relay() call below runs — status may
     // already be 'sent' by the time we observe it. That race is itself a

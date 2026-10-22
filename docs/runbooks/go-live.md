@@ -191,7 +191,7 @@ monitor_ingress = true    # currently false
 ```
 
 Apply. That recreates the health check, the us-east-1 alarm and its SNS topic, which
-probes `rova-api.qnsc.vn/v1/healthz` from outside AWS and pages `nghiavt@qnsc.vn`
+probes `rova-api.qnsc.vn/v1/healthz` from outside AWS and pages `devops@qnsc.vn`
 (Route 53 publishes `HealthCheckStatus` only in us-east-1).
 
 Set it in the **same change** as `min_count` and before announcing. While tunnelled this

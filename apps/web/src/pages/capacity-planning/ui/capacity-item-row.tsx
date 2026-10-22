@@ -159,6 +159,7 @@ export function CapacityItemRow({
           itemKey={item.itemKey}
           type="feature"
           onOpen={() => onOpenFeature(item.portfolioItemId)}
+          recordId={item.portfolioItemId}
         />
       </div>
 

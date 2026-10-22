@@ -57,7 +57,7 @@ import { UNASSIGNED_FILTER, STORY_OPTIONS_LIMIT } from '../../domain/work-item.t
 import { teamRowFilter } from '../../domain/team-read-scope';
 import type { TeamReadScope, ProjectTeamScope } from '../../domain/team-read-scope';
 import { IWorkItemRepository, IterationScope } from '../../domain/ports/work-item.repository';
-import type { SplitIterationCandidateRow } from '../../domain/ports/work-item.repository';
+import type { ProjectIterationRow } from '../../domain/ports/work-item.repository';
 
 /**
  * Canonical projection of a work-item schedule_state (D1) onto the task_state
@@ -260,6 +260,10 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       devOwnerId: null,
       defectState: null,
       fixedInBuild: null,
+      // A Task's own lifecycle dates (0132); a Task has no forecast.
+      startDate: t.startDate,
+      actualEndDate: t.actualEndDate,
+      targetEndDate: null,
     };
   }
 
@@ -319,7 +323,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
   async listProjectIterations(
     projectId: string,
     workspaceId: string,
-  ): Promise<SplitIterationCandidateRow[]> {
+  ): Promise<ProjectIterationRow[]> {
     return this.db
       .select({
         id: iterations.id,
@@ -382,9 +386,19 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     id: string,
     workspaceId: string,
     executor: DbExecutor,
-  ): Promise<{ id: string; iterationId: string | null } | null> {
+  ): Promise<{
+    id: string;
+    iterationId: string | null;
+    projectId: string;
+    teamId: string | null;
+  } | null> {
     const rows = await executor
-      .select({ id: workItems.id, iterationId: workItems.iterationId })
+      .select({
+        id: workItems.id,
+        iterationId: workItems.iterationId,
+        projectId: workItems.projectId,
+        teamId: workItems.teamId,
+      })
       .from(workItems)
       .where(
         and(
@@ -395,6 +409,56 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       )
       .limit(1)
       .for('update');
+    return rows[0] ?? null;
+  }
+
+  async lockRows(
+    ids: string[],
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<
+    Array<{ id: string; iterationId: string | null; projectId: string; teamId: string | null }>
+  > {
+    if (ids.length === 0) return [];
+    return executor
+      .select({
+        id: workItems.id,
+        iterationId: workItems.iterationId,
+        projectId: workItems.projectId,
+        teamId: workItems.teamId,
+      })
+      .from(workItems)
+      .where(
+        and(
+          inArray(workItems.id, ids),
+          eq(workItems.workspaceId, workspaceId),
+          isNull(workItems.deletedAt),
+        ),
+      )
+      .orderBy(asc(workItems.id))
+      .for('update');
+  }
+
+  async lockIteration(
+    iterationId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<ProjectIterationRow | null> {
+    const rows = await executor
+      .select({
+        id: iterations.id,
+        name: iterations.name,
+        iterationKey: iterations.iterationKey,
+        state: iterations.state,
+        startDate: iterations.startDate,
+        endDate: iterations.endDate,
+        projectId: iterations.projectId,
+        teamId: iterations.teamId,
+      })
+      .from(iterations)
+      .where(and(eq(iterations.id, iterationId), eq(iterations.workspaceId, workspaceId)))
+      .limit(1)
+      .for('share');
     return rows[0] ?? null;
   }
 
@@ -853,6 +917,10 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         devOwnerId: tasks.devOwnerId,
         defectState: sql<string | null>`null`.as('defect_state'),
         fixedInBuild: sql<string | null>`null`.as('fixed_in_build'),
+        // CO-02 AC5 — the Task list must show the SAME persisted dates as Task Detail.
+        startDate: tasks.startDate,
+        actualEndDate: tasks.actualEndDate,
+        targetEndDate: sql<string | null>`null`.as('target_end_date'),
       })
       .from(tasks)
       .leftJoin(parent, eq(parent.id, tasks.parentId))
@@ -1295,6 +1363,9 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         resolution: null,
         defectState: null,
         fixedInBuild: null,
+        startDate: t.startDate,
+        actualEndDate: t.actualEndDate,
+        targetEndDate: null,
       };
     }
 
@@ -1455,11 +1526,50 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           defectState: input.defectState as DefectState | null,
         }),
         ...(input.fixedInBuild !== undefined && { fixedInBuild: input.fixedInBuild }),
+        // Phase 7 Carryover (D7). A Story-only column. Validated in the service, and the Task branch
+        // above never reaches here. A Defect shares this branch, but the layer below this one holds
+        // the contract: `trg_stamp_story_lifecycle_dates` (BEFORE INSERT OR UPDATE, migration 0132)
+        // clears `target_end_date` on every non-Story row whatever the statement set — pinned by the
+        // BE e2e "holds 'Defects carry no Target End Date' in the database too". The two lifecycle
+        // dates are deliberately absent (trigger-owned).
+        ...(input.targetEndDate !== undefined && { targetEndDate: input.targetEndDate }),
         updatedAt: new Date(),
       })
       .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)))
       .returning();
     return toWorkItem(rows[0]);
+  }
+
+  async listTaskSnapshots(
+    parentId: string,
+    workspaceId: string,
+    executor: DbExecutor,
+  ): Promise<
+    Array<{
+      id: string;
+      state: TaskState;
+      estimateHours: string | null;
+      todoHours: string | null;
+      actualHours: string | null;
+    }>
+  > {
+    return executor
+      .select({
+        id: tasks.id,
+        state: tasks.state,
+        estimateHours: tasks.estimateHours,
+        todoHours: tasks.todoHours,
+        actualHours: tasks.actualHours,
+      })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.parentId, parentId),
+          eq(tasks.workspaceId, workspaceId),
+          isNull(tasks.deletedAt),
+        ),
+      )
+      .orderBy(asc(tasks.id));
   }
 
   async softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void> {

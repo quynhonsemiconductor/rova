@@ -43,7 +43,7 @@ import type { JwtPayload } from '@platform';
 import {
   WORKSPACE_ID,
   adminActor,
-  bootRallyApp,
+  bootRovaApp,
   makeActor,
   uniqueKey,
 } from './support/flow-harness';
@@ -104,7 +104,7 @@ describe('project isolation: a project-scoped grant does not reach another proje
   let projectBId: string;
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     guard = app.get(PolicyGuard);
     access = app.get(AccessService);
     const db = app.get<DrizzleDB>(DRIZZLE);

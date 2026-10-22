@@ -5,6 +5,7 @@ import {
   PERMISSION,
   PERMISSION_TIER,
   PROJECT_ACCESS_LEVEL,
+  ROLE_PERMISSIONS,
   isProjectAccessLevel,
   isProjectTierPermission,
   type Permission,
@@ -147,6 +148,22 @@ describe('per-Project access levels', () => {
     expect(permissionGrants(['iteration:manage'], PERMISSION.TIMEBOX_VIEW)).toBe(false);
     // …and the Editor's own code does not, which is the whole split.
     expect(permissionGrants([PERMISSION.ITERATION_VIEW], PERMISSION.TIMEBOX_VIEW)).toBe(false);
+  });
+
+  it('report:export goes only where report:view does, and never to an Editor (Phase 7 R1/R4)', () => {
+    // EXPORT IMPLIES VIEW: a CSV is the report off-platform, so nobody may hold it without the screen.
+    // The export routes also re-check `report:view` in the controller, so this is the catalogue half.
+    const sets = [
+      ...Object.values(ROLE_PERMISSIONS),
+      ...Object.values(ACCESS_LEVEL_PERMISSIONS),
+    ] as ReadonlyArray<readonly string[]>;
+    for (const permissions of sets) {
+      if (permissions.includes(PERMISSION.REPORT_EXPORT)) {
+        expect(permissions).toContain(PERMISSION.REPORT_VIEW);
+      }
+    }
+    expect(ACCESS_LEVEL_PERMISSIONS.admin).toContain(PERMISSION.REPORT_EXPORT);
+    expect(ACCESS_LEVEL_PERMISSIONS.editor).not.toContain(PERMISSION.REPORT_EXPORT);
   });
 
   it('gives Admin no permission an Editor lacks unless it is deliberate', () => {

@@ -1,17 +1,21 @@
 /**
  * EmailRelayService — polls email_outbox and dispatches via EmailService (IEmailProvider).
  *
- * Extends AbstractOutboxRelay which owns the polling loop, concurrency guard,
- * transaction management, and retry/fail logic.  This class provides only the
- * email-specific behaviour: what to SELECT, how to send, and how to mark rows.
+ * Extends AbstractOutboxRelay (lease-and-fence): a short claim transaction, the provider call with NO
+ * transaction open, a fenced finish. This class provides only the email-specific behaviour: what to SELECT,
+ * how to send, and how to mark rows.
+ *
+ * LEASE. One send is a `ResiliencePreset.EMAIL` call: up to six executions of 30 s each (cockatiel's
+ * `maxAttempts` counts RETRIES). `leaseMsFor` derives the lease from that preset, so it always outlasts the
+ * call. A batch is held for the SUM of its rows' leases, hence the small batch.
  */
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
-import { InjectDrizzle, Span } from '@platform';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
+import { InjectDrizzle, Span, ResiliencePreset, leaseForResilience } from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
-import { AbstractOutboxRelay } from '@platform/outbox';
-import type { PostCommitTask } from '@platform/outbox';
+import { AbstractOutboxRelay, dbDelay } from '@platform/outbox';
+import type { Claimed, OutboxLeaseTable } from '@platform/outbox';
 import { EmailService } from '@platform/email';
 import type { EmailTemplateName, EmailTemplateVars } from '@platform/email';
 import { NotificationPubSubService } from '@platform/notifications';
@@ -30,11 +34,17 @@ type EmailOutboxRow = {
   workspaceId: string | null;
 };
 
+/** The provider's message id, or null when the send was suppressed by the recipient's preference. */
+type EmailResult = { messageId: string | null };
+
 @Injectable()
 export class EmailRelayService
-  extends AbstractOutboxRelay<EmailOutboxRow>
+  extends AbstractOutboxRelay<EmailOutboxRow, EmailResult>
   implements OnModuleInit, OnModuleDestroy
 {
+  /** Held for the SUM of the batch's leases (4 min each): 3 rows is 12 minutes if a worker dies. */
+  protected override readonly batchSize = 3;
+
   private unsubscribeRelayWake?: () => Promise<void>;
 
   constructor(
@@ -47,6 +57,8 @@ export class EmailRelayService
   }
 
   async onModuleInit(): Promise<void> {
+    // Fail the deploy, not the first invitation, if the configured transport cannot work (a missing Graph variable).
+    this.emailService.assertReady();
     this.logger.log('Email relay started — polling email_outbox every 5s');
     this.unsubscribeRelayWake = await this.pubSub.subscribeEmailRelayWake(() => {
       this.relay().catch((err: unknown) =>
@@ -67,7 +79,23 @@ export class EmailRelayService
 
   // ── AbstractOutboxRelay implementation ────────────────────────────────────
 
-  protected async fetchBatch(tx: DrizzleTx): Promise<EmailOutboxRow[]> {
+  protected readonly outbox: OutboxLeaseTable = {
+    table: emailOutbox,
+    id: emailOutbox.id,
+    status: emailOutbox.status,
+    attempts: emailOutbox.attempts,
+    lastError: emailOutbox.lastError,
+    leaseToken: emailOutbox.leaseToken,
+    lockedUntil: emailOutbox.lockedUntil,
+    seq: emailOutbox.seq,
+  };
+
+  /** One provider send: ResiliencePreset.EMAIL (six executions of 30 s) plus the margin. */
+  protected override leaseMsFor(): number {
+    return leaseForResilience(ResiliencePreset.EMAIL);
+  }
+
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<EmailOutboxRow[]> {
     return tx
       .select({
         id: emailOutbox.id,
@@ -84,15 +112,16 @@ export class EmailRelayService
         and(
           eq(emailOutbox.status, 'pending'),
           lt(emailOutbox.attempts, this.maxAttempts),
-          lte(emailOutbox.scheduledAt, new Date()),
+          lte(emailOutbox.scheduledAt, sql`now()`),
+          this.notLeased(),
         ),
       )
-      .orderBy(asc(emailOutbox.scheduledAt), asc(emailOutbox.id))
-      .limit(this.batchSize)
+      .orderBy(asc(emailOutbox.scheduledAt), asc(emailOutbox.seq), asc(emailOutbox.id))
+      .limit(limit)
       .for('update', { skipLocked: true });
   }
 
-  protected async processRow(row: EmailOutboxRow): Promise<PostCommitTask | void> {
+  protected async deliver(row: Claimed<EmailOutboxRow>): Promise<EmailResult> {
     // If this email is linked to an internal user, check their email preference.
     // Transactional emails (password reset, invitations) have no recipientId and always send.
     if (row.recipientId && row.workspaceId) {
@@ -106,58 +135,52 @@ export class EmailRelayService
           { recipientId: row.recipientId, template: row.template },
           'Email suppressed by preference',
         );
-        return; // AbstractOutboxRelay marks the row as sent
+        return { messageId: null }; // the row is marked sent: there is nothing to deliver
       }
     }
 
-    // Held so markSent can persist it in the SAME transaction that flips the row to
-    // sent: the provider's message id is the feedback loop's only exact match key, and
-    // storing it anywhere looser than the status write risks a `sent` row that can never
-    // be bounce-matched.
-    this.pendingMessageId = (
-      await this.emailService.sendTemplate(
-        row.to,
-        row.template as EmailTemplateName,
-        row.vars as EmailTemplateVars[EmailTemplateName],
-        // row.idempotencyKey ?? row.id is a stable key across all retries for this
-        // outbox row — Resend deduplicates by this so a provider send that succeeded
-        // but whose DB UPDATE failed (network blip) will NOT produce a duplicate email.
-        row.idempotencyKey ?? row.id,
-      )
-    ).messageId;
-    // No post-commit work needed — email dispatch is synchronous within processRow.
+    // The provider's message id is returned so markSent persists it in the SAME transaction that flips the
+    // row to sent: it is the feedback loop's only exact match key, and storing it anywhere looser than the
+    // status write risks a `sent` row that can never be bounce-matched.
+    const sent = await this.emailService.sendTemplate(
+      row.to,
+      row.template as EmailTemplateName,
+      row.vars as EmailTemplateVars[EmailTemplateName],
+      // row.idempotencyKey ?? row.id is a stable key across all retries for this outbox row — Resend
+      // deduplicates by this so a provider send that succeeded but whose finish failed will NOT produce a
+      // duplicate email.
+      row.idempotencyKey ?? row.id,
+    );
+    return { messageId: sent.messageId };
   }
 
-  /** The message id from the most recent processRow in this relay pass. See processRow. */
-  private pendingMessageId: string | null = null;
-
-  protected async markSent(tx: DrizzleTx, rowId: string): Promise<void> {
+  protected async markSent(
+    tx: DrizzleTx,
+    row: Claimed<EmailOutboxRow>,
+    result: EmailResult,
+  ): Promise<void> {
     await tx
       .update(emailOutbox)
-      .set({ status: 'sent', sentAt: new Date(), messageId: this.pendingMessageId })
-      .where(eq(emailOutbox.id, rowId));
-    this.pendingMessageId = null;
+      .set({ status: 'sent', sentAt: sql`now()`, messageId: result.messageId })
+      .where(eq(emailOutbox.id, row.id));
   }
 
   protected async markFailed(
     tx: DrizzleTx,
-    rowId: string,
-    newAttempts: number,
+    row: Claimed<EmailOutboxRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
+    // `attempts` was spent at claim time. Only a retry pushes scheduledAt forward; a terminal row keeps its
+    // last one, which is fine since selectDue() never selects 'failed' rows again.
     await tx
       .update(emailOutbox)
       .set({
         status: newStatus,
-        attempts: newAttempts,
         lastError,
-        // Only pushes scheduledAt forward on a retry — a 'failed' (terminal)
-        // row keeps its last scheduledAt, which is fine since fetchBatch()
-        // never selects 'failed' rows again.
-        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
       })
-      .where(eq(emailOutbox.id, rowId));
+      .where(eq(emailOutbox.id, row.id));
   }
 }

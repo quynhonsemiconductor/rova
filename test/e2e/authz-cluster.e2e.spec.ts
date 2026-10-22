@@ -7,17 +7,14 @@
  * migration 0092, so these assertions name the ROLE rather than trusting a convenient session.
  */
 import 'reflect-metadata';
-import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AccessService } from '@modules/access';
 import { ACCESS_LEVEL_PERMISSIONS, permissionGrants } from '@shared-kernel';
 
 import { AppModule } from '../../apps/api/src/app.module';
-import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import {
   ADMIN_USER_ID,
   DEVELOPER_ID,
@@ -28,47 +25,41 @@ import {
   WORKSPACE_ID,
 } from '../../db/seeds/constants';
 import { grantProjectAccess, SEEDED } from './support/flow-harness';
+import { provisionUser, signIn } from './support/session';
 
 const NXP = SEED_PROJECTS[0].id;
 
 describe('authorization cluster (e2e)', () => {
   let app: NestFastifyApplication;
-  let auth: AuthService;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EntraTokenVerifier)
-      .useValue({
-        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    auth = app.get(AuthService);
   });
 
   afterAll(async () => {
     await app?.close();
   });
 
-  /** Bearer, not the BFF cookie: Bearer callers are CSRF-exempt by design. */
+  /** The session cookie from identity's test-login; the test app has no CSRF hook. */
   async function tokenFor(email: string): Promise<string> {
-    const { accessToken } = await auth.devLogin(email, '127.0.0.1');
-    expect(accessToken, `dev-login for ${email}`).toBeTruthy();
+    const accessToken = await signIn(app, email);
+    expect(accessToken, `test-login for ${email}`).toBeTruthy();
     return accessToken;
   }
 
   function get(url: string, token: string) {
-    return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+    return app.inject({ method: 'GET', url, headers: { cookie: token } });
   }
 
   function post(url: string, token: string, payload: Record<string, unknown>) {
     return app.inject({
       method: 'POST',
       url,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { cookie: token },
       payload,
     });
   }
@@ -183,17 +174,8 @@ describe('authorization cluster (e2e)', () => {
      * next reset and silently changed what later specs saw — that is how upgrading `dev@qnsc.dev`
      * once broke `read-scoping.e2e.spec.ts`.
      */
-    const claims: EntraClaims = {
-      oid: `timebox-admin-${randomUUID()}`,
-      email: `timebox-admin-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
-      displayName: 'E2E Timebox Admin',
-      externalTenantId: SSO_TENANT_ID,
-      roles: [],
-    };
-    const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
-    const userId = JSON.parse(Buffer.from(login.accessToken.split('.')[1], 'base64url').toString())[
-      'sub'
-    ] as string;
+    const login = await provisionUser(app, 'timebox-admin', 'E2E Timebox Admin');
+    const userId = login.userId;
     await grantProjectAccess(app, userId, NXP, 'admin');
 
     for (const url of [

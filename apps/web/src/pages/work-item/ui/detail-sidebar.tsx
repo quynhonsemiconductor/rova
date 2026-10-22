@@ -42,6 +42,8 @@ import { OwnerSelectField, TeamSelectField } from '@/shared/ui/entity-select-fie
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import { TaskRollup } from '@/entities/work-item/ui/task-rollup'
+import { ActualEndDateField, StartDateField } from './story-date-fields'
+import { TargetEndDateField } from './target-end-date-field'
 import { LabelChips } from '@/entities/work-item/ui/label-chips'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -403,6 +405,13 @@ export function DetailSidebar({
           allowUnassigned={!teamRequired}
         />
 
+        {/* Task lifecycle dates (CO-02) — the mockup's position, between Team and Work Product. */}
+        {isTask && (
+          <>
+            <StartDateField item={item} />
+            <ActualEndDateField item={item} />
+          </>
+        )}
         {/* Priority — Defect only */}
         {item.type === 'defect' && (
           <FormField label={t('sidebar.priority')}>
@@ -584,6 +593,19 @@ export function DetailSidebar({
                 }}
               />
             </FormField>
+            {/*
+              Story lifecycle dates (CO-01) and Target End Date (CO-03), directly under the Iteration
+              they are read against. This whole block is already `!isTask`; the explicit Story gate
+              makes the scope visible here rather than relying on each field's own `defect` check —
+              a Task shows its dates once, in the Task block above (PR 653 review).
+            */}
+            {item.type === 'story' && (
+              <>
+                <StartDateField item={item} />
+                <ActualEndDateField item={item} />
+                <TargetEndDateField item={item} onUpdate={onUpdate} readOnly={disabled} />
+              </>
+            )}
             {/*
               Release — HIDDEN, not disabled, for a caller who may not assign one.
 

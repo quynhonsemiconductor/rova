@@ -26,6 +26,8 @@ const ITEM_ACTIONS: Record<string, string> = {
   assigneeId: 'work_item.assigned',
   storyPoints: 'work_item.estimate_updated',
   estimateHours: 'work_item.estimate_updated',
+  // Phase 7 Carryover (D7).
+  targetEndDate: 'work_item.target_end_date_changed',
 };
 const TASK_ACTIONS: Record<string, string> = {
   scheduleState: 'task.state_changed',
@@ -58,8 +60,10 @@ const ITEM_FIELDS = [
   'estimateHours',
   'todoHours',
   'actualHours',
+  // Phase 7 Carryover — Story-only; the service refuses it on a Task, so it never reaches TASK_FIELDS.
+  'targetEndDate',
 ];
-const TASK_FIELDS = ITEM_FIELDS.filter((f) => f !== 'flowState');
+const TASK_FIELDS = ITEM_FIELDS.filter((f) => f !== 'flowState' && f !== 'targetEndDate');
 
 /**
  * Compute the activity-log entries for a work-item/task update by diffing the

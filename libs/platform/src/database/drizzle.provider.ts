@@ -8,6 +8,20 @@ import { DbPoolMetrics } from '@quynhonsemiconductor/observability';
 
 export const DRIZZLE = Symbol('DRIZZLE');
 
+/**
+ * The token `@quynhonsemiconductor/platform-runtime`'s `enableHealth()` looks the database pool up by, so it can add
+ * its built-in `database` readiness check (`SELECT 1`, with the connection error classified into the log). It is
+ * `platform-db`'s own token, written as the same registry symbol rather than imported: rova's pool is its own
+ * `DrizzleProvider`, not `platform-db`'s, and providing the token is what tells `enableHealth` where it is.
+ *
+ * WITHOUT IT THE PROCESS EXITS. `enableHealth` probes for the token with `app.get(token, { strict: false })` inside a
+ * try/catch and treats "not found" as "no database". But `NestFactory` wraps every method of the application in an
+ * `ExceptionsZone` that calls `process.exit(1)` on any throw, before the caller's catch can run, so an absent token
+ * does not mean "skip the check": it kills the API at boot (found by booting the built app, not by a unit test, where
+ * the zone is bypassed). Any product that adopts `enableHealth` without `platform-db` must provide this token.
+ */
+export const DATABASE_POOL_TOKEN = Symbol.for('@quynhonsemiconductor/platform-db:pool');
+
 export type DrizzleDB = ReturnType<typeof drizzle<typeof schema>>;
 export type DrizzleTx = Parameters<Parameters<DrizzleDB['transaction']>[0]>[0];
 
@@ -36,12 +50,7 @@ export class DrizzleProvider implements OnModuleInit, OnModuleDestroy {
       // Composed from DATABASE_* parts when no complete URL is supplied, so the
       // deployed path reads the RDS-managed secret directly and never holds a
       // copy of a rotating password. See db/database-url.ts.
-      // UNDER DATABASE_AUTH=iam THIS SUPPLIES `password` AS A FUNCTION, which pg calls
-      // once per connection. See db/pg-iam.ts for why a string cannot work: a token
-      // lives 15 minutes, and a pod that read one at startup fails only later, only
-      // when the pool grows, and never in a test.
       ...resolvePoolConfig({
-        DATABASE_AUTH: config.get('DATABASE_AUTH'),
         DATABASE_URL: config.get('DATABASE_URL'),
         DATABASE_HOST: config.get('DATABASE_HOST'),
         DATABASE_PORT: config.get('DATABASE_PORT'),
@@ -49,7 +58,8 @@ export class DrizzleProvider implements OnModuleInit, OnModuleDestroy {
         DATABASE_USER: config.get('DATABASE_USER'),
         DATABASE_PASSWORD: config.get('DATABASE_PASSWORD'),
         DATABASE_SSLMODE: config.get('DATABASE_SSLMODE'),
-        AWS_REGION: config.get('AWS_REGION'),
+        DATABASE_SSL_CA: config.get('DATABASE_SSL_CA'),
+        NODE_ENV: config.get('NODE_ENV'),
       }),
       // `min` DOES NOT PRE-CREATE CONNECTIONS, and this option used to be here on the
       // belief that it did. Read pg-pool's source before changing it back: in
@@ -90,6 +100,11 @@ export class DrizzleProvider implements OnModuleInit, OnModuleDestroy {
 
   get instance(): DrizzleDB {
     return this.db;
+  }
+
+  /** The underlying pool: what `enableHealth()` pings for `/readyz` (see {@link DATABASE_POOL_TOKEN}). */
+  get poolHandle(): Pool {
+    return this.pool;
   }
 
   /**

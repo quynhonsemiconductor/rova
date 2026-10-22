@@ -33,7 +33,7 @@ import {
   ALL,
   WORKSPACE_ID,
   adminActor,
-  bootRallyApp,
+  bootRovaApp,
   makeActor,
   uniqueKey,
 } from './support/flow-harness';
@@ -56,7 +56,7 @@ describe('portfolio cross-project isolation (e2e)', () => {
   let featureBKey: string;
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     portfolio = app.get(PortfolioItemsService);
     projects = app.get(ProjectsService);
     db = app.get<DrizzleDB>(DRIZZLE);

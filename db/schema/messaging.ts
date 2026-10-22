@@ -13,6 +13,7 @@ import {
   index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { outboxLease } from './outbox-lease';
 import {
   outboxStatusEnum,
   emailJobStatusEnum,
@@ -40,11 +41,18 @@ export const outboxEvents = messagingSchema.table(
     publishedAt: timestamp('published_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /**
+     * When a failed projection may be retried (the relay's backoff). The other outboxes have always had a
+     * column for this; this one re-read a failed row on the very next tick, which the lease-and-fence relay
+     * would turn into five attempts inside one pass. Migration 0135.
+     */
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
      * W3C traceparent of the request that enqueued this event, so the relay can
      * continue that trace rather than starting an unrelated one. NULL when nothing
      * was tracing (pre-column rows, or a writer with no active span).
      */
     traceparent: varchar('traceparent', { length: 64 }),
+    ...outboxLease(),
     // Partition column — see DATABASE_SCHEMA.md §8 for monthly range partitioning
     partitionKey: timestamp('partition_key', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -115,6 +123,7 @@ export const emailOutbox = messagingSchema.table(
     messageId: varchar('message_id', { length: 255 }),
     /** When the feedback loop recorded a bounce or complaint. NULL unless it did. */
     feedbackAt: timestamp('feedback_at', { withTimezone: true }),
+    ...outboxLease(),
   },
   (t) => ({
     statusIdx: index('ix_email_outbox_status')
@@ -158,6 +167,7 @@ export const notificationOutbox = messagingSchema.table(
     attempts: integer('attempts').notNull().default(0),
     lastError: text('last_error'),
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
+    ...outboxLease(),
     scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /**
@@ -193,7 +203,7 @@ export const notificationOutbox = messagingSchema.table(
  * WHY NOT AN INLINE CALL: Graph is a network round-trip, and this repo's rule against holding a
  * Postgres transaction across one is stated at
  * `libs/modules/attachments/src/application/entity-attachments.service.ts:106-110`. A
- * fire-and-forget call after commit is not the alternative either — a failure there leaves a Rally
+ * fire-and-forget call after commit is not the alternative either — a failure there leaves a rova
  * invitation whose Entra guest was never created, and the invitee's login refusal surfaces only as
  * `AUTH_TOKEN_INVALID`.
  *
@@ -240,6 +250,7 @@ export const guestInviteOutbox = messagingSchema.table(
      * already emailed its own rotated token inline. See migration 0124 for the security assessment.
      */
     inviteToken: varchar('invite_token', { length: 255 }),
+    ...outboxLease(),
   },
   (t) => ({
     statusIdx: index('ix_guest_invite_outbox_status')

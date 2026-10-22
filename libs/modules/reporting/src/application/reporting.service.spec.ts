@@ -244,6 +244,12 @@ function harness(opts: {
     findSplitsByTargetIteration: vi.fn(async (_ws, _ids, scope: TeamScope) =>
       log('findSplitsByTargetIteration', scope, isEmptyTeamScope(scope) ? [] : SPLIT_EVENTS),
     ),
+    // Phase 7 Carryover — no events by default; the domain formulas are pinned in carryover.spec.ts.
+    findCarryoverEvents: vi.fn(async (_ws, _p, scope: TeamScope) =>
+      log('findCarryoverEvents', scope, []),
+    ),
+    listScopedIterations: vi.fn(async () => []),
+    listScheduledStoryIds: vi.fn(async () => []),
     findEligibleTimeboxes: vi.fn(async (_ws, _p, scope: TeamScope) =>
       log('findEligibleTimeboxes', scope, []),
     ),

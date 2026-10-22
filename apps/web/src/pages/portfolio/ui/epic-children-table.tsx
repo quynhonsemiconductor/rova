@@ -35,6 +35,7 @@ import {
   type PortfolioItem,
 } from '@/features/portfolio/api'
 import { EPIC_CHILD_COLUMNS, type EpicChildColKey } from '../model/children-columns'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 type EpicSortField = 'itemKey' | 'name' | 'team' | 'state' | 'owner'
 
@@ -117,7 +118,7 @@ export function EpicChildrenTable({
   const { sortField, sortDir, toggle } = useTableSort<EpicSortField>()
 
   const table = useDataTable<PortfolioItem, unknown, EpicChildColKey>(EPIC_CHILD_COLUMNS, {
-    storageKey: 'rally-portfolio-epic-children-columns',
+    storageKey: 'rally-portfolio-epic-children-columns', // legacy physical name, do not rename
     // The select/drag gutter is 48px wide and sits before every column; without it the computed
     // table width is short by exactly that, and the horizontal scroll region ends early.
     leadingWidth: 48,
@@ -276,9 +277,7 @@ export function EpicChildrenTable({
               rowNum={rerank.items.indexOf(feature) + 1}
               colStyles={colStyles}
               dragDisabled={dragDisabled}
-              onOpen={() =>
-                void navigate({ to: '/portfolio/$itemId', params: { itemId: feature.id } })
-              }
+              onOpen={() => void navigate({ href: entityDetailPath.portfolioItem(feature.id) })}
               stateLabel={t(`states.${feature.state}`, { defaultValue: feature.state })}
               expanded={expanded.has(feature.id)}
               onToggleExpanded={() => toggleExpanded(feature.id)}
@@ -418,7 +417,12 @@ function EpicChildRow({
           in the Name cell once and its spacer indented every name 16px off its own heading. */}
       <div style={colStyles.id} className="flex items-center gap-1 px-2">
         <RowExpandToggle expanded={expanded} onToggle={onToggleExpanded} label={expandLabel} />
-        <IdCell type={feature.type} itemKey={feature.itemKey} onOpen={onOpen} />
+        <IdCell
+          type={feature.type}
+          itemKey={feature.itemKey}
+          onOpen={onOpen}
+          recordId={feature.id}
+        />
       </div>
       <div style={colStyles.name} className="min-w-0 px-2" title={feature.name}>
         <span className="break-words whitespace-normal text-foreground">{feature.name}</span>

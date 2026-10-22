@@ -12,7 +12,7 @@ export interface paths {
       cookie?: never
     }
     /** Public runtime config for the frontend (no secrets) */
-    get: operations['HealthController_publicConfig']
+    get: operations['PublicConfigController_publicConfig']
     put?: never
     post?: never
     delete?: never
@@ -21,41 +21,31 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/healthz': {
+  '/v1/me/api-tokens': {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    /** Liveness probe — returns ok if process is alive */
-    get: operations['HealthController_healthz']
+    /**
+     * List my API tokens
+     * @description Includes revoked tokens: the list is also the audit surface, and a token that vanished on revocation would leave no record that it ever existed.
+     */
+    get: operations['ApiTokensController_list']
     put?: never
-    post?: never
+    /**
+     * Mint an API token
+     * @description Returns the credential ONCE. It is stored only as a hash, so it cannot be shown again — a lost token is revoked and replaced. Scopes narrow the token; they can never widen it.
+     */
+    post: operations['ApiTokensController_create']
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  '/v1/readyz': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Readiness probe — checks DB and cache connectivity */
-    get: operations['HealthController_readyz']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/auth/me': {
+  '/v1/me/api-tokens/{id}': {
     parameters: {
       query?: never
       header?: never
@@ -65,31 +55,34 @@ export interface paths {
     get?: never
     put?: never
     post?: never
-    delete?: never
+    /** Revoke one of my API tokens */
+    delete: operations['ApiTokensController_revoke']
     options?: never
     head?: never
-    /** Update authenticated user profile */
-    patch: operations['AuthController_updateProfile']
+    patch?: never
     trace?: never
   }
-  '/v1/auth/me/avatar/presign': {
+  '/v1/api-tokens': {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    get?: never
+    /**
+     * List every live API token in the workspace
+     * @description Live tokens only. Revoked ones are history and belong to their owner’s list; this surface answers "what still has access".
+     */
+    get: operations['ApiTokensAdminController_list']
     put?: never
-    /** Presign a PUT URL to upload the current user avatar */
-    post: operations['AuthController_presignAvatar']
+    post?: never
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  '/v1/auth/me/avatar/confirm': {
+  '/v1/api-tokens/{id}': {
     parameters: {
       query?: never
       header?: never
@@ -98,26 +91,9 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Confirm the uploaded avatar and store it on the profile */
-    post: operations['AuthController_confirmAvatar']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/auth/logout-all': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Revoke all sessions for the authenticated user */
-    post: operations['AuthController_logoutAll']
-    delete?: never
+    post?: never
+    /** Revoke any API token in the workspace */
+    delete: operations['ApiTokensAdminController_revoke']
     options?: never
     head?: never
     patch?: never
@@ -186,6 +162,109 @@ export interface paths {
      * @description Baseline (workspace-wide) permissions unioned with any project-scoped role. Used by the frontend to gate project-scoped UI accurately.
      */
     get: operations['AccessController_getMyProjectPermissions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/auth/me': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Return the authenticated user, their workspaces and permissions */
+    get: operations['AuthController_me']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update authenticated user profile */
+    patch: operations['AuthController_updateProfile']
+    trace?: never
+  }
+  '/v1/auth/switch-workspace': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Make another of your workspaces the active one */
+    post: operations['AuthController_switchWorkspace']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/auth/me/avatar/presign': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Presign a PUT URL to upload the current user avatar */
+    post: operations['AuthController_presignAvatar']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/auth/me/avatar/confirm': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Confirm the uploaded avatar and store it on the profile */
+    post: operations['AuthController_confirmAvatar']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/auth/logout-all': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Revoke all sessions for the authenticated user */
+    post: operations['AuthController_logoutAll']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/audit-logs': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Query audit logs for the workspace */
+    get: operations['AuditController_list']
     put?: never
     post?: never
     delete?: never
@@ -1057,6 +1136,40 @@ export interface paths {
     put?: never
     /** Split a user story into an [Unfinished] placeholder and a [Continued] story */
     post: operations['WorkItemsController_splitWorkItem']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/work-items/{id}/carryover-options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Target End Date picker window and Carryover targets for a user story */
+    get: operations['WorkItemsController_getCarryoverOptions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/work-items/{id}/carryover': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Carry a user story over to a later iteration (same ID) */
+    post: operations['WorkItemsController_carryOverWorkItem']
     delete?: never
     options?: never
     head?: never
@@ -2309,23 +2422,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/audit-logs': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Query audit logs for the workspace */
-    get: operations['AuditController_list']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/v1/reports/iteration-burndown': {
     parameters: {
       query?: never
@@ -2369,6 +2465,91 @@ export interface paths {
     }
     /** Team Capacity — a read-only projection of the Team Status hours */
     get: operations['ReportingController_getTeamCapacity']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/reports/carryover': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Carryover — Carry In / Out, transferred To Do, rate, trend and rows */
+    get: operations['ReportingController_getCarryover']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/reports/iteration-burndown/export': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Iteration Burndown as CSV */
+    get: operations['ReportingController_exportIterationBurndown']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/reports/velocity/export': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Velocity as CSV */
+    get: operations['ReportingController_exportVelocity']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/reports/team-capacity/export': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Team Capacity as CSV */
+    get: operations['ReportingController_exportTeamCapacity']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/reports/carryover/export': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Carryover as CSV — honours the Direction filter */
+    get: operations['ReportingController_exportCarryover']
     put?: never
     post?: never
     delete?: never
@@ -2826,84 +3007,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/me/api-tokens': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /**
-     * List my API tokens
-     * @description Includes revoked tokens: the list is also the audit surface, and a token that vanished on revocation would leave no record that it ever existed.
-     */
-    get: operations['ApiTokensController_list']
-    put?: never
-    /**
-     * Mint an API token
-     * @description Returns the credential ONCE. It is stored only as a hash, so it cannot be shown again — a lost token is revoked and replaced. Scopes narrow the token; they can never widen it.
-     */
-    post: operations['ApiTokensController_create']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/me/api-tokens/{id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** Revoke one of my API tokens */
-    delete: operations['ApiTokensController_revoke']
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/api-tokens': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /**
-     * List every live API token in the workspace
-     * @description Live tokens only. Revoked ones are history and belong to their owner’s list; this surface answers "what still has access".
-     */
-    get: operations['ApiTokensAdminController_list']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/api-tokens/{id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** Revoke any API token in the workspace */
-    delete: operations['ApiTokensAdminController_revoke']
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/v1/work-items/{id}/test-cases': {
     parameters: {
       query?: never
@@ -3289,72 +3392,47 @@ export interface paths {
 export type webhooks = Record<string, never>
 export interface components {
   schemas: {
-    UpdateProfileDto: {
-      displayName?: string
-      avatarUrl?: string | null
-      locale?: string
-      timezone?: string
-      phone?: string | null
+    CreateApiTokenDto: {
+      /** @description Human label, shown in the token list */
+      name: string
+      /** @description Lifetime in days. Defaults to 90, capped at 365. */
+      expiresInDays?: number
+      /** @description Permission codes this token may use. NARROWING only — the effective set is your own permissions intersected with this list, so a token can never exceed its owner. Omit to inherit your permissions unchanged. */
+      scopes?: string[]
     }
-    UserProfileResponseDto: {
+    CreatedApiTokenResponseDto: {
+      /** Format: uuid */
       id: string
-      email: string
-      displayName: string
-      avatarUrl: string | null
-      locale: string
-      timezone: string
-      phone: string | null
-      role: string
-      permissions: string[]
-      emailVerified: boolean
+      name: string
+      /** @description First 12 characters. Identifies the token; cannot reconstruct it. */
+      prefix: string
+      scopes: string[] | null
+      /** Format: date-time */
+      expiresAt: string
+      lastUsedAt: string | null
+      revokedAt: string | null
       /** Format: date-time */
       createdAt: string
+      /** Format: uuid */
+      userId: string
+      /** @description The credential. Shown once and never retrievable again — store it now. A lost token is revoked and replaced, not recovered. */
+      token: string
+    }
+    ApiTokenResponseDto: {
+      /** Format: uuid */
+      id: string
+      name: string
+      /** @description First 12 characters. Identifies the token; cannot reconstruct it. */
+      prefix: string
+      scopes: string[] | null
       /** Format: date-time */
-      updatedAt: string
-      memberships: {
-        workspaceId: string
-        name: string
-        slug: string
-        lastActiveAt: string | null
-        roleSlug: string | null
-        roleName: string | null
-      }[]
-      workspaceDefaults: {
-        timezone: string | null
-        locale: string | null
-        dateFormat: string | null
-      } | null
-      csrfToken?: string
-    }
-    PresignAvatarDto: {
-      /** @enum {string} */
-      contentType: 'image/png' | 'image/jpeg' | 'image/webp'
-      contentLength: number
-      checksumSha256: string
-    }
-    PresignAvatarResponseDto: {
+      expiresAt: string
+      lastUsedAt: string | null
+      revokedAt: string | null
+      /** Format: date-time */
+      createdAt: string
       /** Format: uuid */
-      fileId: string
-      /**
-       * Format: uri
-       * @description Presigned PUT URL — expires in 5 minutes
-       */
-      uploadUrl: string
-      /** @description Headers the client MUST send on the PUT — they are part of the signature. */
-      requiredHeaders: {
-        [key: string]: string
-      }
-    }
-    ConfirmAvatarDto: {
-      /** Format: uuid */
-      fileId: string
-    }
-    ConfirmAvatarResponseDto: {
-      /**
-       * Format: uri
-       * @description Durable CDN URL now stored on the user profile
-       */
-      avatarUrl: string
+      userId: string
     }
     RoleResponseDto: {
       /** Format: uuid */
@@ -3386,6 +3464,96 @@ export interface components {
       /** Format: uuid */
       projectId: string
       permissions: string[]
+    }
+    UserProfileResponseDto: {
+      id: string
+      email: string
+      displayName: string
+      avatarUrl: string | null
+      locale: string
+      timezone: string
+      phone: string | null
+      role: string
+      permissions: string[]
+      emailVerified: boolean
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+      memberships: {
+        workspaceId: string
+        name: string
+        slug: string
+        lastActiveAt: string | null
+        roleSlug: string | null
+        roleName: string | null
+      }[]
+      workspaceDefaults: {
+        timezone: string | null
+        locale: string | null
+        dateFormat: string | null
+      } | null
+      csrfToken?: string
+    }
+    UpdateProfileDto: {
+      displayName?: string
+      avatarUrl?: string | null
+      locale?: string
+      timezone?: string
+      phone?: string | null
+    }
+    SwitchWorkspaceDto: {
+      /** Format: uuid */
+      workspaceId: string
+    }
+    PresignAvatarDto: {
+      /** @enum {string} */
+      contentType: 'image/png' | 'image/jpeg' | 'image/webp'
+      contentLength: number
+      checksumSha256: string
+    }
+    PresignAvatarResponseDto: {
+      /** Format: uuid */
+      fileId: string
+      /**
+       * Format: uri
+       * @description Presigned PUT URL — expires in 5 minutes
+       */
+      uploadUrl: string
+      /** @description Headers the client MUST send on the PUT — they are part of the signature. */
+      requiredHeaders: {
+        [key: string]: string
+      }
+    }
+    ConfirmAvatarDto: {
+      /** Format: uuid */
+      fileId: string
+    }
+    ConfirmAvatarResponseDto: {
+      /**
+       * Format: uri
+       * @description Durable CDN URL now stored on the user profile
+       */
+      avatarUrl: string
+    }
+    AuditLogResponseDto: {
+      /** Format: uuid */
+      id: string
+      actorId: string | null
+      actorName: string | null
+      actorEmail: string | null
+      action: string
+      resourceType: string
+      resourceId: string
+      projectId: string | null
+      changes: {
+        [key: string]: unknown
+      } | null
+      metadata: {
+        [key: string]: unknown
+      }
+      /** Format: date-time */
+      occurredAt: string
     }
     WorkspaceResponseDto: {
       /** Format: uuid */
@@ -3818,6 +3986,12 @@ export interface components {
       devOwnerId: string | null
       defectState: string | null
       fixedInBuild: string | null
+      /** @description System-managed: first entry into In-Progress (Story or Task). Read-only; null on a Defect. */
+      startDate: string | null
+      /** @description System-managed: first entry into Accepted (Story) or Completed (Task). Read-only; null on a Defect. */
+      actualEndDate: string | null
+      /** @description The Story editor's forecast completion date. Always null on a Task or Defect. */
+      targetEndDate: string | null
     }
     StoryOptionResponseDto: {
       /** Format: uuid */
@@ -3956,6 +4130,12 @@ export interface components {
       devOwnerId: string | null
       defectState: string | null
       fixedInBuild: string | null
+      /** @description System-managed: first entry into In-Progress (Story or Task). Read-only; null on a Defect. */
+      startDate: string | null
+      /** @description System-managed: first entry into Accepted (Story) or Completed (Task). Read-only; null on a Defect. */
+      actualEndDate: string | null
+      /** @description The Story editor's forecast completion date. Always null on a Task or Defect. */
+      targetEndDate: string | null
       /** @description The Split this Story takes part in, from either side. Null when it was never split — which includes every Task and Defect, since only a Story can be split. */
       splitLink: {
         /** Format: uuid */
@@ -4035,6 +4215,7 @@ export interface components {
       devOwnerId?: string | null
       defectState?: ('submitted' | 'open' | 'fixed' | 'closed' | 'closed_declined') | null
       fixedInBuild?: string | null
+      targetEndDate?: string | null
     }
     MoveWorkItemDto: {
       /** Format: uuid */
@@ -4295,6 +4476,12 @@ export interface components {
         devOwnerId: string | null
         defectState: string | null
         fixedInBuild: string | null
+        /** @description System-managed: first entry into In-Progress (Story or Task). Read-only; null on a Defect. */
+        startDate: string | null
+        /** @description System-managed: first entry into Accepted (Story) or Completed (Task). Read-only; null on a Defect. */
+        actualEndDate: string | null
+        /** @description The Story editor's forecast completion date. Always null on a Task or Defect. */
+        targetEndDate: string | null
       }
       continued: {
         /** Format: uuid */
@@ -4352,6 +4539,145 @@ export interface components {
         devOwnerId: string | null
         defectState: string | null
         fixedInBuild: string | null
+        /** @description System-managed: first entry into In-Progress (Story or Task). Read-only; null on a Defect. */
+        startDate: string | null
+        /** @description System-managed: first entry into Accepted (Story) or Completed (Task). Read-only; null on a Defect. */
+        actualEndDate: string | null
+        /** @description The Story editor's forecast completion date. Always null on a Task or Defect. */
+        targetEndDate: string | null
+      }
+    }
+    CarryoverOptionsResponseDto: {
+      /** @description The caller may edit, the Story is scheduled, and some Iteration is eligible. */
+      editable: boolean
+      storyStartDate: string | null
+      targetEndDate: string | null
+      /** @description The Story’s current Iteration; null when Unscheduled. */
+      current: {
+        /** Format: uuid */
+        id: string
+        name: string
+        iterationKey: string | null
+        state: string
+        startDate: string | null
+        endDate: string | null
+        /** @description False for an accepted current Iteration (ruling R6). */
+        eligible: boolean
+      } | null
+      /** @description CO-BR-13/14 — the earliest selectable date. */
+      minDate: string | null
+      /** @description Ordered by start date then name. A date is enabled when one of these contains it. */
+      eligibleIterations: {
+        /** Format: uuid */
+        id: string
+        name: string
+        iterationKey: string | null
+        state: string
+        /** @description YYYY-MM-DD — always set: a dateless Iteration is never eligible. */
+        startDate: string
+        /** @description YYYY-MM-DD — always set: a dateless Iteration is never eligible. */
+        endDate: string
+        teamId: string | null
+      }[]
+      taskCount: number
+      unfinishedTaskCount: number
+    }
+    CarryOverWorkItemDto: {
+      /**
+       * Format: uuid
+       * @description D6 — the source Iteration the modal rendered. A mismatch is a 412.
+       */
+      expectedSourceIterationId: string
+      /**
+       * Format: uuid
+       * @description Must be one of the Iterations the Target End Date resolves to.
+       */
+      targetIterationId: string
+      /** @description YYYY-MM-DD, after the source Iteration ends. */
+      targetEndDate: string
+    }
+    CarryOverWorkItemResponseDto: {
+      transition: {
+        /** Format: uuid */
+        id: string
+        /** Format: uuid */
+        projectId: string
+        teamId: string | null
+        /** Format: uuid */
+        storyId: string
+        /** @enum {string} */
+        type: 'carryover' | 'manual_move'
+        sourceIterationId: string | null
+        targetIterationId: string | null
+        targetEndDate: string | null
+        actorId: string | null
+        /** Format: date-time */
+        occurredAt: string
+        /** Format: date-time */
+        createdAt: string
+      }
+      workItem: {
+        /** Format: uuid */
+        id: string
+        /** Format: uuid */
+        workspaceId: string
+        /** Format: uuid */
+        projectId: string
+        /** @description Sequential key e.g. PROJ-42 */
+        itemKey: string
+        type: string
+        title: string
+        description: string | null
+        /** Format: uuid */
+        statusId: string
+        scheduleState: string
+        flowState: string
+        priority: string
+        assigneeId: string | null
+        /** @description Owner display name, joined server-side on the grid reads. A picker feed cannot name a Workspace Admin (no project_members row, §2.1), so the row carries its own name. */
+        assigneeName: string | null
+        devOwnerName: string | null
+        reporterId: string | null
+        parentId: string | null
+        teamId: string | null
+        iterationId: string | null
+        releaseId: string | null
+        /** @description The Feature this item rolls up to. Always null for a task. */
+        featureId: string | null
+        storyPoints: number | null
+        estimateHours: number | null
+        todoHours: number | null
+        actualHours: number | null
+        acceptanceCriteria: string | null
+        notes: string | null
+        releaseNotes: string | null
+        isBlocked: boolean
+        blockedReason: string | null
+        rank: string
+        customFields: {
+          [key: string]: unknown
+        }
+        /** Format: uuid */
+        createdBy: string
+        updatedBy: string | null
+        /** Format: date-time */
+        createdAt: string
+        /** Format: date-time */
+        updatedAt: string
+        severity: string | null
+        foundInEnvironment: string | null
+        foundInReleaseId: string | null
+        rootCause: string | null
+        resolution: string | null
+        devOwnerId: string | null
+        defectState: string | null
+        fixedInBuild: string | null
+        /** @description System-managed: first entry into In-Progress (Story or Task). Read-only; null on a Defect. */
+        startDate: string | null
+        /** @description System-managed: first entry into Accepted (Story) or Completed (Task). Read-only; null on a Defect. */
+        actualEndDate: string | null
+        /** @description The Story editor's forecast completion date. Always null on a Task or Defect. */
+        targetEndDate: string | null
       }
     }
     ActivityResponseDto: {
@@ -4753,6 +5079,8 @@ export interface components {
           id: string
           name: string
         }[]
+        startDate: string | null
+        targetEndDate: string | null
       }[]
       pageInfo: {
         nextCursor: string | null
@@ -5276,25 +5604,6 @@ export interface components {
       inApp?: boolean
       email?: boolean
     }
-    AuditLogResponseDto: {
-      /** Format: uuid */
-      id: string
-      actorId: string | null
-      actorName: string | null
-      actorEmail: string | null
-      action: string
-      resourceType: string
-      resourceId: string
-      projectId: string | null
-      changes: {
-        [key: string]: unknown
-      } | null
-      metadata: {
-        [key: string]: unknown
-      }
-      /** Format: date-time */
-      occurredAt: string
-    }
     IterationBurndownResponseDto: {
       context: {
         /** Format: uuid */
@@ -5359,6 +5668,12 @@ export interface components {
         todoHours: number
         actualHours: number
       }[]
+      /** @description Phase 7 Carryover badge — Carry In / Carry Out / transferred To Do. Null when none. */
+      carryover: {
+        carryIn: number
+        carryOut: number
+        transferredTodoHours: number
+      } | null
     }
     VelocityResponseDto: {
       context: {
@@ -5441,6 +5756,69 @@ export interface components {
       }[]
       hasCapacity: boolean
       hasTaskHours: boolean
+      carryover: {
+        carryIn: number
+        carryOut: number
+        transferredTodoHours: number
+      } | null
+    }
+    CarryoverReportResponseDto: {
+      context: {
+        /** Format: uuid */
+        projectId: string
+        projectName: string
+        teamId: string | null
+        teamName: string | null
+        timeZone: string
+      }
+      timebox: {
+        /** Format: uuid */
+        iterationId: string
+        timeboxGroupId: string | null
+        name: string
+        startDate: string | null
+        endDate: string | null
+        iterationCount: number
+      }
+      /** @enum {string} */
+      direction: 'all' | 'in' | 'out'
+      kpis: {
+        carryIn: number
+        carryOut: number
+        transferredTodoHours: number
+        /** @description Percentage, one decimal. 0 when the denominator is 0. */
+        carryoverRate: number
+      }
+      trend: {
+        /** Format: uuid */
+        iterationId: string
+        name: string
+        startDate: string | null
+        carryIn: number
+        carryOut: number
+      }[]
+      rows: {
+        /** Format: uuid */
+        transitionId: string
+        /** @enum {string} */
+        direction: 'in' | 'out'
+        /** Format: uuid */
+        storyId: string
+        storyKey: string
+        storyTitle: string
+        fromIterationId: string | null
+        fromIterationName: string | null
+        toIterationId: string | null
+        toIterationName: string | null
+        /** Format: date-time */
+        movedAt: string
+        startDate: string | null
+        targetEndDate: string | null
+        estimateHours: number
+        todoHours: number
+        actualBefore: number
+        actualAfter: number
+      }[]
     }
     ReleaseTrackingResponseDto: {
       context: {
@@ -6472,48 +6850,6 @@ export interface components {
       /** @description True when a backfill job was queued */
       enqueued: boolean
     }
-    CreateApiTokenDto: {
-      /** @description Human label, shown in the token list */
-      name: string
-      /** @description Lifetime in days. Defaults to 90, capped at 365. */
-      expiresInDays?: number
-      /** @description Permission codes this token may use. NARROWING only — the effective set is your own permissions intersected with this list, so a token can never exceed its owner. Omit to inherit your permissions unchanged. */
-      scopes?: string[]
-    }
-    CreatedApiTokenResponseDto: {
-      /** Format: uuid */
-      id: string
-      name: string
-      /** @description First 12 characters. Identifies the token; cannot reconstruct it. */
-      prefix: string
-      scopes: string[] | null
-      /** Format: date-time */
-      expiresAt: string
-      lastUsedAt: string | null
-      revokedAt: string | null
-      /** Format: date-time */
-      createdAt: string
-      /** Format: uuid */
-      userId: string
-      /** @description The credential. Shown once and never retrievable again — store it now. A lost token is revoked and replaced, not recovered. */
-      token: string
-    }
-    ApiTokenResponseDto: {
-      /** Format: uuid */
-      id: string
-      name: string
-      /** @description First 12 characters. Identifies the token; cannot reconstruct it. */
-      prefix: string
-      scopes: string[] | null
-      /** Format: date-time */
-      expiresAt: string
-      lastUsedAt: string | null
-      revokedAt: string | null
-      /** Format: date-time */
-      createdAt: string
-      /** Format: uuid */
-      userId: string
-    }
     TestCaseResponseDto: {
       /** Format: uuid */
       id: string
@@ -6661,7 +6997,7 @@ export interface components {
 }
 export type $defs = Record<string, never>
 export interface operations {
-  HealthController_publicConfig: {
+  PublicConfigController_publicConfig: {
     parameters: {
       query?: never
       header?: never
@@ -6685,7 +7021,7 @@ export interface operations {
       }
     }
   }
-  HealthController_healthz: {
+  ApiTokensController_list: {
     parameters: {
       query?: never
       header?: never
@@ -6699,133 +7035,26 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            /** @example ok */
-            status?: string
-          }
+          'application/json': components['schemas']['ApiTokenResponseDto'][]
         }
       }
-    }
-  }
-  HealthController_readyz: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description The Health Check is successful */
-      200: {
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
         headers: {
           [name: string]: unknown
         }
-        content: {
-          'application/json': {
-            /** @example ok */
-            status?: string
-            /**
-             * @example {
-             *       "database": {
-             *         "status": "up"
-             *       }
-             *     }
-             */
-            info?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            } | null
-            /** @example {} */
-            error?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            } | null
-            /**
-             * @example {
-             *       "database": {
-             *         "status": "up"
-             *       }
-             *     }
-             */
-            details?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            }
-          }
-        }
+        content?: never
       }
-      /** @description The Health Check is not successful */
-      503: {
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }
-        content: {
-          'application/json': {
-            /** @example error */
-            status?: string
-            /**
-             * @example {
-             *       "database": {
-             *         "status": "up"
-             *       }
-             *     }
-             */
-            info?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            } | null
-            /**
-             * @example {
-             *       "redis": {
-             *         "status": "down",
-             *         "message": "Could not connect"
-             *       }
-             *     }
-             */
-            error?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            } | null
-            /**
-             * @example {
-             *       "database": {
-             *         "status": "up"
-             *       },
-             *       "redis": {
-             *         "status": "down",
-             *         "message": "Could not connect"
-             *       }
-             *     }
-             */
-            details?: {
-              [key: string]: {
-                status: string
-              } & {
-                [key: string]: unknown
-              }
-            }
-          }
-        }
+        content?: never
       }
     }
   }
-  AuthController_updateProfile: {
+  ApiTokensController_create: {
     parameters: {
       query?: never
       header?: never
@@ -6834,16 +7063,16 @@ export interface operations {
     }
     requestBody: {
       content: {
-        'application/json': components['schemas']['UpdateProfileDto']
+        'application/json': components['schemas']['CreateApiTokenDto']
       }
     }
     responses: {
-      200: {
+      201: {
         headers: {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['UserProfileResponseDto']
+          'application/json': components['schemas']['CreatedApiTokenResponseDto']
         }
       }
       /** @description Bad Request — validation error or malformed input */
@@ -6855,6 +7084,13 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }
@@ -6869,29 +7105,19 @@ export interface operations {
       }
     }
   }
-  AuthController_presignAvatar: {
+  ApiTokensController_revoke: {
     parameters: {
       query?: never
       header?: never
-      path?: never
+      path: {
+        id: string
+      }
       cookie?: never
     }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['PresignAvatarDto']
-      }
-    }
+    requestBody?: never
     responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PresignAvatarResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
+      /** @description Revoked, or already revoked — the call is idempotent. */
+      204: {
         headers: {
           [name: string]: unknown
         }
@@ -6904,52 +7130,8 @@ export interface operations {
         }
         content?: never
       }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AuthController_confirmAvatar: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ConfirmAvatarDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ConfirmAvatarResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }
@@ -6962,23 +7144,9 @@ export interface operations {
         }
         content?: never
       }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
     }
   }
-  AuthController_logoutAll: {
+  ApiTokensAdminController_list: {
     parameters: {
       query?: never
       header?: never
@@ -6987,7 +7155,42 @@ export interface operations {
     }
     requestBody?: never
     responses: {
-      /** @description All sessions revoked */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ApiTokenResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ApiTokensAdminController_revoke: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Revoked, or already revoked — the call is idempotent. */
       204: {
         headers: {
           [name: string]: unknown
@@ -6996,6 +7199,20 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }
@@ -7140,6 +7357,307 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_me: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UserProfileResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_updateProfile: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateProfileDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UserProfileResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_switchWorkspace: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SwitchWorkspaceDto']
+      }
+    }
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_presignAvatar: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PresignAvatarDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PresignAvatarResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_confirmAvatar: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConfirmAvatarDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ConfirmAvatarResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_logoutAll: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description All sessions revoked */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuditController_list: {
+    parameters: {
+      query?: {
+        actorId?: string
+        resourceType?: string
+        resourceId?: string
+        projectId?: string
+        action?: string
+        from?: string
+        to?: string
+        limit?: number
+        offset?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['AuditLogResponseDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
+              total?: number
+            }
+          }
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -10314,6 +10832,108 @@ export interface operations {
       }
     }
   }
+  WorkItemsController_getCarryoverOptions: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CarryoverOptionsResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkItemsController_carryOverWorkItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CarryOverWorkItemDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CarryOverWorkItemResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Precondition Failed — the target is not in a state that allows this */
+      412: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   WorkItemsController_getActivity: {
     parameters: {
       query?: {
@@ -12554,6 +13174,8 @@ export interface operations {
         planEstimate?: '' | string
         taskEstimate?: '' | string
         toDo?: '' | string
+        startDate?: string
+        targetEndDate?: string
       }
       header?: never
       path: {
@@ -14684,68 +15306,6 @@ export interface operations {
       }
     }
   }
-  AuditController_list: {
-    parameters: {
-      query?: {
-        actorId?: string
-        resourceType?: string
-        resourceId?: string
-        projectId?: string
-        action?: string
-        from?: string
-        to?: string
-        limit?: number
-        offset?: number
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Paginated list */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': {
-            data?: components['schemas']['AuditLogResponseDto'][]
-            pageInfo?: {
-              /** @description Opaque cursor token for the next page */
-              nextCursor: string | null
-              hasNextPage: boolean
-              /** @description Number of items returned per page */
-              limit: number
-              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
-              total?: number
-            }
-          }
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
   ReportingController_getIterationBurndown: {
     parameters: {
       query: {
@@ -14867,6 +15427,263 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['TeamCapacityResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ReportingController_getCarryover: {
+    parameters: {
+      query: {
+        projectId: string
+        teamId?: string | null
+        iterationId: string
+        direction?: 'all' | 'in' | 'out'
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CarryoverReportResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ReportingController_exportIterationBurndown: {
+    parameters: {
+      query: {
+        projectId: string
+        teamId?: string | null
+        iterationId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'text/csv': string
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ReportingController_exportVelocity: {
+    parameters: {
+      query: {
+        projectId: string
+        teamId?: string | null
+        window?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'text/csv': string
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ReportingController_exportTeamCapacity: {
+    parameters: {
+      query: {
+        projectId: string
+        teamId?: string | null
+        iterationId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'text/csv': string
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ReportingController_exportCarryover: {
+    parameters: {
+      query: {
+        projectId: string
+        teamId?: string | null
+        iterationId: string
+        direction?: 'all' | 'in' | 'out'
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'text/csv': string
         }
       }
       /** @description Bad Request — validation error or malformed input */
@@ -16538,205 +17355,6 @@ export interface operations {
     requestBody?: never
     responses: {
       /** @description Mapping removed */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  ApiTokensController_list: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ApiTokenResponseDto'][]
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  ApiTokensController_create: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateApiTokenDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['CreatedApiTokenResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  ApiTokensController_revoke: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Revoked, or already revoked — the call is idempotent. */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  ApiTokensAdminController_list: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ApiTokenResponseDto'][]
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  ApiTokensAdminController_revoke: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Revoked, or already revoked — the call is idempotent. */
       204: {
         headers: {
           [name: string]: unknown

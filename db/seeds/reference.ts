@@ -17,6 +17,7 @@ try {
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { pgOptions } from '../pg-ssl';
+import { log } from '../script-log';
 import * as schema from '../schema';
 import { ROLE_PERMISSIONS, ROLE_NAMES, type SystemRoleSlug } from '../permissions.catalog';
 import type { Db } from './constants';
@@ -43,7 +44,7 @@ export async function seedSystemRolesInto(database: Db): Promise<void> {
         set: { permissions, name },
       });
   }
-  console.log(`✅  System roles catalogue seeded (${roleSlugs.length} roles)`);
+  log.info(`✅  System roles catalogue seeded (${roleSlugs.length} roles)`);
 }
 
 /**

@@ -38,6 +38,7 @@ import {
   type Iteration,
   type IterationState,
 } from '@/features/iterations/api'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
@@ -84,7 +85,7 @@ export function IterationsPage() {
 
   /** The record route. Page-local state here gave the detail no URL — see the detail page's docblock. */
   const openIteration = useCallback(
-    (id: string) => void navigate({ to: '/timeboxes/$iterationId', params: { iterationId: id } }),
+    (id: string) => void navigate({ href: entityDetailPath.iteration(id) }),
     [navigate],
   )
 

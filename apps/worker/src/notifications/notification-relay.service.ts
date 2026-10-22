@@ -2,8 +2,8 @@
  * NotificationRelayService — polls notification_outbox and dispatches via
  * NotificationsService (writes to in_app_notifications).
  *
- * Extends AbstractOutboxRelay which owns the polling loop, concurrency guard,
- * transaction management, and retry/fail logic.  This class provides only the
+ * Extends AbstractOutboxRelay (lease-and-fence) which owns the polling loop, concurrency guard,
+ * claim/finish transactions, and retry/fail logic.  This class provides only the
  * notification-specific behaviour: what to SELECT, how to render + send, and
  * how to mark rows.
  *
@@ -14,7 +14,7 @@
  *   ≤5s (cron) to ~ms (wake signal).  The 5s cron is the catch-all fallback.
  *
  * Post-commit tasks (3rd layer of the real-time pipeline):
- *   processRow() returns a PostCommitTask that runs AFTER the transaction
+ *   settle() returns a PostCommitTask that runs AFTER the finish transaction
  *   commits.  It does two things in parallel:
  *     1. Publishes to Valkey → SSE push (in-app real-time).
  *     2. Checks the template's email channel policy (EMAIL_CHANNEL_BY_TEMPLATE)
@@ -34,11 +34,11 @@
  */
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { and, asc, eq, lt, lte } from 'drizzle-orm';
+import { and, asc, eq, lt, lte, sql } from 'drizzle-orm';
 import { InjectDrizzle, Span } from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
-import { AbstractOutboxRelay } from '@platform/outbox';
-import type { PostCommitTask } from '@platform/outbox';
+import { AbstractOutboxRelay, dbDelay } from '@platform/outbox';
+import type { Claimed, OutboxLeaseTable, PostCommitTask } from '@platform/outbox';
 import { NotificationsService, NotificationPreferencesService } from '@modules/notifications';
 import {
   renderNotification,
@@ -62,11 +62,24 @@ type NotificationOutboxRow = {
   idempotencyKey: string | null;
 };
 
+/** What deliver() produced and settle() needs; null when nothing was written (suppressed or a duplicate). */
+type NotificationDelivery = {
+  notificationId: string;
+  rendered: { title: string; body?: string; resourceType?: string };
+  emailEnabled: boolean;
+} | null;
+
+/** Per-row lease: database writes and a Valkey publish take milliseconds; the lease only has to cover waiting. */
+const NOTIFICATION_LEASE_MS = 30_000;
+
 @Injectable()
 export class NotificationRelayService
-  extends AbstractOutboxRelay<NotificationOutboxRow>
+  extends AbstractOutboxRelay<NotificationOutboxRow, NotificationDelivery>
   implements OnModuleInit, OnModuleDestroy
 {
+  /** Held for the SUM of the batch's leases (30 s each): 10 rows is 5 minutes if a worker dies. */
+  protected override readonly batchSize = 10;
+
   private unsubscribeRelayWake?: () => Promise<void>;
   private readonly emailLogger = new Logger(NotificationRelayService.name + '.email');
   private readonly appUrl: string;
@@ -107,7 +120,22 @@ export class NotificationRelayService
 
   // ── AbstractOutboxRelay implementation ────────────────────────────────────
 
-  protected async fetchBatch(tx: DrizzleTx): Promise<NotificationOutboxRow[]> {
+  protected readonly outbox: OutboxLeaseTable = {
+    table: notificationOutbox,
+    id: notificationOutbox.id,
+    status: notificationOutbox.status,
+    attempts: notificationOutbox.attempts,
+    lastError: notificationOutbox.lastError,
+    leaseToken: notificationOutbox.leaseToken,
+    lockedUntil: notificationOutbox.lockedUntil,
+    seq: notificationOutbox.seq,
+  };
+
+  protected override leaseMsFor(): number {
+    return NOTIFICATION_LEASE_MS;
+  }
+
+  protected async selectDue(tx: DrizzleTx, limit: number): Promise<NotificationOutboxRow[]> {
     return tx
       .select({
         id: notificationOutbox.id,
@@ -125,27 +153,28 @@ export class NotificationRelayService
         and(
           eq(notificationOutbox.status, 'pending'),
           lt(notificationOutbox.attempts, this.maxAttempts),
-          lte(notificationOutbox.scheduledAt, new Date()),
+          lte(notificationOutbox.scheduledAt, sql`now()`),
+          this.notLeased(),
         ),
       )
-      .orderBy(asc(notificationOutbox.scheduledAt), asc(notificationOutbox.id))
-      .limit(this.batchSize)
+      .orderBy(
+        asc(notificationOutbox.scheduledAt),
+        asc(notificationOutbox.seq),
+        asc(notificationOutbox.id),
+      )
+      .limit(limit)
       .for('update', { skipLocked: true });
   }
 
   /**
-   * Render template, write to in_app_notifications, and return a PostCommitTask
-   * that (after the transaction commits):
-   *   1. Publishes the SSE push signal to Valkey.
-   *   2. If the user has email notifications enabled, schedules an email via
-   *      EmailSchedulerService (looks up recipient email from identity.users).
+   * Render the template and write to in_app_notifications. The write is idempotent
+   * (`source_event_id` ON CONFLICT DO NOTHING), so a retry after a failed finish is a safe no-op.
    *
-   * Returns void when the notification was deduplicated (already exists in
-   * in_app_notifications via source_event_id) — no post-commit work needed.
+   * Resolves to null when nothing needs doing after the commit: the user opted out, or the notification
+   * was deduplicated (it already exists).
    */
-  protected async processRow(row: NotificationOutboxRow): Promise<PostCommitTask | void> {
-    // Skip in-app delivery if user has opted out (preference check uses pool connection,
-    // outside the FOR UPDATE SKIP LOCKED transaction — eventual consistency is acceptable).
+  protected async deliver(row: Claimed<NotificationOutboxRow>): Promise<NotificationDelivery> {
+    // Skip in-app delivery if user has opted out (preference check uses a pool connection).
     const inAppEnabled = await this.prefs.isInAppEnabled(
       row.workspaceId,
       row.recipientId,
@@ -156,7 +185,7 @@ export class NotificationRelayService
         { recipientId: row.recipientId, type: row.type },
         'In-app notification suppressed by preference',
       );
-      return; // AbstractOutboxRelay marks the row as sent
+      return null; // the row is marked sent
     }
 
     const rendered = renderNotification(
@@ -181,20 +210,35 @@ export class NotificationRelayService
       sourceEventId: row.idempotencyKey ?? row.id,
     });
 
-    if (!notification) return; // deduplicated — no post-commit work needed
+    if (!notification) return null; // deduplicated — no post-commit work needed
 
     // The template's own channel policy is asked FIRST, and it is not a preference: a type that
     // is in-app only (WORK_ITEM_ASSIGNED) can never be mailed, so no `email: true` row and no
     // default can widen it back. Also saves the preference query on the highest-volume type.
     const emailEnabled =
       emailChannelAvailable(row.type) &&
-      // Check email preference outside the transaction (acceptable eventual consistency).
       (await this.prefs.isEmailEnabled(row.workspaceId, row.recipientId, row.type));
 
-    return async () => {
+    return { notificationId: notification.id, rendered, emailEnabled };
+  }
+
+  /**
+   * Returns the PostCommitTask that runs AFTER the finish transaction commits:
+   *   1. Publishes the SSE push signal to Valkey.
+   *   2. If the user has email notifications enabled, schedules an email via
+   *      EmailSchedulerService (looks up recipient email from identity.users).
+   */
+  protected settle(
+    row: Claimed<NotificationOutboxRow>,
+    delivery: NotificationDelivery,
+  ): Promise<PostCommitTask | void> {
+    if (!delivery) return Promise.resolve();
+    const { notificationId, rendered, emailEnabled } = delivery;
+
+    return Promise.resolve(async () => {
       // 1. SSE real-time push via Valkey.
       await this.pubSub.notifyUser({
-        notificationId: notification.id,
+        notificationId,
         recipientId: row.recipientId,
         type: row.type,
         title: rendered.title,
@@ -205,9 +249,9 @@ export class NotificationRelayService
 
       // 2. Email delivery (if enabled).
       if (emailEnabled) {
-        await this.scheduleNotificationEmail(row, rendered, notification.id);
+        await this.scheduleNotificationEmail(row, rendered, notificationId);
       }
-    };
+    });
   }
 
   /**
@@ -258,32 +302,29 @@ export class NotificationRelayService
     }
   }
 
-  protected async markSent(tx: DrizzleTx, rowId: string): Promise<void> {
+  protected async markSent(tx: DrizzleTx, row: Claimed<NotificationOutboxRow>): Promise<void> {
     await tx
       .update(notificationOutbox)
-      .set({ status: 'sent', dispatchedAt: new Date() })
-      .where(eq(notificationOutbox.id, rowId));
+      .set({ status: 'sent', dispatchedAt: sql`now()` })
+      .where(eq(notificationOutbox.id, row.id));
   }
 
   protected async markFailed(
     tx: DrizzleTx,
-    rowId: string,
-    newAttempts: number,
+    row: Claimed<NotificationOutboxRow>,
     newStatus: 'pending' | 'failed',
     lastError: string,
-    nextAttemptAt: Date,
+    delayMs: number,
   ): Promise<void> {
+    // `attempts` was spent at claim time. Only a retry pushes scheduledAt forward; a terminal row keeps its
+    // last one, which is fine since selectDue() never selects 'failed' rows again.
     await tx
       .update(notificationOutbox)
       .set({
         status: newStatus,
-        attempts: newAttempts,
         lastError,
-        // Only pushes scheduledAt forward on a retry — a 'failed' (terminal)
-        // row keeps its last scheduledAt, which is fine since fetchBatch()
-        // never selects 'failed' rows again.
-        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+        ...(newStatus === 'pending' ? { scheduledAt: dbDelay(delayMs) } : {}),
       })
-      .where(eq(notificationOutbox.id, rowId));
+      .where(eq(notificationOutbox.id, row.id));
   }
 }

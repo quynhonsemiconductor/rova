@@ -1,7 +1,7 @@
 import type { AppConfigService } from '../config/app-config.service';
 
 /**
- * Base configuration shared by every AWS SDK v3 client (SNS, SQS, SES).
+ * Base configuration shared by every AWS SDK v3 client (S3, SES, SQS, Secrets Manager).
  * Only the fields the SDK constructors accept in common — feature-specific
  * options (e.g. S3 `forcePathStyle`) stay with their own client.
  */
@@ -20,10 +20,11 @@ export interface AwsClientBaseConfig {
  *    only; the SDK resolves credentials from the ECS task-role / instance-
  *    profile provider chain. NEVER injects static keys here (least-privilege).
  *
- *  - **Local dev / CI (LocalStack)** — `AWS_ENDPOINT_URL` set (e.g.
- *    http://localhost:4566). The default credential chain has no task role to
- *    resolve, so static credentials are passed explicitly. LocalStack accepts
- *    any value; the conventional `test`/`test` is used as a fallback.
+ *  - **Local dev / CI (an AWS emulator)** — `AWS_ENDPOINT_URL` set to an emulator's
+ *    address. The default credential chain has no task role to resolve, so static
+ *    credentials are passed explicitly. An emulator accepts any value; the
+ *    conventional `test`/`test` is used as a fallback. Garage serves S3 locally
+ *    (`STORAGE_ENDPOINT`); no local emulator serves SES or Secrets Manager.
  *
  * Reading from validated config (not `process.env`) is deliberate: `@nestjs/
  * config` only reliably surfaces schema-declared keys, so raw `process.env`

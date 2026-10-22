@@ -2,6 +2,7 @@ import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 import { SPLIT_MARKER_KINDS } from '../../../domain/burndown';
+import { CARRYOVER_DIRECTION_FILTERS } from '../../../domain/carryover';
 
 /**
  * Response schemas, declared with zod so `/api/docs-json` names them and the SPA's generated
@@ -27,6 +28,13 @@ const TimeboxSchema = z.object({
 });
 
 // ── Iteration Burndown ───────────────────────────────────────────────────────
+
+/** Phase 7 Carryover (CO-08/09) — the compact badge on Burndown and Team Capacity. */
+const CarryoverSummarySchema = z.object({
+  carryIn: z.number().int(),
+  carryOut: z.number().int(),
+  transferredTodoHours: z.number(),
+});
 
 const BurndownPointSchema = z.object({
   date: z.string(),
@@ -90,6 +98,9 @@ export const IterationBurndownResponseSchema = z.object({
    */
   splitOut: z.array(SplitMarkerSchema),
   carryIn: z.array(SplitMarkerSchema),
+  carryover: CarryoverSummarySchema.nullable().describe(
+    'Phase 7 Carryover badge — Carry In / Carry Out / transferred To Do. Null when none.',
+  ),
 });
 export class IterationBurndownResponseDto extends createZodDto(IterationBurndownResponseSchema) {}
 
@@ -171,8 +182,53 @@ export const TeamCapacityResponseSchema = z.object({
   ),
   hasCapacity: z.boolean(),
   hasTaskHours: z.boolean(),
+  carryover: CarryoverSummarySchema.nullable(),
 });
 export class TeamCapacityResponseDto extends createZodDto(TeamCapacityResponseSchema) {}
+
+// ── Carryover (Phase 7 CO-10) ────────────────────────────────────────────────
+
+export const CarryoverReportResponseSchema = z.object({
+  context: ContextSchema,
+  timebox: TimeboxSchema,
+  direction: z.enum(CARRYOVER_DIRECTION_FILTERS),
+  kpis: z.object({
+    carryIn: z.number().int(),
+    carryOut: z.number().int(),
+    transferredTodoHours: z.number(),
+    carryoverRate: z.number().describe('Percentage, one decimal. 0 when the denominator is 0.'),
+  }),
+  trend: z.array(
+    z.object({
+      iterationId: z.string().uuid(),
+      name: z.string(),
+      startDate: z.string().nullable(),
+      carryIn: z.number().int(),
+      carryOut: z.number().int(),
+    }),
+  ),
+  rows: z.array(
+    z.object({
+      transitionId: z.string().uuid(),
+      direction: z.enum(['in', 'out']),
+      storyId: z.string().uuid(),
+      storyKey: z.string(),
+      storyTitle: z.string(),
+      fromIterationId: z.string().uuid().nullable(),
+      fromIterationName: z.string().nullable(),
+      toIterationId: z.string().uuid().nullable(),
+      toIterationName: z.string().nullable(),
+      movedAt: z.string().datetime(),
+      startDate: z.string().nullable(),
+      targetEndDate: z.string().nullable(),
+      estimateHours: z.number(),
+      todoHours: z.number(),
+      actualBefore: z.number(),
+      actualAfter: z.number(),
+    }),
+  ),
+});
+export class CarryoverReportResponseDto extends createZodDto(CarryoverReportResponseSchema) {}
 
 // ── Release Tracking ─────────────────────────────────────────────────────────
 

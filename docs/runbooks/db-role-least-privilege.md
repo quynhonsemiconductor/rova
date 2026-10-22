@@ -27,7 +27,7 @@ POST /v1/auth/me/avatar/presign  →  500
 new row violates row-level security policy for table "files"
 ```
 
-Those policies should not have existed. Rally is single-tenant, DB-level isolation
+Those policies should not have existed. Rova is single-tenant, DB-level isolation
 is an explicit non-goal of the drop-multi-tenant design, and migration 0025 tore the
 apparatus down; 0053 re-added it to two tables believing it "mirrors the policy every
 other workspace-scoped table carries", which was already untrue. Coverage was 2 of 41

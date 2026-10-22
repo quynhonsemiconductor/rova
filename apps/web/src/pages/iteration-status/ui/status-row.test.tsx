@@ -82,7 +82,8 @@ const renderRow = (
   {
     names = [ALICE, WA],
     offers = [ALICE],
-  }: { names?: (typeof ALICE)[]; offers?: (typeof ALICE)[] } = {},
+    canOpenPortfolio = true,
+  }: { names?: (typeof ALICE)[]; offers?: (typeof ALICE)[]; canOpenPortfolio?: boolean } = {},
 ) => {
   offersRef.current = offers
   return render(
@@ -96,7 +97,7 @@ const renderRow = (
       iterationOptions={[]}
       selectedIterationId="it-1"
       canEdit
-      canOpenPortfolio
+      canOpenPortfolio={canOpenPortfolio}
       colStyles={{}}
       dragEnabled={false}
       selected={false}
@@ -174,5 +175,48 @@ describe('StatusRow — Dev Owner survives a reload on screen (GAP-P2-IS-004)', 
     // Alice appears twice with the picker open — as the trigger's label and as its one option.
     expect(screen.queryAllByText('Alice Smith').length).toBeGreaterThan(1)
     expect(screen.queryByText('Workspace Admin')).toBeNull()
+  })
+})
+
+/**
+ * Phase 7 CO-01 — Iteration Status shows a Story's system-managed Start Date, read-only; `Not set`
+ * before it is stamped; and nothing on a Defect row, which carries no such date (SRS §5.3).
+ */
+describe('StatusRow — Start Date (CO-01)', () => {
+  it('shows a Story its stamped Start Date as text', () => {
+    renderRow({ startDate: '2026-09-01' } as Partial<IterationStatusItem>)
+    expect(screen.getByText('2026-09-01')).toBeTruthy()
+  })
+
+  it('reads Not set on a Story that has not started', () => {
+    renderRow({ startDate: '2026-09-01', targetEndDate: null } as Partial<IterationStatusItem>)
+    renderRow({ startDate: null, targetEndDate: '2026-09-30' } as Partial<IterationStatusItem>)
+    // One `Not set` per row: the unstamped Start Date and the unset Target End.
+    expect(screen.getAllByText('Not set')).toHaveLength(2)
+  })
+
+  it('shows the Target End Date read-only (CO-03)', () => {
+    renderRow({ targetEndDate: '2026-09-30' } as Partial<IterationStatusItem>)
+    expect(screen.getByText('2026-09-30')).toBeTruthy()
+  })
+
+  it('leaves the cell empty on a Defect row', () => {
+    renderRow({ type: 'defect', startDate: null } as Partial<IterationStatusItem>)
+    expect(screen.queryByText('Not set')).toBeNull()
+  })
+})
+
+describe('StatusRow — Feature cell respects Portfolio access (§3.2:85)', () => {
+  const feature = { featureId: 'pf-1', featureKey: 'FE-2', featureTitle: 'Checkout' }
+
+  it('links the Feature to its portfolio detail for a reader who may open it', () => {
+    renderRow(feature)
+    expect(screen.getByRole('link', { name: /FE-2/ }).getAttribute('href')).toBe('/portfolio/pf-1')
+  })
+
+  it('renders the Feature as text, with no URL, for a reader without Portfolio access', () => {
+    renderRow(feature, { canOpenPortfolio: false })
+    expect(screen.getByText(/FE-2/)).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /FE-2/ })).toBeNull()
   })
 })

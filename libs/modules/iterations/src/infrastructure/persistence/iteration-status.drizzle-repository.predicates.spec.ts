@@ -148,6 +148,39 @@ describe('IterationStatusDrizzleRepository — the team-scope predicates', () =>
       );
     });
 
+    it('filters Start / Target End by a substring of the ISO date text, pinned with to_char', async () => {
+      const { repo, captured } = recordingRepo();
+
+      await repo.listItems(
+        'it-1',
+        'ws-1',
+        { startDate: ' 2026-10 ', targetEndDate: '2026-11' },
+        PAGE,
+        ALL_TEAMS,
+      );
+
+      const where = whereClause(captured[0].sql);
+      // `date::text` follows the session DateStyle (SQL / German render `10/05/2026`, `05.10.2026`),
+      // so a `2026-10` month fragment would silently match nothing there. `to_char` pins the format.
+      expect(where).toMatch(
+        /to_char\("work"\."work_items"\."start_date", 'YYYY-MM-DD'\) ilike \$\d+/,
+      );
+      expect(where).toMatch(
+        /to_char\("work"\."work_items"\."target_end_date", 'YYYY-MM-DD'\) ilike \$\d+/,
+      );
+      expect(where).not.toMatch(/"(start_date|target_end_date)"::text/);
+      // The value is trimmed and wrapped as a substring match.
+      expect(captured[0].params).toEqual(expect.arrayContaining(['%2026-10%', '%2026-11%']));
+    });
+
+    it('emits no date predicate for a blank Start / Target End filter', async () => {
+      const { repo, captured } = recordingRepo();
+
+      await repo.listItems('it-1', 'ws-1', { startDate: '  ', targetEndDate: '' }, PAGE, ALL_TEAMS);
+
+      expect(whereClause(captured[0].sql)).not.toContain('to_char(');
+    });
+
     it('issues NO query and returns an empty page when the editor holds no team', async () => {
       const { repo, captured } = recordingRepo();
 

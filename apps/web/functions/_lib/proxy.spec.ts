@@ -1,228 +1,264 @@
-import { describe, expect, it, vi } from 'vitest'
-import { buildClientResponse, buildProxyRequest, buildUpstreamUrl, proxyToApi } from './proxy'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  EDGE_IP_HEADER,
+  EDGE_SIG_HEADER,
+  EDGE_TS_HEADER,
+  signEdgeClientIp,
+} from '@quynhonsemiconductor/platform-http/edge'
+import {
+  INTEGRATION_FORWARD_HEADERS,
+  SPA_FORWARD_HEADERS,
+  buildTarget,
+  proxyToApi,
+  type ProxyEnv,
+} from './proxy'
 
-const API_ORIGIN = 'https://rova-api-dev.qnsc.vn'
+const SECRET = 'e'.repeat(40)
+const ENV: ProxyEnv = {
+  API_ORIGIN: 'https://rova-api-dev.qnsc.vn',
+  EDGE_CLIENT_IP_SECRET: SECRET,
+}
 
-describe('buildUpstreamUrl', () => {
+afterEach(() => vi.useRealTimers())
+
+/** Run the proxy against a stub API and hand back the request that reached it. */
+async function forward(request: Request, env: ProxyEnv = ENV, upstream = new Response('ok')) {
+  const fetcher = vi.fn().mockResolvedValue(upstream)
+  const response = await proxyToApi(request, env, fetcher)
+  return { response, sent: fetcher.mock.calls[0]?.[0] as Request | undefined, fetcher }
+}
+
+describe('buildTarget', () => {
   it('keeps the path and query while swapping the origin', () => {
-    const result = buildUpstreamUrl(
-      'https://rally-dev.qnsc.vn/v1/workspaces?limit=10&cursor=abc',
-      API_ORIGIN,
-    )
-    expect(result).toBe('https://rova-api-dev.qnsc.vn/v1/workspaces?limit=10&cursor=abc')
+    expect(
+      buildTarget(
+        'https://rova-dev.qnsc.vn/v1/workspaces?limit=10&cursor=abc',
+        ENV.API_ORIGIN!,
+      ).toString(),
+    ).toBe('https://rova-api-dev.qnsc.vn/v1/workspaces?limit=10&cursor=abc')
   })
 
-  it('handles the prefix root with no extra path or query', () => {
-    const result = buildUpstreamUrl('https://rally-dev.qnsc.vn/bff/login', API_ORIGIN)
-    expect(result).toBe('https://rova-api-dev.qnsc.vn/bff/login')
-  })
-})
-
-describe('buildProxyRequest', () => {
-  it('preserves method and target url', () => {
-    const request = new Request('https://rally-dev.qnsc.vn/v1/me', { method: 'GET' })
-    const proxied = buildProxyRequest(request, API_ORIGIN)
-    expect(proxied.method).toBe('GET')
-    expect(proxied.url).toBe('https://rova-api-dev.qnsc.vn/v1/me')
-  })
-
-  it('strips the host header and sets forwarding headers from the edge', () => {
-    const request = new Request('https://rally-dev.qnsc.vn/v1/me', {
-      method: 'GET',
-      headers: {
-        host: 'rally-dev.qnsc.vn',
-        'cf-connecting-ip': '203.0.113.7',
-        cookie: '__Host-rova_session=abc',
-      },
-    })
-    const proxied = buildProxyRequest(request, API_ORIGIN)
-    expect(proxied.headers.get('host')).toBeNull()
-    expect(proxied.headers.get('x-forwarded-for')).toBe('203.0.113.7')
-    expect(proxied.headers.get('x-forwarded-proto')).toBe('https')
-    expect(proxied.headers.get('x-forwarded-host')).toBe('rally-dev.qnsc.vn')
-    // App headers must survive the hop.
-    expect(proxied.headers.get('cookie')).toBe('__Host-rova_session=abc')
-  })
-
-  it('forwards the CSRF token header', () => {
-    // The API rejects a cookie-authenticated write whose X-CSRF-Token is missing,
-    // so a future change to the header filter must not drop this one silently.
-    const request = new Request('https://rally-dev.qnsc.vn/v1/work-items', {
-      method: 'POST',
-      headers: {
-        'cf-connecting-ip': '203.0.113.7',
-        cookie: '__Host-rova_session=abc; __Host-rova_csrf=secret',
-        'x-csrf-token': 'tok-1',
-        'content-type': 'application/json',
-      },
-      body: '{}',
-    })
-    const proxied = buildProxyRequest(request, API_ORIGIN)
-    expect(proxied.headers.get('x-csrf-token')).toBe('tok-1')
-    expect(proxied.headers.get('cookie')).toBe('__Host-rova_session=abc; __Host-rova_csrf=secret')
-  })
-
-  it('drops a client-supplied x-forwarded-for and trusts only cf-connecting-ip', () => {
-    const request = new Request('https://rally-dev.qnsc.vn/v1/me', {
-      headers: {
-        'x-forwarded-for': '198.51.100.1',
-        'x-real-ip': '198.51.100.1',
-        forwarded: 'for=198.51.100.1',
-        'cf-connecting-ip': '203.0.113.7',
-      },
-    })
-    const proxied = buildProxyRequest(request, API_ORIGIN)
-    expect(proxied.headers.get('x-forwarded-for')).toBe('203.0.113.7')
-    expect(proxied.headers.get('x-real-ip')).toBeNull()
-    expect(proxied.headers.get('forwarded')).toBeNull()
-  })
-
-  it('drops hop-by-hop headers', () => {
-    const request = new Request('https://rally-dev.qnsc.vn/v1/me', {
-      headers: { connection: 'keep-alive', 'keep-alive': 'timeout=5' },
-    })
-    const proxied = buildProxyRequest(request, API_ORIGIN)
-    expect(proxied.headers.get('connection')).toBeNull()
-    expect(proxied.headers.get('keep-alive')).toBeNull()
-  })
-
-  it('forwards a body for non-GET/HEAD methods', () => {
-    const request = new Request('https://rally-dev.qnsc.vn/v1/things', {
-      method: 'POST',
-      body: JSON.stringify({ name: 'x' }),
-      headers: { 'content-type': 'application/json' },
-    })
-    const proxied = buildProxyRequest(request, API_ORIGIN)
-    expect(proxied.method).toBe('POST')
-    expect(proxied.body).not.toBeNull()
+  it('carries the BFF callback path and its query through unchanged', () => {
+    expect(
+      buildTarget(
+        'https://rova-dev.qnsc.vn/v1/bff/callback?code=c&state=s',
+        ENV.API_ORIGIN!,
+      ).toString(),
+    ).toBe('https://rova-api-dev.qnsc.vn/v1/bff/callback?code=c&state=s')
   })
 })
 
-describe('buildClientResponse', () => {
-  it('preserves status and passes through headers', () => {
-    const upstream = new Response('ok', {
-      status: 201,
-      statusText: 'Created',
-      headers: { 'content-type': 'text/plain' },
+describe('proxyToApi: configuration', () => {
+  it('answers 500 naming API_ORIGIN when it is not set, and calls nothing', async () => {
+    const { response, fetcher } = await forward(new Request('https://rova-dev.qnsc.vn/v1/me'), {
+      EDGE_CLIENT_IP_SECRET: SECRET,
     })
-    const result = buildClientResponse(upstream)
-    expect(result.status).toBe(201)
-    expect(result.headers.get('content-type')).toBe('text/plain')
-  })
-
-  // LIMIT OF THE TEST BELOW, stated because it is easy to over-read: it pins the
-  // CONTRACT (two cookies in, two out, values intact) and would catch cookies being
-  // dropped, but it does NOT distinguish the per-cookie loop from a naive
-  // `new Headers(upstream.headers)` — undici preserves the set-cookie list through the
-  // constructor, so that swap keeps this assertion green. The stub-based test further
-  // down is the one that actually kills that mutation.
-  it('preserves multiple Set-Cookie headers individually', () => {
-    const upstream = new Response(null, { status: 204 })
-    upstream.headers.append('set-cookie', '__Host-rova_session=abc; Path=/; Secure')
-    upstream.headers.append('set-cookie', '__Host-bff_state=; Path=/; Max-Age=0')
-    const result = buildClientResponse(upstream)
-    const cookies = result.headers.getSetCookie?.() ?? []
-    expect(cookies).toHaveLength(2)
-    expect(cookies).toContain('__Host-rova_session=abc; Path=/; Secure')
-    expect(cookies).toContain('__Host-bff_state=; Path=/; Max-Age=0')
-  })
-
-  // The fallback path, and the reason it exists. `getSetCookie` is skipped over in the
-  // header loop, so pairing that skip with `?? []` meant a runtime WITHOUT it dropped
-  // every cookie: 200 from the API, 200 from the proxy, and no session cookie at the
-  // browser — a successful login that presents as an immediate silent logout. Cookies
-  // must survive even when the capability does not.
-  // The mutation guard, and the reason it cannot use a real Response.
-  //
-  // Every assertion above passes against a naive `new Headers(upstream.headers)`,
-  // because undici carries the set-cookie list through the constructor — so under
-  // vitest the defence and its absence are indistinguishable on a real Response. That
-  // was a spec claiming a defence it never tested: the swap this file warns about
-  // survived the whole suite.
-  //
-  // A Headers-LIKE stub closes it. It exposes only what the implementation is allowed
-  // to rely on — `forEach`, and `getSetCookie` absent, as the Workers runtime
-  // historically presented — and is not something `new Headers()` can consume, so the
-  // naive version fails here instead of passing quietly. Verified in both directions:
-  // green on the per-cookie loop, red on the constructor swap.
-  it('rebuilds every Set-Cookie individually, not via the Headers constructor', () => {
-    const entries: Array<[string, string]> = [
-      ['content-type', 'application/json'],
-      ['set-cookie', '__Host-rova_session=abc; Path=/; Secure'],
-      ['set-cookie', '__Host-bff_state=; Path=/; Max-Age=0'],
-    ]
-    const headersLike = {
-      forEach(cb: (value: string, key: string) => void) {
-        for (const [key, value] of entries) cb(value, key)
-      },
-      // Deliberately absent, not undefined-by-accident: this is the capability gap.
-      getSetCookie: undefined,
-    }
-    const upstream = {
-      body: null,
-      status: 204,
-      statusText: 'No Content',
-      headers: headersLike,
-    } as unknown as Response
-
-    const result = buildClientResponse(upstream)
-
-    const cookies = result.headers.getSetCookie?.() ?? []
-    expect(cookies).toHaveLength(2)
-    expect(cookies).toContain('__Host-rova_session=abc; Path=/; Secure')
-    expect(cookies).toContain('__Host-bff_state=; Path=/; Max-Age=0')
-    // Non-cookie headers must still make it across.
-    expect(result.headers.get('content-type')).toBe('application/json')
-  })
-
-  it('still forwards Set-Cookie when the runtime has no getSetCookie', () => {
-    const upstream = new Response(null, {
-      status: 204,
-      headers: { 'set-cookie': '__Host-rova_session=abc; Path=/; Secure' },
-    })
-    Object.defineProperty(upstream.headers, 'getSetCookie', { value: undefined })
-
-    const result = buildClientResponse(upstream)
-
-    expect(result.headers.get('set-cookie')).toBe('__Host-rova_session=abc; Path=/; Secure')
-  })
-
-  it('does not leak the fallback into the normal path', () => {
-    // With getSetCookie present the per-cookie list wins, so a cookie is appended once
-    // rather than twice — a double-append would corrupt the header.
-    const upstream = new Response(null, { status: 204 })
-    upstream.headers.append('set-cookie', 'a=1; Path=/')
-
-    const result = buildClientResponse(upstream)
-
-    expect(result.headers.getSetCookie?.() ?? []).toEqual(['a=1; Path=/'])
-  })
-})
-
-describe('proxyToApi', () => {
-  it('returns 500 when the API origin is not configured', async () => {
-    const request = new Request('https://rally-dev.qnsc.vn/v1/me')
-    const response = await proxyToApi(request, undefined, vi.fn())
     expect(response.status).toBe(500)
+    await expect(response.text()).resolves.toMatch(/API_ORIGIN/)
+    expect(fetcher).not.toHaveBeenCalled()
   })
 
-  it('forwards the request to the API origin and returns its response', async () => {
-    const request = new Request('https://rally-dev.qnsc.vn/v1/me', {
-      headers: { 'cf-connecting-ip': '203.0.113.7' },
-    })
-    const fetchImpl = vi.fn().mockResolvedValue(
-      new Response('{"ok":true}', {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
+  it.each([undefined, '', 'short', '   '])(
+    'answers 500 naming EDGE_CLIENT_IP_SECRET when it is %j: it never forwards unsigned, which would put every visitor in one rate-limit bucket',
+    async (secret) => {
+      const { response, fetcher } = await forward(new Request('https://rova-dev.qnsc.vn/v1/me'), {
+        API_ORIGIN: ENV.API_ORIGIN,
+        ...(secret === undefined ? {} : { EDGE_CLIENT_IP_SECRET: secret }),
+      })
+      expect(response.status).toBe(500)
+      await expect(response.text()).resolves.toMatch(/EDGE_CLIENT_IP_SECRET/)
+      expect(fetcher).not.toHaveBeenCalled()
+    },
+  )
+})
+
+describe('proxyToApi: what reaches the API', () => {
+  it('forwards method, path, query, cookie and the CSRF token', async () => {
+    const { sent } = await forward(
+      new Request('https://rova-dev.qnsc.vn/v1/work-items?limit=5', {
+        method: 'POST',
+        headers: {
+          cookie: '__Host-rova_session=abc; __Host-rova_csrf=secret',
+          'x-csrf-token': 'tok',
+          'content-type': 'application/json',
+          'idempotency-key': 'k-1',
+          'cf-connecting-ip': '203.0.113.7',
+        },
+        body: '{"a":1}',
       }),
     )
-    const response = await proxyToApi(request, API_ORIGIN, fetchImpl)
 
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
-    const forwarded = fetchImpl.mock.calls[0][0] as Request
-    expect(forwarded.url).toBe('https://rova-api-dev.qnsc.vn/v1/me')
-    expect(forwarded.headers.get('x-forwarded-for')).toBe('203.0.113.7')
+    expect(sent?.method).toBe('POST')
+    expect(sent?.url).toBe('https://rova-api-dev.qnsc.vn/v1/work-items?limit=5')
+    expect(sent?.headers.get('cookie')).toBe('__Host-rova_session=abc; __Host-rova_csrf=secret')
+    expect(sent?.headers.get('x-csrf-token')).toBe('tok')
+    expect(sent?.headers.get('idempotency-key')).toBe('k-1')
+    await expect(sent?.text()).resolves.toBe('{"a":1}')
+  })
+
+  it('forwards a GitHub webhook delivery with its signature headers and the body byte for byte', async () => {
+    // The SPA host is the webhook URL the setup card shows (`${origin}/v1/scm/webhook/github`). The API verifies
+    // X-Hub-Signature-256 over the RAW body, so the three headers must arrive and the body must not be re-encoded.
+    const body = '{"zen":"Keep it logically awesome.","note":"  spaces\u00e9\n"}'
+    const { sent, response } = await forward(
+      new Request('https://rova-dev.qnsc.vn/v1/scm/webhook/github', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': 'sha256=' + 'a'.repeat(64),
+          'x-github-event': 'pull_request',
+          'x-github-delivery': '72d3162e-cc78-11e3-81ab-4c9367dc0958',
+          'user-agent': 'GitHub-Hookshot/abc',
+          'cf-connecting-ip': '140.82.115.9',
+        },
+        body,
+      }),
+    )
+
     expect(response.status).toBe(200)
-    await expect(response.text()).resolves.toBe('{"ok":true}')
+    expect(sent?.url).toBe('https://rova-api-dev.qnsc.vn/v1/scm/webhook/github')
+    expect(sent?.headers.get('x-hub-signature-256')).toBe('sha256=' + 'a'.repeat(64))
+    expect(sent?.headers.get('x-github-event')).toBe('pull_request')
+    expect(sent?.headers.get('x-github-delivery')).toBe('72d3162e-cc78-11e3-81ab-4c9367dc0958')
+    expect(sent?.headers.get('user-agent')).toBe('GitHub-Hookshot/abc')
+    await expect(sent?.text()).resolves.toBe(body)
+  })
+
+  it('lists exactly the integration headers the API reads from a caller that is not the SPA', () => {
+    expect([...INTEGRATION_FORWARD_HEADERS].sort()).toEqual(
+      ['x-github-delivery', 'x-github-event', 'x-hub-signature-256'].sort(),
+    )
+  })
+
+  it('lists exactly the SPA headers the shared allow-list lacks', () => {
+    expect([...SPA_FORWARD_HEADERS].sort()).toEqual(
+      ['baggage', 'cache-control', 'last-event-id', 'x-csrf-token'].sort(),
+    )
+  })
+
+  it('does NOT forward a header a visitor could use to pick their own address', async () => {
+    const { sent } = await forward(
+      new Request('https://rova-dev.qnsc.vn/v1/me', {
+        headers: {
+          'cf-connecting-ip': '203.0.113.7',
+          'x-forwarded-for': '192.0.2.1',
+          'x-real-ip': '192.0.2.2',
+          forwarded: 'for=192.0.2.3',
+          'x-forwarded-host': 'evil.example',
+        },
+      }),
+    )
+
+    for (const name of [
+      'x-forwarded-for',
+      'x-real-ip',
+      'forwarded',
+      'x-forwarded-host',
+      'cf-connecting-ip',
+    ]) {
+      expect(sent?.headers.get(name), name).toBeNull()
+    }
+  })
+
+  it('replaces any x-qnsc-edge-* header the visitor sent with its own signed ones', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-13T00:00:00Z'))
+    const { sent } = await forward(
+      new Request('https://rova-dev.qnsc.vn/v1/me', {
+        headers: {
+          'cf-connecting-ip': '203.0.113.7',
+          [EDGE_IP_HEADER]: '192.0.2.77',
+          [EDGE_SIG_HEADER]: 'forged',
+          [EDGE_TS_HEADER]: '1',
+        },
+      }),
+    )
+
+    const expected = await signEdgeClientIp({
+      secret: SECRET,
+      ip: '203.0.113.7',
+      method: 'GET',
+      path: '/v1/me',
+      now: new Date('2026-10-13T00:00:00Z'),
+    })
+    expect(sent?.headers.get(EDGE_IP_HEADER)).toBe('203.0.113.7')
+    expect(sent?.headers.get(EDGE_TS_HEADER)).toBe(expected[EDGE_TS_HEADER])
+    expect(sent?.headers.get(EDGE_SIG_HEADER)).toBe(expected[EDGE_SIG_HEADER])
+  })
+
+  it('signs the PATH it sends: the same signature does not verify for another path', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-13T00:00:00Z'))
+    const { sent } = await forward(
+      new Request('https://rova-dev.qnsc.vn/v1/bff/dev-login', {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': '203.0.113.7', 'content-type': 'application/json' },
+        body: '{}',
+      }),
+    )
+
+    const forPath = (path: string) =>
+      signEdgeClientIp({
+        secret: SECRET,
+        ip: '203.0.113.7',
+        method: 'POST',
+        path,
+        now: Date.now(),
+      })
+    expect(sent?.headers.get(EDGE_SIG_HEADER)).toBe(
+      (await forPath('/v1/bff/dev-login'))[EDGE_SIG_HEADER],
+    )
+    expect(sent?.headers.get(EDGE_SIG_HEADER)).not.toBe((await forPath('/v1/me'))[EDGE_SIG_HEADER])
+  })
+
+  it('no longer sets x-forwarded-proto / x-forwarded-host: the API does not read them', async () => {
+    const { sent } = await forward(
+      new Request('https://rova-dev.qnsc.vn/v1/me', {
+        headers: { 'cf-connecting-ip': '203.0.113.7' },
+      }),
+    )
+    expect(sent?.headers.get('x-forwarded-proto')).toBeNull()
+    expect(sent?.headers.get('x-forwarded-host')).toBeNull()
+  })
+
+  it('sends no signature when the visitor has no usable address (the API falls back)', async () => {
+    const { sent } = await forward(new Request('https://rova-dev.qnsc.vn/v1/me'))
+    expect(sent?.headers.get(EDGE_SIG_HEADER)).toBeNull()
+  })
+
+  it('does not follow redirects: the BFF callback 302 goes back to the browser', async () => {
+    const { sent } = await forward(new Request('https://rova-dev.qnsc.vn/v1/bff/callback'))
+    expect(sent?.redirect).toBe('manual')
+  })
+})
+
+describe('proxyToApi: what comes back', () => {
+  it('returns the API redirect with EVERY Set-Cookie untouched', async () => {
+    const upstream = new Response(null, { status: 302, headers: { location: '/' } })
+    upstream.headers.append('set-cookie', '__Host-rova_session=abc; Path=/; HttpOnly; Secure')
+    upstream.headers.append('set-cookie', '__Host-bff_state=; Path=/; Max-Age=0')
+
+    const { response } = await forward(
+      new Request('https://rova-dev.qnsc.vn/v1/bff/callback?code=c&state=s'),
+      ENV,
+      upstream,
+    )
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get('location')).toBe('/')
+    expect(response.headers.getSetCookie()).toEqual([
+      '__Host-rova_session=abc; Path=/; HttpOnly; Secure',
+      '__Host-bff_state=; Path=/; Max-Age=0',
+    ])
+  })
+
+  it('passes status and body through', async () => {
+    const { response } = await forward(
+      new Request('https://rova-dev.qnsc.vn/v1/me'),
+      ENV,
+      new Response('{"error":{"code":"X"}}', { status: 403 }),
+    )
+    expect(response.status).toBe(403)
+    await expect(response.text()).resolves.toBe('{"error":{"code":"X"}}')
   })
 })

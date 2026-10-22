@@ -166,7 +166,10 @@ describe('TestCasesTab', () => {
     testCases.mockReturnValue({ data: [testCase()], isLoading: false, isError: false })
     renderTab()
 
-    screen.getByRole('button', { name: 'TC-1' }).click()
+    // A link since US-120, so it can also open in a new tab — at the same route the click uses.
+    const key = screen.getByRole('link', { name: 'TC-1' })
+    expect(key.getAttribute('href')).toBe('/test-case/TC-1')
+    key.click()
     expect(navigate).toHaveBeenCalledWith({
       to: '/test-case/$testCaseKey',
       params: { testCaseKey: 'TC-1' },

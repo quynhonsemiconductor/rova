@@ -106,6 +106,28 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
+      # IDENTITY 8 GUARD (tags only). Prod's migrator image and its SPA only come from a release tag, and a tag that carries identity 8 is
+      # refused unless prod is READY for it (docs/runbooks/identity-v8-cutover.md, the production section). There is no freeze: this step
+      # is the whole gate. Two flags must be true in infra/live/prod/main.tf on the tagged commit:
+      #   - better_auth_secret_set: the v8 API cannot start without BETTER_AUTH_SECRET; the circuit breaker would roll the API back to v7
+      #     while the worker stays v8 and the SPA (published by the web deploy of the same tag) is already v8;
+      #   - edge_client_ip_secret_set: without it the API falls back to cf-connecting-ip, which behind the Pages Function is ONE Cloudflare
+      #     address for every visitor, so the new address-keyed rate limit and identity's own sign-in limits become company-wide on the
+      #     morning everyone signs in again.
+      # Failing HERE, before the migrator and before any publish, leaves prod exactly as it was. The cutover release is the first tag cut
+      # with both flags true. `identity_v8_backfill_on_deploy = true` in the same change makes that tag's migrator commit the backfill.
+      - name: Refuse a prod tag until prod is ready for identity 8
+        if: github.ref_type == 'tag'
+        run: |
+          missing=""
+          for flag in better_auth_secret_set edge_client_ip_secret_set; do
+            grep -Eq "^[[:space:]]*${flag}[[:space:]]*=[[:space:]]*true([[:space:]]|$)" infra/live/prod/main.tf || missing="$missing $flag"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::infra/live/prod/main.tf does not set:${missing} = true. This tag carries identity 8 and prod is not ready for it: see docs/runbooks/identity-v8-cutover.md (production section)."
+            exit 1
+          fi
+
       - name: Does this commit change infrastructure?
         id: touched
         run: |
@@ -135,7 +157,7 @@ jobs:
         # had this hand-written; both deploys here failed on 2026-09-13 for commits whose CI
         # had passed, because `gh run watch --exit-status` reports a 403 the same way it
         # reports a failed run.
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@v1
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           workflow: infra-apply.yml
           label: Infrastructure · Apply
@@ -202,7 +224,7 @@ jobs:
     steps:
       - name: Wait for Backend · CI on this commit
         if: github.ref_type != 'tag'
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@v1
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           workflow: backend-ci.yml
           # `main` and not the tag ref: Backend · CI only runs on main.
@@ -217,7 +239,7 @@ jobs:
       # real precondition. See the block comment above this job for the race it closes.
       - name: Wait for the develop deploy of this commit
         if: github.ref_type == 'tag'
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@v1
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           workflow: backend-deploy.yml
           # `main` is what excludes THIS run: the develop deploy's headBranch is `main` while
@@ -250,7 +272,7 @@ jobs:
       id-token: write
       attestations: write
       packages: read # build-push-ecr pulls private @quynhonsemiconductor/* from GitHub Packages
-    uses: quynhonsemiconductor/ci/.github/workflows/backend-deploy.yml@v1
+    uses: quynhonsemiconductor/ci/.github/workflows/backend-deploy.yml@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
     with:
       product: rova
       has_worker: true
@@ -270,8 +292,12 @@ jobs:
       # Every image in the task has an arm64 build — node:alpine for the app,
       # cloudflare/cloudflared and amazon/aws-otel-collector for the sidecars (checked
       # 2026-08-17). qnsc-kb cannot do this: clamav/clamav is amd64-only on every tag.
-      build_runner: ubuntu-24.04-arm
-      image_platforms: linux/arm64
+      #
+      # MULTI-ARCH (2026-10-13): the on-prem k3s host is amd64, so the image is now built for BOTH architectures: linux/amd64 on
+      # ubuntu-24.04 and linux/arm64 on ubuntu-24.04-arm, natively, merged into one manifest by the reusable's `merge` job.
+      # ECS stays on Graviton (cpu_architecture = ARM64 above) and pulls the arm64 entry of the same tag; `build_runner` and
+      # `image_platforms` are ignored while multi_arch is true. Drop this when the product has left ECS.
+      multi_arch: true
 
       # ── Build cache: GHA, not the `registry` default ─────────────────────────
       # The registry backend writes a `:buildcache` tag to ECR with `mode=max` and PULLS

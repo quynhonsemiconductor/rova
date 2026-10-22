@@ -12,6 +12,13 @@ import {
   splitOutMarkers,
 } from '../domain/burndown';
 import {
+  buildCarryoverRows,
+  buildTrend,
+  carryoverRate,
+  summarise,
+  type CarryoverDirectionFilter,
+} from '../domain/carryover';
+import {
   bucketFeatures,
   buildBurnup,
   derivedStatus,
@@ -47,6 +54,7 @@ import {
   type VelocityWindow,
 } from '../domain/velocity';
 import type {
+  CarryoverReport,
   IterationBurndownReport,
   ReleaseBurnupReport,
   ReleaseTrackingReport,
@@ -128,24 +136,28 @@ export class ReportingService {
     );
     const iterationIds = participating.map((i) => i.id);
 
-    const [snapshots, scheduled, splitOutEvents, carryInEvents] = await Promise.all([
-      this.repo.getIterationSnapshots(workspaceId, iterationIds, scope, settings.timeZone),
-      this.repo.countScheduledWork(workspaceId, iterationIds, scope),
-      /**
-       * SU-08 8.2 — the two annotation sets, read for the WHOLE timebox rather than the selected
-       * iteration alone.
-       *
-       * `iterationIds` is what the series is measured over: for All Teams that is every participating
-       * Team's iteration for the shared timebox, and a Split that left one of them left this chart. A
-       * marker sourced from `selected.id` alone would be missing from exactly the fused view the
-       * numbers came from.
-       *
-       * Both directions, because ONE iteration can be both: work split out of it and work carried
-       * into it from an earlier sprint are independent facts about the same window.
-       */
-      this.repo.findSplitsBySourceIteration(workspaceId, iterationIds, scope),
-      this.repo.findSplitsByTargetIteration(workspaceId, iterationIds, scope),
-    ]);
+    const [snapshots, scheduled, splitOutEvents, carryInEvents, carryoverEvents] =
+      await Promise.all([
+        this.repo.getIterationSnapshots(workspaceId, iterationIds, scope, settings.timeZone),
+        this.repo.countScheduledWork(workspaceId, iterationIds, scope),
+        /**
+         * SU-08 8.2 — the two annotation sets, read for the WHOLE timebox rather than the selected
+         * iteration alone.
+         *
+         * `iterationIds` is what the series is measured over: for All Teams that is every participating
+         * Team's iteration for the shared timebox, and a Split that left one of them left this chart. A
+         * marker sourced from `selected.id` alone would be missing from exactly the fused view the
+         * numbers came from.
+         *
+         * Both directions, because ONE iteration can be both: work split out of it and work carried
+         * into it from an earlier sprint are independent facts about the same window.
+         */
+        this.repo.findSplitsBySourceIteration(workspaceId, iterationIds, scope),
+        this.repo.findSplitsByTargetIteration(workspaceId, iterationIds, scope),
+        // Phase 7 Carryover (CO-08) — the compact badge, over the same fused timebox, reading only the
+        // events that touch it (the badge never needs the rest of the project's history).
+        this.repo.findCarryoverEvents(workspaceId, args.projectId, scope, iterationIds),
+      ]);
 
     const timebox = this.toTimebox(selected, participating);
     const series = buildBurndownSeries({
@@ -182,6 +194,7 @@ export class ReportingService {
        */
       splitOut: splitOutMarkers(splitOutEvents),
       carryIn: carryInMarkers(carryInEvents),
+      carryover: summarise(carryoverEvents, iterationIds),
     };
   }
 
@@ -262,9 +275,10 @@ export class ReportingService {
     );
     const iterationIds = participating.map((i) => i.id);
 
-    const [capacities, taskHours] = await Promise.all([
+    const [capacities, taskHours, carryoverEvents] = await Promise.all([
       this.repo.getCapacityRecords(workspaceId, args.projectId, iterationIds, scope),
       this.repo.getScopedTaskHours(workspaceId, args.projectId, iterationIds, scope),
+      this.repo.findCarryoverEvents(workspaceId, args.projectId, scope, iterationIds),
     ]);
 
     const rollup = rollUpTeamCapacity({ capacities, tasks: taskHours });
@@ -275,6 +289,57 @@ export class ReportingService {
       totals: rollup.totals,
       teams: rollup.teams,
       ...describeEmptiness(rollup),
+      carryover: summarise(carryoverEvents, iterationIds),
+    };
+  }
+
+  // ── Carryover (Phase 7 CO-10) ─────────────────────────────────────────────
+
+  /**
+   * The dedicated Carryover report — KPIs, trend and rows for the selected Iteration's timebox.
+   *
+   * KPIs and trend are measured over EVERY involving event; `direction` narrows the ROWS only
+   * (CO-BR-41). Only Carryover events reach here — the repository never returns a Split or a Manual
+   * Move (CO-BR-35).
+   */
+  async getCarryover(
+    actor: JwtPayload,
+    args: ScopeArgs & { iterationId: string; direction?: CarryoverDirectionFilter },
+  ): Promise<CarryoverReport> {
+    const { workspaceId } = actor;
+    const scope = await this.resolveScope(actor, args);
+    const settings = await this.repo.getWorkspaceSettings(workspaceId);
+    const selected = await this.requireIteration(actor, args, scope);
+    const direction = args.direction ?? 'all';
+
+    const participating = await this.repo.findTimeboxSiblings(
+      workspaceId,
+      args.projectId,
+      selected.timeboxGroupId,
+      scope,
+      selected.id,
+    );
+    const iterationIds = participating.map((i) => i.id);
+
+    const [events, scopedIterations, scheduledStoryIds] = await Promise.all([
+      this.repo.findCarryoverEvents(workspaceId, args.projectId, scope),
+      this.repo.listScopedIterations(workspaceId, args.projectId, scope),
+      this.repo.listScheduledStoryIds(workspaceId, iterationIds, scope),
+    ]);
+
+    const summary = summarise(events, iterationIds);
+    return {
+      context: await this.context(actor, args, settings.timeZone, scope),
+      timebox: this.toTimebox(selected, participating),
+      direction,
+      kpis: {
+        carryIn: summary?.carryIn ?? 0,
+        carryOut: summary?.carryOut ?? 0,
+        transferredTodoHours: summary?.transferredTodoHours ?? 0,
+        carryoverRate: carryoverRate(events, iterationIds, scheduledStoryIds),
+      },
+      trend: buildTrend(events, scopedIterations),
+      rows: buildCarryoverRows(events, iterationIds, direction),
     };
   }
 
