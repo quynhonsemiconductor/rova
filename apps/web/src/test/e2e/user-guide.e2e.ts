@@ -15,13 +15,15 @@ import { expect, loginAndSelectProject, settle } from './helpers'
 // Pin the browser language: the Help icon chooses the guide edition from it (AC1 + decision 3).
 test.use({ locale: 'en-US' })
 
-async function expectNoBrokenAssets(guide: Page) {
-  // AC4 — every screenshot decoded, and the guide's own stylesheet applied.
+async function expectNoBrokenAssets(guide: Page, expectedImages: number) {
+  // AC4 — every screenshot decoded, and the guide's own stylesheet applied. The count is pinned so a
+  // page with no screenshots (the index) cannot pass the decode check vacuously.
   await guide.waitForLoadState('load')
-  const broken = await guide.$$eval('img', (imgs) =>
-    imgs.filter((img) => !img.complete || img.naturalWidth === 0).map((img) => img.src),
+  const images = await guide.$$eval('img', (imgs) =>
+    imgs.map((img) => ({ src: img.src, ok: img.complete && img.naturalWidth > 0 })),
   )
-  expect(broken).toEqual([])
+  expect(images).toHaveLength(expectedImages)
+  expect(images.filter((img) => !img.ok).map((img) => img.src)).toEqual([])
   const styled = await guide.evaluate(() =>
     [...document.styleSheets].some((s) => s.href?.includes('styles.css') && s.cssRules.length > 0),
   )
@@ -47,7 +49,7 @@ test.describe('US-119 User Guide', () => {
 
     // AC4 — the official version in the header, with assets intact.
     await expect(guide.locator('.brand-version')).toHaveText('Version 1.0')
-    await expectNoBrokenAssets(guide)
+    await expectNoBrokenAssets(guide, 0) // the index has no screenshots: this pins the stylesheet
 
     // AC2 — switch to Vietnamese: the counterpart page loads.
     await guide.locator('#guide-language').selectOption('vi')
@@ -60,7 +62,7 @@ test.describe('US-119 User Guide', () => {
     await guide.waitForURL(/\/guide\/03-backlog-cong-viec\.html/)
     await expect(guide.locator('.nav-item.active')).toHaveAttribute('href', '#chapter-03')
     await expect(guide.locator('.breadcrumb strong')).toHaveText(/^03\. /)
-    await expectNoBrokenAssets(guide) // chapter 03 carries three production screenshots
+    await expectNoBrokenAssets(guide, 3) // chapter 03 carries three production screenshots
 
     // AC3 — the "next" control moves on, and the highlight follows.
     await guide.locator('.chapter-nav-link.next').click()
