@@ -24,7 +24,8 @@ export function HelpLink() {
       asChild
       size="lg"
       aria-label={label}
-      // The top bar is always dark — the same on-dark treatment `ActionMenu`'s `onDark` uses.
+      // The top bar is always dark. Hover surface matches `ActionMenu`'s `onDark` (`hover:bg-white/10`);
+      // the resting ink is the top bar's 65% white (Notifications/Settings), reaching full white on hover.
       className="text-white/65 hover:bg-white/10 hover:text-white"
     >
       <a
