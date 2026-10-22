@@ -61,7 +61,7 @@ test.describe('Releases and Milestones', () => {
 
     // ── Releases list ───────────────────────────────────────────────────────
     await page.goto('/releases', { waitUntil: 'domcontentloaded' })
-    const releaseKey = page.getByRole('button', { name: 'RE-1', exact: true })
+    const releaseKey = page.getByRole('link', { name: 'RE-1', exact: true })
     await expect(releaseKey).toBeVisible({ timeout: 20_000 })
     await expectKeyLeftOfName(releaseKey, page.getByText(/NX Platform Upgrade/).first())
 
@@ -74,7 +74,7 @@ test.describe('Releases and Milestones', () => {
 
     // ── Milestones list ─────────────────────────────────────────────────────
     await page.goto('/milestones', { waitUntil: 'domcontentloaded' })
-    const milestoneKey = page.getByRole('button', { name: 'MS-1', exact: true })
+    const milestoneKey = page.getByRole('link', { name: 'MS-1', exact: true })
     await expect(milestoneKey).toBeVisible({ timeout: 20_000 })
     await expectKeyLeftOfName(milestoneKey, page.getByText(/NX Platform v2/).first())
 

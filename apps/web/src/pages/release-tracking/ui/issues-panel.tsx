@@ -22,6 +22,7 @@ import { RatioMeter } from '@/shared/ui/ratio-meter'
 import { WarningCountBadge } from '@/shared/ui/warning-count-badge'
 import { EMPTY_VALUE, formatDate } from '@/shared/lib/utils'
 import { CellLink } from '@/shared/ui/cell-link'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 export function IssuesPanel({
   row,
@@ -133,24 +134,24 @@ export function IssuesPanel({
             {t('issues.typeReleaseMismatch')}
           </p>
           <ul className="space-y-2">
-            {row.mismatches.map((issue) => (
-              <li key={issue.childId} className="border-t border-border-inner pt-2">
-                <p className="text-ui-sm text-foreground">
-                  <CellLink
-                    onClick={() =>
-                      void navigate({ to: '/item/$itemKey', params: { itemKey: issue.childKey } })
-                    }
-                  >
-                    {issue.childKey}
-                  </CellLink>{' '}
-                  {issue.childTitle}
-                </p>
-                <p className="mt-0.5 text-ui-xs text-destructive">{comparison}</p>
-                <p className="text-ui-xs text-foreground-subtle">
-                  {t('issues.itemRelease', { release: issue.itemReleaseName ?? EMPTY_VALUE })}
-                </p>
-              </li>
-            ))}
+            {row.mismatches.map((issue) => {
+              // ONE path for the link and the click, so a plain click and a new tab cannot diverge.
+              const childHref = entityDetailPath.workItem(issue.childKey)
+              return (
+                <li key={issue.childId} className="border-t border-border-inner pt-2">
+                  <p className="text-ui-sm text-foreground">
+                    <CellLink href={childHref} onClick={() => void navigate({ href: childHref })}>
+                      {issue.childKey}
+                    </CellLink>{' '}
+                    {issue.childTitle}
+                  </p>
+                  <p className="mt-0.5 text-ui-xs text-destructive">{comparison}</p>
+                  <p className="text-ui-xs text-foreground-subtle">
+                    {t('issues.itemRelease', { release: issue.itemReleaseName ?? EMPTY_VALUE })}
+                  </p>
+                </li>
+              )
+            })}
           </ul>
         </div>
       </AppPopoverContent>

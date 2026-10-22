@@ -14,6 +14,7 @@ import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { type ColKey } from '../model/columns'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from '../model/release-states'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 // ── Inline editable row ───────────────────────────────────────────────────
 
@@ -124,8 +125,10 @@ export function ReleaseRow({
 
   const navigate = useNavigate()
 
+  // ONE URL for the ID cell's link and its click, so a plain click and a new tab cannot diverge.
+  const detailHref = entityDetailPath.release(release.id)
   function openDetail() {
-    void navigate({ to: '/releases/$releaseId', params: { releaseId: release.id } })
+    void navigate({ href: detailHref })
   }
 
   return (
@@ -138,7 +141,12 @@ export function ReleaseRow({
         className="flex items-center px-2"
         onClick={(e) => e.stopPropagation()}
       >
-        <IdCell type="release" itemKey={release.releaseKey ?? '--'} onOpen={openDetail} />
+        <IdCell
+          type="release"
+          itemKey={release.releaseKey ?? '--'}
+          onOpen={openDetail}
+          href={detailHref}
+        />
       </div>
 
       {/* Name — inline-editable (the ID cell is the click-to-open link),

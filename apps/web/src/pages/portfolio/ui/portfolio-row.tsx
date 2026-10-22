@@ -198,7 +198,12 @@ export function PortfolioRow({
           ) : (
             <span className="w-3 shrink-0" aria-hidden />
           )}
-          <IdCell type={item.type} itemKey={item.itemKey} onOpen={() => onOpen(item.id)} />
+          <IdCell
+            type={item.type}
+            itemKey={item.itemKey}
+            onOpen={() => onOpen(item.id)}
+            recordId={item.id}
+          />
         </div>
 
         <div

@@ -10,6 +10,7 @@ import { StatusBadge } from '@/shared/ui/status-badge'
 import { formatDateTime } from '@/shared/lib/utils'
 import { CAPACITY_STATUS_STYLE } from '@/features/capacity-planning/status-colors'
 import { useUpdateCapacityPlan, type CapacityPlan } from '@/features/capacity-planning/api'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 import type { PlanColKey } from '../model/columns'
 
 /**
@@ -50,8 +51,9 @@ export function CapacityPlanRow({
   // Per row, like `ReleaseRow`/`IterationRow`: the mutation belongs to the row being edited, and a
   // page-level one would need the row's id threaded back up through the commit handler.
   const updatePlan = useUpdateCapacityPlan()
-  const open = () =>
-    void navigate({ to: '/capacity-planning/$planId', params: { planId: plan.id } })
+  // ONE URL for the ID cell's link and its click, so a plain click and a new tab cannot diverge.
+  const detailHref = entityDetailPath.capacityPlan(plan.id)
+  const open = () => void navigate({ href: detailHref })
 
   async function saveName(next: string) {
     const name = next.trim()
@@ -73,7 +75,12 @@ export function CapacityPlanRow({
       <div style={colStyleFor('id', { flexShrink: 0 })} className="flex items-center px-2">
         {/* `CP-<n>`, minted per project. `—` when a pre-0076 row somehow escaped the backfill:
             the row still has to render, and a blank cell would look like a layout bug. */}
-        <IdCell type="capacityPlan" itemKey={plan.planKey ?? '--'} onOpen={open} />
+        <IdCell
+          type="capacityPlan"
+          itemKey={plan.planKey ?? '--'}
+          onOpen={open}
+          href={detailHref}
+        />
       </div>
 
       {/* Name — inline-editable, exactly as the Timeboxes, Releases and Iteration Status grids

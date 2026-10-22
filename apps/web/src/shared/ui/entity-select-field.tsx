@@ -29,7 +29,7 @@ export interface SelectableTeam {
 interface OwnerSelectFieldProps {
   value: string | null | undefined
   onChange: (value: string) => void
-  members: SelectableMember[]
+  members: readonly SelectableMember[]
   label?: string
   placeholder?: string
   id?: string
@@ -68,7 +68,7 @@ export function OwnerSelectField({
 interface TeamSelectFieldProps {
   value: string | null | undefined
   onChange: (value: string) => void
-  teams: SelectableTeam[]
+  teams: readonly SelectableTeam[]
   label?: string
   placeholder?: string
   id?: string

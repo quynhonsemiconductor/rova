@@ -51,7 +51,10 @@ export function rememberIteration(projectId: string, iterationId: string): void 
   }
 }
 
-export function useSelectedIteration(projectId: string | undefined, iterations: Timebox[]) {
+export function useSelectedIteration(
+  projectId: string | undefined,
+  iterations: readonly Timebox[],
+) {
   const [chosenId, setChosenId] = useState<string | null>(null)
 
   const persistedId = projectId ? readStored(lastAccessedIterationKey(projectId)) : null

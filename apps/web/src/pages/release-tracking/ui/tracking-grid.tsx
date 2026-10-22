@@ -26,9 +26,18 @@ import { RatioMeter } from '@/shared/ui/ratio-meter'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { DataTableFrame, RankCell, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { defaultRecordHref } from '@/entities/work-item/model/record-href'
 import { TeamCell } from '@/shared/ui/team-cell'
 
 import { IssuesPanel } from './issues-panel'
+
+/**
+ * A row's detail URL — the ONE value both its ID cell's `href` and `openItem` use (US-120): Feature
+ * by id, an Unparented work item by key, both via `defaultRecordHref`.
+ */
+function rowHref(row: ReleaseTrackingRow): string | undefined {
+  return defaultRecordHref(row.issueType, row.itemKey, row.id)
+}
 
 type ColKey = 'rank' | 'id' | 'team' | 'issue' | 'name' | 'status'
 
@@ -141,7 +150,13 @@ export function TrackingGrid({
          * already on the wire.
          */
         cell: (row, ctx) => (
-          <IdCell type={row.issueType} itemKey={row.itemKey} onOpen={() => ctx.openItem(row)} />
+          <IdCell
+            type={row.issueType}
+            itemKey={row.itemKey}
+            onOpen={() => ctx.openItem(row)}
+            // The SAME `rowHref` `openItem` navigates to, so a click and a new tab cannot diverge.
+            href={rowHref(row)}
+          />
         ),
       },
       {
@@ -274,10 +289,18 @@ export function TrackingGrid({
     bucket,
     release: report?.release ?? { id: '', name: '', startDate: null, releaseDate: null },
     openItem: (row) => {
-      // A Feature opens its portfolio detail; an Unparented row IS a work item (§5).
-      if (row.issueType === 'feature') {
-        void navigate({ to: '/portfolio/$itemId', params: { itemId: row.id } })
-      } else {
+      // A Feature opens its portfolio detail; an Unparented row IS a work item (§5). The target is
+      // the SAME URL the ID cell links to (`defaultRecordHref`), so a plain click and "Open link in
+      // new tab" cannot resolve the one row to two different records. An in-app path, so the
+      // router navigates in place rather than reloading the document.
+      const href = rowHref(row)
+      // Defensive only: the API types `issueType` as feature | story | defect and `id` as a required
+      // uuid, so every row with a key gets a URL. A kind added to the API before this rule still opens —
+      // as a work item, the route every non-Feature row took before — rather than doing nothing. (`navigate({ href })` with an in-app path is a normal
+      // router navigation: `tracking-grid.navigate-href.test.ts` runs it on a real router.)
+      if (href) void navigate({ href })
+      // A row with no key has nowhere to go: never a bare `/item/`.
+      else if (row.itemKey.trim()) {
         void navigate({ to: '/item/$itemKey', params: { itemKey: row.itemKey } })
       }
     },

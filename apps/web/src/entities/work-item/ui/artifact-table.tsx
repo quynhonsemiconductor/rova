@@ -21,6 +21,11 @@ import { SkeletonList } from '@/shared/ui/skeleton'
 export interface ArtifactTableItem {
   id: string
   itemKey: string
+  /**
+   * A work-item type (Story / Task / Defect) or a portfolio type (Epic / Feature) — the only kinds a
+   * Milestone or Release links. `string` because both API shapes declare it so; every kind listed
+   * here is addressed by `defaultRecordHref`.
+   */
   type: string
   title: string
   scheduleState: string
@@ -50,7 +55,13 @@ function ArtifactRow({
       </td>
       {/* ID — type glyph + key link (the only nav affordance) */}
       <td className="h-8 px-3">
-        <IdCell type={item.type} itemKey={item.itemKey} onOpen={onOpen} />
+        <IdCell
+          type={item.type}
+          itemKey={item.itemKey}
+          onOpen={onOpen}
+          // Mixed artifact kinds: the cell derives id- vs key-addressing from `type`.
+          recordId={item.id}
+        />
       </td>
       {/* Name */}
       <td className="h-8 px-3">

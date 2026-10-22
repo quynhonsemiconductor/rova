@@ -29,6 +29,7 @@ import type { Project } from '@/features/projects/api'
 import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { type ProjectColKey, type ProjectCtx } from './model/columns'
 import { PROJECT_COLUMNS, NewProjectModal } from './ui/project-parts'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 export function ProjectsPage() {
   const { t } = useTranslation('projects')
@@ -166,7 +167,7 @@ export function ProjectsPage() {
     members: wsMembers,
     canEdit: isWorkspaceAdmin,
     onPatch: isWorkspaceAdmin ? (id, input) => update.mutate({ id, input }) : undefined,
-    onOpen: (key) => void navigate({ to: '/projects/$projectKey', params: { projectKey: key } }),
+    onOpen: (key) => void navigate({ href: entityDetailPath.project(key) }),
   }
 
   const statusFilter = (

@@ -161,7 +161,7 @@ export function memberSelectOption(
  * in-grid {@link OwnerSelectCell} and the form-field OwnerSelectField.
  */
 export function ownerSelectOptions(
-  members: OwnerSelectMember[],
+  members: readonly OwnerSelectMember[],
   currentId?: string | null,
   currentName?: string | null,
 ): SelectOption[] {
@@ -193,7 +193,7 @@ interface OwnerSelectCellProps {
   ownerName?: string | null
   /** Current assignee user id (null → unassigned). */
   assigneeId?: string | null
-  members: OwnerSelectMember[]
+  members: readonly OwnerSelectMember[]
   canEdit: boolean
   onChange: (userId: string | null) => void
   ariaLabel?: string
