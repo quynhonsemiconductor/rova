@@ -99,7 +99,7 @@ entities / shared`). Its API client is GENERATED from `/api/docs-json` and COMMI
 | `infrastructure` | Drizzle implementations of those ports                          |
 
 Cross-module code goes to `libs/shared-kernel` (pure domain types, the permission re-export),
-`libs/platform` (config/env schema, HTTP concerns, CSRF, observability façades) or `libs/contracts`.
+`libs/platform` (config/env schema, HTTP concerns, CSRF, observability façades).
 Modules import each other by ALIAS (`@modules/access`), never by relative path — and deep-import when
 a barrel would close a cycle (`WorkspaceService` → `ApiTokensService`).
 
