@@ -131,9 +131,8 @@ const FIELD_LABEL_BY_ACTION: Record<string, string> = {
    * actions are written by two different entity types (a re-parented Defect vs a re-parented Task).
    * Collapsing them would need a per-field rule, which is the shape the docblock above rejects.
    *
-   * The VALUES stay as the ids the writer recorded. Resolving them to item keys would need a lookup
-   * per row from a pure function that has no client — the trace itself is the Split banner's job, and
-   * these rows exist to say WHEN and BY WHOM.
+   * The VALUES render from `metadata.oldName`/`newName` — the Story keys the writer captured beside
+   * the ids — so the row never prints a uuid (BA retest of SU-07, TC-51).
    */
   'work_item.parent_changed': 'Parent Story',
   'task.parent_changed': 'Parent Story',
@@ -166,6 +165,16 @@ export function activityFieldLabel(log: ActivityLike): string {
   return FIELD_LABEL_BY_ACTION[log.action] ?? humanizeToken(log.changes?.field ?? log.action)
 }
 
+/**
+ * One side of a change as the reader sees it: the display value the writer captured beside an id
+ * (`metadata.oldName`/`newName` — a Split's Story key or Iteration name, SU-07 AC4) wins over the
+ * id itself, which a reader cannot review. A blank side stays "(empty)" whatever the metadata says.
+ */
+function activitySideValue(value: unknown, name: unknown): string {
+  if (!isBlankValue(value) && typeof name === 'string' && name !== '') return name
+  return formatActivityValue(value)
+}
+
 /** Build a Rally-style revision Description from an activity-log entry. */
 export function describeActivity(log: ActivityLike): string {
   if (log.changes) {
@@ -194,14 +203,14 @@ export function describeActivity(log: ActivityLike): string {
      * trading a sentence that reads oddly for a revision feed that omits changes. The row is kept;
      * only the claim about the values is dropped, since there is none to make.
      */
-    const { old, new: next } = log.changes
+    const meta = log.metadata ?? {}
+    const from = activitySideValue(log.changes.old, meta.oldName)
+    const to = activitySideValue(log.changes.new, meta.newName)
     // One comparison covers all three: two blanks both render "(empty)", so they are equal here too.
-    if (formatActivityValue(old) === formatActivityValue(next)) {
+    if (from === to) {
       return `${activityFieldLabel(log)} changed`
     }
-    return `${activityFieldLabel(log)} changed from ${formatActivityValue(
-      old,
-    )} to ${formatActivityValue(next)}`
+    return `${activityFieldLabel(log)} changed from ${from} to ${to}`
   }
   // A diff-less action's own sentence where it has one, otherwise the humanised token. The lookup is
   // here rather than inside `activityFieldLabel` because these rows are NOT field changes: there is no

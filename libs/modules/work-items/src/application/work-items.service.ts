@@ -1484,6 +1484,16 @@ export class WorkItemsService {
     );
     const actualHoursAtSplit = sumHours(tasks.map((task) => task.actualHours));
 
+    // Display values for the `[Continued]` Release diff — read once, outside the transaction.
+    const releaseName = (releaseId: string | null): Promise<string | null> =>
+      releaseId
+        ? this.workItemRepo.findReleaseName(releaseId, actor.workspaceId)
+        : Promise.resolve(null);
+    const [oldReleaseName, newReleaseName] = await Promise.all([
+      releaseName(story.releaseId),
+      releaseName(input.continued.releaseId),
+    ]);
+
     const splitId = uuidv7();
     const MAX_KEY_RETRIES = 2;
     let result: SplitWorkItemResult | undefined;
@@ -1745,6 +1755,23 @@ export class WorkItemsService {
             sourceIterationId: source.id,
             targetIterationId: target.id,
           };
+          // SU-07 AC4 — EVERY row this Split writes carries `splitId`, and an id-valued change carries
+          // its display value beside it (`oldName`/`newName`), captured now so a later rename does not
+          // rewrite history and the Revision History never has to print a uuid.
+          const reparentMetadata = {
+            ...splitMetadata,
+            oldName: story.itemKey,
+            newName: unfinished.itemKey,
+          };
+          const continuedDiffMetadata = (field: string): Record<string, unknown> => {
+            if (field === 'iterationId') {
+              return { ...splitMetadata, oldName: source.name, newName: target.name };
+            }
+            if (field === 'releaseId') {
+              return { ...splitMetadata, oldName: oldReleaseName, newName: newReleaseName };
+            }
+            return splitMetadata;
+          };
           await this.appendMany(
             [
               this.buildActivityInput(
@@ -1776,16 +1803,20 @@ export class WorkItemsService {
                   actor.sub,
                   entry.action,
                   entry.change,
+                  continuedDiffMetadata(entry.change.field),
                 ),
               ),
               ...tasks
                 .filter((task) => unfinishedTaskIds.has(task.id))
                 .map((task) =>
-                  this.buildActivityInput(task, 'task', actor.sub, 'task.parent_changed', {
-                    field: 'parentId',
-                    old: id,
-                    new: unfinished.id,
-                  }),
+                  this.buildActivityInput(
+                    task,
+                    'task',
+                    actor.sub,
+                    'task.parent_changed',
+                    { field: 'parentId', old: id, new: unfinished.id },
+                    reparentMetadata,
+                  ),
                 ),
               ...defects
                 .filter((defect) => unfinishedDefectIds.has(defect.id))
@@ -1796,6 +1827,7 @@ export class WorkItemsService {
                     actor.sub,
                     'work_item.parent_changed',
                     { field: 'parentId', old: id, new: unfinished.id },
+                    reparentMetadata,
                   ),
                 ),
               ...testCases
@@ -1812,7 +1844,7 @@ export class WorkItemsService {
                     actor.sub,
                     'test_case.work_product_changed',
                     { field: 'workItemId', old: id, new: unfinished.id },
-                    splitMetadata,
+                    reparentMetadata,
                   ),
                 ),
             ],
@@ -1826,7 +1858,7 @@ export class WorkItemsService {
            * its state is derived from. If that overrides the Schedule State chosen in the modal, that
            * is the ruling, not a defect — the derived rule wins everywhere else in the product too.
            */
-          await this.reconcileParentScheduleState(actor, id, tx);
+          await this.reconcileParentScheduleState(actor, id, tx, splitMetadata);
           const settled = await this.workItemRepo.findById(id, actor.workspaceId, tx);
 
           return { split, unfinished, continued: settled ?? continued };
@@ -2770,6 +2802,8 @@ export class WorkItemsService {
     actor: JwtPayload,
     parentId: string,
     tx?: DbExecutor,
+    /** Extra revision metadata — a Split passes its `splitId` so this row traces to it (SU-07 AC4). */
+    metadata: Record<string, unknown> = {},
   ): Promise<void> {
     const counts = await this.workItemRepo.taskStateCounts(parentId, actor.workspaceId, tx);
     if (counts.total === 0) return;
@@ -2803,7 +2837,7 @@ export class WorkItemsService {
             actor.sub,
             'work_item.schedule_state_changed',
             { field: 'scheduleState', old: parent.scheduleState, new: derived },
-            { auto: true },
+            { ...metadata, auto: true },
           ),
         ],
         tx,
