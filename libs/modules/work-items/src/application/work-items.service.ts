@@ -1757,7 +1757,9 @@ export class WorkItemsService {
           };
           // SU-07 AC4 — EVERY row this Split writes carries `splitId`, and an id-valued change carries
           // its display value beside it (`oldName`/`newName`), captured now so a later rename does not
-          // rewrite history and the Revision History never has to print a uuid.
+          // rewrite history. Story keys and Iteration names are always in hand; a Release name that
+          // did not resolve (deleted between the pre-read and this write) stays null, and that one
+          // row falls back to the id.
           const reparentMetadata = {
             ...splitMetadata,
             oldName: story.itemKey,

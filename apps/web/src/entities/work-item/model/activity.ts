@@ -132,7 +132,8 @@ const FIELD_LABEL_BY_ACTION: Record<string, string> = {
    * Collapsing them would need a per-field rule, which is the shape the docblock above rejects.
    *
    * The VALUES render from `metadata.oldName`/`newName` — the Story keys the writer captured beside
-   * the ids — so the row never prints a uuid (BA retest of SU-07, TC-51).
+   * the ids (BA retest of SU-07, TC-51) — so a row that carries names prints no uuid. A row written
+   * before that change, or a name that did not resolve, still falls back to the raw id.
    */
   'work_item.parent_changed': 'Parent Story',
   'task.parent_changed': 'Parent Story',
