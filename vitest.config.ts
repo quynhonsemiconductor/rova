@@ -93,6 +93,7 @@ export default defineConfig({
         'libs/platform/src/rate-limit/pre-auth-rate-limit.guard.ts',
         'libs/platform/src/http/session-token-redaction.ts',
         'libs/modules/api-tokens/src/interface/http/api-token.guard.ts',
+        'libs/modules/api-tokens/src/interface/http/reject-api-token-auth.guard.ts',
         'libs/platform/src/config/env.schema.ts',
         'libs/platform/src/email/email-delivery.service.ts',
         'libs/platform/src/email/email.service.ts',
