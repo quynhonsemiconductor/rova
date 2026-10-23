@@ -373,16 +373,37 @@ jobs:
       # opshub run 39887434827 stalled on fonts from the same mirror. So the deps install is
       # bounded per attempt (timeout 240), apt retries and times out transfers on its own,
       # and the whole step gets a second attempt before it fails.
+      #
+      # RUN 39957970177 (PR #788) found the failure mode the plain retry misses: the
+      # first attempt hit its `timeout 240` while dpkg was mid-configure, `timeout`'s
+      # TERM killed pnpm but the sudo apt/dpkg CHILD survived holding
+      # /var/lib/dpkg/lock-frontend, and the retry died in seconds with
+      # "Installation process exited with code: 100" — dpkg interrupted + lock held.
+      # So: --kill-after=10 makes the second signal SIGKILL (TERM alone is ignored by
+      # apt's own children); DPkg::Lock::Timeout makes a contended lock WAIT up to
+      # 120 s instead of failing fast; a failed attempt logs the lock holders
+      # (fuser) as evidence and runs `dpkg --configure -a` to finish or unwind
+      # whatever the killed attempt left half-configured, before the retry.
       - name: Install Playwright OS dependencies (bounded, retried)
         timeout-minutes: 9
         run: |
           echo 'Acquire::Retries "3";' | sudo tee /etc/apt/apt.conf.d/99-playwright-retries >/dev/null
           echo 'Acquire::http::Timeout "20";' | sudo tee -a /etc/apt/apt.conf.d/99-playwright-retries >/dev/null
-          # Both attempts bounded: 2×240 s + 15 s sleep ≈ 8.3 min < the step's 9 min.
-          timeout 240 pnpm --filter rova-web exec playwright install-deps chromium || {
+          echo 'DPkg::Lock::Timeout "120";' | sudo tee -a /etc/apt/apt.conf.d/99-playwright-retries >/dev/null
+          # Both attempts bounded: 2×(240+10) s + 15 s sleep + recovery ≈ 8.7 min < the step's 9 min.
+          timeout --kill-after=10 --signal=TERM 240 pnpm --filter rova-web exec playwright install-deps chromium || {
             echo "::warning::install-deps attempt 1 failed or timed out (slow apt mirror) — retrying once"
+            echo '--- dpkg lock holders after attempt 1:'
+            sudo fuser -v /var/lib/dpkg/lock-frontend || true
+            # Finish or unwind whatever the killed attempt left half-configured; the lock
+            # timeout above covers a holder that is still alive and exits soon.
+            sudo dpkg --configure -a
             sleep 15
-            timeout 240 pnpm --filter rova-web exec playwright install-deps chromium
+            timeout --kill-after=10 --signal=TERM 240 pnpm --filter rova-web exec playwright install-deps chromium || {
+              echo '--- dpkg lock holders after attempt 2:'
+              sudo fuser -v /var/lib/dpkg/lock-frontend || true
+              exit 1
+            }
           }
 
       - name: Run E2E
