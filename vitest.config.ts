@@ -170,6 +170,10 @@ export default defineConfig({
         // First apps/api entry. The boot-time roster assert has an ordinary unit spec, and
         // test/coverage-include.spec.ts excludes only test/ and apps/web — so it must be measured.
         'apps/api/src/bootstrap/platform-admin-emails.ts',
+        // MCP P1: the principal bridge and the /mcp route. No apostrophes in this comment: the
+        // coverage-include spec parses this list naively, and one would poison it.
+        'apps/api/src/mcp/principal.guard.ts',
+        'apps/api/src/mcp/route.ts',
       ],
       exclude: ['**/*.spec.ts'],
       // Ratchet: raise these incrementally as coverage improves, NEVER lower them.

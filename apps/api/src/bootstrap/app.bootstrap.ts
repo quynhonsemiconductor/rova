@@ -131,7 +131,7 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // the app-platform `identity/access-jwt` verifier replaces the stub, an enabled endpoint
   // answers every call 503 rather than pretending to be off.
   if (config.get('MCP_ENABLED')) {
-    const { registerMcpRoute, UNCONFIGURED_MCP_ACCESS_VERIFIER } = await import('@modules/mcp');
+    const { registerMcpRoute, UNCONFIGURED_MCP_ACCESS_VERIFIER } = await import('../mcp/index');
     registerMcpRoute({
       app,
       fastify,

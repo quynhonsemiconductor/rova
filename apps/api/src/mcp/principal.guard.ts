@@ -4,7 +4,7 @@ import { isUuid } from '@quynhonsemiconductor/identity';
 import { markPreAuthenticated } from '@quynhonsemiconductor/identity/nest';
 import { requestContextStorage, setRequestPrincipal } from '@quynhonsemiconductor/observability';
 import { IS_PUBLIC_KEY, type JwtPayload } from '@platform';
-import { consumeMcpCallToken, MCP_CALL_TOKEN_HEADER } from './mcp-principal';
+import { consumeMcpCallToken, MCP_CALL_TOKEN_HEADER } from './principal';
 
 interface McpRequest {
   headers: Record<string, string | string[] | undefined>;
@@ -20,7 +20,7 @@ interface McpRequest {
  * and identity's global `SessionGuard` runs after this one.
  *
  * When the request carries a live single-use MCP call token (minted only by the MCP transport,
- * inside the process — see mcp-principal.ts for why this is not AsyncLocalStorage), this guard
+ * inside the process — see principal.ts for why this is not AsyncLocalStorage), this guard
  * consumes it and writes the principal where the rest of the codebase reads it:
  *
  *  - `request.user`, the `JwtPayload` every controller and `PolicyGuard` reads — so authorization
@@ -34,7 +34,7 @@ interface McpRequest {
  * path, has no cookie, and is refused 401 by `SessionGuard`. The context is not ambient.
  *
  * It reads NOTHING from the request — no header, no body: a network request cannot forge the
- * in-process principal (pinned by mcp-principal.guard.spec.ts and the route spec).
+ * in-process principal (pinned by principal.guard.spec.ts and the route spec).
  */
 @Injectable()
 export class McpPrincipalGuard implements CanActivate {

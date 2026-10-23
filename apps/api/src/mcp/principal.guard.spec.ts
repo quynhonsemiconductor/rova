@@ -2,8 +2,8 @@ import { type ExecutionContext } from '@nestjs/common';
 import type { Reflector } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
 import { requestContextStorage } from '@quynhonsemiconductor/observability';
-import { McpPrincipalGuard } from './mcp-principal.guard';
-import { consumeMcpCallToken, mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from './mcp-principal';
+import { McpPrincipalGuard } from './principal.guard';
+import { consumeMcpCallToken, mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from './principal';
 
 const USER = '0194a000-0000-7000-8000-0000000000aa';
 const WORKSPACE = '0194a000-0000-7000-8000-000000000003';

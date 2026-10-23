@@ -13,20 +13,21 @@ import {
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { FastifyInstance } from 'fastify';
-import type { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { RequestContextService } from '@quynhonsemiconductor/observability';
 import { enableCorrelationId } from '@quynhonsemiconductor/platform-http';
 import { McpModule, registerMcpRoute, UNCONFIGURED_MCP_ACCESS_VERIFIER } from './index';
-import type { McpAccessVerifier } from './mcp-access-verifier';
-import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from './mcp-principal';
+import type { McpAccessVerifier } from './access-verifier';
+import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from './principal';
 
 /**
  * `/mcp` against a live Fastify server (no port — `inject`), with the SAME wiring the bootstrap
  * uses (raw route + McpModule's global principal guard). The REST side is a fixture controller
- * standing in for `ProjectsController`: it sits behind the same guard pipeline, so these specs
- * prove the BRIDGE — same principal, same refusal — not project rules (those are the modules'
- * own specs; the gate-g parity run against real fixtures follows once the access adapter ships).
+ * standing in for the real modules: it sits behind the same guard pipeline, so these specs prove
+ * the BRIDGE — same principal, same refusal, per-person rate-limit key — not project rules
+ * (those are the modules' own specs; the gate-g parity run against real fixtures follows once
+ * the access adapter ships).
  */
 
 const VICTIM = '0194a000-0000-7000-8000-0000000000aa';
@@ -38,15 +39,19 @@ const ATTACKER_TOKEN = 'access.attacker.token';
 
 const verifier: McpAccessVerifier = {
   verify: async (bearer) => {
-    if (bearer === VICTIM_TOKEN) return { userId: VICTIM };
-    if (bearer === ATTACKER_TOKEN) return { userId: ATTACKER };
+    if (bearer === VICTIM_TOKEN) return { userId: VICTIM, workspaceId: WORKSPACE };
+    if (bearer === ATTACKER_TOKEN) return { userId: ATTACKER, workspaceId: WORKSPACE };
     return null;
   },
 };
 
-/** The one method `registerMcpRoute` uses; the rest of CacheService is never touched. */
+/** Records the keys the route asks for; always admits. */
+const consumedKeys: string[] = [];
 const cache = {
-  consumeRateLimit: async () => ({ allowed: true, remaining: 59, resetAt: 0 }),
+  consumeRateLimit: async (key: string) => {
+    consumedKeys.push(key);
+    return { allowed: true, remaining: 59, resetAt: 0 };
+  },
 } as unknown as CacheService;
 
 /** Stands in for identity's global SessionGuard: no principal, no entry (the 401 the belt gives). */
@@ -109,11 +114,6 @@ async function boot(routeVerifier: McpAccessVerifier = verifier): Promise<Fastif
   return fastify;
 }
 
-afterEach(async () => {
-  await app?.close();
-  app = undefined;
-});
-
 // ── JSON-RPC helpers ─────────────────────────────────────────────────────────
 
 let rpcId = 0;
@@ -130,6 +130,10 @@ function rpc(fastify: FastifyInstance, method: string, params?: object, token = 
     },
     payload: { jsonrpc: '2.0', id: rpcId, method, ...(params ? { params } : {}) },
   });
+}
+
+interface InitializeResponse {
+  result?: { serverInfo?: { name?: string }; sessionId?: string };
 }
 
 async function initialize(
@@ -150,13 +154,8 @@ async function initialize(
   return res.json<InitializeResponse>();
 }
 
-/** Minimal JSON-RPC response shape the specs read. */
 interface ToolCallResponse {
   result?: { isError?: boolean; content?: { type: string; text: string }[] };
-}
-
-interface InitializeResponse {
-  result?: { serverInfo?: { name?: string }; sessionId?: string };
 }
 
 async function callTool(
@@ -170,26 +169,40 @@ async function callTool(
   return { statusCode: res.statusCode, body: res.json<ToolCallResponse>() };
 }
 
+interface ToolListResponse {
+  result?: { tools?: { name: string; annotations?: { readOnlyHint?: boolean } }[] };
+}
+
+afterEach(async () => {
+  await app?.close();
+  app = undefined;
+});
+
 describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)', () => {
-  it('initializes statelessly and lists only the read-only tools', async () => {
+  it('initializes statelessly and lists exactly the P1 read-only tools', async () => {
     const fastify = await boot();
     const init = await initialize(fastify);
     expect(init.result!.serverInfo!.name).toBe('rova');
     expect(init.result).not.toHaveProperty('sessionId');
 
     const list = await rpc(fastify, 'tools/list');
-    interface ToolListResponse {
-      result?: { tools?: { name: string; annotations?: { readOnlyHint?: boolean } }[] };
-    }
     const tools = list.json<ToolListResponse>().result!.tools!;
-    expect(tools.map((t) => t.name).sort()).toEqual(['get_project', 'list_projects']);
+    expect(tools.map((t) => t.name).sort()).toEqual([
+      'get_work_item',
+      'list_comments',
+      'list_iterations',
+      'list_projects',
+      'my_work',
+      'search_work_items',
+      'whoami',
+    ]);
     for (const t of tools) expect(t.annotations?.readOnlyHint).toBe(true);
   });
 
   it('a tool returns exactly what the same person sees via the same REST route', async () => {
     const fastify = await boot();
 
-    // An in-process call with NO MCP context is refused — the context is not ambient.
+    // An in-process call with NO call token is refused — the principal is not ambient.
     const anonymous = await fastify.inject({
       method: 'GET',
       url: '/v1/projects',
@@ -211,12 +224,9 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       },
     });
     expect(direct.statusCode).toBe(200);
-    const { statusCode, body } = await callTool(fastify, 'list_projects', {
-      workspaceId: WORKSPACE,
-      limit: 5,
-    });
-    expect(statusCode).toBe(200);
     const rest = direct.json();
+    const { statusCode, body } = await callTool(fastify, 'list_projects', { limit: 5 });
+    expect(statusCode).toBe(200);
     const out = JSON.parse(body.result!.content![0].text);
     expect(out.projects).toEqual([
       {
@@ -231,8 +241,13 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
   });
 
   it('a denied action is denied identically: the REST refusal passes through unchanged', async () => {
-    const fastify = await boot();
-    const { body } = await callTool(fastify, 'list_projects', { workspaceId: RESTRICTED });
+    // the verifier binds THIS session to the restricted workspace; the REST refusal is the
+    // person's own 403, relayed untouched
+    const restrictedVerifier: McpAccessVerifier = {
+      verify: async () => ({ userId: VICTIM, workspaceId: RESTRICTED }),
+    };
+    const onRestricted = await boot(restrictedVerifier);
+    const { body } = await callTool(onRestricted, 'list_projects', {});
     expect(body.result!.isError).toBe(true);
     const relayed = JSON.parse(body.result!.content![0].text);
     expect(relayed.statusCode).toBe(403);
@@ -245,16 +260,23 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
 
   it('an external request cannot forge the in-process principal: tools act as the VERIFIED person', async () => {
     const fastify = await boot();
-    // the forged headers name the victim; the verifier names the attacker
-    const { body } = await callTool(
-      fastify,
-      'list_projects',
-      { workspaceId: WORKSPACE },
-      ATTACKER_TOKEN,
-    );
+    // the request carries no principal headers at all; the verifier alone decides who acts
+    const { body } = await callTool(fastify, 'list_projects', {}, ATTACKER_TOKEN);
     const out = JSON.parse(body.result!.content![0].text);
     // the fixture names each row after the principal the guard pipeline delivered
     expect(JSON.stringify(out)).not.toContain(VICTIM);
+
+    // and with no bearer at all: 401 before any tool runs
+    const anon = await rpc(fastify, 'tools/list', undefined, '');
+    expect(anon.statusCode).toBe(401);
+  });
+
+  it('rate limiting keys PER PERSON: the bucket is mcp:uid:<verified id>, one per person', async () => {
+    consumedKeys.length = 0;
+    const fastify = await boot();
+    await initialize(fastify, VICTIM_TOKEN);
+    await initialize(fastify, ATTACKER_TOKEN);
+    expect(consumedKeys).toEqual([`mcp:uid:${VICTIM}`, `mcp:uid:${ATTACKER}`]);
   });
 
   it('an unverified Access token is one uniform 401', async () => {
@@ -271,7 +293,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       clientInfo: { name: 'spec', version: '0.0.0' },
     });
     expect(res.statusCode).toBe(503);
-    expect(res.json().error).toMatch(/identity\/access-jwt/);
+    expect(res.json<{ error?: string }>().error).toMatch(/identity\/access-jwt/);
   });
 
   it('stateless: GET and DELETE answer 405', async () => {

@@ -20,8 +20,7 @@
     "../../libs/modules/collaboration/src/**/*",
     "../../libs/modules/notifications/src/**/*",
     "../../libs/modules/audit/src/**/*",
-    "../../libs/modules/reporting/src/**/*",
-    "../../libs/modules/mcp/src/**/*"
+    "../../libs/modules/reporting/src/**/*"
   ],
   "exclude": [
     "node_modules",

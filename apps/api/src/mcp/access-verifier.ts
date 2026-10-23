@@ -1,19 +1,26 @@
 /**
  * The MCP access adapter: verifies the Cloudflare Access JWT (`Cf-Access-Jwt-Assertion` carried
- * as a Bearer value) and maps its Entra `oid` to the rova identity user.
+ * as a Bearer value) and maps its Entra `oid` to the rova identity user + bound workspace.
  *
  * STUB UNTIL app-platform ships the real verifier (`identity/access-jwt` subpath: JWKS fetch,
- * `iss`/`aud` pinned, RS256, `exp` + `nbf`, then the oid → user mapping). Until that release
- * lands, `MCP_ENABLED=true` boots the route with {@link UNCONFIGURED_MCP_ACCESS_VERIFIER}, which
- * answers every call 503 — the module is wired end to end, nothing is reachable.
+ * `iss`/`aud` pinned, RS256, `exp` + `nbf`, then the oid → user/workspace mapping). Until that
+ * release lands, `MCP_ENABLED=true` boots the route with {@link UNCONFIGURED_MCP_ACCESS_VERIFIER},
+ * which answers every call 503 — the module is wired end to end, nothing is reachable.
  *
- * This interface is the ONLY MCP code that touches authentication. Everything downstream — the
- * principal context, the guard, the tools — already speaks identity user ids. Swapping the stub
- * for the real verifier changes nothing else.
+ * This interface is the ONLY MCP code that touches authentication, and the principal is resolved
+ * exactly once, here, per /mcp request. Everything downstream — the principal context, the guard,
+ * the tools — already speaks identity user ids. Swapping the stub for the real verifier changes
+ * nothing else.
  */
 export interface McpAccessPrincipal {
   /** The rova identity user id the verified Access token's `oid` maps to. */
   userId: string;
+  /**
+   * The workspace the MCP session is bound to, resolved by the adapter (the mapping agent A's
+   * `identity/access-jwt` release owns). A tool never names a workspace: scope resolves exactly
+   * as the session path does, from this principal.
+   */
+  workspaceId: string;
 }
 
 export interface McpAccessVerifier {
