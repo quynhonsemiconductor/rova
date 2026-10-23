@@ -59,6 +59,7 @@ const TEST_RESULT: TestResult = {
   projectId: 'proj-1',
   testCaseId: 'tc-1',
   workItemId: 'wi-1',
+  workItemKey: 'US-1',
   testResultKey: 'TR-1',
   build: 'build-1',
   runDate: '2026-09-01',

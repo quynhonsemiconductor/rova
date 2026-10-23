@@ -380,7 +380,6 @@ export function TestCaseDetailPage() {
             testCaseId={testCase.id}
             projectId={testCase.projectId}
             teamId={testCase.teamId}
-            workItemKey={workItem?.itemKey ?? null}
           />
         </div>
       )}
