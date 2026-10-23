@@ -216,13 +216,13 @@ overrides:
   #
   # GHSA-vfj7-8cjw-p6xm (braces <= 3.0.3) has NO fixed release; it is accepted, time-boxed, in
   # `osv-scanner.toml` at the repo root.
-# pnpm 11 wrote this block during its migration and left every value as the literal
-# placeholder "set this to true or false". Unresolved, pnpm treats the decision as unmade,
-# refuses to run those postinstalls, and exits 1 with ERR_PNPM_IGNORED_BUILDS — and because
-# pnpm 11 runs an implicit `install` before every script, that failure blocks EVERY
-# `pnpm <script>` in this repo, `db:migrate` included. The values below mirror
-# `onlyBuiltDependencies` beneath, which is the allowlist this repo already committed;
-# they are not a new trust decision.
+  # pnpm 11 wrote this block during its migration and left every value as the literal
+  # placeholder "set this to true or false". Unresolved, pnpm treats the decision as unmade,
+  # refuses to run those postinstalls, and exits 1 with ERR_PNPM_IGNORED_BUILDS — and because
+  # pnpm 11 runs an implicit `install` before every script, that failure blocks EVERY
+  # `pnpm <script>` in this repo, `db:migrate` included. The values below mirror
+  # `onlyBuiltDependencies` beneath, which is the allowlist this repo already committed;
+  # they are not a new trust decision.
 allowBuilds:
   '@scarf/scarf': true
   '@swc/core': true
@@ -268,3 +268,5 @@ onlyBuiltDependencies:
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - '@quynhonsemiconductor/*'
+  # Renovate security update: zod@4.6.6
+  - zod@4.6.6
