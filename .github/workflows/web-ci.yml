@@ -394,13 +394,19 @@ jobs:
           timeout --kill-after=10 --signal=TERM 240 pnpm --filter rova-web exec playwright install-deps chromium || {
             echo "::warning::install-deps attempt 1 failed or timed out (slow apt mirror) — retrying once"
             echo '--- dpkg lock holders after attempt 1:'
+            echo '--- last apt Acquire lines (which mirror was slow):'
+            sudo tail -n 40 /var/log/apt/term.log || true
             sudo fuser -v /var/lib/dpkg/lock-frontend || true
-            # Finish or unwind whatever the killed attempt left half-configured; the lock
-            # timeout above covers a holder that is still alive and exits soon.
-            sudo dpkg --configure -a
+            # NON-FATAL (opshub PR run: an unguarded dpkg exit 2 aborted the step under
+            # bash -e before the retry ever ran). Finish or unwind whatever the killed
+            # attempt left half-configured; the lock timeout above covers a holder that
+            # is still alive and exits soon.
+            sudo dpkg --configure -a || echo "::warning::dpkg --configure -a failed — continuing to the retry"
             sleep 15
             timeout --kill-after=10 --signal=TERM 240 pnpm --filter rova-web exec playwright install-deps chromium || {
               echo '--- dpkg lock holders after attempt 2:'
+              echo '--- last apt Acquire lines:'
+              sudo tail -n 40 /var/log/apt/term.log || true
               sudo fuser -v /var/lib/dpkg/lock-frontend || true
               exit 1
             }
