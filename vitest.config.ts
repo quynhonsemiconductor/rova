@@ -89,9 +89,11 @@ export default defineConfig({
         'libs/modules/collaboration/src/application/collaboration.service.ts',
         'libs/platform/src/aws/secrets-manager-secret-resolver.ts',
         'libs/platform/src/auth/session-auth.guard.ts',
+        'libs/platform/src/mcp-call-token.ts',
         'libs/platform/src/rate-limit/pre-auth-rate-limit.guard.ts',
         'libs/platform/src/http/session-token-redaction.ts',
         'libs/modules/api-tokens/src/interface/http/api-token.guard.ts',
+        'libs/modules/api-tokens/src/interface/http/reject-api-token-auth.guard.ts',
         'libs/platform/src/config/env.schema.ts',
         'libs/platform/src/email/email-delivery.service.ts',
         'libs/platform/src/email/email.service.ts',
@@ -170,6 +172,10 @@ export default defineConfig({
         // First apps/api entry. The boot-time roster assert has an ordinary unit spec, and
         // test/coverage-include.spec.ts excludes only test/ and apps/web — so it must be measured.
         'apps/api/src/bootstrap/platform-admin-emails.ts',
+        // MCP P1: the principal bridge and the /mcp route. No apostrophes in this comment: the
+        // coverage-include spec parses this list naively, and one would poison it.
+        'apps/api/src/mcp/principal.guard.ts',
+        'apps/api/src/mcp/route.ts',
       ],
       exclude: ['**/*.spec.ts'],
       // Ratchet: raise these incrementally as coverage improves, NEVER lower them.

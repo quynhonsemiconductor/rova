@@ -118,6 +118,15 @@ export const EnvSchema = z
      */
     SWAGGER_ENABLED: booleanish(false),
 
+    /**
+     * The MCP endpoint (`/mcp`). Defaults OFF everywhere and must be turned on explicitly. The
+     * route is raw (outside `/v1`, the session guards and Swagger), verifies the Cloudflare
+     * Access JWT per request, and composes the product's own REST routes in-process with the
+     * person as principal. Until the app-platform `identity/access-jwt` verifier is wired in,
+     * an enabled endpoint answers every call 503.
+     */
+    MCP_ENABLED: booleanish(false),
+
     // SCM webhooks (GitHub/GHE) — HMAC shared secret for X-Hub-Signature-256.
     // Optional so the app boots without SCM configured; the webhook endpoint
     // returns 503 until it is set (prod should source it from Secrets Manager).
