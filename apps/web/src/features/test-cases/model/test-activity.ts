@@ -57,7 +57,8 @@ function sideValue(
   if (field === 'verdict') return verdictLabel(value) ?? t('history.empty')
   if (field === 'method') return t(`methods.${String(value)}`, String(value))
   if (field === 'priority') return t(`priorities.${String(value)}`, String(value))
-  return formatActivityValue(value)
+  // A Split's Work Product change carries the Story keys beside the ids (SU-07 AC4).
+  return text(name) ?? formatActivityValue(value)
 }
 
 export function describeTestActivity(

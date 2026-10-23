@@ -16,6 +16,8 @@ import '@/shared/i18n/i18n'
 
 const TESTER_A = '0190a1b2-0000-7000-8000-00000000000a'
 const TESTER_B = '0190a1b2-0000-7000-8000-00000000000b'
+const STORY_A = '0190a1b2-0000-7000-8000-0000000000a1'
+const STORY_B = '0190a1b2-0000-7000-8000-0000000000b2'
 
 function row(over: Partial<ActivityRow>): ActivityRow {
   return {
@@ -99,6 +101,20 @@ describe('Test activity history', () => {
     expect(screen.getByText('Minh Pham → Lan Vo')).toBeInTheDocument()
     expect(screen.queryByText(new RegExp(TESTER_A))).not.toBeInTheDocument()
     expect(screen.queryByText(new RegExp(TESTER_B))).not.toBeInTheDocument()
+  })
+
+  it('SU-07: a Split Work Product change reads as Story keys — the stored uuids never reach the screen', () => {
+    renderHistory([
+      row({
+        action: 'test_case.work_product_changed',
+        changes: { field: 'workItemId', old: STORY_A, new: STORY_B },
+        metadata: { subjectKey: 'TC-12', splitId: 'split-1', oldName: 'US-1', newName: 'US-7' },
+      }),
+    ])
+
+    expect(screen.getByText('US-1 → US-7')).toBeInTheDocument()
+    expect(screen.queryByText(new RegExp(STORY_A))).not.toBeInTheDocument()
+    expect(screen.queryByText(new RegExp(STORY_B))).not.toBeInTheDocument()
   })
 
   it('a person whose name did not resolve reads "Unknown user", never an id', () => {
