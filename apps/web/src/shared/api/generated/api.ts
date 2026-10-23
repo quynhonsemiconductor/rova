@@ -6940,6 +6940,8 @@ export interface components {
       testCaseId: string
       /** @description SNAPSHOT of the Test Case Work Product at result-entry time (BR13). */
       workItemId: string | null
+      /** @description Item key of the `workItemId` snapshot — not the Test Case current Work Product. */
+      workItemKey: string | null
       /** @description TR-<n>, workspace-unique */
       testResultKey: string
       build: string

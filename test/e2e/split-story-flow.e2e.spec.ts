@@ -657,5 +657,19 @@ describe('POST /work-items/:id/split (SU-06)', () => {
     // Test Case now hangs off.
     expect(dto.workItemId).toBe(story.id);
     expect(dto.workItemId).not.toBe(body.unfinished.id);
+
+    // BA retest TC-51 / TR-84: the Results LIST showed the Test Case's CURRENT Work Product while
+    // the detail showed the snapshot. Both read the Result's own key now, so they agree.
+    const list = await app.inject({
+      method: 'GET',
+      url: `/test-cases/${testCase.id}/test-results`,
+      headers: { cookie: token },
+    });
+    expect(list.statusCode, list.body).toBe(200);
+    const rows = JSON.parse(list.body) as Array<{ id: string; workItemKey: string | null }>;
+    expect(rows.find((row) => row.id === result.id)?.workItemKey).toBe(story.itemKey);
+    expect((JSON.parse(read.body) as { workItemKey: string | null }).workItemKey).toBe(
+      story.itemKey,
+    );
   });
 });

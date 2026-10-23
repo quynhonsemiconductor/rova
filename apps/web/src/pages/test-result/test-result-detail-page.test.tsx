@@ -42,9 +42,6 @@ vi.mock('@/features/test-cases/api', () => ({
   useUpdateTestResult: () => ({ mutateAsync: updateTestResult }),
   useTestResultActivity: (...args: unknown[]) => testResultActivity(...args),
 }))
-vi.mock('@/features/work-items/api', () => ({
-  useWorkItem: () => ({ data: { id: 'wi-1', itemKey: 'US-1' } }),
-}))
 
 const canPermission = vi.fn()
 vi.mock('@/features/access/api', () => ({
@@ -73,6 +70,7 @@ const result = (over: Partial<TestResult> = {}): TestResult =>
     projectId: 'proj-1',
     testCaseId: 'tc-1',
     workItemId: 'wi-1',
+    workItemKey: 'US-1',
     testResultKey: 'TR-1',
     build: 'build-1',
     runDate: '2026-09-01',

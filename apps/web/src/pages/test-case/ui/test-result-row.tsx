@@ -37,14 +37,12 @@ export function TestResultRow({
   result,
   canEdit,
   colStyles,
-  workItemKey,
   projectId,
   teamId,
 }: {
   result: TestResult
   canEdit: boolean
   colStyles: Record<TestResultColKey, CSSProperties>
-  workItemKey: string | null
   projectId: string
   /** The owning Test Case's own team (BR5, read-only) — Tester's offer feed is scoped to it,
    *  same rule Owner/Assigned To follow on the Test Case Detail page. */
@@ -82,8 +80,12 @@ export function TestResultRow({
           onChange={(v) => v && v !== result.runDate && update.mutate({ runDate: v })}
         />
       </div>
+      {/* The Result's OWN Work Product snapshot (BR13), never the Test Case's current one — a Split
+          moves the Test Case, and the list must agree with the Result detail (TR-84). */}
       <div style={colStyles.workProduct} className="px-2">
-        <span className="font-mono text-ui-sm text-foreground">{workItemKey ?? EMPTY_VALUE}</span>
+        <span className="font-mono text-ui-sm text-foreground">
+          {result.workItemKey ?? EMPTY_VALUE}
+        </span>
       </div>
       <div style={colStyles.verdict} className="px-2">
         {canEdit ? (

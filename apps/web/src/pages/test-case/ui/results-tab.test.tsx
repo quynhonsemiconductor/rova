@@ -52,6 +52,7 @@ const result = (over: Partial<TestResult> = {}): TestResult =>
     testCaseId: 'tc-1',
     projectId: 'proj-1',
     workItemId: 'wi-1',
+    workItemKey: 'US-1',
     build: 'Build 1.0',
     runDate: '2026-06-01',
     verdict: 'pass',
@@ -72,12 +73,27 @@ beforeEach(() => {
 })
 
 function renderTab() {
-  return render(
-    <ResultsTab testCaseId="tc-1" projectId="proj-1" teamId={null} workItemKey="US-1" />,
-  )
+  return render(<ResultsTab testCaseId="tc-1" projectId="proj-1" teamId={null} />)
 }
 
 describe('ResultsTab', () => {
+  it("shows each Result's OWN Work Product snapshot, not one value for the tab (TR-84)", () => {
+    // A Split moved the Test Case from US-54 to US-55 after TR-9 was recorded: TR-9 must still read
+    // US-54 here, exactly as its detail page does.
+    testResults.mockReturnValue({
+      data: [
+        result({ id: 'tr-9', testResultKey: 'TR-9', workItemId: 'wi-54', workItemKey: 'US-54' }),
+        result({ id: 'tr-10', testResultKey: 'TR-10', workItemId: 'wi-55', workItemKey: 'US-55' }),
+      ],
+      isLoading: false,
+      isError: false,
+    })
+    renderTab()
+
+    expect(screen.getByText('US-54')).toBeInTheDocument()
+    expect(screen.getByText('US-55')).toBeInTheDocument()
+  })
+
   it('sorts by Duration when the Duration header is clicked', () => {
     testResults.mockReturnValue({
       data: [
