@@ -138,25 +138,17 @@ describe('VelocityReport', () => {
     expect(row).toHaveTextContent('13')
   })
 
-  it('states how many stories were carried forward, and says nothing when none were', async () => {
-    /**
-     * The footnote reads `splitStoryIds.length`, so this is also what pins that field having a
-     * consumer. It is amber and iconless, unlike the `unclassified` line above it: a Split is a
-     * recorded fact, not a fault.
-     */
+  it('adds NO explanatory message for a Split — the legend label is the whole story (SU-09 AC5)', async () => {
     mockGET.mockResolvedValue({
       data: WITH_CARRYOVER,
       error: undefined,
       response: { status: 200 },
     })
-    const carried = renderReport()
-    await waitFor(() => expect(screen.getByText('velocity.splitCarryoverNote')).toBeInTheDocument())
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    carried.unmount()
-
-    mockGET.mockResolvedValue({ data: REPORT, error: undefined, response: { status: 200 } })
     renderReport()
-    await waitFor(() => expect(screen.getByText('velocity.title')).toBeInTheDocument())
-    expect(screen.queryByText('velocity.splitCarryoverNote')).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getAllByText('velocity.series.splitCarryover').length).toBeGreaterThan(0),
+    )
+    expect(screen.queryByText(/splitCarryoverNote/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

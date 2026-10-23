@@ -69,14 +69,6 @@ export function VelocityReport({
 
   const bars = data?.bars ?? []
   const averages = data?.averages
-  /**
-   * How many `[Unfinished]` placeholders the window excludes, from the ids the bars carry.
-   *
-   * `splitStoryIds.length` rather than a second server field: one list means the count and the
-   * summed points can never disagree. A Story belongs to exactly one iteration, so no id is reached
-   * twice across bars and this needs no de-duplication of its own.
-   */
-  const carriedOverStories = bars.reduce((sum, bar) => sum + bar.splitStoryIds.length, 0)
   // A flat line at the window average: the SRS's Trend is one value repeated across the bars,
   // not a per-bar figure.
   const chartData = bars.map((bar) => ({ ...bar, trend: averages?.trend }))
@@ -216,14 +208,8 @@ export function VelocityReport({
                 {t('velocity.unclassified', { count: data.unclassifiedItems })}
               </p>
             ) : null}
-            {/* Amber and plain text, with NO icon and no `role="alert"`: a Split is a recorded fact,
-                not a data-quality fault, and the destructive line above it is the one thing on this
-                chart a reader must act on. Present only when a Split actually touched the window. */}
-            {carriedOverStories > 0 ? (
-              <p className="mt-2 text-center text-ui-xs text-warning">
-                {t('velocity.splitCarryoverNote', { count: carriedOverStories })}
-              </p>
-            ) : null}
+            {/* NO Split/Carryover note: SU-09 AC5 — the legend labels the segment and "no additional
+                explanatory message is shown" (BA retest TC-55). */}
           </>
         }
       >

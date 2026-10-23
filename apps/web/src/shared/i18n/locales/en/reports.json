@@ -65,8 +65,6 @@
     "worst3": "Worst 3",
     "unclassified_one": "{{count}} accepted item has no acceptance date, so its points are in no segment and in no average.",
     "unclassified_other": "{{count}} accepted items have no acceptance date, so their points are in no segment and in no average.",
-    "splitCarryoverNote_one": "{{count}} story was carried forward by a split, so its points are shown separately and are in no average.",
-    "splitCarryoverNote_other": "{{count}} stories were carried forward by a split, so their points are shown separately and are in no average.",
     "axis": {
       "points": "Velocity (Points)"
     },
