@@ -5,6 +5,7 @@ import fastifyCsrf from '@fastify/csrf-protection';
 import fastifyCompress from '@fastify/compress';
 import fastifyHelmet from '@fastify/helmet';
 import { AppConfigService } from '@platform/config';
+import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { CSRF_HEADER, CSRF_SECRET_COOKIE, requiresCsrfProtection } from '@platform/http/csrf';
 import { enableHealth, registerRequestTiming } from '@quynhonsemiconductor/platform-runtime';
 import { SseConnections, registerSseShutdown } from '@modules/notifications';
@@ -123,6 +124,22 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // /readyz answers 503 when the database or the cache is down, and always 503 once shutdown has begun (see
   // enableGracefulShutdown in main.ts).
   enableProbes(app);
+
+  // /mcp — the MCP endpoint, OFF everywhere by default (MCP_ENABLED). Raw Fastify route, outside
+  // /v1 and the guards: it verifies the Cloudflare Access JWT per request, rate-limits per person,
+  // and its tools compose rova's own REST routes in-process with the person as principal. Until
+  // the app-platform `identity/access-jwt` verifier replaces the stub, an enabled endpoint
+  // answers every call 503 rather than pretending to be off.
+  if (config.get('MCP_ENABLED')) {
+    const { registerMcpRoute, UNCONFIGURED_MCP_ACCESS_VERIFIER } = await import('@modules/mcp');
+    registerMcpRoute({
+      app,
+      fastify,
+      verifier: UNCONFIGURED_MCP_ACCESS_VERIFIER,
+      cache: app.get(CacheService),
+      serverVersion: process.env['npm_package_version'] ?? '0.0.0',
+    });
+  }
 
   // Open notification streams are hijacked replies that never end on their own, so `fastify.close()` (the drain in
   // enableGracefulShutdown) would wait on every signed-in tab until the 25 s deadline. Their `preClose` hook sends

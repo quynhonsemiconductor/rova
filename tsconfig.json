@@ -65,7 +65,9 @@
       "@modules/api-tokens": ["./libs/modules/api-tokens/src/index"],
       "@modules/api-tokens/*": ["./libs/modules/api-tokens/src/*"],
       "@modules/test-cases": ["./libs/modules/test-cases/src/index"],
-      "@modules/test-cases/*": ["./libs/modules/test-cases/src/*"]
+      "@modules/test-cases/*": ["./libs/modules/test-cases/src/*"],
+      "@modules/mcp": ["./libs/modules/mcp/src/index"],
+      "@modules/mcp/*": ["./libs/modules/mcp/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "apps/web"]
