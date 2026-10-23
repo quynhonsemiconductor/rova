@@ -97,7 +97,12 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
       if (!result) return reply.code(401).send({ error: 'Unverified Access token' });
       verified = result;
     } catch (err) {
-      // Everything a verifier can raise is infra, not the caller: an unconfigured adapter, a
+      // The adapter refuses an unknown or offboarded employee: one uniform 403, already logged
+      // inside the adapter with the Access `sub`, never distinguishing unknown from offboarded.
+      if ((err as Error)?.name === 'McpAccessDeniedError') {
+        return reply.code(403).send({ error: 'Forbidden' });
+      }
+      // Everything else a verifier can raise is infra, not the caller: an unconfigured adapter, a
       // JWKS fetch that failed. One uniform 503; never a 500, never a distinguishing 401.
       if ((err as Error)?.name === 'McpAccessNotConfiguredError') {
         return reply.code(503).send({ error: (err as Error).message });

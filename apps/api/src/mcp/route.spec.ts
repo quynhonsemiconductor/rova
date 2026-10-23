@@ -17,7 +17,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { RequestContextService } from '@quynhonsemiconductor/observability';
 import { enableCorrelationId } from '@quynhonsemiconductor/platform-http';
-import { McpModule, registerMcpRoute, UNCONFIGURED_MCP_ACCESS_VERIFIER } from './index';
+import {
+  McpAccessDeniedError,
+  McpModule,
+  registerMcpRoute,
+  UNCONFIGURED_MCP_ACCESS_VERIFIER,
+} from './index';
 import type { McpAccessVerifier } from './access-verifier';
 import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from '@platform';
 
@@ -320,6 +325,22 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     expect(res.json<{ error?: string }>().error).toMatch(/batching is not supported/);
     // nothing was consumed before the refusal: no rate-limit bucket, no tool call
     expect(consumedKeys).toEqual([]);
+  });
+
+  it('an unknown or offboarded employee (adapter denial) is one uniform 403', async () => {
+    const denying: McpAccessVerifier = {
+      verify: async () => {
+        throw new McpAccessDeniedError();
+      },
+    };
+    const withDenial = await boot(denying);
+    const res = await rpc(withDenial, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'spec', version: '0.0.0' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json<{ error?: string }>().error).toBe('Forbidden');
   });
 
   it('a verifier that RAISES (e.g. jwks fetch failed) is a 503, never a 500 or a 401', async () => {
