@@ -338,8 +338,52 @@ jobs:
         env:
           OPENAPI_SPEC: ${{ runner.temp }}/openapi.json
 
-      - name: Install Playwright browsers
-        run: pnpm --filter rova-web exec playwright install --with-deps chromium
+      # Cache the browser by the Playwright package version (that is what decides the
+      # browser build; a lockfile hash would miss on every unrelated dep change — an
+      # upgrade downloads once, every later run is a hit). The OS libraries live outside
+      # the cache path and install separately, every run. The download — the step that
+      # hangs on CDN flakes — is bounded by a step timeout and retried once.
+      - name: Resolve the Playwright version
+        id: playwright
+        run: |
+          version=$(node -p "require('./apps/web/node_modules/@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install Playwright browser (on cache miss, retried once)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 8
+        run: |
+          # Both attempts are bounded on their own: two unbounded attempts share the step
+          # timeout, so a hang in the FIRST one would eat the budget and the retry would
+          # never run. 2×180 s + 15 s sleep ≈ 6.3 min < the step's 8 min.
+          timeout 180 pnpm --filter rova-web exec playwright install chromium || {
+            echo "::warning::Playwright download failed once — retrying (CDN flake)"
+            sleep 15
+            timeout 180 pnpm --filter rova-web exec playwright install chromium
+          }
+
+      # THE APT SIDE IS THE REAL FLAKE, not the CDN: rova run 39782464249 spent 8 min 30 s
+      # fetching 25.9 MB from azure.archive.ubuntu.com while Chromium itself took ~9 s, and
+      # opshub run 39887434827 stalled on fonts from the same mirror. So the deps install is
+      # bounded per attempt (timeout 240), apt retries and times out transfers on its own,
+      # and the whole step gets a second attempt before it fails.
+      - name: Install Playwright OS dependencies (bounded, retried)
+        timeout-minutes: 9
+        run: |
+          echo 'Acquire::Retries "3";' | sudo tee /etc/apt/apt.conf.d/99-playwright-retries >/dev/null
+          echo 'Acquire::http::Timeout "20";' | sudo tee -a /etc/apt/apt.conf.d/99-playwright-retries >/dev/null
+          # Both attempts bounded: 2×240 s + 15 s sleep ≈ 8.3 min < the step's 9 min.
+          timeout 240 pnpm --filter rova-web exec playwright install-deps chromium || {
+            echo "::warning::install-deps attempt 1 failed or timed out (slow apt mirror) — retrying once"
+            sleep 15
+            timeout 240 pnpm --filter rova-web exec playwright install-deps chromium
+          }
 
       - name: Run E2E
         # No `--reporter=` here: the CLI flag REPLACES the config's reporter array rather than
