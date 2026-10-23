@@ -127,6 +127,13 @@ export const EnvSchema = z
      */
     MCP_ENABLED: booleanish(false),
 
+    // The MCP Access application's origin settings (MCP-PLAN §5). Required only when MCP_ENABLED
+    // is true (asserted at boot); test fixtures only until the owner sets the real values.
+    // `iss` of the Access JWT must equal this origin, e.g. https://qnsic.cloudflareaccess.com.
+    MCP_CF_TEAM_DOMAIN: z.string().url().optional(),
+    // The AUD tag of the "/mcp" Access application. A token minted for another app is rejected.
+    MCP_ACCESS_AUD: z.string().min(1).optional(),
+
     // SCM webhooks (GitHub/GHE) — HMAC shared secret for X-Hub-Signature-256.
     // Optional so the app boots without SCM configured; the webhook endpoint
     // returns 503 until it is set (prod should source it from Secrets Manager).

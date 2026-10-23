@@ -4,6 +4,7 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyCsrf from '@fastify/csrf-protection';
 import fastifyCompress from '@fastify/compress';
 import fastifyHelmet from '@fastify/helmet';
+import { DRIZZLE } from '@platform/database/drizzle.provider';
 import { AppConfigService } from '@platform/config';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { CSRF_HEADER, CSRF_SECRET_COOKIE, requiresCsrfProtection } from '@platform/http/csrf';
@@ -126,16 +127,28 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   enableProbes(app);
 
   // /mcp — the MCP endpoint, OFF everywhere by default (MCP_ENABLED). Raw Fastify route, outside
-  // /v1 and the guards: it verifies the Cloudflare Access JWT per request, rate-limits per person,
-  // and its tools compose rova's own REST routes in-process with the person as principal. Until
-  // the app-platform `identity/access-jwt` verifier replaces the stub, an enabled endpoint
-  // answers every call 503 rather than pretending to be off.
+  // /v1 and the guards: it verifies the Cloudflare Access JWT per request via identity 8.5's
+  // `access-jwt` verifier (signature, iss, aud, exp+nbf), resolves the employee from the token's
+  // email on EVERY request (the token's exp is a 24 h grant session, not freshness), and its
+  // tools compose rova's own REST routes in-process with the person as principal.
   if (config.get('MCP_ENABLED')) {
-    const { registerMcpRoute, UNCONFIGURED_MCP_ACCESS_VERIFIER } = await import('../mcp/index');
+    const teamDomain = config.get('MCP_CF_TEAM_DOMAIN');
+    const audience = config.get('MCP_ACCESS_AUD');
+    if (!teamDomain || !audience) {
+      throw new Error(
+        'MCP_ENABLED=true requires MCP_CF_TEAM_DOMAIN (the Access team origin) and ' +
+          'MCP_ACCESS_AUD (the /mcp Access application AUD tag).',
+      );
+    }
+    const { registerMcpRoute, createMcpAccessJwtAdapter } = await import('../mcp/index');
     registerMcpRoute({
       app,
       fastify,
-      verifier: UNCONFIGURED_MCP_ACCESS_VERIFIER,
+      verifier: createMcpAccessJwtAdapter({
+        db: app.get(DRIZZLE),
+        teamDomain,
+        audience,
+      }),
       cache: app.get(CacheService),
       serverVersion: process.env['npm_package_version'] ?? '0.0.0',
     });

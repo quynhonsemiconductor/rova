@@ -176,6 +176,7 @@ export default defineConfig({
         // coverage-include spec parses this list naively, and one would poison it.
         'apps/api/src/mcp/principal.guard.ts',
         'apps/api/src/mcp/route.ts',
+        'apps/api/src/mcp/access-jwt.adapter.ts',
       ],
       exclude: ['**/*.spec.ts'],
       // Ratchet: raise these incrementally as coverage improves, NEVER lower them.
