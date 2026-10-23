@@ -129,8 +129,13 @@ export const EnvSchema = z
 
     // The MCP Access application's origin settings (MCP-PLAN §5). Required only when MCP_ENABLED
     // is true (asserted at boot); test fixtures only until the owner sets the real values.
-    // `iss` of the Access JWT must equal this origin, e.g. https://qnsic.cloudflareaccess.com.
-    MCP_CF_TEAM_DOMAIN: z.string().url().optional(),
+    // `iss` of the Access JWT must equal this origin. DEPLOYMENT REQUIREMENT: the /mcp Access
+    // application must allow ONLY the Entra IdP — no One-time PIN, no social IdPs — because the
+    // adapter maps by email and guests (unverified addresses) are refused.
+    MCP_CF_TEAM_DOMAIN: z
+      .string()
+      .regex(/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/)
+      .optional(),
     // The AUD tag of the "/mcp" Access application. A token minted for another app is rejected.
     MCP_ACCESS_AUD: z.string().min(1).optional(),
 

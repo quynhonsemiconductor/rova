@@ -150,6 +150,9 @@ importers:
       ioredis:
         specifier: ^5.11.1
         version: 5.11.1(supports-color@10.2.2)
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.4
       nestjs-pino:
         specifier: ^4.6.1
         version: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
@@ -232,9 +235,6 @@ importers:
       husky:
         specifier: ^9.1.7
         version: 9.1.7
-      jose:
-        specifier: 6.2.4
-        version: 6.2.4
       lint-staged:
         specifier: ^17.0.8
         version: 17.6.0

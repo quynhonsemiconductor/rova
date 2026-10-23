@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import {
   AccessJwtError,
   type AccessPrincipal,
@@ -8,7 +8,7 @@ import {
 } from '@quynhonsemiconductor/identity/access-jwt';
 import type { DrizzleDB } from '@platform';
 import { users as identityUsers } from '@db/schema/identity';
-import { workspaceMembers } from '@db/schema/workspace';
+import { workspaceMembers, workspaces } from '@db/schema/workspace';
 import type { McpAccessPrincipal, McpAccessVerifier } from './access-verifier';
 
 /**
@@ -18,15 +18,19 @@ import type { McpAccessPrincipal, McpAccessVerifier } from './access-verifier';
  *  - the token is verified FULLY and pinned: RS256 against the team JWKS, `iss` = the team
  *    domain, `aud` = the MCP Access application's AUD tag (config, never hardcoded), `exp`+`nbf`;
  *  - `exp` equals the Access GRANT SESSION (planned 24 h), so it is NOT a freshness signal:
- *    on EVERY request the employee is resolved from the token's `email` (case-insensitively)
- *    and refused unless the row is an ACTIVE employee — the same RBAC as the REST route the
- *    tool injects into decides everything else, per route, per call;
+ *    on EVERY request the employee is resolved from the token's `email` (the same
+ *    trim+lowercase normaliser as `UserDirectory.findByEmail`, hitting `uq_users_email`) and
+ *    refused unless the row is an ACTIVE, email-VERIFIED employee — the same RBAC as the REST
+ *    route the tool injects into decides everything else, per route, per call. `emailVerified`
+ *    is the guest exclusion: a B2B guest's one-time-PIN address is not the person's Entra email;
+ *  - exactly ONE active workspace membership must match — rova is single-workspace today, and
+ *    ambiguity FAILS CLOSED (403), it does not pick one;
  *  - the Entra `oid` claim is absent today and is NOT required (`allowEmailFallback` on);
  *    if it arrives later it is returned on the principal and MAY be used, but the email stays
  *    the key;
  *  - an unknown or offboarded employee is a uniform 403 ({@link McpAccessDeniedError}), logged
- *    with the Access `sub` — never echoed, never distinguishing unknown from offboarded, and
- *    NEVER auto-provisioned from an MCP call.
+ *    with the Access `sub` and a stable reason code — never the email, never distinguishing
+ *    unknown from offboarded, and NEVER auto-provisioned from an MCP call.
  */
 export class McpAccessDeniedError extends Error {
   constructor() {
@@ -35,17 +39,8 @@ export class McpAccessDeniedError extends Error {
   }
 }
 
-/** The verifier's error codes that mean "bad token" (a 401); everything else is availability (a 5xx). */
-const BAD_TOKEN_CODES: ReadonlySet<AccessJwtError['code']> = new Set([
-  'malformed',
-  'invalid_signature',
-  'expired',
-  'not_yet_valid',
-  'bad_issuer',
-  'bad_audience',
-  'wrong_algorithm',
-  'missing_principal',
-]);
+/** Stable refusal reasons for the log (never the email, never unknown-vs-offboarded). */
+type DenyReason = 'no_email_claim' | 'no_active_employee' | 'no_workspace' | 'ambiguous_workspace';
 
 export interface McpAccessJwtAdapterOptions {
   db: DrizzleDB;
@@ -77,44 +72,60 @@ export function createMcpAccessJwtAdapter(opts: McpAccessJwtAdapterOptions): Mcp
       try {
         principal = await accessJwt.verify(bearer);
       } catch (err) {
-        if (err instanceof AccessJwtError && !BAD_TOKEN_CODES.has(err.code)) {
-          // jwks_unavailable: the team domain is unreachable — availability, not a bad token.
-          throw err;
-        }
-        return null; // one uniform 401, whatever the reason the token is not ours
+        // Inverted on purpose: ONLY jwks_unavailable is availability (rethrown → the route's 503).
+        // Every other verifier error is a bad token → one uniform 401.
+        if (err instanceof AccessJwtError && err.code === 'jwks_unavailable') throw err;
+        return null;
       }
 
-      // NOT a freshness signal, `exp`: resolve the employee NOW, on every request.
-      const email = principal.email?.toLowerCase();
-      if (!email) return deny(logger, principal.sub, 'the token carries no email claim');
+      // NOT a freshness signal, `exp`: resolve the employee NOW, on every request. The same
+      // trim+lowercase normaliser as `UserDirectory.findByEmail`, so `uq_users_email` is hit.
+      const email = principal.email?.trim().toLowerCase();
+      if (!email) return deny(logger, principal.sub, 'no_email_claim');
       const [employee] = await opts.db
         .select({ id: identityUsers.id })
         .from(identityUsers)
         .where(
           and(
-            sql`lower(${identityUsers.email}) = ${email}`,
-            isNull(identityUsers.deletedAt),
+            eq(identityUsers.email, email),
             eq(identityUsers.status, 'active'),
+            eq(identityUsers.emailVerified, true), // excludes B2B guests / unverified addresses
+            isNull(identityUsers.deletedAt),
           ),
         )
         .limit(1);
-      if (!employee) return deny(logger, principal.sub, `no active employee for ${email}`);
+      if (!employee) return deny(logger, principal.sub, 'no_active_employee');
 
-      // The workspace the MCP session is bound to: the person's active membership.
-      const [membership] = await opts.db
+      // The workspace the MCP session is bound to: exactly ONE active membership in an active
+      // workspace. Deterministic order so the ambiguity check is about the DATA, not the plan.
+      const matches = await opts.db
         .select({ workspaceId: workspaceMembers.workspaceId })
         .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.userId, employee.id), eq(workspaceMembers.status, 'active')))
-        .limit(1);
-      if (!membership) return deny(logger, principal.sub, `employee ${email} has no workspace`);
+        .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+        .where(
+          and(
+            eq(workspaceMembers.userId, employee.id),
+            eq(workspaceMembers.status, 'active'),
+            eq(workspaces.status, 'active'),
+            isNull(workspaces.deletedAt),
+          ),
+        )
+        .orderBy(
+          asc(workspaceMembers.joinedAt),
+          // the composite key's tail (uq_workspace_member is workspace_id + user_id): no ties
+          asc(workspaceMembers.workspaceId),
+          asc(workspaceMembers.userId),
+        );
+      if (matches.length === 0) return deny(logger, principal.sub, 'no_workspace');
+      if (matches.length > 1) return deny(logger, principal.sub, 'ambiguous_workspace');
 
-      return { userId: employee.id, workspaceId: membership.workspaceId };
+      return { userId: employee.id, workspaceId: matches[0].workspaceId };
     },
   };
 }
 
-/** One uniform 403: logged with the Access `sub`, never distinguishing unknown from offboarded. */
-function deny(logger: Logger, sub: string, why: string): never {
-  logger.warn({ accessSub: sub }, `MCP access denied: ${why}`);
+/** One uniform 403: logged as `{ accessSub, reason }` — never the email, never a distinction. */
+function deny(logger: Logger, sub: string, reason: DenyReason): never {
+  logger.warn({ accessSub: sub, reason }, 'MCP access denied');
   throw new McpAccessDeniedError();
 }
