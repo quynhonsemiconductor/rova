@@ -6,8 +6,8 @@ import { pageInfoOf, pageArgs, result, type ToolContext } from './rest';
  * `list_iterations` — the iterations of one project the person can read
  * (GET /v1/iterations, `timebox:view` from the `projectId` query).
  */
-export function registerListIterations(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerListIterations(server: McpServer, ctx: ToolContext) {
+  return server.registerTool(
     'list_iterations',
     {
       title: 'List iterations',

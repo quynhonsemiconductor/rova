@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PreAuthRateLimitGuard } from './pre-auth-rate-limit.guard';
 import { SKIP_RATE_LIMIT_KEY } from './rate-limit.constants';
+import { consumeMcpCallToken, mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from '../mcp-call-token';
 
 const ctx = (headers: Record<string, string>, skip = false): ExecutionContext => {
   const handler = () => undefined;
@@ -70,6 +71,47 @@ describe('PreAuthRateLimitGuard', () => {
         ctx({ authorization: 'Bearer rly_zzzzzzzz_guess', 'cf-connecting-ip': '198.51.100.9' }),
       ),
     ).toBe(true);
+  });
+
+  it('an MCP internal call (live call token) keys PRE_AUTH by PERSON, never by the shared loopback address', async () => {
+    const principal = {
+      userId: '0194a000-0000-7000-8000-0000000000aa',
+      workspaceId: '0194a000-0000-7000-8000-000000000003',
+      sessionId: 'mcp:req-1',
+    };
+    // two different people, both over loopback inject(): two separate PRE_AUTH buckets
+    const victimToken = mintMcpCallToken(principal);
+    await guard.canActivate(ctx({ [MCP_CALL_TOKEN_HEADER]: victimToken }));
+    await guard.canActivate(
+      ctx({
+        [MCP_CALL_TOKEN_HEADER]: mintMcpCallToken({
+          ...principal,
+          userId: '0194a000-0000-7000-8000-0000000000ff',
+        }),
+      }),
+    );
+    expect(consume).toHaveBeenCalledWith(`PRE_AUTH:uid:${principal.userId}`, 1200, 60);
+    expect(consume).toHaveBeenCalledWith(
+      'PRE_AUTH:uid:0194a000-0000-7000-8000-0000000000ff',
+      1200,
+      60,
+    );
+    // and NO ip bucket was touched for either: loopback keying would share one floor
+    expect([...buckets.keys()].filter((k) => k.includes(':ip:'))).toEqual([]);
+    // the peek did not spend the token: the principal guard's consume still unlocks it
+    expect(consumeMcpCallToken(victimToken)).toEqual(principal);
+  });
+
+  it('a spent or forged call token is no context: back to address keying', async () => {
+    const spent = mintMcpCallToken({
+      userId: '0194a000-0000-7000-8000-0000000000aa',
+      workspaceId: '0194a000-0000-7000-8000-000000000003',
+      sessionId: 'mcp:req-1',
+    });
+    expect(consumeMcpCallToken(spent)).toBeDefined();
+    await guard.canActivate(ctx({ [MCP_CALL_TOKEN_HEADER]: spent }));
+    expect(consume).toHaveBeenCalledWith('PRE_AUTH:ip:203.0.113.7', 1200, 60);
+    expect([...buckets.keys()].filter((k) => k.startsWith('PRE_AUTH:uid'))).toEqual([]);
   });
 
   it('does not count a JWT-shaped bearer or a cookie request in the token bucket', async () => {

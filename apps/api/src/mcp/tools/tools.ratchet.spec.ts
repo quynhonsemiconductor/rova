@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -27,32 +28,55 @@ function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
-function importsOf(src: string): string[] {
-  return [...src.matchAll(/(?:import|export)[^'"]*from\s+'([^']+)'/g)].map((m) => m[1]);
+/**
+ * Every module reference in a tool file, from the SYNTAX TREE (a regex misses double quotes,
+ * `require()`, dynamic `import()` and side-effect imports — all of which load code): static
+ * imports and re-exports, side-effect imports, `require('…')` and `await import('…')`.
+ */
+function moduleReferences(src: string): string[] {
+  const refs: string[] = [];
+  const walk = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) || (ts.isExportDeclaration(node) && node.moduleSpecifier)) {
+      const spec = node.moduleSpecifier;
+      if (spec && ts.isStringLiteral(spec)) refs.push(spec.text);
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.RequireKeyword ||
+        node.expression.kind === ts.SyntaxKind.ImportKeyword) &&
+      node.arguments[0] &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      refs.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, walk);
+  };
+  walk(ts.createSourceFile('tool.ts', src, ts.ScriptTarget.Latest, true));
+  return refs;
 }
 
 /**
- * The ONLY things a tool file may import: the MCP SDK, zod, node builtins, and this module's own
- * plumbing (principal context, rest caller, sibling tools, registry). Anything else — a
- * controller, an application service, `@modules/*`, drizzle, the DB schema — is a layer skip.
+ * The ONLY things a tool file may reference as a module: the MCP SDK, zod, node builtins, the
+ * platform primitive the bridge runs on, and this module's own plumbing (rest caller, sibling
+ * tools, registry). Anything else — a controller, an application service, `@modules/*`, drizzle,
+ * the DB schema — is a layer skip.
  */
 const ALLOWED_IMPORTS = [
   /^@modelcontextprotocol\//,
   /^zod$/,
   /^node:/,
-  /^\.\.\/principal$/,
+  /^@platform$/,
   /^\.\/[^/]*$/,
 ];
 
 describe('MCP tools ratchet', () => {
-  it('every tool file imports only the SDK, zod, node builtins and its own plumbing', () => {
+  it('every tool file references only allowed modules (imports, require, dynamic import)', () => {
     const files = toolFiles();
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
-      const offenders = importsOf(readFileSync(file, 'utf8')).filter(
+      const offenders = moduleReferences(readFileSync(file, 'utf8')).filter(
         (spec) => !ALLOWED_IMPORTS.some((re) => re.test(spec)),
       );
-      expect(offenders, `${file} imports outside the allowlist`).toEqual([]);
+      expect(offenders, `${file} references modules outside the allowlist`).toEqual([]);
     }
   });
 

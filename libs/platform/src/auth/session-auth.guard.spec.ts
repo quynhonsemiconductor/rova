@@ -61,8 +61,14 @@ describe('SessionAuthGuard', () => {
 
   it('refuses a route that reaches it with no session and no token', () => {
     expect(() => guard().canActivate(ctx({}))).toThrow(UnauthorizedException);
-    // a request.user with no apiTokenId is not an authentication
-    expect(() => guard().canActivate(ctx({ user: { sub: USER } }))).toThrow(UnauthorizedException);
+    expect(() => guard().canActivate(ctx({ user: {} }))).toThrow(UnauthorizedException);
+  });
+
+  it('admits a request.user written by the MCP principal bridge (no session, no token id)', () => {
+    // apps/api/src/mcp consumes an in-process call token and writes `request.user` directly; the
+    // belt passes it through, exactly as it does ApiTokenGuard's. Nothing on the wire can set it.
+    const req: Record<string, unknown> = { user: { sub: USER } };
+    expect(guard().canActivate(ctx(req))).toBe(true);
   });
 
   it('does not authenticate a @Public() route', () => {

@@ -5,7 +5,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { RateLimitedException } from '@platform';
 import type { McpAccessPrincipal, McpAccessVerifier } from './access-verifier';
-import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER, type McpPrincipalContext } from './principal';
+import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER, type McpPrincipalContext } from '@platform';
 import { registerTools } from './tools/register';
 import type { McpRestCaller } from './tools/rest';
 
@@ -82,16 +82,27 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
 
     // The principal is resolved ONCE, here: Access JWT → rova user + bound workspace. Nothing
     // downstream re-resolves it, and no tool argument can widen it.
+    // Batching was removed in the 2025-06-18 protocol and the pinned SDK still ACCEPTS an array
+    // body — one POST would be up to 100 tool calls while costing one rate-limit unit. One
+    // message per POST, enforced here.
+    if (Array.isArray(request.body)) {
+      return reply.code(400).send({
+        error: 'JSON-RPC batching is not supported: send one message per POST',
+      });
+    }
+
     let verified: McpAccessPrincipal;
     try {
       const result = await verifier.verify(bearer);
       if (!result) return reply.code(401).send({ error: 'Unverified Access token' });
       verified = result;
     } catch (err) {
+      // Everything a verifier can raise is infra, not the caller: an unconfigured adapter, a
+      // JWKS fetch that failed. One uniform 503; never a 500, never a distinguishing 401.
       if ((err as Error)?.name === 'McpAccessNotConfiguredError') {
         return reply.code(503).send({ error: (err as Error).message });
       }
-      throw err;
+      return reply.code(503).send({ error: 'MCP access verifier unavailable' });
     }
     const principal: McpPrincipalContext = {
       userId: verified.userId,

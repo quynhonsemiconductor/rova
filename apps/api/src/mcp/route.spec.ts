@@ -19,7 +19,7 @@ import { RequestContextService } from '@quynhonsemiconductor/observability';
 import { enableCorrelationId } from '@quynhonsemiconductor/platform-http';
 import { McpModule, registerMcpRoute, UNCONFIGURED_MCP_ACCESS_VERIFIER } from './index';
 import type { McpAccessVerifier } from './access-verifier';
-import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from './principal';
+import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from '@platform';
 
 /**
  * `/mcp` against a live Fastify server (no port — `inject`), with the SAME wiring the bootstrap
@@ -151,7 +151,7 @@ async function initialize(
     token,
   );
   expect(res.statusCode).toBe(200);
-  return res.json<InitializeResponse>();
+  return res.json();
 }
 
 interface ToolCallResponse {
@@ -166,11 +166,13 @@ async function callTool(
 ): Promise<{ statusCode: number; body: ToolCallResponse }> {
   await initialize(fastify, token);
   const res = await rpc(fastify, 'tools/call', { name, arguments: args }, token);
-  return { statusCode: res.statusCode, body: res.json<ToolCallResponse>() };
+  return { statusCode: res.statusCode, body: res.json() };
 }
 
 interface ToolListResponse {
-  result?: { tools?: { name: string; annotations?: { readOnlyHint?: boolean } }[] };
+  result?: {
+    tools?: { name: string; annotations?: { readOnlyHint?: boolean }; inputSchema?: unknown }[];
+  };
 }
 
 afterEach(async () => {
@@ -293,7 +295,61 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       clientInfo: { name: 'spec', version: '0.0.0' },
     });
     expect(res.statusCode).toBe(503);
-    expect(res.json<{ error?: string }>().error).toMatch(/identity\/access-jwt/);
+    expect(res.json().error).toMatch(/identity\/access-jwt/);
+  });
+
+  it('a JSON-RPC BATCH is refused 400: one message per POST', async () => {
+    consumedKeys.length = 0;
+    const fastify = await boot();
+    // batching was removed in protocol 2025-06-18, but the pinned SDK still accepts an array —
+    // one POST would be up to 100 tool calls for one rate-limit unit
+    const res = await fastify.inject({
+      method: 'POST',
+      url: '/mcp',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        authorization: `Bearer ${VICTIM_TOKEN}`,
+      },
+      payload: [
+        { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+        { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+      ],
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ error?: string }>().error).toMatch(/batching is not supported/);
+    // nothing was consumed before the refusal: no rate-limit bucket, no tool call
+    expect(consumedKeys).toEqual([]);
+  });
+
+  it('a verifier that RAISES (e.g. jwks fetch failed) is a 503, never a 500 or a 401', async () => {
+    const broken: McpAccessVerifier = {
+      verify: () => {
+        throw new Error('jwks_unavailable: cannot reach https://team.cloudflareaccess.com/certs');
+      },
+    };
+    const withBroken = await boot(broken);
+    const res = await rpc(withBroken, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'spec', version: '0.0.0' },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json<{ error?: string }>().error).toMatch(/verifier unavailable/);
+  });
+
+  it('no tool names a workspace in its input schema (ROVA-MCP-DESIGN §3: bound at sign-in)', async () => {
+    const fastify = await boot();
+    await initialize(fastify);
+    const list = await rpc(fastify, 'tools/list');
+    const tools = list.json().result!.tools!;
+    expect(tools.length).toBe(7);
+    for (const tool of tools) {
+      expect(
+        JSON.stringify(tool.inputSchema).match(/workspace/i),
+        `${tool.name} must not take a workspace argument`,
+      ).toBeNull();
+    }
   });
 
   it('stateless: GET and DELETE answer 405', async () => {

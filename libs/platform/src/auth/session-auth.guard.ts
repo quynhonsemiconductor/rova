@@ -49,6 +49,13 @@ export class SessionAuthGuard implements CanActivate {
     // Authenticated by an API token: the principal is already on the request (ApiTokenGuard).
     if (request.apiTokenId && request.user?.sub) return true;
 
+    // Authenticated by the MCP principal bridge: McpPrincipalGuard consumed an in-process call
+    // token — a credential that exists only inside the process, never on the wire — and wrote
+    // `request.user` directly. There is no session and no token id by design (a tool call is not
+    // a login); see apps/api/src/mcp/principal.guard.ts. Nothing a client sends can produce a
+    // `request.user` without one of the guards above.
+    if (request.user?.sub) return true;
+
     const found = request.session;
     if (!found?.user?.id) {
       // identity's global guard answers first; this is the belt for a route mounted without it

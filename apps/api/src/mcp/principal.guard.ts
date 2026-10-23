@@ -3,8 +3,12 @@ import { Reflector } from '@nestjs/core';
 import { isUuid } from '@quynhonsemiconductor/identity';
 import { markPreAuthenticated } from '@quynhonsemiconductor/identity/nest';
 import { requestContextStorage, setRequestPrincipal } from '@quynhonsemiconductor/observability';
-import { IS_PUBLIC_KEY, type JwtPayload } from '@platform';
-import { consumeMcpCallToken, MCP_CALL_TOKEN_HEADER } from './principal';
+import {
+  consumeMcpCallToken,
+  IS_PUBLIC_KEY,
+  type JwtPayload,
+  MCP_CALL_TOKEN_HEADER,
+} from '@platform';
 
 interface McpRequest {
   headers: Record<string, string | string[] | undefined>;

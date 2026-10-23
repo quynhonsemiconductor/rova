@@ -6,8 +6,8 @@ import { result, type ToolContext } from './rest';
  * `get_work_item` — one work item by id, if the person can read it
  * (GET /v1/work-items/:id, `work_item:view` on the item).
  */
-export function registerGetWorkItem(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerGetWorkItem(server: McpServer, ctx: ToolContext) {
+  return server.registerTool(
     'get_work_item',
     {
       title: 'Get work item',

@@ -7,8 +7,8 @@ import { toToolWorkItem } from './search_work_items';
  * `my_work` — work items assigned to the caller within their readable projects
  * (GET /v1/work-items/my, self-scoped; the same Top-N the Home widget shows).
  */
-export function registerMyWork(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
+export function registerMyWork(server: McpServer, ctx: ToolContext) {
+  return server.registerTool(
     'my_work',
     {
       title: 'My work',

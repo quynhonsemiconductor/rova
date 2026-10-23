@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { McpPrincipalContext } from '../principal';
+import type { McpPrincipalContext } from '@platform';
 
 /**
  * The plumbing shared by every MCP tool (ROVA-MCP-DESIGN §2/§7): tools reach rova ONLY through
