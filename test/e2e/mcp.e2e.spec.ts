@@ -31,6 +31,10 @@ import { provisionUser, readCookie } from './support/session';
 const VERIFIER_TOKEN_PREFIX = 'e2e-access.';
 
 describe('/mcp over the real guard chain (e2e)', () => {
+  // CI runs the e2e suite with DISABLE_RATE_LIMIT=true and BOTH rate-limit guards read it at
+  // construction — without this, the bucket test below would see only the route's own mcp:uid
+  // key and the no-:ip: check would be vacuous. Same pattern as rate-limit-keying.e2e.spec.ts.
+  const previous = process.env['DISABLE_RATE_LIMIT'];
   let app: NestFastifyApplication;
   let fastify: FastifyInstance;
   /** The Access adapter stand-in: each test binds its own fixture person to a bearer token. */
@@ -96,6 +100,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
   }
 
   beforeAll(async () => {
+    process.env['DISABLE_RATE_LIMIT'] = 'false';
     // The production boot: real AppModule + bootstrapApp, with the /mcp route registered BEFORE
     // the server is ready (a Fastify instance refuses routes after `.ready()`). MCP_ENABLED stays
     // false for the bootstrap itself — the e2e pins the GUARDS, not the env flag.
@@ -119,6 +124,8 @@ describe('/mcp over the real guard chain (e2e)', () => {
 
   afterAll(async () => {
     await app?.close();
+    if (previous === undefined) delete process.env['DISABLE_RATE_LIMIT'];
+    else process.env['DISABLE_RATE_LIMIT'] = previous;
   });
 
   it('a tool returns what the person themselves sees: whoami over the bridge', async () => {

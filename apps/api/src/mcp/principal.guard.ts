@@ -7,6 +7,7 @@ import {
   consumeMcpCallToken,
   IS_PUBLIC_KEY,
   type JwtPayload,
+  markMcpBridged,
   MCP_CALL_TOKEN_HEADER,
 } from '@platform';
 
@@ -65,8 +66,11 @@ export class McpPrincipalGuard implements CanActivate {
     // ONLY the header named by the constant, and only as a one-time key into the in-process
     // token store: the header carries an opaque token, never a principal, and is consumed here.
     const raw = request.headers[MCP_CALL_TOKEN_HEADER];
-    const mcp = consumeMcpCallToken(Array.isArray(raw) ? raw[0] : raw);
+    const mcp = consumeMcpCallToken(raw);
     if (!mcp) return true;
+
+    // The belt guards key off this marker, not off `request.user`'s mere presence.
+    markMcpBridged(request);
 
     request.user = {
       sub: mcp.userId,

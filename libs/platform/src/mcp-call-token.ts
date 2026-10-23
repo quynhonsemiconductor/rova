@@ -90,3 +90,22 @@ export function peekMcpCallToken(
   if (!entry || entry.expiresAt <= Date.now()) return undefined;
   return entry.principal;
 }
+
+/**
+ * The bridge marker: set on a request ONLY by the MCP principal guard, right after it consumes a
+ * live call token, and read by the belt guards (`SessionAuthGuard`, `RejectApiTokenAuthGuard`) so
+ * "how was this request authenticated" is a checked fact, not an inference from `request.user`.
+ * A WeakSet of the request objects: nothing to clean up, and nothing on the wire can set it —
+ * it never leaves the process.
+ */
+const bridgedRequests = new WeakSet<object>();
+
+/** Marks `request` as authenticated by the MCP bridge. Call ONLY right after consuming a live token. */
+export function markMcpBridged(request: object): void {
+  bridgedRequests.add(request);
+}
+
+/** Whether the MCP principal guard authenticated this request. */
+export function isMcpBridged(request: object): boolean {
+  return bridgedRequests.has(request);
+}
