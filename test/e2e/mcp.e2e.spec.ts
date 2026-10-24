@@ -126,7 +126,12 @@ describe('/mcp over the real guard chain (e2e)', () => {
       params: { name, arguments: args },
     });
     expect(res.statusCode, JSON.stringify(res.json) || name).toBe(200);
-    return JSON.parse(res.json.result!.content![0].text) as Record<string, unknown>;
+    const text = res.json.result!.content![0].text;
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      throw new Error(`tool ${name} returned non-JSON content: ${text.slice(0, 300)}`);
+    }
   }
 
   beforeAll(async () => {
