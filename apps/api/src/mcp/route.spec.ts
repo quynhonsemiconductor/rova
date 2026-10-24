@@ -195,13 +195,20 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     const list = await rpc(fastify, 'tools/list');
     const tools = list.json<ToolListResponse>().result!.tools!;
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'get_project',
       'get_work_item',
+      'get_work_item_by_key',
+      'iteration_options',
+      'iteration_status',
+      'list_backlog',
       'list_comments',
       'list_iterations',
+      'list_project_members',
       'list_projects',
       'my_work',
       'search_work_items',
       'whoami',
+      'work_item_activity',
     ]);
     for (const t of tools) expect(t.annotations?.readOnlyHint).toBe(true);
   });
@@ -364,7 +371,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     await initialize(fastify);
     const list = await rpc(fastify, 'tools/list');
     const tools = list.json().result!.tools!;
-    expect(tools.length).toBe(7);
+    expect(tools.length).toBe(14);
     for (const tool of tools) {
       expect(
         JSON.stringify(tool.inputSchema).match(/workspace/i),
