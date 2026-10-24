@@ -251,11 +251,11 @@ jobs:
     timeout-minutes: 25
     # Official Playwright image, version LOCKED to @playwright/test in
     # apps/web (1.63.0 — a skew fails loudly: the bundled browsers must match
-    # the driver). Pinned by digest; the repo's renovate.json extends the
-    # docker manager to this file, so Renovate bumps tag AND digest together
-    # when @playwright/test moves. This replaces the apt install-deps dance
-    # entirely: the image ships the browsers and every OS library, so the
-    # flaky apt/CDN steps (rova#790, #791, the three CI breakages) are GONE.
+    # the driver). The digest is bumped by the same Renovate PR that bumps
+    # @playwright/test (packageRules: playwright group in renovate.json).
+    # This replaces the apt install-deps dance entirely: the image ships the
+    # browsers and every OS library, so the flaky apt/CDN steps (rova#790,
+    # #791, the three CI breakages) are GONE.
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
 
@@ -283,6 +283,9 @@ jobs:
           --health-retries 5
 
     env:
+      # Playwright's documented container setting: the image user is root and
+      # without HOME some tooling misbehaves (@swc/core ERR_SWC_NATIVE_CACHE).
+      HOME: /root
       # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Shared by migrate/seed, the API process, and the specs.
@@ -312,6 +315,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+
+      # The container runs as root over a uid-1001 workspace; without this git
+      # treats the repo as dubious and `git diff` falls into no-index mode
+      # (codegen check exited 129 and 0 tests ran).
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
