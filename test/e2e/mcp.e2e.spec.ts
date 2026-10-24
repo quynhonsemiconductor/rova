@@ -256,7 +256,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
       list_project_members: { projectId: STRANGER_PROJECT },
       search_work_items: { projectId: STRANGER_PROJECT },
       get_work_item: { workItemId: STRANGER_ITEM },
-      get_work_item_by_key: { itemKey: 'OBSE-1' },
+      get_work_item_by_key: { itemKey: 'US-1' }, // the seeded NXP story — stranger has no access
       my_work: {},
       list_backlog: { projectId: STRANGER_PROJECT },
       work_item_activity: { workItemId: STRANGER_ITEM },
@@ -326,8 +326,9 @@ describe('/mcp over the real guard chain (e2e)', () => {
       people.set(token, { userId, workspaceId: WORKSPACE_ID });
       await initialize(token);
       const UNKNOWN = '00000000-0000-7000-8000-000000004044';
+      // get_project 403s on unknown ids on purpose: PolicyGuard denies before the project
+      // lookup, so a non-member cannot probe which ids exist (no existence leak).
       for (const [name, args] of Object.entries({
-        get_project: { projectId: UNKNOWN },
         get_work_item: { workItemId: UNKNOWN },
         work_item_activity: { workItemId: UNKNOWN },
         iteration_status: { iterationId: UNKNOWN },
@@ -335,6 +336,8 @@ describe('/mcp over the real guard chain (e2e)', () => {
         const out = await callTool(token, name, args);
         expect(out.statusCode, `${name}: unknown id must be 404`).toBe(404);
       }
+      const projectProbe = await callTool(token, 'get_project', { projectId: UNKNOWN });
+      expect(projectProbe.statusCode, 'get_project: unknown id must be 403 (no leak)').toBe(403);
     });
 
     it('an OFFBOARDED principal is denied on EVERY tool — the routes refuse, the tools relay', async () => {
