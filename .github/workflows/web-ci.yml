@@ -116,7 +116,7 @@ jobs:
             **/*.test.ts
             **/*.test.tsx
       - id: paths
-        uses: quynhonsemiconductor/ci/actions/changed-paths@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/changed-paths@1fcb7f019a6c5482d30b2ece6caa416965c32bbe # ci#245 force-run; bump to the release tag on merge
         with:
           ignore: |
             **/*.md
@@ -127,6 +127,15 @@ jobs:
           # runs everything. Renovate PRs are NOT skipped: an action bump must be exercised on its PR.
           skip-heads: |
             release-please--@qnsc-automation[bot]=CHANGELOG.md,.release-please-manifest.json,version-only:**/package.json
+          # Dependency files always run CI (web e2e builds the real API, so a
+          # resolution change can break it even when the paths look ignorable).
+          force-run: |
+            package.json
+            **/package.json
+            pnpm-lock.yaml
+            **/pnpm-lock.yaml
+            pnpm-workspace.yaml
+            **/pnpm-workspace.yaml
 
   # ─────────────────────────────────────────────────────────────────────────
   # 1. Lint + typecheck (fast gate — no deps needed)
@@ -240,6 +249,20 @@ jobs:
     if: ${{ needs.changes.outputs.run == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Official Playwright image, version LOCKED to @playwright/test in
+    # apps/web (1.63.0 — a skew fails loudly: the bundled browsers must match
+    # the driver). The digest is bumped by the same Renovate PR that bumps
+    # @playwright/test (packageRules: playwright group in renovate.json).
+    # This replaces the apt install-deps dance entirely: the image ships the
+    # browsers and every OS library, so the flaky apt/CDN steps (rova#790,
+    # #791, the three CI breakages) are GONE.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+    # The image's default shell is dash — steps written for bash (pipefail etc.)
+    # would die on it (opshub hit exactly that). Pin bash, like the idf jobs.
+    defaults:
+      run:
+        shell: bash
 
     services:
       postgres:
@@ -265,12 +288,15 @@ jobs:
           --health-retries 5
 
     env:
+      # Playwright's documented container setting: the image user is root and
+      # without HOME some tooling misbehaves (@swc/core ERR_SWC_NATIVE_CACHE).
+      HOME: /root
       # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Shared by migrate/seed, the API process, and the specs.
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
-      DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
-      REDIS_URL: redis://localhost:6379
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rova_test?sslmode=disable
+      DATABASE_MIGRATION_URL: postgresql://postgres:postgres@postgres:5432/rova_test?sslmode=disable
+      REDIS_URL: redis://redis:6379
       CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
       COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
       # identity 8: the secret that signs its cookies, and the passwordless sign-in the E2E helper uses (identity
@@ -294,6 +320,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+
+      # The container runs as root over a uid-1001 workspace; without this git
+      # treats the repo as dubious and `git diff` falls into no-index mode
+      # (codegen check exited 129 and 0 tests ran).
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
@@ -338,79 +370,8 @@ jobs:
         env:
           OPENAPI_SPEC: ${{ runner.temp }}/openapi.json
 
-      # Cache the browser by the Playwright package version (that is what decides the
-      # browser build; a lockfile hash would miss on every unrelated dep change — an
-      # upgrade downloads once, every later run is a hit). The OS libraries live outside
-      # the cache path and install separately, every run. The download — the step that
-      # hangs on CDN flakes — is bounded by a step timeout and retried once.
-      - name: Resolve the Playwright version
-        id: playwright
-        run: |
-          version=$(node -p "require('./apps/web/node_modules/@playwright/test/package.json').version")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - id: playwright-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: ms-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
-
-      - name: Install Playwright browser (on cache miss, retried once)
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        timeout-minutes: 8
-        run: |
-          # Both attempts are bounded on their own: two unbounded attempts share the step
-          # timeout, so a hang in the FIRST one would eat the budget and the retry would
-          # never run. 2×180 s + 15 s sleep ≈ 6.3 min < the step's 8 min.
-          timeout 180 pnpm --filter rova-web exec playwright install chromium || {
-            echo "::warning::Playwright download failed once — retrying (CDN flake)"
-            sleep 15
-            timeout 180 pnpm --filter rova-web exec playwright install chromium
-          }
-
-      # THE APT SIDE IS THE REAL FLAKE, not the CDN: rova run 39782464249 spent 8 min 30 s
-      # fetching 25.9 MB from azure.archive.ubuntu.com while Chromium itself took ~9 s, and
-      # opshub run 39887434827 stalled on fonts from the same mirror. So the deps install is
-      # bounded per attempt (timeout 240), apt retries and times out transfers on its own,
-      # and the whole step gets a second attempt before it fails.
-      #
-      # RUN 39957970177 (PR #788) found the failure mode the plain retry misses: the
-      # first attempt hit its `timeout 240` while dpkg was mid-configure, `timeout`'s
-      # TERM killed pnpm but the sudo apt/dpkg CHILD survived holding
-      # /var/lib/dpkg/lock-frontend, and the retry died in seconds with
-      # "Installation process exited with code: 100" — dpkg interrupted + lock held.
-      # So: --kill-after=10 makes the second signal SIGKILL (TERM alone is ignored by
-      # apt's own children); DPkg::Lock::Timeout makes a contended lock WAIT up to
-      # 120 s instead of failing fast; a failed attempt logs the lock holders
-      # (fuser) as evidence and runs `dpkg --configure -a` to finish or unwind
-      # whatever the killed attempt left half-configured, before the retry.
-      - name: Install Playwright OS dependencies (bounded, retried)
-        timeout-minutes: 9
-        run: |
-          echo 'Acquire::Retries "3";' | sudo tee /etc/apt/apt.conf.d/99-playwright-retries >/dev/null
-          echo 'Acquire::http::Timeout "20";' | sudo tee -a /etc/apt/apt.conf.d/99-playwright-retries >/dev/null
-          echo 'DPkg::Lock::Timeout "120";' | sudo tee -a /etc/apt/apt.conf.d/99-playwright-retries >/dev/null
-          # Both attempts bounded: 2×(240+10) s + 15 s sleep + recovery ≈ 8.7 min < the step's 9 min.
-          timeout --kill-after=10 --signal=TERM 240 pnpm --filter rova-web exec playwright install-deps chromium || {
-            echo "::warning::install-deps attempt 1 failed or timed out (slow apt mirror) — retrying once"
-            echo '--- dpkg lock holders after attempt 1:'
-            echo '--- last apt Acquire lines (which mirror was slow):'
-            sudo tail -n 40 /var/log/apt/term.log || true
-            sudo fuser -v /var/lib/dpkg/lock-frontend || true
-            # NON-FATAL (opshub PR run: an unguarded dpkg exit 2 aborted the step under
-            # bash -e before the retry ever ran). Finish or unwind whatever the killed
-            # attempt left half-configured; the lock timeout above covers a holder that
-            # is still alive and exits soon.
-            sudo dpkg --configure -a || echo "::warning::dpkg --configure -a failed — continuing to the retry"
-            sleep 15
-            timeout --kill-after=10 --signal=TERM 240 pnpm --filter rova-web exec playwright install-deps chromium || {
-              echo '--- dpkg lock holders after attempt 2:'
-              echo '--- last apt Acquire lines:'
-              sudo tail -n 40 /var/log/apt/term.log || true
-              sudo fuser -v /var/lib/dpkg/lock-frontend || true
-              exit 1
-            }
-          }
+      # Browsers and OS libraries come with the image (PLAYWRIGHT_BROWSERS_PATH
+      # is /ms-playwright in it) — no download, no apt install, nothing to retry.
 
       - name: Run E2E
         # No `--reporter=` here: the CLI flag REPLACES the config's reporter array rather than
