@@ -1,6 +1,9 @@
 import type { RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerGetProject } from './get_project';
+import { registerIterationBurndown } from './iteration_burndown';
+import { registerListMilestones } from './list_milestones';
+import { registerListReleases } from './list_releases';
 import { registerGetWorkItem } from './get_work_item';
 import { registerGetWorkItemByKey } from './get_work_item_by_key';
 import { registerIterationOptions } from './iteration_options';
@@ -12,6 +15,9 @@ import { registerListProjectMembers } from './list_project_members';
 import { registerListProjects } from './list_projects';
 import { registerMyWork } from './my_work';
 import { registerSearchWorkItems } from './search_work_items';
+import { registerTeamCapacity } from './team_capacity';
+import { registerUnreadNotifications } from './unread_notifications';
+import { registerVelocity } from './velocity';
 import { registerWhoami } from './whoami';
 import { registerWorkItemActivity } from './work_item_activity';
 import type { ToolContext } from './rest';
@@ -39,5 +45,11 @@ export function registerTools(server: McpServer, ctx: ToolContext): MountedTool[
     { name: 'iteration_options', tool: registerIterationOptions(server, ctx) },
     { name: 'iteration_status', tool: registerIterationStatus(server, ctx) },
     { name: 'list_comments', tool: registerListComments(server, ctx) },
+    { name: 'list_releases', tool: registerListReleases(server, ctx) },
+    { name: 'list_milestones', tool: registerListMilestones(server, ctx) },
+    { name: 'iteration_burndown', tool: registerIterationBurndown(server, ctx) },
+    { name: 'velocity', tool: registerVelocity(server, ctx) },
+    { name: 'team_capacity', tool: registerTeamCapacity(server, ctx) },
+    { name: 'unread_notifications', tool: registerUnreadNotifications(server, ctx) },
   ];
 }

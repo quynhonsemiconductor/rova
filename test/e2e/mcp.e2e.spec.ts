@@ -99,6 +99,36 @@ describe('/mcp over the real guard chain (e2e)', () => {
     };
   }
 
+  async function initialize(fastifyInner: FastifyInstance, token: string) {
+    const init = await rpc(token, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'e2e', version: '0.0.0' },
+      },
+    });
+    expect(init.statusCode, JSON.stringify(init.json)).toBe(200);
+  }
+
+  async function callTool(
+    token: string,
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    await initialize(fastify, token);
+    const res = await rpc(token, {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name, arguments: args },
+    });
+    expect(res.statusCode, JSON.stringify(res.json) || name).toBe(200);
+    return JSON.parse(res.json.result!.content![0].text) as Record<string, unknown>;
+  }
+
   beforeAll(async () => {
     process.env['DISABLE_RATE_LIMIT'] = 'false';
     // The production boot: real AppModule + bootstrapApp, with the /mcp route registered BEFORE
@@ -191,6 +221,81 @@ describe('/mcp over the real guard chain (e2e)', () => {
     });
     expect(probe.statusCode).toBe(200);
     expect(probe.json<{ id?: string }>().id).toBe(userId);
+  });
+
+  describe('per-tool principal denials (gate g, per tool — not just at the transport)', () => {
+    // A person bound to a workspace they hold NO membership in: the verifier resolves them,
+    // but PolicyGuard's workspace baseline is empty — every workspace/project/report-scoped
+    // tool must be refused BY ITS ROUTE (403 relayed), while the three SelfScoped tools
+    // (whoami, my_work, unread_notifications) keep working: self-scoped is subtract-only.
+    const TOOL_ARGS: Record<string, Record<string, unknown>> = {
+      whoami: {},
+      list_projects: {},
+      get_project: { projectId: '00000000-0000-7000-8000-0000000000aa' },
+      list_project_members: { projectId: '00000000-0000-7000-8000-0000000000aa' },
+      search_work_items: { projectId: '00000000-0000-7000-8000-0000000000aa' },
+      get_work_item: { workItemId: '00000000-0000-7000-8000-0000000000bb' },
+      get_work_item_by_key: { itemKey: 'OBSE-1' },
+      my_work: {},
+      list_backlog: { projectId: '00000000-0000-7000-8000-0000000000aa' },
+      work_item_activity: { workItemId: '00000000-0000-7000-8000-0000000000bb' },
+      list_iterations: { projectId: '00000000-0000-7000-8000-0000000000aa' },
+      iteration_options: { projectId: '00000000-0000-7000-8000-0000000000aa' },
+      iteration_status: { iterationId: '00000000-0000-7000-8000-0000000000cc' },
+      list_comments: { workItemId: '00000000-0000-7000-8000-0000000000bb' },
+      list_releases: { projectId: '00000000-0000-7000-8000-0000000000aa' },
+      list_milestones: { projectId: '00000000-0000-7000-8000-0000000000aa' },
+      iteration_burndown: {
+        projectId: '00000000-0000-7000-8000-0000000000aa',
+        iterationId: '00000000-0000-7000-8000-0000000000cc',
+      },
+      velocity: { projectId: '00000000-0000-7000-8000-0000000000aa' },
+      team_capacity: {
+        projectId: '00000000-0000-7000-8000-0000000000aa',
+        iterationId: '00000000-0000-7000-8000-0000000000cc',
+      },
+      unread_notifications: {},
+    };
+    const SELF_SCOPED = new Set(['whoami', 'my_work', 'unread_notifications']);
+
+    it('every tool appears exactly once in the denial matrix', () => {
+      expect(Object.keys(TOOL_ARGS).length).toBe(20);
+    });
+
+    it('a no-membership principal is refused by each scoped route; SelfScoped tools keep working', async () => {
+      const stranger = await provisionUser(app, 'mcp-stranger', 'E2E mcp stranger');
+      const token = `${VERIFIER_TOKEN_PREFIX}stranger-${stranger.userId.slice(0, 8)}`;
+      // NOT enrolled in WORKSPACE_ID: the verifier maps them, the routes deny them
+      people.set(token, { userId: stranger.userId, workspaceId: WORKSPACE_ID });
+
+      await initialize(fastify, token);
+      for (const [name, args] of Object.entries(TOOL_ARGS)) {
+        const out = await callTool(token, name, args);
+        if (SELF_SCOPED.has(name)) {
+          expect(out.statusCode, `${name} should have worked for a member`).toBeUndefined();
+        } else {
+          expect(out.statusCode, `${name} must be denied by its route`).toBe(403);
+        }
+      }
+    });
+
+    it('an OFFBOARDED principal is denied on EVERY tool — the routes refuse, the tools relay', async () => {
+      const { token, userId } = await bindPerson('mcp-offboarded');
+      const auth = app.get<Identity>(AUTH);
+      try {
+        await setUserBanned(auth, userId, true, 'e2e: offboard the mcp user');
+        await initialize(fastify, token);
+        for (const [name, args] of Object.entries(TOOL_ARGS)) {
+          const out = await callTool(token, name, args);
+          expect(String(out.statusCode), `${name} must relay the ban denial`).toMatch(/401|403/);
+        }
+      } finally {
+        await setUserBanned(auth, userId, false);
+      }
+      // reinstated: the same tools work again
+      const out = await callTool(token, 'whoami', {});
+      expect(out.id ?? out.statusCode).toBeTruthy();
+    });
   });
 
   it('one tool POST touches exactly the per-person buckets — never the shared loopback bucket', async () => {

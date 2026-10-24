@@ -344,15 +344,21 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       'get_project',
       'get_work_item',
       'get_work_item_by_key',
+      'iteration_burndown',
       'iteration_options',
       'iteration_status',
       'list_backlog',
       'list_comments',
       'list_iterations',
+      'list_milestones',
       'list_project_members',
       'list_projects',
+      'list_releases',
       'my_work',
       'search_work_items',
+      'team_capacity',
+      'unread_notifications',
+      'velocity',
       'whoami',
       'work_item_activity',
     ]);
@@ -517,7 +523,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     await initialize(fastify);
     const list = await rpc(fastify, 'tools/list');
     const tools = list.json().result!.tools!;
-    expect(tools.length).toBe(14);
+    expect(tools.length).toBe(20);
     for (const tool of tools) {
       expect(
         JSON.stringify(tool.inputSchema).match(/workspace/i),
