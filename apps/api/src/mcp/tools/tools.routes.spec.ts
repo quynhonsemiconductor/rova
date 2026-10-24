@@ -47,6 +47,8 @@ const OWNER: Record<
     controller: "@Controller('projects')",
     get: "@Get(':id')",
     permission: "'project:view'",
+    // assertWorkspaceMember, then readable-by-actor, inside the service
+    authorizedInService: "'project:view'",
   },
   list_project_members: {
     file: 'projects/src/interface/http/projects.controller.ts',
@@ -70,7 +72,9 @@ const OWNER: Record<
     file: 'work-items/src/interface/http/work-items.controller.ts',
     controller: "@Controller('work-items')",
     get: "@Get('by-key')",
-    permission: "'work_item:view'",
+    // resolve-then-check: @AuthorizedInService + assertProjectPermission(WORK_ITEM_VIEW)
+    // in work-items.service.ts getWorkItemByKey
+    authorizedInService: 'WORK_ITEM_VIEW',
   },
   my_work: {
     file: 'work-items/src/interface/http/work-items.controller.ts',
@@ -183,11 +187,41 @@ describe('MCP tool catalogue maps to real routes', () => {
       expect(src.includes(OWNER[name].controller), `${name}: controller prefix moved`).toBe(true);
       expect(src.includes(OWNER[name].get), `${name}: route decorator moved`).toBe(true);
       expect(TOOL_ROUTES[name].method).toBe('GET');
-      // gate g: the route must sit behind PolicyGuard — either an explicit permission code or
-      // an explicit self-scope/reference marker in the entry's comment (whoami: @SelfScoped;
-      // list_projects/list_backlog: AccessService-scoped in-service lists; my_work: SelfScoped).
+      // gate g: slice the mapped method's decorator block (from its @Get to the next
+      // decorator at the same indent) and check the guard INSIDE it — a file-wide includes
+      // would match a guard that lives on a different route.
+      // anchored at a line start: prose may mention decorators inside comments
+      const from = src.indexOf('\n  ' + OWNER[name].get);
+      expect(from, `${name}: route decorator not found`).toBeGreaterThan(-1);
+      // the decorated declaration runs from the route's @Get to the method's `async` keyword
+      // (rova style: decorators, then `async methodName(`) — every guard decorator in
+      // between belongs to this route
+      const asyncAt = src.indexOf('\n  async ', from);
+      const nextRoute = src.indexOf('\n  @Get', from + 1);
+      const block =
+        asyncAt === -1 || (nextRoute !== -1 && nextRoute < asyncAt)
+          ? src.slice(from, nextRoute === -1 ? from + 1500 : nextRoute)
+          : src.slice(from, asyncAt);
       if (OWNER[name].permission) {
-        expect(src.includes(OWNER[name].permission), `${name}: permission code moved`).toBe(true);
+        expect(block.includes(OWNER[name].permission), `${name}: permission code moved`).toBe(true);
+      }
+      if (OWNER[name].authorizedInService) {
+        expect(
+          block.includes('@AuthorizedInService'),
+          `${name}: expected @AuthorizedInService on the by-key route`,
+        ).toBe(true);
+        expect(
+          block.includes(OWNER[name].authorizedInService),
+          `${name}: in-service check moved`,
+        ).toBe(true);
+      }
+      if (OWNER[name].selfScoped) {
+        // @SelfScoped must sit ON the mapped method's decorator block — not merely somewhere
+        // in the controller file
+        expect(
+          block.includes('@SelfScoped('),
+          `${name}: expected @SelfScoped on the mapped method`,
+        ).toBe(true);
       }
     }
   });

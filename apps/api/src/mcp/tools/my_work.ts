@@ -30,9 +30,7 @@ export function registerMyWork(server: McpServer, ctx: ToolContext) {
         url: '/v1/work-items/my',
         query: { ...(limit ? { limit } : {}) },
       });
-      if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
-      const items = json as Record<string, unknown>[];
-      return result(statusCode, json, { items: items.map(toToolWorkItem) });
+      return listResult(statusCode, json, toToolWorkItem, 'items');
     },
   );
 }

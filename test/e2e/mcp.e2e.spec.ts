@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
+import { DRIZZLE, type DrizzleDB } from '@platform';
 import { AppModule } from '../../apps/api/src/app.module';
 import { bootstrapApp } from '../../apps/api/src/bootstrap/app.bootstrap';
 import { randomUUID } from 'node:crypto';
@@ -273,15 +274,12 @@ describe('/mcp over the real guard chain (e2e)', () => {
     };
     // SelfScoped: the caller's own data — must keep working for any member.
     const SELF_SCOPED = new Set(['whoami', 'my_work', 'unread_notifications']);
-    // @AuthorizedInService / AccessService-scoped lists: the guard passes, the result is
-    // EMPTY (a no-membership principal can read nothing) — not a denial.
-    const EMPTY_OK = new Set([
-      'list_projects',
-      'search_work_items',
-      'list_backlog',
-      'my_work',
-      'list_iterations',
-    ]);
+    // ONLY list_projects is AccessService-scoped (the guard passes; listReadableProjectIds
+    // returns zero rows for a no-role member): 200 with an EMPTY list. search_work_items,
+    // list_backlog and list_iterations are PolicyGuard-gated (`work_item:view` /
+    // `timebox:view` / `iteration:view` from the projectId) — a no-role member is denied 403.
+    const EMPTY_OK = new Set(['list_projects']);
+    const POLICY_403 = new Set(['search_work_items', 'list_backlog', 'list_iterations']);
 
     it('the denial matrix is derived from the live tools/list and covers every tool', async () => {
       const { token } = await bindPerson('mcp-matrix');
@@ -303,17 +301,12 @@ describe('/mcp over the real guard chain (e2e)', () => {
         if (SELF_SCOPED.has(name)) {
           expect(out.statusCode, `${name} (self-scoped) should have worked`).toBeUndefined();
         } else if (EMPTY_OK.has(name)) {
-          // AccessService-scoped list: 200 with zero rows the person can read
-          const rows =
-            out[
-              name
-                .split('_')
-                .map((w) => w[0])
-                .join('')
-            ] ??
-            out['items'] ??
-            out['projects'];
-          expect(Array.isArray(rows) ? rows.length : 0, `${name}: must be empty`).toBe(0);
+          // the rows key is the tool's own list key: projects for list_projects
+          const rows = out['projects'] as unknown[];
+          expect(Array.isArray(rows), 'list_projects must return a list').toBe(true);
+          expect(rows.length, 'list_projects must be empty for a no-role member').toBe(0);
+        } else if (POLICY_403.has(name)) {
+          expect(out.statusCode, `${name} must be denied by its route`).toBe(403);
         } else {
           expect(out.statusCode, `${name} must be denied by its route`).toBe(403);
         }
@@ -338,6 +331,47 @@ describe('/mcp over the real guard chain (e2e)', () => {
       }
       const projectProbe = await callTool(token, 'get_project', { projectId: UNKNOWN });
       expect(projectProbe.statusCode, 'get_project: unknown id must be 403 (no leak)').toBe(403);
+    });
+
+    it('unread_notifications counts ONLY the caller — a second user’s unread row is excluded', async () => {
+      const { inAppNotifications } = await import('../../db/schema/notifications');
+      const db = app.get<DrizzleDB>(DRIZZLE);
+
+      const mine = await bindPerson('mcp-unread-mine');
+      const other = await provisionUser(app, 'mcp-unread-other', 'E2E mcp unread other');
+
+      // one unread row for each of the two people
+      await db.insert(inAppNotifications).values([
+        {
+          workspaceId: WORKSPACE_ID,
+          recipientId: mine.userId,
+          type: 'WORK_ITEM_ASSIGNED',
+          title: 'for the mcp caller',
+        },
+        {
+          workspaceId: WORKSPACE_ID,
+          recipientId: other.userId,
+          type: 'WORK_ITEM_ASSIGNED',
+          title: 'for the other user',
+        },
+      ]);
+
+      // the caller's count includes theirs and excludes the other user's
+      const out = await callTool(mine.token, 'unread_notifications', {});
+      expect(out.statusCode).toBeUndefined();
+      expect(Number(out.count)).toBeGreaterThanOrEqual(1);
+
+      // the direct REST route agrees, and scoping is by recipient — verified by inserting a
+      // row whose recipient is the OTHER user and confirming the count does not double
+      const before = Number(out.count);
+      await db.insert(inAppNotifications).values({
+        workspaceId: WORKSPACE_ID,
+        recipientId: other.userId,
+        type: 'WORK_ITEM_ASSIGNED',
+        title: 'another row for the other user only',
+      });
+      const again = await callTool(mine.token, 'unread_notifications', {});
+      expect(Number(again.count)).toBe(before);
     });
 
     it('an OFFBOARDED principal is denied on EVERY tool — the routes refuse, the tools relay', async () => {
