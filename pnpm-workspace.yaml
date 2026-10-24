@@ -20,15 +20,15 @@ overrides:
   # entry in the identity ^8.5.1 bump PR.
   "zod@>=4 <4.6.6": "4.6.6"
   # FULL OSV SWEEP (rova#793): the advisories below ride transitive chains the same way —
-  # a parent pins an exact or stale copy, so range updates never reach them. Mirror of the
-  # app-platform floors (identity 8.5.0 carries msal-node 6.0.1 / nodemailer 10.1.2 until
-  # its next release; drop those two in the identity bump PR).
-  #  - GHSA-xcx6-jx8p-x3h5 (7.5): msal-node, fix 7.1.0, via identity's @azure/identity ^6 pin
-  #  - GHSA-85x2/-8c8m/-m943 (6.5): nodemailer, fix 10.1.4, via platform-mail / mailparser
-  #  - GHSA-27r3-jxmh-p828 (7.5): body-parser, fix 2.4.0, via the express chain
-  #  - GHSA-333x/-w74x/-wjr9/-xhq7: fast-uri, fixed 3.1.9 (3.x) / 4.2.3 (4.x)
+  # a parent pins an exact or stale copy, so range updates never reach them. With identity
+  # 8.5.1 (zod 4.6.6) and platform-mail 0.1.7 (nodemailer 10.1.7) the zod and nodemailer
+  # floors are GONE; what remains:
+  #  - GHSA-xcx6-jx8p-x3h5 (7.5): msal-node 7.1.0 — identity 8.5.1 still rides
+  #    @azure/identity 4.14.0, which declares ^6.0.0; the floor crosses that vendor range
+  #    and is gated by platform-mail's suite (no code here imports msal directly)
+  #  - GHSA-27r3-jxmh-p828 (7.5): body-parser 2.4.0, via the express chain
+  #  - GHSA-333x/-w74x/-wjr9/-xhq7: fast-uri 3.1.9 (3.x) / 4.2.3 (4.x)
   "@azure/identity>@azure/msal-node": "7.1.0"
-  "nodemailer@<10.1.4": "10.1.7"
   "body-parser@>=2.3.0 <2.4.0": "2.4.0"
   # plain pins: the range-selector form silently failed to apply to the ajv chain
   "fast-uri": "3.1.9"
