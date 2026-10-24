@@ -289,3 +289,4 @@ minimumReleaseAgeExclude:
   - '@quynhonsemiconductor/*'
 patchedDependencies:
   nestjs-zod@5.5.0: patches/nestjs-zod@5.5.0.patch
+  zod@4.6.6: patches/zod@4.6.6.patch
