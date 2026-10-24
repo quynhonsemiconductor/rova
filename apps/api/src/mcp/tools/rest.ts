@@ -72,7 +72,6 @@ export function listResult(
   mapItem: (item: Record<string, unknown>) => Record<string, unknown>,
   listKey: string,
 ) {
-<<<<<<< HEAD
   if (statusCode >= 400) return denied(statusCode, json);
   // Paged routes wrap rows in { data, pageInfo }; bare-array routes (my_work, comments,
   // reference feeds) return the rows directly. Anything else is contract drift — relayed.
@@ -86,11 +85,7 @@ export function listResult(
     content: [
       {
         type: 'text' as const,
-<<<<<<< HEAD
         text: JSON.stringify({ [listKey]: rows.map(mapItem), ...pageInfo }),
-=======
-        text: JSON.stringify({ [listKey]: json.map(mapItem), ...pageInfoOf(json) }),
->>>>>>> c18715a6 (fix(mcp): shared listResult helper — deny before shaping a list)
       },
     ],
   };
