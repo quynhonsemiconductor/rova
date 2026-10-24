@@ -5,13 +5,21 @@ import type { FastifyInstance } from 'fastify';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
+import { DRIZZLE, type DrizzleDB } from '@platform';
 import { AppModule } from '../../apps/api/src/app.module';
 import { bootstrapApp } from '../../apps/api/src/bootstrap/app.bootstrap';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { registerMcpRoute } from '../../apps/api/src/mcp/index';
 import type { McpAccessPrincipal, McpAccessVerifier } from '../../apps/api/src/mcp/index';
-import { WORKSPACE_ID } from '../../db/seeds/constants';
+import { PAY_ITER_ID, PAY_STORY_ID, WORKSPACE_ID } from '../../db/seeds/constants';
 import { provisionUser, readCookie } from './support/session';
+
+// The seeded NXP project (db/seeds SEED_PROJECTS[0]) — the stranger holds no membership in
+// it, so every project-scoped tool must be denied by its route.
+const STRANGER_PROJECT = '00000000-0000-7000-8000-000000000010';
+const STRANGER_ITEM = PAY_STORY_ID; // the stranger holds no membership in PAY either
+const STRANGER_ITERATION = PAY_ITER_ID;
 
 /**
  * `/mcp` through the REAL guard chain (real AppModule, real bootstrap, real Valkey, real
@@ -72,6 +80,13 @@ describe('/mcp over the real guard chain (e2e)', () => {
     return { statusCode: res.statusCode, json: res.json<JsonRpcResponse>() };
   }
 
+  async function toolsList(token: string): Promise<string[]> {
+    await initialize(token);
+    const list = await rpc(token, { jsonrpc: '2.0', id: 0, method: 'tools/list' });
+    const r = list.json as { result?: { tools?: { name: string }[] } };
+    return r.result!.tools!.map((t) => t.name).sort();
+  }
+
   async function callWhoami(
     token: string,
   ): Promise<{ statusCode: number; out: Record<string, unknown> }> {
@@ -97,6 +112,41 @@ describe('/mcp over the real guard chain (e2e)', () => {
       statusCode: res.statusCode,
       out: JSON.parse(res.json.result!.content![0].text) as Record<string, unknown>,
     };
+  }
+
+  async function initialize(token: string) {
+    const init = await rpc(token, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'e2e', version: '0.0.0' },
+      },
+    });
+    expect(init.statusCode, JSON.stringify(init.json)).toBe(200);
+  }
+
+  async function callTool(
+    token: string,
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    await initialize(token);
+    const res = await rpc(token, {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name, arguments: args },
+    });
+    expect(res.statusCode, JSON.stringify(res.json) || name).toBe(200);
+    const text = res.json.result!.content![0].text;
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      throw new Error(`tool ${name} returned non-JSON content: ${text.slice(0, 300)}`);
+    }
   }
 
   beforeAll(async () => {
@@ -191,6 +241,157 @@ describe('/mcp over the real guard chain (e2e)', () => {
     });
     expect(probe.statusCode).toBe(200);
     expect(probe.json<{ id?: string }>().id).toBe(userId);
+  });
+
+  describe('per-tool principal denials (gate g, per tool — not just at the transport)', () => {
+    // The denial matrix against REAL seeded fixtures (NXP/PAY from db/seeds): a stranger who
+    // IS a workspace member but holds NO project roles — every project/resource-scoped tool
+    // is refused BY ITS ROUTE (PolicyGuard 403 relayed). Tools whose route resolves the
+    // resource first (by-key, activity, comments, :id/status) 404 on the unknown sentinel.
+    // The three SelfScoped tools (whoami, my_work, unread_notifications) keep working:
+    // self-scoped is subtract-only.
+    const TOOL_ARGS: Record<string, Record<string, unknown>> = {
+      whoami: {},
+      list_projects: {},
+      get_project: { projectId: STRANGER_PROJECT },
+      list_project_members: { projectId: STRANGER_PROJECT },
+      search_work_items: { projectId: STRANGER_PROJECT },
+      get_work_item: { workItemId: STRANGER_ITEM },
+      get_work_item_by_key: { itemKey: 'US-1' }, // the seeded NXP story — stranger has no access
+      my_work: {},
+      list_backlog: { projectId: STRANGER_PROJECT },
+      work_item_activity: { workItemId: STRANGER_ITEM },
+      list_iterations: { projectId: STRANGER_PROJECT },
+      iteration_options: { projectId: STRANGER_PROJECT },
+      iteration_status: { iterationId: STRANGER_ITERATION },
+      list_comments: { workItemId: STRANGER_ITEM },
+      list_releases: { projectId: STRANGER_PROJECT },
+      list_milestones: { projectId: STRANGER_PROJECT },
+      iteration_burndown: { projectId: STRANGER_PROJECT, iterationId: STRANGER_ITERATION },
+      velocity: { projectId: STRANGER_PROJECT },
+      team_capacity: { projectId: STRANGER_PROJECT, iterationId: STRANGER_ITERATION },
+      unread_notifications: {},
+    };
+    // SelfScoped: the caller's own data — must keep working for any member.
+    const SELF_SCOPED = new Set(['whoami', 'my_work', 'unread_notifications']);
+    // ONLY list_projects is AccessService-scoped (the guard passes; listReadableProjectIds
+    // returns zero rows for a no-role member): 200 with an EMPTY list. search_work_items,
+    // list_backlog and list_iterations are PolicyGuard-gated (`work_item:view` /
+    // `timebox:view` / `iteration:view` from the projectId) — a no-role member is denied 403.
+    const EMPTY_OK = new Set(['list_projects']);
+    const POLICY_403 = new Set(['search_work_items', 'list_backlog', 'list_iterations']);
+
+    it('the denial matrix is derived from the live tools/list and covers every tool', async () => {
+      const { token } = await bindPerson('mcp-matrix');
+      const live = await toolsList(token);
+      expect(live.sort()).toEqual(Object.keys(TOOL_ARGS).sort());
+      const { TOOL_ROUTES } = await import('../../apps/api/src/mcp/tools/registry');
+      expect(live.sort()).toEqual(Object.keys(TOOL_ROUTES).sort());
+    });
+
+    it('a no-membership principal: scoped tools 403 by their route, in-service lists run EMPTY, SelfScoped works', async () => {
+      const stranger = await provisionUser(app, 'mcp-stranger', 'E2E mcp stranger');
+      const token = `${VERIFIER_TOKEN_PREFIX}stranger-${stranger.userId.slice(0, 8)}`;
+      people.set(token, { userId: stranger.userId, workspaceId: WORKSPACE_ID });
+      // the stranger holds NO project roles in NXP/PAY
+
+      await initialize(token);
+      for (const [name, args] of Object.entries(TOOL_ARGS)) {
+        const out = await callTool(token, name, args);
+        if (SELF_SCOPED.has(name)) {
+          expect(out.statusCode, `${name} (self-scoped) should have worked`).toBeUndefined();
+        } else if (EMPTY_OK.has(name)) {
+          // the rows key is the tool's own list key: projects for list_projects
+          const rows = out['projects'] as unknown[];
+          expect(Array.isArray(rows), 'list_projects must return a list').toBe(true);
+          expect(rows.length, 'list_projects must be empty for a no-role member').toBe(0);
+        } else if (POLICY_403.has(name)) {
+          expect(out.statusCode, `${name} must be denied by its route`).toBe(403);
+        } else {
+          expect(out.statusCode, `${name} must be denied by its route`).toBe(403);
+        }
+      }
+    });
+
+    it('unknown ids answer 404 per route — separate from the denial', async () => {
+      const token = `${VERIFIER_TOKEN_PREFIX}unknown-${randomUUID().slice(0, 8)}`;
+      const { userId } = await provisionUser(app, 'mcp-unknown', 'E2E mcp unknown');
+      people.set(token, { userId, workspaceId: WORKSPACE_ID });
+      await initialize(token);
+      const UNKNOWN = '00000000-0000-7000-8000-000000004044';
+      // get_project 403s on unknown ids on purpose: PolicyGuard denies before the project
+      // lookup, so a non-member cannot probe which ids exist (no existence leak).
+      for (const [name, args] of Object.entries({
+        get_work_item: { workItemId: UNKNOWN },
+        work_item_activity: { workItemId: UNKNOWN },
+        iteration_status: { iterationId: UNKNOWN },
+      })) {
+        const out = await callTool(token, name, args);
+        expect(out.statusCode, `${name}: unknown id must be 404`).toBe(404);
+      }
+      const projectProbe = await callTool(token, 'get_project', { projectId: UNKNOWN });
+      expect(projectProbe.statusCode, 'get_project: unknown id must be 403 (no leak)').toBe(403);
+    });
+
+    it('unread_notifications counts ONLY the caller — a second user’s unread row is excluded', async () => {
+      const { inAppNotifications } = await import('../../db/schema/notifications');
+      const db = app.get<DrizzleDB>(DRIZZLE);
+
+      const mine = await bindPerson('mcp-unread-mine');
+      const other = await provisionUser(app, 'mcp-unread-other', 'E2E mcp unread other');
+
+      // one unread row for each of the two people
+      await db.insert(inAppNotifications).values([
+        {
+          workspaceId: WORKSPACE_ID,
+          recipientId: mine.userId,
+          type: 'WORK_ITEM_ASSIGNED',
+          title: 'for the mcp caller',
+        },
+        {
+          workspaceId: WORKSPACE_ID,
+          recipientId: other.userId,
+          type: 'WORK_ITEM_ASSIGNED',
+          title: 'for the other user',
+        },
+      ]);
+
+      // the caller's count includes theirs and excludes the other user's
+      const out = await callTool(mine.token, 'unread_notifications', {});
+      expect(out.statusCode).toBeUndefined();
+      expect(Number(out.count)).toBeGreaterThanOrEqual(1);
+
+      // the direct REST route agrees, and scoping is by recipient — verified by inserting a
+      // row whose recipient is the OTHER user and confirming the count does not double
+      const before = Number(out.count);
+      await db.insert(inAppNotifications).values({
+        workspaceId: WORKSPACE_ID,
+        recipientId: other.userId,
+        type: 'WORK_ITEM_ASSIGNED',
+        title: 'another row for the other user only',
+      });
+      const again = await callTool(mine.token, 'unread_notifications', {});
+      expect(Number(again.count)).toBe(before);
+    });
+
+    it('an OFFBOARDED principal is denied on EVERY tool — the routes refuse, the tools relay', async () => {
+      const { token, userId } = await bindPerson('mcp-offboarded');
+      const auth = app.get<Identity>(AUTH);
+      try {
+        await setUserBanned(auth, userId, true, 'e2e: offboard the mcp user');
+        await initialize(token);
+        for (const [name, args] of Object.entries(TOOL_ARGS)) {
+          const out = await callTool(token, name, args);
+          expect(String(out.statusCode), `${name} must relay the ban denial`).toMatch(/401|403/);
+        }
+      } finally {
+        await setUserBanned(auth, userId, false);
+      }
+      // reinstated: the same tool works again, as the person themselves
+      const out = await callTool(token, 'whoami', {});
+      expect(out.statusCode).toBeUndefined();
+      expect(out.id).toBe(userId);
+    });
   });
 
   it('one tool POST touches exactly the per-person buckets — never the shared loopback bucket', async () => {

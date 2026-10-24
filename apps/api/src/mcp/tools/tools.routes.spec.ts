@@ -47,6 +47,8 @@ const OWNER: Record<
     controller: "@Controller('projects')",
     get: "@Get(':id')",
     permission: "'project:view'",
+    // assertWorkspaceMember, then readable-by-actor, inside the service
+    authorizedInService: "'project:view'",
   },
   list_project_members: {
     file: 'projects/src/interface/http/projects.controller.ts',
@@ -70,7 +72,9 @@ const OWNER: Record<
     file: 'work-items/src/interface/http/work-items.controller.ts',
     controller: "@Controller('work-items')",
     get: "@Get('by-key')",
-    permission: "'work_item:view'",
+    // resolve-then-check: @AuthorizedInService + assertProjectPermission(WORK_ITEM_VIEW)
+    // in work-items.service.ts getWorkItemByKey
+    authorizedInService: 'WORK_ITEM_VIEW',
   },
   my_work: {
     file: 'work-items/src/interface/http/work-items.controller.ts',
@@ -114,6 +118,42 @@ const OWNER: Record<
     get: "@Get('comments')",
     permission: "'work_item:view'",
   },
+  list_releases: {
+    file: 'releases/src/interface/http/releases.controller.ts',
+    controller: "@Controller('releases')",
+    get: '@Get()',
+    permission: "'release:view'",
+  },
+  list_milestones: {
+    file: 'milestones/src/interface/http/milestones.controller.ts',
+    controller: "@Controller('milestones')",
+    get: '@Get()',
+    permission: "'milestone:view'",
+  },
+  iteration_burndown: {
+    file: 'reporting/src/interface/http/reporting.controller.ts',
+    controller: "@Controller('reports')",
+    get: "@Get('iteration-burndown')",
+    permission: "'report:view'",
+  },
+  velocity: {
+    file: 'reporting/src/interface/http/reporting.controller.ts',
+    controller: "@Controller('reports')",
+    get: "@Get('velocity')",
+    permission: "'report:view'",
+  },
+  team_capacity: {
+    file: 'reporting/src/interface/http/reporting.controller.ts',
+    controller: "@Controller('reports')",
+    get: "@Get('team-capacity')",
+    permission: "'report:view'",
+  },
+  unread_notifications: {
+    file: 'notifications/src/interface/http/notifications.controller.ts',
+    controller: "@Controller('notifications')",
+    get: "@Get('unread-count')",
+    // SelfScoped: the caller's own unread count
+  },
 };
 
 describe('MCP tool catalogue maps to real routes', () => {
@@ -123,29 +163,65 @@ describe('MCP tool catalogue maps to real routes', () => {
       'get_project',
       'get_work_item',
       'get_work_item_by_key',
+      'iteration_burndown',
       'iteration_options',
       'iteration_status',
       'list_backlog',
       'list_comments',
       'list_iterations',
+      'list_milestones',
       'list_project_members',
       'list_projects',
+      'list_releases',
       'my_work',
       'search_work_items',
+      'team_capacity',
+      'unread_notifications',
+      'velocity',
       'whoami',
       'work_item_activity',
     ]);
-    expect(names.length).toBe(14);
+    expect(names.length).toBe(20);
     for (const name of names) {
       const src = readFileSync(join(CONTROLLERS, OWNER[name].file), 'utf8');
       expect(src.includes(OWNER[name].controller), `${name}: controller prefix moved`).toBe(true);
       expect(src.includes(OWNER[name].get), `${name}: route decorator moved`).toBe(true);
       expect(TOOL_ROUTES[name].method).toBe('GET');
-      // gate g: the route must sit behind PolicyGuard — either an explicit permission code or
-      // an explicit self-scope/reference marker in the entry's comment (whoami: @SelfScoped;
-      // list_projects/list_backlog: AccessService-scoped in-service lists; my_work: SelfScoped).
+      // gate g: slice the mapped method's decorator block (from its @Get to the next
+      // decorator at the same indent) and check the guard INSIDE it — a file-wide includes
+      // would match a guard that lives on a different route.
+      // anchored at a line start: prose may mention decorators inside comments
+      const from = src.indexOf('\n  ' + OWNER[name].get);
+      expect(from, `${name}: route decorator not found`).toBeGreaterThan(-1);
+      // the decorated declaration runs from the route's @Get to the method's `async` keyword
+      // (rova style: decorators, then `async methodName(`) — every guard decorator in
+      // between belongs to this route
+      const asyncAt = src.indexOf('\n  async ', from);
+      const nextRoute = src.indexOf('\n  @Get', from + 1);
+      const block =
+        asyncAt === -1 || (nextRoute !== -1 && nextRoute < asyncAt)
+          ? src.slice(from, nextRoute === -1 ? from + 1500 : nextRoute)
+          : src.slice(from, asyncAt);
       if (OWNER[name].permission) {
-        expect(src.includes(OWNER[name].permission), `${name}: permission code moved`).toBe(true);
+        expect(block.includes(OWNER[name].permission), `${name}: permission code moved`).toBe(true);
+      }
+      if (OWNER[name].authorizedInService) {
+        expect(
+          block.includes('@AuthorizedInService'),
+          `${name}: expected @AuthorizedInService on the by-key route`,
+        ).toBe(true);
+        expect(
+          block.includes(OWNER[name].authorizedInService),
+          `${name}: in-service check moved`,
+        ).toBe(true);
+      }
+      if (OWNER[name].selfScoped) {
+        // @SelfScoped must sit ON the mapped method's decorator block — not merely somewhere
+        // in the controller file
+        expect(
+          block.includes('@SelfScoped('),
+          `${name}: expected @SelfScoped on the mapped method`,
+        ).toBe(true);
       }
     }
   });

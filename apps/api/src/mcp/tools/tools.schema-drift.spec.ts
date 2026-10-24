@@ -10,6 +10,13 @@ import {
   ActivityQuerySchema,
   WorkItemQuerySchema,
 } from '@modules/work-items/interface/http/dto/work-item-request.dto';
+import {
+  IterationBurndownQuerySchema,
+  TeamCapacityQuerySchema,
+  VelocityQuerySchema,
+} from '@modules/reporting/interface/http/dto/reporting-request.dto';
+import { MilestoneQuerySchema } from '@modules/milestones/interface/http/dto/milestone-request.dto';
+import { ReleaseQuerySchema } from '@modules/releases/interface/http/dto/release-request.dto';
 import { registerTools } from './register';
 import type { ToolContext } from './rest';
 
@@ -116,6 +123,41 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
+  it('list_releases ⊆ ReleaseQuerySchema (GET /v1/releases)', () => {
+    const rest = Object.keys(ReleaseQuerySchema.shape);
+    const tool = toolInputs().get('list_releases')!;
+    expect(tool.length).toBeGreaterThan(0);
+    expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
+  });
+
+  it('list_milestones ⊆ MilestoneQuerySchema (GET /v1/milestones)', () => {
+    const rest = Object.keys(MilestoneQuerySchema.shape);
+    const tool = toolInputs().get('list_milestones')!;
+    expect(tool.length).toBeGreaterThan(0);
+    expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
+  });
+
+  it('iteration_burndown ⊆ IterationBurndownQuerySchema (GET /v1/reports/iteration-burndown)', () => {
+    const rest = Object.keys(IterationBurndownQuerySchema.shape);
+    const tool = toolInputs().get('iteration_burndown')!;
+    expect(tool.length).toBeGreaterThan(0);
+    expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
+  });
+
+  it('velocity ⊆ VelocityQuerySchema (GET /v1/reports/velocity)', () => {
+    const rest = Object.keys(VelocityQuerySchema.shape);
+    const tool = toolInputs().get('velocity')!;
+    expect(tool.length).toBeGreaterThan(0);
+    expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
+  });
+
+  it('team_capacity ⊆ TeamCapacityQuerySchema (GET /v1/reports/team-capacity)', () => {
+    const rest = Object.keys(TeamCapacityQuerySchema.shape);
+    const tool = toolInputs().get('team_capacity')!;
+    expect(tool.length).toBeGreaterThan(0);
+    expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
+  });
+
   it('the schema-less routes take only what their controllers read by hand', () => {
     const inputs = toolInputs();
     // GET /v1/work-items/my reads `@Query('limit')` only
@@ -125,5 +167,7 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
     // no query at all
     expect(inputs.get('whoami')).toEqual([]);
     expect(inputs.get('get_work_item')).toEqual(['workItemId']);
+    // GET /v1/notifications/unread-count reads NO query
+    expect(inputs.get('unread_notifications')).toEqual([]);
   });
 });
