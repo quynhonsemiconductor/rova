@@ -12,7 +12,7 @@ export const TOOL_ROUTES = {
   list_comments: { method: 'GET', url: '/v1/work-items/:workItemId/comments' },
   get_work_item: { method: 'GET', url: '/v1/work-items/:workItemId' },
   get_project: { method: 'GET', url: '/v1/projects/:projectId' },
-  list_project_members: { method: 'GET', url: '/v1/projects/:id/members' },
+  list_project_members: { method: 'GET', url: '/v1/projects/:id/member-options' },
   get_work_item_by_key: { method: 'GET', url: '/v1/work-items/by-key' },
   list_backlog: { method: 'GET', url: '/v1/work-items/backlog' },
   work_item_activity: { method: 'GET', url: '/v1/work-items/:id/activity' },

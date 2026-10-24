@@ -27,7 +27,7 @@ export function registerListComments(server: McpServer, ctx: ToolContext) {
         method: 'GET',
         url: `/v1/work-items/${workItemId}/comments`,
       });
-      if (statusCode < 400 && !Array.isArray(json)) return denied(statusCode, json);
+      if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
       const all = json as Record<string, unknown>[];
       const capped = all.slice(0, MAX_COMMENTS);
       let truncated = all.length > MAX_COMMENTS;

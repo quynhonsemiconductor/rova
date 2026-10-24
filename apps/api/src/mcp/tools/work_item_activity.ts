@@ -33,7 +33,7 @@ export function registerWorkItemActivity(server: McpServer, ctx: ToolContext) {
         url: `/v1/work-items/${workItemId}/activity`,
         query: { page: page ?? 1, pageSize: MAX_PAGE_SIZE },
       });
-      if (statusCode < 400 && (json === null || typeof json !== 'object' || Array.isArray(json)))
+      if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
         return denied(statusCode, json);
       const body = json as { data?: Record<string, unknown>[]; total?: number; page?: number };
       return result(statusCode, json, {

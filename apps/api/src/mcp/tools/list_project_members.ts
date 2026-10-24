@@ -1,6 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { listResult, type ToolContext } from './rest';
+import { denied, type ToolContext } from './rest';
+
+const MAX_MEMBERS = 100;
 
 /**
  * `list_project_members` — the people who can own work in one project the person can read
@@ -24,16 +26,20 @@ export function registerListProjectMembers(server: McpServer, ctx: ToolContext) 
         method: 'GET',
         url: `/v1/projects/${projectId}/member-options`,
       });
-      return listResult(
-        statusCode,
-        json,
-        (m) => ({
+      if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
+      const all = json as Record<string, unknown>[];
+      const capped = all.slice(0, MAX_MEMBERS);
+      const payload: Record<string, unknown> = {
+        members: capped.map((m) => ({
           userId: m['userId'],
           displayName: m['displayName'] ?? null,
           email: m['email'] ?? null,
-        }),
-        'members',
-      );
+        })),
+      };
+      if (all.length > MAX_MEMBERS) payload['truncated'] = true;
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(payload) }],
+      };
     },
   );
 }
