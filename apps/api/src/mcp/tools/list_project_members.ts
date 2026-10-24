@@ -1,38 +1,39 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { result, type ToolContext } from './rest';
+import { listResult, type ToolContext } from './rest';
 
 /**
- * `list_project_members` — the roster of one project the person can read
- * (GET /v1/projects/:id/members, `project:view` on the project). People fields only:
- * no emails or avatars.
+ * `list_project_members` — the people who can own work in one project the person can read
+ * (GET /v1/projects/:id/member-options, `project:view` on the project). This is the
+ * audience-matched feed the web UI gives non-admins (the assignee projection: id, name,
+ * email) — NOT the administrative roster route, which is Workspace/Project-Admin only.
  */
 export function registerListProjectMembers(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
     'list_project_members',
     {
       title: 'List project members',
-      description: 'The people on one project you can read, with their access level.',
+      description: 'The people who can own work in one project you can read, with their email.',
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: {
-        projectId: z.uuid().describe('The project whose members to list'),
+        projectId: z.uuid().describe('The project whose member options to list'),
       },
     },
     async ({ projectId }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/projects/${projectId}/members`,
+        url: `/v1/projects/${projectId}/member-options`,
       });
-      const members = (json as Record<string, unknown>[]) ?? [];
-      return result(statusCode, json, {
-        members: members.map((m) => ({
+      return listResult(
+        statusCode,
+        json,
+        (m) => ({
           userId: m['userId'],
           displayName: m['displayName'] ?? null,
-          accessLevel: m['accessLevel'],
-          status: m['status'],
-          isWorkspaceAdmin: m['isWorkspaceAdmin'] ?? false,
-        })),
-      });
+          email: m['email'] ?? null,
+        }),
+        'members',
+      );
     },
   );
 }

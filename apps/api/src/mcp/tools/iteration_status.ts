@@ -17,7 +17,7 @@ export function registerIterationStatus(server: McpServer, ctx: ToolContext) {
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: {
         iterationId: z.uuid().describe('The iteration id'),
-        q: z.string().optional().describe('Free-text filter over the assigned work items'),
+        q: z.string().max(255).optional().describe('Free-text filter over the assigned work items'),
         isBlocked: z.boolean().optional().describe('Only blocked items'),
         ...pageArgs,
       },

@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { result, type ToolContext } from './rest';
+import { listResult, type ToolContext } from './rest';
 
 /**
  * `iteration_options` — the reference feed of every iteration in one project
@@ -26,9 +26,10 @@ export function registerIterationOptions(server: McpServer, ctx: ToolContext) {
         url: '/v1/iterations/options',
         query: { projectId, ...(teamId ? { teamId } : {}) },
       });
-      const options = (json as Record<string, unknown>[]) ?? [];
-      return result(statusCode, json, {
-        iterations: options.map((it) => ({
+      return listResult(
+        statusCode,
+        json,
+        (it) => ({
           id: it['id'],
           name: it['name'],
           iterationKey: it['iterationKey'] ?? null,
@@ -36,8 +37,9 @@ export function registerIterationOptions(server: McpServer, ctx: ToolContext) {
           startDate: it['startDate'] ?? null,
           endDate: it['endDate'] ?? null,
           teamId: it['teamId'] ?? null,
-        })),
-      });
+        }),
+        'iterations',
+      );
     },
   );
 }

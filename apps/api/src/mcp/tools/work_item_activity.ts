@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { result, type ToolContext } from './rest';
+import { denied, result, type ToolContext } from './rest';
 
 /**
  * `work_item_activity` — the revision history of one work item
@@ -18,7 +18,13 @@ export function registerWorkItemActivity(server: McpServer, ctx: ToolContext) {
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: {
         workItemId: z.uuid().describe('The work item whose history to list'),
-        page: z.number().int().min(1).optional().describe('Page number (1 = newest entries)'),
+        page: z
+          .number()
+          .int()
+          .min(1)
+          .max(1000)
+          .optional()
+          .describe('Page number (1 = newest entries)'),
       },
     },
     async ({ workItemId, page }) => {
@@ -27,6 +33,8 @@ export function registerWorkItemActivity(server: McpServer, ctx: ToolContext) {
         url: `/v1/work-items/${workItemId}/activity`,
         query: { page: page ?? 1, pageSize: MAX_PAGE_SIZE },
       });
+      if (statusCode < 400 && (json === null || typeof json !== 'object' || Array.isArray(json)))
+        return denied(statusCode, json);
       const body = json as { data?: Record<string, unknown>[]; total?: number; page?: number };
       return result(statusCode, json, {
         activity: (body.data ?? []).map((a) => ({

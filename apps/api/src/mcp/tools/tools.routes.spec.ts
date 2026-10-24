@@ -19,7 +19,17 @@ const CONTROLLERS = join(__dirname, '..', '..', '..', '..', '..', 'libs', 'modul
  */
 const OWNER: Record<
   keyof typeof TOOL_ROUTES,
-  { file: string; controller: string; get: string; permission?: string }
+  {
+    file: string;
+    controller: string;
+    get: string;
+    /** The route's @RequirePermission code, when it declares one. */
+    permission?: string;
+    /** The route uses @AuthorizedInService (resolve-then-check in the service). */
+    authorizedInService?: string;
+    /** The route is @SelfScoped (the caller's own data). */
+    selfScoped?: boolean;
+  }
 > = {
   whoami: {
     file: 'identity/src/interface/http/auth.controller.ts',
@@ -66,7 +76,7 @@ const OWNER: Record<
     file: 'work-items/src/interface/http/work-items.controller.ts',
     controller: "@Controller('work-items')",
     get: "@Get('my')",
-    // SelfScoped: the caller's own items, narrowed by listReadableProjectIds
+    selfScoped: true,
   },
   list_backlog: {
     file: 'work-items/src/interface/http/work-items.controller.ts',

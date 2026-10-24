@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { result, type ToolContext } from './rest';
+import { denied, result, type ToolContext } from './rest';
 
 /** The REST comments route is unpaginated, so the tool caps the feed itself. */
 const MAX_COMMENTS = 100;
@@ -27,7 +27,8 @@ export function registerListComments(server: McpServer, ctx: ToolContext) {
         method: 'GET',
         url: `/v1/work-items/${workItemId}/comments`,
       });
-      const all = (json as Record<string, unknown>[]) ?? [];
+      if (statusCode < 400 && !Array.isArray(json)) return denied(statusCode, json);
+      const all = json as Record<string, unknown>[];
       const capped = all.slice(0, MAX_COMMENTS);
       let truncated = all.length > MAX_COMMENTS;
       return result(statusCode, json, {

@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { result, type ToolContext } from './rest';
+import { denied, result, type ToolContext } from './rest';
 import { toToolWorkItem } from './search_work_items';
 
 /**
@@ -30,7 +30,8 @@ export function registerMyWork(server: McpServer, ctx: ToolContext) {
         url: '/v1/work-items/my',
         query: { ...(limit ? { limit } : {}) },
       });
-      const items = (json as Record<string, unknown>[]) ?? [];
+      if (statusCode < 400 && !Array.isArray(json)) return denied(statusCode, json);
+      const items = json as Record<string, unknown>[];
       return result(statusCode, json, { items: items.map(toToolWorkItem) });
     },
   );
