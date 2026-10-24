@@ -103,8 +103,8 @@ class FixtureProjectsController {
 
   @Get(':id')
   getOne(@Req() req: { user: { workspaceId: string } }, @Param('id') id: string) {
-    if (req.user.workspaceId === RESTRICTED) throw new ForbiddenException('Forbidden resource');
-    if (id === UNKNOWN_ID) throw new NotFoundException('Not found');
+    if (req.user.workspaceId === RESTRICTED || id === UNKNOWN_ID)
+      throw new ForbiddenException('Forbidden resource');
     return { id, key: 'OBSE', name: 'Infrastructure', status: 'active', leadName: null };
   }
 
@@ -119,8 +119,8 @@ class FixtureProjectsController {
   }
 
   private optionsOrMembers(req: { user: { workspaceId: string } }, id: string) {
-    if (req.user.workspaceId === RESTRICTED) throw new ForbiddenException('Forbidden resource');
-    if (id === UNKNOWN_ID) throw new NotFoundException('Not found');
+    if (req.user.workspaceId === RESTRICTED || id === UNKNOWN_ID)
+      throw new ForbiddenException('Forbidden resource');
     return [
       {
         userId: '0194a000-0000-7000-8000-000000000201',
@@ -607,16 +607,12 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     it('a 404 from the route is relayed as isError with statusCode', async () => {
       // only tools whose REST route can 404 on the referenced resource; bare lists have no
       // not-found case (they deny 403 or return empty).
+      // get_project and list_project_members 403 instead (PolicyGuard denies before the
+      // lookup — no existence leak); by-key/activity/status resolve first and 404.
       const NOT_FOUND_CASES = ERROR_MATRIX.filter((c) =>
-        [
-          'get_project',
-          'list_project_members',
-          'get_work_item_by_key',
-          'work_item_activity',
-          'iteration_status',
-        ].includes(c.name),
+        ['get_work_item_by_key', 'work_item_activity', 'iteration_status'].includes(c.name),
       );
-      expect(NOT_FOUND_CASES.length).toBe(5);
+      expect(NOT_FOUND_CASES.length).toBe(3);
       for (const { name, notFoundArg } of NOT_FOUND_CASES) {
         await expectErrorRelay(verifier, name, notFoundArg, 404);
       }

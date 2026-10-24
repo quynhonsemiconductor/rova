@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, result, type ToolContext } from './rest';
+import { listResult, type ToolContext } from './rest';
 import { toToolWorkItem } from './search_work_items';
 
 /**
