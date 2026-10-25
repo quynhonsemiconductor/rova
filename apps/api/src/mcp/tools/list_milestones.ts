@@ -24,8 +24,11 @@ export function registerListMilestones(server: McpServer, ctx: ToolContext) {
         url: '/v1/milestones',
         query: { projectId },
       });
-      if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
-      const all = json as Record<string, unknown>[];
+      if (statusCode >= 400) return denied(statusCode, json);
+      // the paged route wraps rows in { data, pageInfo }
+      const rows = Array.isArray(json) ? json : (json as { data?: unknown } | null)?.data;
+      if (!Array.isArray(rows)) return denied(statusCode, json);
+      const all = rows as Record<string, unknown>[];
       const capped = all.slice(0, 100);
       const payload: Record<string, unknown> = {
         milestones: capped.map((m) => ({

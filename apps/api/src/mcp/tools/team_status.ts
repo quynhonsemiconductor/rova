@@ -13,7 +13,7 @@ export function registerTeamStatus(server: McpServer, ctx: ToolContext) {
     {
       title: 'Team status',
       description:
-        'The Team Status board for one project and iteration: per-member capacity, task counts and progress.',
+        'The Team Status board for one project and iteration: per-member task status and progress. (Hours live in the team_capacity report.)',
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: {
         projectId: z.uuid().describe('The project the board runs for'),
@@ -34,6 +34,8 @@ export function registerTeamStatus(server: McpServer, ctx: ToolContext) {
         totals?: Record<string, unknown>;
         groups?: Record<string, unknown>[];
       };
+      const allGroups = body.groups ?? [];
+      const groups = allGroups.slice(0, 100);
       return {
         content: [
           {
@@ -47,8 +49,9 @@ export function registerTeamStatus(server: McpServer, ctx: ToolContext) {
                   }
                 : undefined,
               totals: body.totals ?? undefined,
-              members: (body.groups ?? []).map((g) => ({
-                displayName: g['displayName'] ?? null,
+              members: groups.map((g) => ({
+                displayName:
+                  (g['owner'] as Record<string, unknown> | undefined)?.['displayName'] ?? null,
                 capacityHours: g['capacityHours'],
                 taskCount: g['taskCount'],
                 estimateHours: g['estimateHours'],
@@ -56,6 +59,7 @@ export function registerTeamStatus(server: McpServer, ctx: ToolContext) {
                 actualHours: g['actualHours'],
                 progressPercent: g['progressPercent'],
               })),
+              truncated: allGroups.length > 100,
             }),
           },
         ],

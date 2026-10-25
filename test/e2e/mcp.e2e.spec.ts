@@ -13,13 +13,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { registerMcpRoute } from '../../apps/api/src/mcp/index';
 import type { McpAccessPrincipal, McpAccessVerifier } from '../../apps/api/src/mcp/index';
 import {
+  NXP_STORY_1_ID,
   PAY_EPIC_ID,
   PAY_ITER_ID,
   PAY_PROJECT_ID,
   PAY_STORY_ID,
   WORKSPACE_ID,
 } from '../../db/seeds/constants';
-import { provisionUser, readCookie } from './support/session';
+import { provisionUser, readCookie, signInAs } from './support/session';
 
 // The seeded NXP project (db/seeds SEED_PROJECTS[0]) — the stranger holds no membership in
 // it, so every project-scoped tool must be denied by its route.
@@ -138,8 +139,12 @@ describe('/mcp over the real guard chain (e2e)', () => {
     token: string,
     name: string,
     args: Record<string, unknown>,
+    opts: { skipInitialize?: boolean } = {},
   ): Promise<Record<string, unknown>> {
-    await initialize(token);
+    // The stateless route does not require a prior initialize (nothing in route.ts checks
+    // for one); callers that loop over many tools skip it to stay under the per-person
+    // MCP rate budget (26 tools x 2 POSTs would exceed the 60/min budget on its own).
+    if (!opts.skipInitialize) await initialize(token);
     const res = await rpc(token, {
       jsonrpc: '2.0',
       id: 2,
@@ -293,7 +298,19 @@ describe('/mcp over the real guard chain (e2e)', () => {
     // list_backlog and list_iterations are PolicyGuard-gated (`work_item:view` /
     // `timebox:view` / `iteration:view` from the projectId) — a no-role member is denied 403.
     const EMPTY_OK = new Set(['list_projects']);
-    const POLICY_403 = new Set(['search_work_items', 'list_backlog', 'list_iterations']);
+    // Explicitly PolicyGuard-gated tools (permission from the projectId query or the resource):
+    // a no-role member is denied 403 per route.
+    const POLICY_403 = new Set([
+      'search_work_items',
+      'list_backlog',
+      'list_iterations',
+      'quality_defects',
+      'team_status',
+      'get_test_case_by_key',
+      'list_test_cases',
+      'get_project',
+      'list_project_members',
+    ]);
 
     it('the denial matrix is derived from the live tools/list and covers every tool', async () => {
       const { token } = await bindPerson('mcp-matrix');
@@ -399,6 +416,145 @@ describe('/mcp over the real guard chain (e2e)', () => {
       const out = await callTool(token, 'whoami', {});
       expect(out.statusCode).toBeUndefined();
       expect(out.id).toBe(userId);
+    });
+  });
+
+  // HAPPY-PATH OUTPUT SHAPE (per tool): the documented output fields are present and
+  // non-undefined, with the names the REST DTO uses. Args hit REAL seeded data, so a wrong
+  // field mapping — the class of bug the delta review caught in get_portfolio_item /
+  // team_status / quality_defects — fails here instead of at an agent's first question.
+  describe('happy-path output shape, per tool', () => {
+    const CASES: Array<{ name: string; args: Record<string, unknown>; fields: string[] }> = [
+      { name: 'whoami', args: {}, fields: ['id', 'email', 'displayName', 'memberships'] },
+      { name: 'list_projects', args: {}, fields: ['projects', 'pageInfo'] },
+      {
+        name: 'get_project',
+        args: { projectId: PAY_PROJECT_ID },
+        fields: ['id', 'key', 'name', 'status'],
+      },
+      {
+        name: 'list_project_members',
+        args: { projectId: PAY_PROJECT_ID },
+        fields: ['members'],
+      },
+      {
+        name: 'search_work_items',
+        args: { projectId: PAY_PROJECT_ID },
+        fields: ['items', 'pageInfo'],
+      },
+      {
+        name: 'get_work_item',
+        args: { workItemId: PAY_STORY_ID },
+        fields: ['id', 'itemKey', 'title', 'scheduleState'],
+      },
+      {
+        name: 'get_work_item_by_key',
+        args: { itemKey: 'US-1' },
+        fields: ['id', 'itemKey', 'title'],
+      },
+      { name: 'my_work', args: {}, fields: ['items'] },
+      {
+        name: 'list_backlog',
+        args: { projectId: PAY_PROJECT_ID },
+        fields: ['items', 'pageInfo'],
+      },
+      {
+        name: 'work_item_activity',
+        args: { workItemId: PAY_STORY_ID },
+        fields: ['activity', 'total'],
+      },
+      {
+        name: 'list_iterations',
+        args: { projectId: PAY_PROJECT_ID },
+        fields: ['iterations'],
+      },
+      {
+        name: 'iteration_options',
+        args: { projectId: PAY_PROJECT_ID },
+        fields: ['iterations'],
+      },
+      {
+        name: 'iteration_status',
+        args: { iterationId: PAY_ITER_ID },
+        fields: ['iteration', 'metrics', 'items'],
+      },
+      { name: 'list_comments', args: { workItemId: PAY_STORY_ID }, fields: ['comments'] },
+      {
+        name: 'list_releases',
+        args: { projectId: PAY_PROJECT_ID },
+        fields: ['releases'],
+      },
+      {
+        name: 'list_milestones',
+        args: { projectId: PAY_PROJECT_ID },
+        fields: ['milestones'],
+      },
+      {
+        name: 'iteration_burndown',
+        args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
+        fields: [],
+      },
+      {
+        name: 'velocity',
+        args: { projectId: PAY_PROJECT_ID, window: 5 },
+        fields: [],
+      },
+      {
+        name: 'team_capacity',
+        args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
+        fields: [],
+      },
+      { name: 'unread_notifications', args: {}, fields: ['count'] },
+      {
+        name: 'list_test_cases',
+        args: { workItemId: NXP_STORY_1_ID },
+        fields: ['testCases', 'pageInfo'],
+      },
+      {
+        name: 'get_test_case_by_key',
+        args: { testCaseKey: 'TC-1' },
+        fields: ['id', 'testCaseKey', 'name'],
+      },
+      {
+        name: 'quality_defects',
+        args: { projectId: PAY_PROJECT_ID },
+        fields: ['defects', 'metrics'],
+      },
+      {
+        name: 'team_status',
+        args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
+        fields: ['members', 'iteration', 'totals'],
+      },
+      { name: 'list_portfolio_items', args: { type: 'epic' }, fields: ['portfolioItems'] },
+      {
+        name: 'get_portfolio_item',
+        args: { portfolioItemId: PAY_EPIC_ID },
+        fields: ['id', 'itemKey', 'type', 'name', 'estimate', 'rollup', 'progress', 'children'],
+      },
+    ];
+
+    it('every tool appears exactly once in the happy-path matrix', () => {
+      expect(CASES.length).toBe(26);
+      const names = CASES.map((c) => c.name);
+      expect(new Set(names).size).toBe(names.length);
+    });
+
+    it('each tool answers with its documented fields on seeded data', async () => {
+      // The happy-path caller must be able to READ everything the seed provides: the seeded
+      // workspace admin. A plain member cannot read PAY/NXP (project:view is project-tier).
+      const { userId: adminId } = await signInAs(app, 'admin@qnsc.dev');
+      const adminToken = `${VERIFIER_TOKEN_PREFIX}admin-${adminId.slice(0, 8)}`;
+      people.set(adminToken, { userId: adminId, workspaceId: WORKSPACE_ID });
+
+      for (const { name, args, fields } of CASES) {
+        const out = await callTool(adminToken, name, args, { skipInitialize: true });
+        for (const field of fields) {
+          expect(
+            out[field],
+            `${name}: documented field '${field}' missing/undefined`,
+          ).toBeDefined();
+        }
+      }
     });
   });
 

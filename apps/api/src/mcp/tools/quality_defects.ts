@@ -23,9 +23,10 @@ export function registerQualityDefects(server: McpServer, ctx: ToolContext) {
           .optional()
           .describe('Filter by severity'),
         offset: z.number().int().min(0).optional().describe('Rows to skip (offset pagination)'),
+        limit: z.number().int().min(1).max(20).optional().describe('Rows per page (max 20)'),
       },
     },
-    async ({ projectId, search, severity, offset }) => {
+    async ({ projectId, search, severity, offset, limit }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
         url: '/v1/quality/defects',
@@ -34,26 +35,37 @@ export function registerQualityDefects(server: McpServer, ctx: ToolContext) {
           ...(search ? { search } : {}),
           ...(severity && severity !== 'all' ? { severity } : {}),
           ...(offset ? { offset } : {}),
+          ...(limit ? { limit } : {}),
         },
       });
-      if (statusCode >= 400) return denied(statusCode, json);
-      const body = json as { data?: unknown };
+      if (json === null || typeof json !== 'object' || Array.isArray(json))
+        return denied(statusCode, json);
+      const body = json as {
+        data?: Record<string, unknown>[];
+        total?: number;
+        hasMore?: boolean;
+        metrics?: Record<string, unknown>;
+      };
       if (!Array.isArray(body.data)) return denied(statusCode, json);
-      const shaped = {
-        metrics: (json as Record<string, unknown>)['metrics'] ?? undefined,
-        defects: (body.data as Record<string, unknown>[]).map((d) => ({
+      const capped = body.data.slice(0, 20);
+      const shaped: Record<string, unknown> = {
+        metrics: body.metrics ?? undefined,
+        defects: capped.map((d) => ({
           id: d['id'],
           itemKey: d['itemKey'],
           title: d['title'],
           severity: d['severity'] ?? null,
           priority: d['priority'],
-          status: d['status'],
+          defectState: d['defectState'] ?? null,
           rootCause: d['rootCause'] ?? null,
           resolution: d['resolution'] ?? null,
           assigneeName: d['assigneeName'] ?? null,
         })),
+        total: body.total,
+        hasMore: body.hasMore,
         offset: offset ?? 0,
       };
+      if (body.data.length > 20) shaped['truncated'] = true;
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(shaped) }],
       };

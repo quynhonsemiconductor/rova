@@ -15,13 +15,17 @@ export function registerGetTestCaseByKey(server: McpServer, ctx: ToolContext) {
       description: 'One Test Case by its key (e.g. TC-3), what its detail page shows you.',
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: {
-        testCaseKey: z.string().min(1).describe('The Test Case key, e.g. TC-3'),
+        testCaseKey: z
+          .string()
+          .max(64)
+          .regex(/^[A-Z]+-\d+$/)
+          .describe('The Test Case key, e.g. TC-3'),
       },
     },
     async ({ testCaseKey }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/test-cases/by-key/${testCaseKey}`,
+        url: `/v1/test-cases/by-key/${encodeURIComponent(testCaseKey)}`,
       });
       if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
         return denied(statusCode, json);
