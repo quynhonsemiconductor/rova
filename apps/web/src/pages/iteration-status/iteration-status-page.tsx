@@ -296,7 +296,7 @@ export function IterationStatusPage() {
   const copyItem = useCreateIterationItem(selectedId ?? '')
 
   // Copy = duplicate the single selected Story/Defect into the current iteration
-  // (Rally "Copy"; disabled when more than one row is selected). Delete is
+  // (Rally's "Copy"; disabled when more than one row is selected). Delete is
   // handled by the shared BulkDeleteCopy in the bulk bar.
   async function copySelected() {
     if (!selectedId || selection.count !== 1) return

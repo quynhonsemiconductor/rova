@@ -34,6 +34,8 @@ import { bootstrapApp } from '../../apps/api/src/bootstrap/app.bootstrap';
  * this spec broke, so prefer the env override the seed itself honours.
  */
 const SEEDED_EMAIL = process.env['E2E_SEEDED_EMAIL'] ?? 'dev@qnsc.dev';
+// The origin the API trusts: CORS_ORIGINS of the env this run loaded (an isolated stack's own web port), else the schema default.
+const TRUSTED_ORIGIN = process.env['CORS_ORIGINS'] ?? 'http://localhost:5173';
 
 interface Session {
   /** Cookie header value carrying both the session id and the CSRF secret. */
@@ -183,7 +185,7 @@ describe('CSRF protection is enforced (real AppModule + bootstrapApp)', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/sign-out',
-      headers: { cookie: session.cookie, origin: 'http://localhost:5173' },
+      headers: { cookie: session.cookie, origin: TRUSTED_ORIGIN },
       payload: {},
     });
 

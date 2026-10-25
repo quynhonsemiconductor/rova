@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 
-import { PermissionDeniedException } from '@platform';
+import { isMcpBridged, PermissionDeniedException } from '@platform';
 
 /**
  * Refuses a request that is itself authenticated by an API token.
@@ -22,6 +22,15 @@ export class RejectApiTokenAuthGuard implements CanActivate {
       throw new PermissionDeniedException(
         'API_TOKEN_CANNOT_MANAGE_TOKENS',
         'API tokens cannot create or manage API tokens. Use an interactive session.',
+      );
+    }
+    // An MCP session is a credential too, and must not become a credential factory: the same
+    // rule, one line over, for the bridge (the mcp session id is not an apiTokenId, so the
+    // check above cannot see it).
+    if (isMcpBridged(request)) {
+      throw new PermissionDeniedException(
+        'MCP_CANNOT_MANAGE_TOKENS',
+        'MCP sessions cannot create or manage API tokens. Use an interactive session.',
       );
     }
     return true;

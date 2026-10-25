@@ -9,7 +9,6 @@
     "src/**/*",
     "../../libs/shared-kernel/src/**/*",
     "../../libs/platform/src/**/*",
-    "../../libs/contracts/src/**/*",
     "../../libs/modules/identity/src/**/*",
     "../../libs/modules/workspace/src/**/*",
     "../../libs/modules/access/src/**/*",

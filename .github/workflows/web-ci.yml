@@ -6,6 +6,7 @@
 name: Web · CI
 
 on:
+  merge_group:
   push:
     branches: [main]
   pull_request:
@@ -56,7 +57,7 @@ permissions:
   # this change is making: nothing here needs it today (the openapi job reads
   # `github.event.pull_request.base.sha` straight off the payload, which needs no grant).
   pull-requests: read
-  packages: read       # pull @quynhonsemiconductor/* from GitHub Packages (via shared libs)
+  packages: read # pull @quynhonsemiconductor/* from GitHub Packages (via shared libs)
 
 env:
   # 24, matching .nvmrc and the Dockerfile — see backend-ci.yml for why this was 22.
@@ -81,9 +82,41 @@ jobs:
       pull-requests: read
     outputs:
       run: ${{ steps.paths.outputs.run }}
+      quickstart: ${{ steps.quickstart-paths.outputs.run }}
     steps:
+      # The local quickstart is DENYLIST-gated, never allowlisted: skip it only when EVERY
+      # changed file matches a known-safe ignore glob. An ignore entry missed costs one
+      # extra run; an allowlist entry missed silently lets a breaking change merge (the
+      # first review of the allowlist shape found a dozen such paths). changed-paths fails
+      # open on every doubt (API error, empty list, 3,000-file ceiling) and always runs off
+      # pull_request — push to main and merge-queue entries never skip.
+      # The SPA source (apps/web/src/**) is safe to ignore: the quickstart starts Vite dev
+      # (which proxies /v1 and /api/auth to the compose stack) but never builds or bundles
+      # the web app, and nothing in src/ configures that proxy — vite.config.ts lives
+      # OUTSIDE src/, so this glob cannot hide it.
+      - id: quickstart-paths
+        name: Quickstart relevance (skip only on known-safe paths)
+        # Only a PR can skip the quickstart; on merge_group changed-paths WOULD list the
+        # queue's files and could return false — the queue entry must always run it. The
+        # skipped step leaves the output empty and the gate's `!= 'false'` branch runs it.
+        if: github.event_name == 'pull_request'
+        uses: quynhonsemiconductor/ci/actions/changed-paths@dcdd8dc937aa9d199a4e75e0e187eb52ca520836 # v1.23.1
+        with:
+          ignore: |
+            **/*.md
+            docs/**
+            .claude/**
+            .github/ISSUE_TEMPLATE/**
+            .github/PULL_REQUEST_TEMPLATE/**
+            .github/labeler.yml
+            renovate.json
+            apps/web/src/**
+            **/*.spec.ts
+            **/*.spec.tsx
+            **/*.test.ts
+            **/*.test.tsx
       - id: paths
-        uses: quynhonsemiconductor/ci/actions/changed-paths@v1
+        uses: quynhonsemiconductor/ci/actions/changed-paths@1fcb7f019a6c5482d30b2ece6caa416965c32bbe # ci#245 force-run; bump to the release tag on merge
         with:
           ignore: |
             **/*.md
@@ -94,6 +127,15 @@ jobs:
           # runs everything. Renovate PRs are NOT skipped: an action bump must be exercised on its PR.
           skip-heads: |
             release-please--@qnsc-automation[bot]=CHANGELOG.md,.release-please-manifest.json,version-only:**/package.json
+          # Dependency files always run CI (web e2e builds the real API, so a
+          # resolution change can break it even when the paths look ignorable).
+          force-run: |
+            package.json
+            **/package.json
+            pnpm-lock.yaml
+            **/pnpm-lock.yaml
+            pnpm-workspace.yaml
+            **/pnpm-workspace.yaml
 
   # ─────────────────────────────────────────────────────────────────────────
   # 1. Lint + typecheck (fast gate — no deps needed)
@@ -108,11 +150,11 @@ jobs:
       # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@v1
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -132,7 +174,7 @@ jobs:
       # was installed into the workspace. If wrangler ever leaves the lockfile, or workerd's build decision
       # is lost, the step fails here and not on the next push to main.
       - name: Deploy tooling (wrangler) resolves on pnpm 11
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0  # v4.0.0
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0  # v4.1.3
         with:
           workingDirectory: apps/web
           packageManager: pnpm
@@ -160,11 +202,11 @@ jobs:
     outputs:
       has_tests: ${{ steps.detect.outputs.has_tests }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@v1
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -189,7 +231,7 @@ jobs:
 
       - name: Upload coverage
         if: always() && steps.detect.outputs.has_tests == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: coverage
           path: coverage/
@@ -207,10 +249,24 @@ jobs:
     if: ${{ needs.changes.outputs.run == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Official Playwright image, version LOCKED to @playwright/test in
+    # apps/web (1.63.0 — a skew fails loudly: the bundled browsers must match
+    # the driver). The digest is bumped by the same Renovate PR that bumps
+    # @playwright/test (packageRules: playwright group in renovate.json).
+    # This replaces the apt install-deps dance entirely: the image ships the
+    # browsers and every OS library, so the flaky apt/CDN steps (rova#790,
+    # #791, the three CI breakages) are GONE.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+    # The image's default shell is dash — steps written for bash (pipefail etc.)
+    # would die on it (opshub hit exactly that). Pin bash, like the idf jobs.
+    defaults:
+      run:
+        shell: bash
 
     services:
       postgres:
-        image: postgres:17.11-alpine
+        image: postgres:18.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -223,7 +279,7 @@ jobs:
           --health-retries 10
 
       redis:
-        image: valkey/valkey:7.2.14-alpine
+        image: valkey/valkey:8.1.10-alpine
         ports: ['6379:6379']
         options: >-
           --health-cmd "redis-cli ping"
@@ -232,12 +288,15 @@ jobs:
           --health-retries 5
 
     env:
+      # Playwright's documented container setting: the image user is root and
+      # without HOME some tooling misbehaves (@swc/core ERR_SWC_NATIVE_CACHE).
+      HOME: /root
       # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Shared by migrate/seed, the API process, and the specs.
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
-      DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
-      REDIS_URL: redis://localhost:6379
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rova_test?sslmode=disable
+      DATABASE_MIGRATION_URL: postgresql://postgres:postgres@postgres:5432/rova_test?sslmode=disable
+      REDIS_URL: redis://redis:6379
       CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
       COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
       # identity 8: the secret that signs its cookies, and the passwordless sign-in the E2E helper uses (identity
@@ -253,16 +312,22 @@ jobs:
       VITE_DEV_LOGIN: 'true'
       # Each spec logs in fresh — disable rate limiting so that never 429s.
       DISABLE_RATE_LIMIT: 'true'
-      # Rally is SSO-only; the E2E helper signs in via the passwordless test-login endpoint
+      # Rova is SSO-only; the E2E helper signs in via the passwordless test-login endpoint
       # (seeded accounts, NODE_ENV test/development only).
       NODE_ENV: test
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@v1
+      # The container runs as root over a uid-1001 workspace; without this git
+      # treats the repo as dubious and `git diff` falls into no-index mode
+      # (codegen check exited 129 and 0 tests ran).
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -305,14 +370,18 @@ jobs:
         env:
           OPENAPI_SPEC: ${{ runner.temp }}/openapi.json
 
-      - name: Install Playwright browsers
-        run: pnpm --filter rova-web exec playwright install --with-deps chromium
+      # Browsers and OS libraries come with the image (PLAYWRIGHT_BROWSERS_PATH
+      # is /ms-playwright in it) — no download, no apt install, nothing to retry.
 
       - name: Run E2E
         # No `--reporter=` here: the CLI flag REPLACES the config's reporter array rather than
         # adding to it, which is why the json report was missing and the flake step below had
         # nothing to read. playwright.config.ts picks `list` plus `json` when CI is set.
         run: pnpm --filter rova-web exec playwright test
+        env:
+          # The API above listens on :3000 (its PORT). The Vite proxy defaults to .env.example's PORT (3010), and this job
+          # has no .env, so point the proxy at the API that is actually running.
+          API_TARGET: http://localhost:3000
 
       # `always()`: the interesting case is a run that PASSED, because a pass hiding a retry is
       # exactly what went unnoticed. Never fails the job — see the script for why the ratchet
@@ -323,7 +392,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: playwright-report
           path: apps/web/test-results/
@@ -346,11 +415,11 @@ jobs:
       # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@v1
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -359,7 +428,7 @@ jobs:
         run: pnpm --filter rova-web build
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: dist-${{ github.sha }}
           path: dist/
@@ -386,18 +455,18 @@ jobs:
   quickstart:
     name: local quickstart
     needs: [changes]
-    if: ${{ needs.changes.outputs.run == 'true' }}
+    if: ${{ needs.changes.outputs.run == 'true' && needs.changes.outputs.quickstart != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       LOGS: ${{ github.workspace }}/quickstart-logs
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@v1
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -407,9 +476,16 @@ jobs:
           cp .env.example .env
           mkdir -p "$LOGS"
 
-      # `--wait` returns when every healthcheck passes; LocalStack's means the init hook has created both buckets.
+      # `--wait` returns when every healthcheck passes. The bucket setup is a one-shot (garage-init), so its exit status is read
+      # on the next step: 0 means both buckets, their lifecycle and CORS for localhost and 127.0.0.1 are set and each preflight passed.
       - name: docker compose -f docker-compose.dev.yml up -d --wait
         run: docker compose -f docker-compose.dev.yml up -d --wait --wait-timeout 240
+
+      - name: The bucket setup exited 0 (garage-init)
+        run: |
+          code=$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose -f docker-compose.dev.yml ps -aq garage-init)")
+          echo "garage-init exit code: $code"
+          test "$code" = 0 || { docker compose -f docker-compose.dev.yml logs garage-init; exit 1; }
 
       - name: pnpm db:migrate
         run: pnpm db:migrate
@@ -432,14 +508,14 @@ jobs:
       - name: The API answers /readyz
         run: |
           for _ in $(seq 1 90); do
-            if body=$(curl -sf http://localhost:3000/readyz); then
+            if body=$(curl -sf http://localhost:3010/readyz); then
               echo "$body"
               echo "$body" | jq -e '.status == "ok" and .checks.database == "up" and .checks.cache == "up"'
               exit 0
             fi
             sleep 2
           done
-          echo "::error::the API did not answer /readyz on :3000 within 3 minutes. Does .env.example boot? (the schema refuses a missing JWT key or ENTRA_* at start)"
+          echo "::error::the API did not answer /readyz on :3010 within 3 minutes. Does .env.example boot? (the schema refuses a missing JWT key or ENTRA_* at start)"
           exit 1
 
       # The worker serves no HTTP, and `nest start --watch` keeps running after a config refusal, so the log is the
@@ -461,18 +537,18 @@ jobs:
       # breaks when the example's PORT and the proxy target disagree.
       - name: Sign in with the test login and make an authenticated /v1 call, through the SPA's proxy
         run: |
-          for _ in $(seq 1 30); do curl -sf http://localhost:5173/v1/healthz >/dev/null && break; sleep 2; done
-          curl -sf http://localhost:5173/v1/healthz || { echo "::error::/v1 through the Vite proxy failed: .env.example PORT must equal the proxy target in apps/web/vite.config.ts"; exit 1; }
+          for _ in $(seq 1 30); do curl -sf http://localhost:5175/v1/healthz >/dev/null && break; sleep 2; done
+          curl -sf http://localhost:5175/v1/healthz || { echo "::error::/v1 through the Vite proxy failed: .env.example PORT must equal the proxy target in apps/web/vite.config.ts"; exit 1; }
           # identity's session cookie is `__Secure-rova.session_token`: read it from the response headers and replay it by hand
           # (a cookie jar will not send a Secure cookie over http).
-          curl -sf -D "$LOGS/headers.txt" -o /dev/null -H 'content-type: application/json' -H 'origin: http://localhost:5173' \
-            -d '{"email":"admin@qnsc.dev"}' http://localhost:5173/api/auth/test-login
+          curl -sf -D "$LOGS/headers.txt" -o /dev/null -H 'content-type: application/json' -H 'origin: http://localhost:5175' \
+            -d '{"email":"admin@qnsc.dev"}' http://localhost:5175/api/auth/test-login
           cookie=$(grep -i '^set-cookie: __Secure-rova.session_token=' "$LOGS/headers.txt" | head -1 | sed -E 's/^[^:]*: ([^;]*).*/\1/' | tr -d '\r')
           test -n "$cookie" || { echo "::error::test-login set no session cookie"; exit 1; }
-          me=$(curl -sf -H "cookie: $cookie" http://localhost:5173/v1/auth/me)
+          me=$(curl -sf -H "cookie: $cookie" http://localhost:5175/v1/auth/me)
           echo "$me" | jq '{email, role}'
           echo "$me" | jq -e '.email == "admin@qnsc.dev" and .role == "workspace_admin"'
-          curl -sf -H "cookie: $cookie" -o /dev/null -w 'GET /v1/projects -> %{http_code}\n' http://localhost:5173/v1/projects
+          curl -sf -H "cookie: $cookie" -o /dev/null -w 'GET /v1/projects -> %{http_code}\n' http://localhost:5175/v1/projects
 
       - name: Logs
         if: always()
@@ -513,13 +589,30 @@ jobs:
       #  * otherwise: only `changes` itself must be `success` (the rest are skipped by design). If `changes` FAILED its output is
       #    empty, this branch runs, and the gate fails: it cannot turn "could not decide" into a pass.
       - name: Every job must have succeeded
-        if: ${{ needs.changes.outputs.run == 'true' }}
-        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@v1
+        if: ${{ needs.changes.outputs.run == 'true' && needs.changes.outputs.quickstart != 'false' }}
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           results: ${{ join(needs.*.result, ',') }}
 
+      # NEW JOBS: add them to `needs:` above AND to the explicit results list in the
+      # "Everything but the quickstart" branch below — the join() in branch 1 covers
+      # them only while the quickstart actually runs; branch 2 is the one that runs
+      # when the quickstart was skipped.
+      - name: Everything but the quickstart must have succeeded
+        if: ${{ needs.changes.outputs.run == 'true' && needs.changes.outputs.quickstart == 'false' }}
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        with:
+          results: ${{ needs.changes.result }},${{ needs.quality.result }},${{ needs.test.result }},${{ needs.e2e.result }},${{ needs.build.result }}
+
+      - name: The quickstart was skipped by its path filter (and only by that)
+        if: ${{ needs.changes.outputs.run == 'true' && needs.changes.outputs.quickstart == 'false' }}
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        with:
+          results: ${{ needs.quickstart.result }}
+          allow-skipped: true
+
       - name: Nothing here to test (every changed file is ignorable)
         if: ${{ needs.changes.outputs.run != 'true' }}
-        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@v1
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
         with:
           results: ${{ needs.changes.result }}

@@ -27,7 +27,7 @@ import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { teams } from '@db/schema/work';
 
-import { WORKSPACE_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { WORKSPACE_ID, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 /** `YYYY-MM-DD`, `days` before today. */
 function daysAgo(days: number): string {
@@ -121,7 +121,7 @@ describe('capacity forecast (e2e)', () => {
     });
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     capacity = app.get(CapacityPlansService);
     iterations = app.get(IterationsService);
     workItems = app.get(WorkItemsService);

@@ -51,7 +51,7 @@ export function TimeboxPicker({
   nextLabel = 'Next iteration',
   minWidth = 280,
 }: {
-  items: PickerTimebox[]
+  items: readonly PickerTimebox[]
   selectedId: string | null
   onSelect: (id: string) => void
   /** Shown on the button when nothing is selected. */
@@ -167,7 +167,7 @@ export function IterationPicker({
   selectedId,
   onSelect,
 }: {
-  iterations: PickerTimebox[]
+  iterations: readonly PickerTimebox[]
   selectedId: string | null
   onSelect: (id: string) => void
 }) {

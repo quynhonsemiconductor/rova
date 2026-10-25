@@ -14,25 +14,12 @@ import type { ArtifactTableItem } from '@/entities/work-item/ui/artifact-table'
 import { listResource } from '@/shared/lib/query/resource'
 import { useArtifactPagination } from '@/entities/work-item/ui/use-artifact-pagination'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
-import { PORTFOLIO_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { SelectionModal } from '@/shared/ui/selection-modal'
+import { recordHrefForClick } from '@/entities/work-item/model/record-href'
 
 // ── Artifacts tab ──────────────────────────────────────────────────────────────
-
-/**
- * A milestone's artifacts come from a POLYMORPHIC link table, so a row is either a work item or a
- * portfolio item and its detail surface differs. The discriminator is the row's own `type`:
- * `work_item_type` and `portfolio_item_type` are disjoint enums, which is why `TypeBadge` already
- * resolves a glyph for all five from one prop and why no extra DTO field is served for it.
- *
- * Duplicated from the release Artifacts tab on purpose — a `pages/` module must not import from
- * another `pages/` module, and two lines here is cheaper than promoting this into `entities/`.
- */
-function isPortfolioArtifact(type: string): boolean {
-  return type in PORTFOLIO_TYPE_CONFIG
-}
 
 /**
  * A portfolio row's Priority is ABSENT: `portfolio_items` has no priority column, so the feed sends
@@ -127,13 +114,13 @@ export function ArtifactsTab({
         pageInfo={artifactsQuery.data?.pageInfo}
         entityNoun="milestone"
         pagination={pagination}
-        onOpenItem={(item) =>
-          isPortfolioArtifact(item.type)
-            ? // A Feature/Epic's detail lives on the Portfolio surface and is addressed by ID:
-              // `/item/$itemKey` resolves against `work_items` only and would 404 for FE-6.
-              navigate({ to: '/portfolio/$itemId', params: { itemId: item.id } })
-            : navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
-        }
+        // The SAME rule the row's ID link uses (`defaultRecordHref`): a Feature / Epic by id on the
+        // Portfolio surface, a work item by key — so a click and a new tab open the same record.
+        onOpenItem={(item) => {
+          // Reports (once) when the row's type has no URL rule, instead of a silent no-op.
+          const href = recordHrefForClick(item.type, item.itemKey, item.id)
+          if (href) void navigate({ href })
+        }}
       />
 
       <SelectionModal

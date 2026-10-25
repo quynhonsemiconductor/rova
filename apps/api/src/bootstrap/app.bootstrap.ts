@@ -4,12 +4,14 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyCsrf from '@fastify/csrf-protection';
 import fastifyCompress from '@fastify/compress';
 import fastifyHelmet from '@fastify/helmet';
-import fastifyMultipart from '@fastify/multipart';
+import { DRIZZLE } from '@platform/database/drizzle.provider';
 import { AppConfigService } from '@platform/config';
+import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { CSRF_HEADER, CSRF_SECRET_COOKIE, requiresCsrfProtection } from '@platform/http/csrf';
 import { enableHealth, registerRequestTiming } from '@quynhonsemiconductor/platform-runtime';
 import { SseConnections, registerSseShutdown } from '@modules/notifications';
 import { assertEdgeClientIpEnv, enableCorrelationId } from '@quynhonsemiconductor/platform-http';
+import { assertPlatformAdminEmailsEnv } from './platform-admin-emails';
 import { SESSION_COOKIE } from '@platform/auth';
 import { isSessionBody, redactSessionTokens } from '@platform/http/session-token-redaction';
 
@@ -36,6 +38,10 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // on the first request. A bad key is refused HERE, at boot, naming the variable, rather than surfacing as a
   // quietly disabled feature on whichever request arrives first.
   assertEdgeClientIpEnv();
+  // The workspace-admin roster comes from the app bundle (platform-admin-emails key).
+  // API-only: the worker never receives it and must boot without it, so the check
+  // lives in this entrypoint, not in the shared env schema.
+  assertPlatformAdminEmailsEnv(config.get('PLATFORM_ADMIN_EMAILS'), config.get('NODE_ENV'));
   // Two independent switches, not one `isDev`. They used to share
   // `NODE_ENV !== 'production'`, which meant any environment that isn't literally
   // "production" — staging, preview, a mis-set task definition — silently shipped
@@ -120,6 +126,34 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // enableGracefulShutdown in main.ts).
   enableProbes(app);
 
+  // /mcp — the MCP endpoint, OFF everywhere by default (MCP_ENABLED). Raw Fastify route, outside
+  // /v1 and the guards: it verifies the Cloudflare Access JWT per request via identity 8.5's
+  // `access-jwt` verifier (signature, iss, aud, exp+nbf), resolves the employee from the token's
+  // email on EVERY request (the token's exp is a 24 h grant session, not freshness), and its
+  // tools compose rova's own REST routes in-process with the person as principal.
+  if (config.get('MCP_ENABLED')) {
+    const teamDomain = config.get('MCP_CF_TEAM_DOMAIN');
+    const audience = config.get('MCP_ACCESS_AUD');
+    if (!teamDomain || !audience) {
+      throw new Error(
+        'MCP_ENABLED=true requires MCP_CF_TEAM_DOMAIN (the Access team origin) and ' +
+          'MCP_ACCESS_AUD (the /mcp Access application AUD tag).',
+      );
+    }
+    const { registerMcpRoute, createMcpAccessJwtAdapter } = await import('../mcp/index');
+    registerMcpRoute({
+      app,
+      fastify,
+      verifier: createMcpAccessJwtAdapter({
+        db: app.get(DRIZZLE),
+        teamDomain,
+        audience,
+      }),
+      cache: app.get(CacheService),
+      serverVersion: process.env['npm_package_version'] ?? '0.0.0',
+    });
+  }
+
   // Open notification streams are hijacked replies that never end on their own, so `fastify.close()` (the drain in
   // enableGracefulShutdown) would wait on every signed-in tab until the 25 s deadline. Their `preClose` hook sends
   // each one `reconnect` and ends it.
@@ -128,11 +162,6 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   fastify.addHook('onRequest', function csrfGate(req, reply, done) {
     if (!requiresCsrfProtection(req)) return done();
     fastify.csrfProtection(req, reply, done);
-  });
-
-  // Multipart / file upload — 10 MB limit per file
-  await app.register(fastifyMultipart, {
-    limits: { fileSize: 10 * 1024 * 1024 /* 10 MB */, files: 1 },
   });
 
   // CORS
@@ -165,8 +194,8 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // OpenAPI — opt-in per environment via SWAGGER_ENABLED (default off)
   if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('Rally API')
-      .setDescription('Rally SaaS — project management platform API')
+      .setTitle('Rova API')
+      .setDescription('Rova SaaS — project management platform API')
       .setVersion('1.0')
       .addCookieAuth(
         SESSION_COOKIE,

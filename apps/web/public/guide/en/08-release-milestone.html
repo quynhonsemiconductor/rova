@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Instructions for managing Release, Milestone, Artifacts and reading Release Tracking on Rova.">
+  <title>08. Release &amp; Milestone | Rova User Guide</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b4f87'/%3E%3Cpath d='M16 5 25 10v12l-9 5-9-5V10l9-5Z' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../styles.css?v=20260917-06">
+</head>
+<body data-chapter="#chapter-08">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <header class="topbar">
+    <button class="icon-button menu-toggle" type="button" aria-label="Open guide menu" aria-expanded="false" aria-controls="guide-sidebar">
+      <span></span><span></span><span></span>
+    </button>
+    <a class="brand" href="index.html#top" aria-label="Rova User Guide — front page">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="img">
+          <path d="M16 3 27 9v14l-11 6L5 23V9l11-6Z" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="m10 12 6-3 6 3-6 3-6-3Zm0 5 6 3 6-3M10 22l6 3 6-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="brand-copy">
+        <strong>Rova</strong>
+        <span class="brand-subline"><small>User Guide</small><span class="status-pill brand-version">Version 1.0</span></span>
+      </span>
+    </a>
+    <div class="topbar-context" aria-label="Document information">
+      <span>User Guide</span>
+      <label class="language-selector">
+        <span class="sr-only">Select language</span>
+        <select id="guide-language" aria-label="Select language">
+          <option value="vi">Vietnamese</option>
+          <option value="en" selected>English</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <div class="app-shell" id="top">
+    <aside class="sidebar" id="guide-sidebar" aria-label="Guide contents">
+      <div class="sidebar-tools">
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+          <span class="sr-only">Search the contents</span>
+          <input id="guide-search" type="search" placeholder="Search this guide" autocomplete="off">
+        </label>
+      </div>
+
+      <nav class="guide-nav">
+        <p class="nav-label">GET STARTED</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="index.html#gioi-thieu" data-search="introduction begins the table of contents">
+              <span class="nav-number">00</span>
+              <span><strong>Get started</strong><small>Introduction &amp; contents</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-00" aria-label="Open items in Start">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-00">
+            <a href="index.html#truoc-khi-doc" data-search="before starting the target permission scope check"><span>00.1</span>Before you start</a>
+            <a href="index.html#chon-lo-trinh" data-search="select demand role route"><span>00.2</span>Choose a learning path</a>
+            <a href="index.html#phuong-phap-doc" data-search="how to read the tutorial reading method"><span>00.3</span>How to use each chapter</a>
+          </div>
+        </div>
+
+        <p class="nav-label">DAILY WORK</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="01-lam-quen.html#chapter-01" data-search="familiarize yourself with the concept of workspace project team epic feature user story defect task iteration release milestone owner rights">
+              <span class="nav-number">01</span><span><strong>Introduction</strong><small>Workspace, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-01" aria-label="Open items in Getting Started">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-01">
+            <a href="01-lam-quen.html#pham-vi-lam-viec" data-search="workspace project team three scope layers"><span>01.1</span>Three layers of scope</a>
+            <a href="01-lam-quen.html#doi-tuong-cong-viec" data-search="epic feature user story defect task work object"><span>01.2</span>Work item types</a>
+            <a href="01-lam-quen.html#doi-tuong-ke-hoach" data-search="iteration release milestone planning object"><span>01.3</span>Planning object</a>
+            <a href="01-lam-quen.html#quyen-va-trach-nhiem" data-search="owner editor permissions and responsibilities"><span>01.4</span>Rights &amp; responsibilities</a>
+            <a href="01-lam-quen.html#vi-du-xuyen-suot" data-search="simulation example scenario"><span>01.5</span>Scenario walkthrough</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="02-truy-cap-pham-vi.html#chapter-02" data-search="access select scope login home navigation search account information">
+              <span class="nav-number">02</span><span><strong>Access &amp; Scope</strong><small>Login, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-02" aria-label="Opens items in the Access &amp; scope section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-02">
+            <a href="02-truy-cap-pham-vi.html#dang-nhap" data-search="sign in email continue microsoft"><span>02.1</span>Login</a>
+            <a href="02-truy-cap-pham-vi.html#thanh-dieu-huong" data-search="home plan track quality portfolio reports navigation"><span>02.2</span>Navigation bar</a>
+            <a href="02-truy-cap-pham-vi.html#chon-project-team" data-search="workspace project team all teams context selector scope"><span>02.3</span>Select Project &amp; Team</a>
+            <a href="02-truy-cap-pham-vi.html#doc-trang-home" data-search="home my work recent activity project health"><span>02.4</span>Read the Home page</a>
+            <a href="02-truy-cap-pham-vi.html#cong-cu-ca-nhan" data-search="search work items notifications unread profile settings sign out"><span>02.5</span>Personal tools</a>
+            <a href="02-truy-cap-pham-vi.html#xu-ly-truy-cap" data-search="did not see the project team denying access processing"><span>02.6</span>Troubleshoot missing scope</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="03-backlog-cong-viec.html#chapter-03" data-search="backlog user story defect create work item owner team update search">
+              <span class="nav-number">03</span><span><strong>Backlog &amp; Work Items</strong><small>US, DE and Owner</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-03" aria-label="Open items in the Backlog &amp; tasks section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-03">
+            <a href="03-backlog-cong-viec.html#doc-backlog" data-search="read search backlog search filter show fields"><span>03.1</span>Read &amp; find Backlog</a>
+            <a href="03-backlog-cong-viec.html#tao-user-story" data-search="create user story us add new"><span>03.2</span>Create User Story</a>
+            <a href="03-backlog-cong-viec.html#tao-defect" data-search="creates defect log for parent story"><span>03.3</span>Record Defect</a>
+            <a href="03-backlog-cong-viec.html#chon-team-owner" data-search="select team owner no entry membership rights"><span>03.4</span>Select Team &amp; Owner</a>
+            <a href="03-backlog-cong-viec.html#cap-nhat-work-item" data-search="update work item details feature parent story"><span>03.5</span>Update Work Item</a>
+            <a href="03-backlog-cong-viec.html#xu-ly-backlog" data-search="item owner not found to process"><span>03.6</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="04-testing.html#chapter-04" data-search="testing test case test result verdict quality validation">
+              <span class="nav-number">04</span><span><strong>Testing</strong><small>Test Case and Test Result</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-04" aria-label="Open items in the Testing section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-04">
+            <a href="04-testing.html#hieu-luong-testing" data-search="testing flow user story defect test case result"><span>04.1</span>Understand the Testing flow</a>
+            <a href="04-testing.html#mo-test-cases" data-search="open test cases tab list last verdict last run"><span>04.2</span>Open Test Cases</a>
+            <a href="04-testing.html#tao-test-case" data-search="create test case add new type method priority owner assigned"><span>04.3</span>Create Test Case</a>
+            <a href="04-testing.html#hoan-thien-test-case" data-search="description objective preconditions input expected result postconditions"><span>04.4</span>Complete Test Case</a>
+            <a href="04-testing.html#ghi-test-result" data-search="add result build date verdict duration tester notes"><span>04.5</span>Record Test Result</a>
+            <a href="04-testing.html#doc-ket-qua-testing" data-search="last verdict last run results revision history"><span>04.6</span>Read results &amp; history</a>
+            <a href="04-testing.html#quan-ly-test-case-type" data-search="settings project test case types acceptance functional regression"><span>04.7</span>Manage Test Case Type</a>
+            <a href="04-testing.html#xu-ly-testing" data-search="processing not found test case result cannot be saved"><span>04.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="05-lap-ke-hoach.html#chapter-05" data-search="iteration planning timeboxes unscheduled planning committed accepted">
+              <span class="nav-number">05</span><span><strong>Iteration Planning</strong><small>Iteration and scope</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-05" aria-label="Opens items in the Planning section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-05">
+            <a href="05-lap-ke-hoach.html#doc-timeboxes" data-search="read list iteration timeboxes metrics filter"><span>05.1</span>Read the Iteration list</a>
+            <a href="05-lap-ke-hoach.html#tao-iteration" data-search="create iteration add new team start and end date"><span>05.2</span>Create Iteration</a>
+            <a href="05-lap-ke-hoach.html#lap-planned-velocity" data-search="planned velocity points capacity committed accepted planning"><span>05.3</span>Create Planned Velocity</a>
+            <a href="05-lap-ke-hoach.html#gan-cong-viec-iteration" data-search="assign user story defect work item iteration"><span>05.4</span>Add Work Items to Iteration</a>
+            <a href="05-lap-ke-hoach.html#doi-iteration" data-search="change iteration returns unscheduled backlog"><span>05.5</span>Change or return Unscheduled</a>
+            <a href="05-lap-ke-hoach.html#trang-thai-iteration" data-search="status committed planning accepted"><span>05.6</span>Status update</a>
+            <a href="05-lap-ke-hoach.html#xu-ly-iteration" data-search="processing not found iteration failed to save"><span>05.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="06-thuc-hien-cong-viec.html#chapter-06" data-search="task daily task execution status owner actual estimate todo">
+              <span class="nav-number">06</span><span><strong>Work Execution</strong><small>Task, status and time</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-06" aria-label="Open items in the Work Execution section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-06">
+            <a href="06-thuc-hien-cong-viec.html#mo-task-list" data-search="open user story defect tab tasks task list"><span>06.1</span>Open the Task list</a>
+            <a href="06-thuc-hien-cong-viec.html#tao-task-con" data-search="create child task add task name estimate todo actual owner"><span>06.2</span>Create a child Task</a>
+            <a href="06-thuc-hien-cong-viec.html#giao-task" data-search="giao task owner dev owner team member no entry"><span>06.3</span>Assign Task</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-task-state" data-search="task state defined in-progress completed status"><span>06.4</span>Status update</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-gio-task" data-search="estimate to do actual actuals independent hours"><span>06.5</span>Update hours</a>
+            <a href="06-thuc-hien-cong-viec.html#bo-sung-task" data-search="description attachment linked items notes comments revision history"><span>06.6</span>Additional information</a>
+            <a href="06-thuc-hien-cong-viec.html#xu-ly-task" data-search="process does not see task owner status"><span>06.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="07-loi-theo-doi-team.html#chapter-07" data-search="defect quality team status monitors defect quality team progress">
+              <span class="nav-number">07</span><span><strong>Defects &amp; Team Tracking</strong><small>Defect and progress</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-07" aria-label="Open items in the Errors and Team Tracking section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-07">
+            <a href="07-loi-theo-doi-team.html#mo-quality-defect" data-search="quality defects dashboard index list"><span>07.1</span>Open Quality Defects</a>
+            <a href="07-loi-theo-doi-team.html#tao-defect-quality" data-search="add new create defect quality title description severity priority"><span>07.2</span>Create Defect from Quality</a>
+            <a href="07-loi-theo-doi-team.html#phan-loai-defect" data-search="severity priority user story fixed in build classification"><span>07.3</span>Defect Classification</a>
+            <a href="07-loi-theo-doi-team.html#vong-doi-defect" data-search="submitted open fixed closed declined flow state state"><span>07.4</span>Update lifecycle</a>
+            <a href="07-loi-theo-doi-team.html#doc-team-status" data-search="track team status iteration member capacity estimate todo actual"><span>07.5</span>Read Team Status</a>
+            <a href="07-loi-theo-doi-team.html#kiem-tra-rollup" data-search="task parent rollup completed in progress"><span>07.6</span>Check parent progress</a>
+            <a href="07-loi-theo-doi-team.html#xu-ly-chat-luong-team" data-search="does not see defect team status iteration member processing"><span>07.7</span>Troubleshooting</a>
+          </div>
+        </div>
+
+        <p class="nav-label">MANAGEMENT &amp; ADMINISTRATION</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="08-release-milestone.html#chapter-08" data-search="release milestone timebox link artifacts release tracking">
+              <span class="nav-number">08</span><span><strong>Release &amp; Milestone</strong><small>Timebox and link</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-08" aria-label="Open items in the Release and Milestone sections">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-08">
+            <a href="08-release-milestone.html#chon-dung-man-hinh" data-search="plan timeboxes release tracking select screen"><span>08.1</span>Select the correct display</a>
+            <a href="08-release-milestone.html#tao-release" data-search="create release add new planning active accepted"><span>08.2</span>Create Release</a>
+            <a href="08-release-milestone.html#tao-milestone" data-search="creates milestone target status associated releases"><span>08.3</span>Create Milestone</a>
+            <a href="08-release-milestone.html#lien-ket-release-milestone" data-search="release milestone date inferred hand input date"><span>08.4</span>Link &amp; target date</a>
+            <a href="08-release-milestone.html#quan-ly-artifacts" data-search="release milestone artifacts story defect feature epic"><span>08.5</span>Artifacts Management</a>
+            <a href="08-release-milestone.html#doc-release-tracking" data-search="portfolio release tracking burnup points count"><span>08.6</span>Read Release Tracking</a>
+            <a href="08-release-milestone.html#xu-ly-release-milestone" data-search="handle not seeing release milestone artifact burnup"><span>08.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="09-portfolio-capacity.html#chapter-09" data-search="portfolio capacity epic feature allocation publish">
+              <span class="nav-number">09</span><span><strong>Portfolio &amp; Capacity</strong><small>Epic, Feature, allocation</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-09" aria-label="Open the items in the Portfolio and Capacity sections">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-09">
+            <a href="09-portfolio-capacity.html#mo-portfolio-items" data-search="opens portfolio items all teams epic feature"><span>09.1</span>Open Portfolio Items</a>
+            <a href="09-portfolio-capacity.html#phan-biet-epic-feature" data-search="distinguish epic feature hierarchy project team"><span>09.2</span>Distinguishing Epic &amp; Feature</a>
+            <a href="09-portfolio-capacity.html#tao-cap-nhat-portfolio" data-search="create update epic feature owner release state estimate"><span>09.3</span>Create &amp; update Portfolio</a>
+            <a href="09-portfolio-capacity.html#doc-tien-do-portfolio" data-search="percent done estimate count accepted progress"><span>09.4</span>Read Portfolio progress</a>
+            <a href="09-portfolio-capacity.html#tao-capacity-plan" data-search="capacity plan single release points items draft"><span>09.5</span>Create Capacity Plan</a>
+            <a href="09-portfolio-capacity.html#phan-bo-capacity" data-search="team capacity add feature allocate split unassign demand"><span>09.6</span>Capacity allocation</a>
+            <a href="09-portfolio-capacity.html#publish-capacity-plan" data-search="publish without updating fields revert draft published"><span>09.7</span>Publish &amp; Revert</a>
+            <a href="09-portfolio-capacity.html#xu-ly-portfolio-capacity" data-search="handle epic feature plan capacity warning not found"><span>09.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="10-bao-cao.html#chapter-10" data-search="report reports burndown velocity capacity metrics">
+              <span class="nav-number">10</span><span><strong>Reports</strong><small>Read metrics correctly</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-10" aria-label="Open items in the Reports section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-10">
+            <a href="10-bao-cao.html#chon-bao-cao" data-search="select project team scope report type"><span>10.1</span>Select the correct report</a>
+            <a href="10-bao-cao.html#doc-iteration-burndown" data-search="iteration burndown todo ideal accepted points snapshot"><span>10.2</span>Read Iteration Burndown</a>
+            <a href="10-bao-cao.html#doc-velocity" data-search="velocity during after not accepted trend average"><span>10.3</span>Read Velocity</a>
+            <a href="10-bao-cao.html#doc-team-capacity-report" data-search="team capacity hours estimate todo actual member"><span>10.4</span>Read Team Capacity</a>
+            <a href="10-bao-cao.html#hieu-pham-vi-du-lieu" data-search="all teams selected team current frozen history"><span>10.5</span>Understand scope &amp; data</a>
+            <a href="10-bao-cao.html#kiem-tra-du-lieu-thieu" data-search="empty no history no data unavailable zero"><span>10.6</span>Check for missing data</a>
+            <a href="10-bao-cao.html#xu-ly-bao-cao" data-search="handle not seeing report iteration data"><span>10.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="11-quan-tri-workspace.html#chapter-11" data-search="workspace admin admin user project team permission permission audit">
+              <span class="nav-number">11</span><span><strong>Workspace Administration</strong><small>User, permissions, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-11" aria-label="Open items in Workspace Administration">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-11">
+            <a href="11-quan-tri-workspace.html#mo-quan-tri-workspace" data-search="settings opens admin workspace permissions"><span>11.1</span>Open the admin area</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-users" data-search="user management invite member access status"><span>11.2</span>User Management</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-project" data-search="workspaces projects create edit archive restore delete estimation"><span>11.3</span>Project Management</a>
+            <a href="11-quan-tri-workspace.html#phan-quyen-project" data-search="users permissions admin editor all teams add existing user"><span>11.4</span>Assign Project permissions</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-team" data-search="team member lead active deactive workspace admin"><span>11.5</span>Team Management</a>
+            <a href="11-quan-tri-workspace.html#doc-permission-model" data-search="permission model role capability fixed permission"><span>11.6</span>Read Permission Model</a>
+            <a href="11-quan-tri-workspace.html#xem-audit-log" data-search="audit log time actor detail filter"><span>11.7</span>View Audit Log</a>
+            <a href="11-quan-tri-workspace.html#xu-ly-quan-tri" data-search="handle not seeing user project team permissions"><span>11.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="12-viet-backlog-item.html#chapter-12" data-search="agile write backlog item feature user story defect acceptance criteria gherkin">
+              <span class="nav-number">12</span><span><strong>Agile Guideline</strong><small>User Story and Defect</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-12" aria-label="Opens items in the Agile Guideline section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-12">
+            <a href="12-viet-backlog-item.html#viet-user-story" data-search="user story persona goal value business rule acceptance criteria given when then invest"><span>12.1</span>Write User Story</a>
+            <a href="12-viet-backlog-item.html#viet-defect" data-search="defect bug actual expected reproduce severity priority evidence"><span>12.2</span>Write Defect</a>
+          </div>
+        </div>
+      </nav>
+    </aside>
+
+    <button class="sidebar-backdrop" type="button" aria-label="Close menu"></button>
+
+    <main class="main-content" id="main-content">
+      <div class="content-width">
+        <nav class="breadcrumb" aria-label="Path">
+          <a href="index.html#gioi-thieu">Rova User Guide</a>
+          <span aria-hidden="true">/</span>
+          <strong>08. Release &amp; Milestone</strong>
+        </nav>
+
+        <section class="chapter-intro prose-intro" id="chapter-08">
+          <div>
+            <span class="eyebrow">PART 08 · RELEASE &amp; MILESTONE</span>
+            <h2>Manage delivery milestones and read progress in the right place</h2>
+            <p class="lead"><strong>Release</strong> identifies a Project delivery window. <strong>Milestone</strong> records milestones and can link multiple Releases. Create and edit these two objects at <strong>Plan → Timeboxes</strong>; See Release progress here <strong>Portfolio → Release Tracking</strong>.</p>
+          </div>
+          <aside class="chapter-summary" aria-label="After this part you will be able to do it">
+            <strong>After this chapter, you will be able to</strong>
+            <ul>
+              <li>Select the correct Release monitoring or management screen.</li>
+              <li>Create Release with valid date and status.</li>
+              <li>Create Milestones and understand when dates are entered manually.</li>
+              <li>Link Work Item, Feature or Epic to the correct Artifacts type.</li>
+              <li>Read data groups and Burnup charts in Release Tracking.</li>
+            </ul>
+          </aside>
+        </section>
+
+        <section class="section-block prose-section" id="chon-dung-man-hinh">
+          <div class="section-heading">
+            <span class="section-number">08.1</span>
+            <div><h2>Select the correct screen before operating</h2><p>Release information and progress metrics are in two different areas.</p></div>
+          </div>
+          <div class="permission-table-wrap">
+            <table class="permission-table">
+              <thead><tr><th>When needed</th><th>Open at</th><th>Done here</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Create or edit Release</strong></td><td>Plan → Timeboxes → Releases</td><td>Manage Name, Theme, date, status, metadata, Release Notes and Artifacts.</td></tr>
+                <tr><td><strong>Create or edit Milestone</strong></td><td>Plan → Timeboxes → Milestones</td><td>Manage milestones, target dates, Owner, Project/Team scope, Release links and Artifacts.</td></tr>
+                <tr><td><strong>Read Release progress</strong></td><td>Portfolio → Release Tracking</td><td>Read Feature/Work Item groups, status by Points or Count and Burnup chart.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p><strong>Access rights:</strong> Workspace Admin and Project Admin can manage Release/Milestone within the allowed scope. Editor does not use these planning screens. Before proceeding, check Project and Team on the top bar.</p>
+          <p><strong>Do not create Release in Release Tracking.</strong> This is the monitor screen. Release Planning and Dependencies analysis are not active functions in this guide.</p>
+        </section>
+
+        <section class="section-block prose-section" id="tao-release">
+          <div class="section-heading">
+            <span class="section-number">08.2</span>
+            <div><h2>Create Release</h2><p>Use Release when you need to determine the time period and target for a Project delivery.</p></div>
+          </div>
+          <p><strong>Before you start:</strong> select the correct Project, prepare the Release name, start date, expected delivery date and initial status.</p>
+          <div class="permission-table-wrap">
+            <table class="permission-table">
+              <thead><tr><th>Field</th><th>What to enter</th><th>Note</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Release name</strong></td><td>Short name for the delivery.</td><td>Required and should be distinguishable from other Releases.</td></tr>
+                <tr><td><strong>Theme</strong></td><td>Main goal or topic.</td><td>Details can be added later.</td></tr>
+                <tr><td><strong>Start Date / Release Date</strong></td><td>Estimated time period.</td><td>Release Date cannot be earlier than Start Date.</td></tr>
+                <tr><td><strong>Status</strong></td><td>Planning, Active or Accepted.</td><td>This is the Release state, independent of the US/DE state.</td></tr>
+                <tr><td><strong>Description</strong></td><td>Short description or notes.</td><td>Do not use in place of detailed Release Notes.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Open Plan → Timeboxes</strong><p>In the Timebox selector, select <b>Releases</b>. The list only displays Release of the current Project.</p></div></li>
+            <li><span>2</span><div><strong>Select Add New</strong><p>The Create Release form opens with the Release name, Theme, Start Date, Release Date, Status and Description fields.</p></div></li>
+            <li><span>3</span><div><strong>Enter name, date and status</strong><p>Select Planning while Release is still preparing; Active when the delivery is taking place; Accepted when the result has been accepted.</p></div></li>
+            <li><span>4</span><div><strong>Choose how to complete</strong><p><b>Create Release</b> saves and returns to the list. <b>Create with details</b> opens the Release Detail page to add metadata and detailed content.</p></div></li>
+            <li><span>5</span><div><strong>Check the newly created Release</strong><p>Compare name, Project, date and State on the list or Release Detail before assigning Work Item.</p></div></li>
+          </ol>
+          <p>In Release Detail, you can add <strong>Release Theme</strong>, <strong>Notes &amp; Scope Deliverables</strong>, <strong>Release Notes</strong>, Planned Velocity, Plan Estimate and Version. This page does not show Burnup or Accepted progress; Those numbers are in Release Tracking.</p>
+        </section>
+
+        <section class="section-block prose-section" id="tao-milestone">
+          <div class="section-heading">
+            <span class="section-number">08.3</span>
+            <div><h2>Create Milestone</h2><p>Use Milestone for a demo, acceptance, or milestone that may span multiple Releases.</p></div>
+          </div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Open Plan → Timeboxes → Milestones</strong><p>The screen displays Name, Target Start Date, Target End Date and Status.</p></div></li>
+            <li><span>2</span><div><strong>Select Add New</strong><p>Enter Milestone name; Select Status, Owner and add Description or Notes as needed.</p></div></li>
+            <li><span>3</span><div><strong>Select Date or Release link</strong><p>If Associated Releases is not selected, enter Target Start and Target End. If one or more Releases are selected, the target date will be calculated from those Releases.</p></div></li>
+            <li><span>4</span><div><strong>Select Create Milestone</strong><p>After saving, open Milestone Detail to check the date, status, Release link and Project/Team scope.</p></div></li>
+          </ol>
+          <p><strong>Milestone status</strong> includes Planned, At Risk, Met, Missed, Cancelled and Completed. This is the state of the mold; Do not use in place of Release status or Work Item status.</p>
+          <p>Milestone has no velocity, Task Estimate or Iteration carry-over rules.</p>
+        </section>
+
+        <section class="section-block prose-section" id="lien-ket-release-milestone">
+          <div class="section-heading">
+            <span class="section-number">08.4</span>
+            <div><h2>Understand links and target dates</h2><p>Release and Milestone can be created in any order and are associated many-to-many.</p></div>
+          </div>
+          <div class="permission-table-wrap">
+            <table class="permission-table">
+              <thead><tr><th>Link status</th><th>How to determine Milestone date</th><th>When changing</th></tr></thead>
+              <tbody>
+                <tr><td><strong>There is no associated Release</strong></td><td>Target Start and Target End are entered manually.</td><td>Authorized users can edit directly for two days.</td></tr>
+                <tr><td><strong>There is a Release</strong></td><td>Get the Start Date and Release Date of that Release.</td><td>Milestone date becomes inferred value.</td></tr>
+                <tr><td><strong>There are many Releases</strong></td><td>Target Start is the earliest start date; Target End is the latest delivery date.</td><td>Changing the Release list will recalculate the date range.</td></tr>
+                <tr><td><strong>Uninstall all Release</strong></td><td>Milestone returns to manual date entry mode.</td><td>Check and re-enter the appropriate date before saving.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Release and Milestone are two independent relationships on Work Item. Change the Release of a US/DE <strong>does not delete itself</strong> selected Milestones. When a Work Item has a Release, the new Milestones to Add list displays only the Milestones associated with that Release.</p>
+        </section>
+
+        <section class="section-block prose-section" id="quan-ly-artifacts">
+          <div class="section-heading">
+            <span class="section-number">08.5</span>
+            <div><h2>Manage Artifacts of the correct type</h2><p>Artifacts are Work Items or Portfolio Items associated with a Release or Milestone.</p></div>
+          </div>
+          <div class="permission-table-wrap">
+            <table class="permission-table">
+              <thead><tr><th>Scope</th><th>Artifacts are valid</th><th>Rules to remember</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Release</strong></td><td>User Story, Defect and Feature are assigned directly.</td><td>Each US/DE can only have a maximum of one Release. Task and Epic are not Release Artifact.</td></tr>
+                <tr><td><strong>Milestone</strong></td><td>Story, Defect, Feature and Epic; may include descendants inherited from Feature/Epic.</td><td>A Work Item can belong to many Milestones if it is still within the valid scope.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Assign Release from Work Item or Feature</strong><p>Open the appropriate Backlog, Work Item Detail or Portfolio Item and select Release. Selecting another Release will replace the old Release link but will not change the Iteration or Milestone.</p></div></li>
+            <li><span>2</span><div><strong>Check the Release Artifacts tab</strong><p>Open Release Detail → Artifacts to find and check the linked items. Add Artifact allows choosing an existing Story/Defect; This operation does not create a new Work Item.</p></div></li>
+            <li><span>3</span><div><strong>Assign Milestone using multi-select list</strong><p>On the Work Item, select one or more valid Milestones. The selected Milestones must remain visible when you reopen the field.</p></div></li>
+            <li><span>4</span><div><strong>Check Milestone Artifacts</strong><p>Compare directly assigned items and items inherited through Feature/Epic. Duplicate data must be counted only once.</p></div></li>
+          </ol>
+          <p><strong>Do not use Add Artifact to replace the Work Item creation flow.</strong> When you need to create a new US/DE or Feature, create it in Backlog or Portfolio and then assign Release/Milestone to the correct field of the object.</p>
+        </section>
+
+        <section class="section-block prose-section" id="doc-release-tracking">
+          <div class="section-heading">
+            <span class="section-number">08.6</span>
+            <div><h2>Read Release Tracking</h2><p>Use Portfolio → Release Tracking to view the scope and progress of the currently selected Release.</p></div>
+          </div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Check Project and Team</strong><p>Release Tracking uses global scope on the header bar. Switching Team will recalculate the list and chart; the page does not have a second Project/Team filter.</p></div></li>
+            <li><span>2</span><div><strong>Select Release</strong><p>Use the previous button, the Release list and the following button at the top of the page. The date range next to the name is what the Release window is reading.</p></div></li>
+            <li><span>3</span><div><strong>Select Chart Unit</strong><p><b>Points</b> plus Plan Estimate of Story/Defect; <b>Count</b> counts Story/Defect. This selection applies to both the Status and Burnup columns.</p></div></li>
+            <li><span>4</span><div><strong>Select the group to view</strong><p><b>Features in Release</b> is a directly assigned Feature; <b>Derived Features</b> is a Feature that appears because there is a child Story/Defect in Release; <b>Unparented Stories &amp; Defects</b> is an item without a parent Feature.</p></div></li>
+            <li><span>5</span><div><strong>Read Status and Burnup</strong><p>Planned takes Story/Defect of Release. Accepted only counts items in Accepted or Release status; Completed is not considered Accepted.</p></div></li>
+          </ol>
+          <p>Burnup chart displays Accepted, Planned, Preliminary Estimate and target line in the Release window. The Iteration line below helps compare the cycles passing through that time period.</p>
+          <p><strong>Historical void is not zero.</strong> Dates without snapshots are displayed as blanks. Do not conclude that progress is zero if the history is lacking or incomplete.</p>
+          <p><strong>Dependencies · Future</strong> is just a label for future functionality; Do not use it to assess dependency risk in the current version.</p>
+        </section>
+
+        <section class="section-block prose-section" id="xu-ly-release-milestone">
+          <div class="section-heading">
+            <span class="section-number">08.7</span>
+            <div><h2>Troubleshooting</h2><p>Check permissions, scope, and relationships before regenerating data.</p></div>
+          </div>
+          <div class="troubleshoot-list">
+            <article><span>01</span><div><strong>Release or Milestone not found</strong><p>Check the correct Project, uncheck Search/Filters and confirm the account has Workspace Admin or Admin rights at that Project.</p></div></article>
+            <article><span>02</span><div><strong>Cannot create or edit</strong><p>Editor does not have permission to manage Timeboxes. Contact Project Admin instead of requesting additional Team membership.</p></div></article>
+            <article><span>03</span><div><strong>Milestone date cannot be adjusted</strong><p>Milestone is binding at least one Release so the date is inferred. Check Associated Releases before changing associations.</p></div></article>
+            <article><span>05</span><div><strong>Item not available in Release Artifacts</strong><p>Compare Project, item type and Release field. US/DE may be in another Release; Task and Epic do not appear in this list.</p></div></article>
+            <article><span>06</span><div><strong>No Milestone to select on Work Item</strong><p>If the item already has a Release, only the Milestone associated with that Release is included in the new selection list. Previously selected Milestones do not disappear.</p></div></article>
+            <article><span>07</span><div><strong>Burnup is blank or broken</strong><p>Check Release, Team scope, Unit Chart and history quality. Snapshot space is not interpreted as zero.</p></div></article>
+          </div>
+        </section>
+
+        <div class="check-understanding">
+          <strong>Check yourself before moving on to the next section</strong>
+          <ul>
+            <li>Do you know where to create Release is different from where to read Release Tracking?</li>
+            <li>Do you know when the Milestone date was hand-entered or inferred?</li>
+            <li>Have you distinguished Release Artifact from Milestone Artifact?</li>
+            <li>Do you know that Completed is not counted as Accepted in Release Tracking?</li>
+          </ul>
+        </div>
+
+        <nav class="chapter-pagination" aria-label="Navigate between sections">
+          <a class="chapter-nav-link previous" href="07-loi-theo-doi-team.html#chapter-07"><span class="chapter-nav-arrow" aria-hidden="true">←</span><span class="chapter-nav-copy"><small>Previous</small><strong>07. Defects &amp; Team Tracking</strong></span></a>
+          <a class="chapter-nav-link next" href="09-portfolio-capacity.html#chapter-09"><span class="chapter-nav-copy"><small>Next</small><strong>09. Portfolio &amp; Capacity</strong></span><span class="chapter-nav-arrow" aria-hidden="true">→</span></a>
+        </nav>
+
+        <footer class="guide-footer">
+          <div><strong>Rova User Guide</strong><span>08. Release &amp; Milestone · Version 1.0</span></div>
+          <a href="#top">Back to top ↑</a>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <script src="../guide.js?v=20261007-02"></script>
+</body>
+</html>

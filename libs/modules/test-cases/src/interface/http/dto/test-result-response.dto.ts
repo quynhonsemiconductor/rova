@@ -16,6 +16,10 @@ export const TestResultResponseSchema = z.object({
     .uuid()
     .nullable()
     .describe('SNAPSHOT of the Test Case Work Product at result-entry time (BR13).'),
+  workItemKey: z
+    .string()
+    .nullable()
+    .describe('Item key of the `workItemId` snapshot — not the Test Case current Work Product.'),
   testResultKey: z.string().describe('TR-<n>, workspace-unique'),
   build: z.string(),
   runDate: z.string().describe('YYYY-MM-DD'),
@@ -38,6 +42,7 @@ export function toTestResultDto(tr: TestResult): TestResultResponseDto {
     projectId: tr.projectId,
     testCaseId: tr.testCaseId,
     workItemId: tr.workItemId,
+    workItemKey: tr.workItemKey,
     testResultKey: tr.testResultKey,
     build: tr.build,
     runDate: tr.runDate,

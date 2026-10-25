@@ -25,7 +25,7 @@ import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { portfolioItems, teams } from '@db/schema/work';
 
-import { WORKSPACE_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { WORKSPACE_ID, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('capacity publish (e2e)', () => {
   let app: NestFastifyApplication;
@@ -86,7 +86,7 @@ describe('capacity publish (e2e)', () => {
   }
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     capacity = app.get(CapacityPlansService);
     portfolio = app.get(PortfolioItemsService);
     projects = app.get(ProjectsService);

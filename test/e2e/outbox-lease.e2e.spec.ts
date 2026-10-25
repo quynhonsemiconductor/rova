@@ -19,15 +19,23 @@
  * Prereqs: a PostgreSQL with `pnpm db:migrate` applied (migration 0135), DATABASE_URL set.
  */
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NonRetryableError, RetryAfterError, MAX_RETRY_AFTER_MS } from '@platform/outbox';
-import type { DrizzleDB } from '@platform';
+import { Client, Pool } from 'pg';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  NonRetryableError,
+  OutboxService,
+  RetryAfterError,
+  MAX_RETRY_AFTER_MS,
+} from '@platform/outbox';
+import type { DrizzleDB, DrizzleTx } from '@platform';
 import type { BackfillCounts, ScmBackfillService } from '@modules/scm';
 import * as schema from '../../db/schema';
-import { ScmBackfillRelayService } from '../../apps/worker/src/scm/scm-backfill-relay.service';
+import {
+  ScmBackfillRelayService,
+  SCM_BACKFILL_LEASE_MS,
+} from '../../apps/worker/src/scm/scm-backfill-relay.service';
 import { EntraGuestInviteRelayService } from '../../apps/worker/src/identity/entra-guest-invite-relay.service';
 
 const { scmBackfillJobs, guestInviteOutbox } = schema;
@@ -55,9 +63,9 @@ async function insertJob(extra: Partial<typeof scmBackfillJobs.$inferInsert> = {
     .values({
       workspaceId: randomUUID(),
       repositoryId: randomUUID(),
-      // Due a few seconds ago, by the TEST's clock: the column default is the DATABASE's now(), and a container
-      // whose clock runs ahead of the host's would make the row "not yet due" to a relay that reads Date.now().
-      scheduledAt: new Date(Date.now() - 5_000),
+      // Due a few seconds ago, by the DATABASE's clock: the relay selects due rows with now(), so a host clock
+      // that runs behind the container's would otherwise make the row "not yet due" to it.
+      scheduledAt: sql`now() - interval '5 seconds'`,
       ...extra,
     })
     .returning();
@@ -354,6 +362,290 @@ describe('the reaper does what markFailed does for a terminal row, against Postg
     const row = await load(abandoned.id);
     expect(row.status).toBe('failed');
     expect(row.finishedAt).not.toBeNull();
+  });
+});
+
+/** An advisory lock key. The claim takes it in beforeSelect, so a test can hold the claim up for a known time. */
+const CLAIM_LOCK_KEY = 917_341;
+
+/** The backfill relay with its claim serialized on an advisory lock, and the lease the claim stored recorded. */
+class SerializedClaimRelay extends ScmBackfillRelayService {
+  claimedUntil: Date | undefined;
+
+  protected override async beforeSelect(tx: DrizzleTx): Promise<void> {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${CLAIM_LOCK_KEY})`);
+  }
+
+  protected override async stampLeases(
+    tx: DrizzleTx,
+    ids: string[],
+    token: string,
+    leaseMs: number,
+  ): Promise<Map<string, { attempts: number; lockedUntil: Date }>> {
+    const stamped = await super.stampLeases(tx, ids, token, leaseMs);
+    this.claimedUntil = [...stamped.values()][0]?.lockedUntil;
+    return stamped;
+  }
+}
+
+describe('the lease is measured from AFTER the claim lock was acquired, against PostgreSQL', () => {
+  it('a claim that waited for its lock still holds the row a full lease from the moment it got the lock', async () => {
+    const job = await insertJob();
+    const backfill = { run: vi.fn(() => Promise.resolve(COUNTS)) } as unknown as ScmBackfillService;
+    const relay = new SerializedClaimRelay(db, backfill);
+    const holder = new Client({ connectionString: process.env['DATABASE_URL'] });
+    await holder.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT pg_advisory_xact_lock($1)', [CLAIM_LOCK_KEY]);
+      const running = relay.relay();
+      // Wait until the claim is queued behind the lock, then keep it waiting for a known time.
+      for (let i = 0; i < 100; i += 1) {
+        const { rows } = await observer.query<{ n: string }>(
+          `SELECT count(*) AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event = 'advisory'`,
+        );
+        if (Number(rows[0].n) > 0) break;
+        await sleep(50);
+      }
+      await sleep(1_500);
+      // The database's clock at the moment the lock is released. The claim cannot take the lock before this.
+      const { rows: released } = await holder.query<{ t: Date }>('SELECT clock_timestamp() AS t');
+      await holder.query('COMMIT');
+      await running;
+
+      // Counted from the claim's transaction start (now()), the 1.5 s wait would come off the hold: the lease
+      // would expire ~1.5 s early. Counted from statement_timestamp(), it runs a full lease from the lock.
+      const heldFromLock = relay.claimedUntil!.getTime() - released[0].t.getTime();
+      expect(
+        heldFromLock,
+        'the lock wait came off the lease: it was counted from the transaction start, not the lock',
+      ).toBeGreaterThanOrEqual(SCM_BACKFILL_LEASE_MS - 500);
+      expect((await load(job.id)).status).toBe('done');
+    } finally {
+      await holder.end();
+    }
+  }, 30_000);
+});
+
+/**
+ * THE DATABASE CLOCK DECIDES. Every stored timestamp the claim, lease, reaper and back-off read or write is
+ * compared with, or computed from, `now()` inside the SQL statement. A test that skews the HOST clock must
+ * therefore see no change in which rows are claimed, and every stamp must be the DATABASE's time.
+ *
+ * Host skew is faked with `vi.useFakeTimers({ toFake: ['Date'] })` only: timers stay real, so the relay's
+ * own awaits are untouched, and nothing reaches the database clock. The DATABASE times are set with SQL
+ * (`now() + interval ...`), never with the host's `Date.now()`.
+ */
+describe('the database clock decides, not the host clock (skew)', () => {
+  const HOUR = 3_600_000;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Move the HOST clock only. The database clock is untouched. */
+  function skewHostBy(ms: number) {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + ms);
+  }
+
+  /** The database's own `now()`, read from another connection. */
+  async function dbNow(): Promise<Date> {
+    const { rows } = await observer.query<{ t: Date }>('SELECT now() AS t');
+    return rows[0].t;
+  }
+
+  /** Set a backfill job's lease and due time by DATABASE arithmetic. */
+  async function setDbTimes(id: string, sets: { scheduledAt?: string; lockedUntil?: string }) {
+    if (sets.scheduledAt)
+      await observer.query(
+        `UPDATE scm.backfill_jobs SET scheduled_at = ${sets.scheduledAt} WHERE id = $1`,
+        [id],
+      );
+    if (sets.lockedUntil)
+      await observer.query(
+        `UPDATE scm.backfill_jobs SET locked_until = ${sets.lockedUntil} WHERE id = $1`,
+        [id],
+      );
+  }
+
+  it('host 1 h AHEAD: a row due in 5 minutes by the database is NOT claimed', async () => {
+    const job = await insertJob();
+    await setDbTimes(job.id, { scheduledAt: "now() + interval '5 minutes'" });
+    skewHostBy(HOUR);
+    const { relay, run } = makeRelay(() => Promise.resolve(COUNTS));
+
+    await relay.relay();
+
+    expect(run, 'the host clock made a not-yet-due row due').not.toHaveBeenCalled();
+    const row = await load(job.id);
+    expect(row.status).toBe('pending');
+    expect(row.attempts).toBe(0);
+  });
+
+  it('host 1 h AHEAD: a live lease by the database is NOT lapsed, NOT re-claimed and NOT dead-lettered', async () => {
+    const held = await insertJob({
+      attempts: 5,
+      leaseToken: '00000000-0000-4000-8000-0000000000b1',
+    });
+    await setDbTimes(held.id, { lockedUntil: "now() + interval '2 minutes'" });
+    skewHostBy(HOUR);
+    const { relay, run } = makeRelay(() => Promise.resolve(COUNTS));
+
+    await relay.relay();
+
+    expect(run).not.toHaveBeenCalled();
+    const row = await load(held.id);
+    expect(row.status, 'the host clock reaped a row whose database lease is live').toBe('pending');
+    expect(row.lastError).toBeNull();
+  });
+
+  it('host 1 h AHEAD: a failed attempt backs off from the DATABASE clock, not the host clock', async () => {
+    const job = await insertJob();
+    const { relay } = makeRelay(() => Promise.reject(new Error('boom')));
+    const before = await dbNow();
+    skewHostBy(HOUR);
+
+    await relay.relay();
+
+    const after = await dbNow();
+    const row = await load(job.id);
+    expect(row.status).toBe('pending');
+    // Attempt 1 backs off 30 s from the database's now(). Host time would land an hour late.
+    expect(row.scheduledAt.getTime()).toBeGreaterThanOrEqual(before.getTime() + 25_000);
+    expect(row.scheduledAt.getTime()).toBeLessThanOrEqual(after.getTime() + 35_000);
+  });
+
+  it('host 1 h AHEAD: the lease the claim and the renewal stamp expire the relay lease length after the DATABASE now()', async () => {
+    const job = await insertJob();
+    let leaseSecondsAhead = Number.NaN;
+    const { relay } = makeRelay(async () => {
+      // Read the lease from another connection while the call is in flight.
+      const { rows } = await observer.query<{ s: string }>(
+        'SELECT extract(epoch FROM (locked_until - now())) AS s FROM scm.backfill_jobs WHERE id = $1',
+        [job.id],
+      );
+      leaseSecondsAhead = Number(rows[0].s);
+      return COUNTS;
+    });
+    skewHostBy(HOUR);
+
+    await relay.relay();
+
+    // The lease is the relay's own length, counted from the database clock. Host time would add the hour.
+    const leaseSeconds = SCM_BACKFILL_LEASE_MS / 1000;
+    expect(leaseSecondsAhead, 'the lease was stamped from the host clock').toBeGreaterThan(
+      leaseSeconds - 15,
+    );
+    expect(leaseSecondsAhead).toBeLessThan(leaseSeconds + 15);
+    expect((await load(job.id)).status).toBe('done');
+  });
+
+  it('host 1 h AHEAD: an outbox event is stamped created_at by the DATABASE, not the host', async () => {
+    const workspaceId = (
+      await observer.query<{ id: string }>('SELECT id FROM workspace.workspaces LIMIT 1')
+    ).rows[0].id;
+    const eventId = randomUUID();
+    skewHostBy(HOUR);
+    const before = await dbNow();
+
+    await db.transaction((tx) =>
+      new OutboxService(db).writeEvents(
+        [
+          {
+            eventId,
+            eventType: 'test.created_at',
+            version: 1,
+            occurredAt: new Date(),
+            aggregateType: 'test',
+            aggregateId: randomUUID(),
+            workspaceId,
+            payload: {},
+          },
+        ],
+        tx,
+      ),
+    );
+    const after = await dbNow();
+
+    try {
+      const { rows } = await observer.query<{ created_at: Date }>(
+        'SELECT created_at FROM messaging.outbox_events WHERE event_id = $1',
+        [eventId],
+      );
+      // The host clock is an hour ahead. The database's own now() is bounded by the two reads around the write.
+      expect(
+        rows[0].created_at.getTime(),
+        'created_at was stamped from the host clock',
+      ).toBeGreaterThanOrEqual(before.getTime() - 1_000);
+      expect(rows[0].created_at.getTime()).toBeLessThanOrEqual(after.getTime() + 1_000);
+    } finally {
+      await observer.query('DELETE FROM messaging.outbox_events WHERE event_id = $1', [eventId]);
+    }
+  });
+
+  it('host 1 h BEHIND: a row due by the database IS claimed', async () => {
+    const job = await insertJob();
+    await setDbTimes(job.id, { scheduledAt: "now() - interval '1 minute'" });
+    skewHostBy(-HOUR);
+    const { relay, run } = makeRelay(() => Promise.resolve(COUNTS));
+
+    await relay.relay();
+
+    expect(run, 'the host clock hid a row the database says is due').toHaveBeenCalledTimes(1);
+    expect((await load(job.id)).status).toBe('done');
+  });
+
+  it('host 1 h BEHIND: a lease lapsed by the database is re-claimed', async () => {
+    const lapsed = await insertJob({
+      attempts: 1,
+      leaseToken: '00000000-0000-4000-8000-0000000000b2',
+    });
+    await setDbTimes(lapsed.id, { lockedUntil: "now() - interval '1 minute'" });
+    skewHostBy(-HOUR);
+    const { relay, run } = makeRelay(() => Promise.resolve(COUNTS));
+
+    await relay.relay();
+
+    expect(run, 'the host clock kept a lapsed database lease alive').toHaveBeenCalledTimes(1);
+    expect((await load(lapsed.id)).status).toBe('done');
+  });
+
+  it('the guest-invite relay uses the same database clock for its due check', async () => {
+    const invitation = await insertInvitation();
+    const [row] = await db
+      .insert(guestInviteOutbox)
+      .values({
+        invitationId: invitation.id,
+        workspaceId: invitation.workspaceId,
+        email: 'dana@partner.example',
+        inviteToken: 'skew-token',
+      })
+      .returning();
+    await observer.query(
+      "UPDATE messaging.guest_invite_outbox SET scheduled_at = now() + interval '5 minutes' WHERE id = $1",
+      [row.id],
+    );
+    skewHostBy(HOUR);
+    const invite = vi.fn();
+    const relay = new EntraGuestInviteRelayService(
+      db,
+      { invite } as never,
+      { get: () => 'https://rova.example' } as never,
+      { schedule: vi.fn() } as never,
+      { subscribeGuestInviteRelayWake: vi.fn() } as never,
+    );
+
+    await relay.relay();
+
+    expect(invite, 'the host clock made a not-yet-due invitation due').not.toHaveBeenCalled();
+    const [after] = await db
+      .select()
+      .from(guestInviteOutbox)
+      .where(eq(guestInviteOutbox.id, row.id));
+    expect(after.status).toBe('pending');
+    expect(after.attempts).toBe(0);
   });
 });
 

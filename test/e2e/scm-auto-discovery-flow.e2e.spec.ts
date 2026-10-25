@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ScmService, ScmInstallationService, SCM_STORE } from '@modules/scm';
 import type { IScmStore } from '@modules/scm';
 
-import { adminActor, bootRallyApp } from './support/flow-harness';
+import { adminActor, bootRovaApp } from './support/flow-harness';
 
 describe('BA flow: SCM org-level auto-discovery (real AppModule + DB)', () => {
   let app: NestFastifyApplication;
@@ -32,7 +32,7 @@ describe('BA flow: SCM org-level auto-discovery (real AppModule + DB)', () => {
   const repoName = `acme/discovered-${suffix}`;
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     scm = app.get(ScmService);
     installations = app.get(ScmInstallationService);
     store = app.get<IScmStore>(SCM_STORE);

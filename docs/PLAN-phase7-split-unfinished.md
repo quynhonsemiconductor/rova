@@ -45,7 +45,7 @@ Broadcom Rally / from the mockup goes in `CLAUDE.md`, exactly as Phase 7 Test Ca
 
 1. **Target-Iteration team rule differs from the mockup** (D8): a team-less (shared) Iteration is a
    legal target for a team-owned Story. The mockup requires exact team equality.
-2. **Broadcom Rally splits into "the next iteration" automatically; we require an explicit target
+2. **Rally splits into "the next iteration" automatically; we require an explicit target
    choice** from the valid set. The SRS mandates the selector (§5.2), so this is BA-driven.
 3. **No Actual-hour time series exists.** Rally attributes worked hours by their own timestamps.
    Rova's `tasks.actual_hours` is a single manual scalar — `0052_task_actual_hours_manual.sql`
@@ -2066,6 +2066,9 @@ own `test:` PR, the same class as SU-01's two Windows `grep` failures, and **not
       footnote (`velocity.splitCarryoverNote`) reading `splitStoryIds.length` across the bars. Iconless
       and with no `role="alert"` deliberately — a Split is a recorded fact, and the `unclassified` line
       above it is the one thing on this chart a reader must act on.
+      **REMOVED 2026-10-23** (BA retest US-107, TC-55 / TR-57): AC5 says "no additional explanatory
+      message is shown", and the footnote was one. `splitStoryIds` stays in the API with no SPA
+      consumer — the reason is recorded on `VelocityBar.splitStoryIds`.
 - [x] **9.5** ⚠ **AC6's invariant does not match the shipped code and must be reconciled** — §8 Q7.
       `classify` has a **fifth** bucket, `'unclassified'` (an `accepted` item with a NULL
       `accepted_date`, deliberately never guessed). So the true invariant is

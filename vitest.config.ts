@@ -70,6 +70,7 @@ export default defineConfig({
       include: [
         'db/database-url.ts',
         'db/pg-pool-config.ts',
+        'db/pg-ssl.ts',
         'db/stranded-migrations.ts',
         'libs/shared-kernel/src/health.ts',
         'libs/modules/portfolio/src/domain/portfolio-rollup.ts',
@@ -88,13 +89,16 @@ export default defineConfig({
         'libs/modules/collaboration/src/application/collaboration.service.ts',
         'libs/platform/src/aws/secrets-manager-secret-resolver.ts',
         'libs/platform/src/auth/session-auth.guard.ts',
+        'libs/platform/src/mcp-call-token.ts',
         'libs/platform/src/rate-limit/pre-auth-rate-limit.guard.ts',
         'libs/platform/src/http/session-token-redaction.ts',
         'libs/modules/api-tokens/src/interface/http/api-token.guard.ts',
+        'libs/modules/api-tokens/src/interface/http/reject-api-token-auth.guard.ts',
         'libs/platform/src/config/env.schema.ts',
         'libs/platform/src/email/email-delivery.service.ts',
         'libs/platform/src/email/email.service.ts',
         'libs/platform/src/email/providers/graph.provider.ts',
+        'libs/platform/src/email/providers/smtp.provider.ts',
         'libs/platform/src/outbox/relay-lease.ts',
         'libs/platform/src/rate-limit/rate-limit.guard.ts',
         'libs/platform/src/outbox/retry-after.ts',
@@ -120,13 +124,10 @@ export default defineConfig({
         'libs/modules/scm/src/infrastructure/github/github-rest.client.ts',
         'libs/modules/scm/src/infrastructure/github/github-rest.mapper.ts',
         'libs/modules/team-status/src/application/team-status.service.ts',
+        'libs/modules/test-cases/src/application/test-activity-enrichment.ts',
         'libs/modules/test-cases/src/application/test-cases.service.ts',
         'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/test-cases/src/application/test-case-types.service.ts',
-        'libs/modules/test-cases/src/application/test-results.service.ts',
-        'libs/modules/test-cases/src/application/test-case-types.service.ts',
-        'libs/modules/test-cases/src/application/test-results.service.ts',
-        'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/work-items/src/application/work-items.service.ts',
         // Phase 7 SU-01. `split-story.ts` is required (it has `split-story.spec.ts`);
         // `iteration-assignable.ts` is added deliberately even though it has no spec of its own — it
@@ -160,6 +161,7 @@ export default defineConfig({
         // Both fail the ratchet with a diff full of fragments rather than a filename.
         'apps/worker/src/email/bounce-feedback.service.ts',
         'apps/worker/src/identity/entra-guest-invite-relay.service.ts',
+        'apps/worker/src/heartbeat/worker-heartbeat.service.ts',
         'libs/platform/src/context/request-context.ts',
         'libs/platform/src/http/csrf.ts',
         'libs/modules/access/src/interface/http/route-authz-audit.ts',
@@ -167,6 +169,14 @@ export default defineConfig({
         'libs/platform/src/storage/storage.service.ts',
         'libs/platform/src/utils/lexorank.util.ts',
         'libs/shared-kernel/src/permissions.ts',
+        // First apps/api entry. The boot-time roster assert has an ordinary unit spec, and
+        // test/coverage-include.spec.ts excludes only test/ and apps/web — so it must be measured.
+        'apps/api/src/bootstrap/platform-admin-emails.ts',
+        // MCP P1: the principal bridge and the /mcp route. No apostrophes in this comment: the
+        // coverage-include spec parses this list naively, and one would poison it.
+        'apps/api/src/mcp/principal.guard.ts',
+        'apps/api/src/mcp/route.ts',
+        'apps/api/src/mcp/access-jwt.adapter.ts',
       ],
       exclude: ['**/*.spec.ts'],
       // Ratchet: raise these incrementally as coverage improves, NEVER lower them.

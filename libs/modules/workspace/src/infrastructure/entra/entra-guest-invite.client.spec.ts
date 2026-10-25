@@ -179,7 +179,7 @@ describe('EntraGuestInviteClient', () => {
         invitedUserEmailAddress: 'dana@partner.example',
         // The SPA origin, not the tokenized accept link: this relay holds only the token's hash.
         inviteRedirectUrl: 'https://rova.example',
-        // Rally sends its own invitation email — two would be two calls to action for one invite.
+        // Rova sends its own invitation email — two would be two calls to action for one invite.
         sendInvitationMessage: false,
       });
       expect((graphInit.headers as Record<string, string>)['Authorization']).toBe(

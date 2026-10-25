@@ -19,6 +19,9 @@ export interface TestResult {
   testCaseId: string;
   /** SNAPSHOT of the Test Case's Work Product at result-entry time (BR13) — never re-derived. */
   workItemId: string | null;
+  /** That snapshot's item key, for display — the Results list must not show the Test Case's
+   *  CURRENT Work Product, which a Split moves (BA retest TC-51 / TR-84). */
+  workItemKey: string | null;
   testResultKey: string;
   build: string;
   runDate: string;

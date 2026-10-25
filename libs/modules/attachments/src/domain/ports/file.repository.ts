@@ -10,7 +10,7 @@ export const FILE_REPOSITORY = Symbol('FILE_REPOSITORY');
  * route.
  *
  * This layer is the ONLY isolation boundary, by design rather than by omission.
- * Rally is single-tenant (see the drop-multi-tenant design doc), so DB-level
+ * Rova is single-tenant (see the drop-multi-tenant design doc), so DB-level
  * isolation is an explicit non-goal and migration 0070 removed the last
  * `tenant_isolation` RLS policies. An earlier version of this comment said RLS was
  * "currently inert", which read as a gap someone should close — it was not. Closing

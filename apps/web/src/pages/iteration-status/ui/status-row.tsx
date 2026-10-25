@@ -39,6 +39,7 @@ import { RowGutter } from '@/shared/ui/row-gutter'
 import { MilestoneSelectCell, StoryDateCell, TasksProgress } from './status-cells'
 import { useWorkItemFieldCommit } from '../model/use-work-item-field-commit'
 import { NUMERIC_CELL_CLASS } from '@/shared/lib/utils'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 // Single mono stack for numeric cells (digit alignment).
 /**
@@ -127,6 +128,13 @@ export function StatusRow({
 
   // Narrowed locals so closures below keep the non-null type.
   const featureId = item.featureId
+  // ONE gate for both the click and the URL (§3.2:85): a reader without Portfolio access gets
+  // neither, and the two cannot drift apart.
+  const openableFeatureId = canOpenPortfolio ? featureId : null
+  // ONE URL for the Feature cell's link and its click (and one gate for both).
+  const featureHref = openableFeatureId
+    ? entityDetailPath.portfolioItem(openableFeatureId)
+    : undefined
   const featureKey = item.featureKey
   const featureTitle = item.featureTitle
   const milestones = item.milestones
@@ -297,11 +305,8 @@ export function StatusRow({
               // A Feature is a portfolio item, so it opens portfolio detail. Sending
               // its key to `/item/:itemKey` used to work when Feature was a
               // work-item type; that lookup can no longer resolve it.
-              onOpen={
-                canOpenPortfolio && featureId
-                  ? () => void navigate({ to: '/portfolio/$itemId', params: { itemId: featureId } })
-                  : undefined
-              }
+              onOpen={featureHref ? () => void navigate({ href: featureHref }) : undefined}
+              href={featureHref}
             />
           ) : (
             <span className="text-foreground-subtle" style={{ fontSize: 12 }}>

@@ -3409,7 +3409,9 @@ export interface components {
       scopes: string[] | null
       /** Format: date-time */
       expiresAt: string
+      /** Format: date-time */
       lastUsedAt: string | null
+      /** Format: date-time */
       revokedAt: string | null
       /** Format: date-time */
       createdAt: string
@@ -3427,7 +3429,9 @@ export interface components {
       scopes: string[] | null
       /** Format: date-time */
       expiresAt: string
+      /** Format: date-time */
       lastUsedAt: string | null
+      /** Format: date-time */
       revokedAt: string | null
       /** Format: date-time */
       createdAt: string
@@ -3437,6 +3441,7 @@ export interface components {
     RoleResponseDto: {
       /** Format: uuid */
       id: string
+      /** Format: uuid */
       workspaceId: string | null
       name: string
       slug: string
@@ -3455,7 +3460,9 @@ export interface components {
       /** Format: uuid */
       roleId: string
       scopeType: string
+      /** Format: uuid */
       scopeId: string | null
+      /** Format: uuid */
       grantedBy: string | null
       /** Format: date-time */
       createdAt: string
@@ -3497,6 +3504,7 @@ export interface components {
     }
     UpdateProfileDto: {
       displayName?: string
+      /** Format: uri */
       avatarUrl?: string | null
       locale?: string
       timezone?: string
@@ -3539,12 +3547,15 @@ export interface components {
     AuditLogResponseDto: {
       /** Format: uuid */
       id: string
+      /** Format: uuid */
       actorId: string | null
       actorName: string | null
+      /** Format: email */
       actorEmail: string | null
       action: string
       resourceType: string
       resourceId: string
+      /** Format: uuid */
       projectId: string | null
       changes: {
         [key: string]: unknown
@@ -3561,6 +3572,7 @@ export interface components {
       slug: string
       name: string
       description: string | null
+      /** Format: uri */
       avatarUrl: string | null
       settings: {
         [key: string]: unknown
@@ -3573,6 +3585,7 @@ export interface components {
     UpdateWorkspaceDto: {
       name?: string
       description?: string
+      /** Format: uri */
       avatarUrl?: string | null
       settings?: {
         [key: string]: unknown
@@ -3604,8 +3617,11 @@ export interface components {
       email: string
       avatarUrl: string | null
       phone: string | null
+      /** Format: date-time */
       lastLoginAt: string | null
+      /** Format: uuid */
       roleAssignmentId: string | null
+      /** Format: uuid */
       roleId: string | null
       roleSlug: string | null
       roleName: string | null
@@ -3629,6 +3645,7 @@ export interface components {
       workspaceId: string
       /** Format: uuid */
       userId: string
+      /** Format: uuid */
       roleId: string | null
       status: string
       /** Format: date-time */
@@ -3660,6 +3677,7 @@ export interface components {
       workspaceId: string
       /** Format: email */
       email: string
+      /** Format: uuid */
       roleId: string | null
       /** @description Invitation status: pending | accepted | cancelled | expired */
       status: string
@@ -3672,7 +3690,9 @@ export interface components {
       resendCount: number
       /** Format: date-time */
       lastSentAt: string
+      /** Format: uuid */
       acceptedBy: string | null
+      /** Format: date-time */
       acceptedAt: string | null
       /** Format: date-time */
       createdAt: string
@@ -3719,6 +3739,7 @@ export interface components {
       key?: string
       name?: string
       description?: string | null
+      /** Format: uuid */
       leadId?: string | null
       /** @enum {string} */
       status?: 'active' | 'archived'
@@ -3738,6 +3759,7 @@ export interface components {
       key: string
       name: string
       description: string | null
+      /** Format: uuid */
       leadId: string | null
       leadName: string | null
       /** @description YYYY-MM-DD */
@@ -3764,6 +3786,7 @@ export interface components {
       id: string
       key: string
       name: string
+      /** Format: uuid */
       leadId: string | null
       leadName: string | null
       activeSprintName: string | null
@@ -3795,6 +3818,7 @@ export interface components {
         id: string
         /** Format: date-time */
         createdAt: string
+        /** Format: uuid */
         actorId: string | null
         actorName: string | null
         action: string
@@ -3818,6 +3842,7 @@ export interface components {
       key?: string
       name?: string
       description?: string | null
+      /** Format: uuid */
       leadId?: string | null
       startDate?: string | null
       endDate?: string | null
@@ -3860,6 +3885,7 @@ export interface components {
       id: string
       /** Format: uuid */
       projectId: string
+      /** Format: uuid */
       fromStatusId: string | null
       /** Format: uuid */
       toStatusId: string
@@ -3895,7 +3921,8 @@ export interface components {
       projectId: string
       /** Format: uuid */
       userId: string
-      accessLevel: ('admin' | 'editor') | null
+      /** @enum {string|null} */
+      accessLevel: 'admin' | 'editor' | null
       /** @enum {string} */
       status: 'active' | 'removed'
       /** Format: date-time */
@@ -3947,16 +3974,25 @@ export interface components {
       scheduleState: string
       flowState: string
       priority: string
+      /** Format: uuid */
       assigneeId: string | null
       /** @description Owner display name, joined server-side on the grid reads. A picker feed cannot name a Workspace Admin (no project_members row, §2.1), so the row carries its own name. */
       assigneeName: string | null
       devOwnerName: string | null
+      /** Format: uuid */
       reporterId: string | null
+      /** Format: uuid */
       parentId: string | null
+      /** Format: uuid */
       teamId: string | null
+      /** Format: uuid */
       iterationId: string | null
+      /** Format: uuid */
       releaseId: string | null
-      /** @description The Feature this item rolls up to. Always null for a task. */
+      /**
+       * Format: uuid
+       * @description The Feature this item rolls up to. Always null for a task.
+       */
       featureId: string | null
       storyPoints: number | null
       estimateHours: number | null
@@ -3973,6 +4009,7 @@ export interface components {
       }
       /** Format: uuid */
       createdBy: string
+      /** Format: uuid */
       updatedBy: string | null
       /** Format: date-time */
       createdAt: string
@@ -3980,9 +4017,11 @@ export interface components {
       updatedAt: string
       severity: string | null
       foundInEnvironment: string | null
+      /** Format: uuid */
       foundInReleaseId: string | null
       rootCause: string | null
       resolution: string | null
+      /** Format: uuid */
       devOwnerId: string | null
       defectState: string | null
       fixedInBuild: string | null
@@ -4063,12 +4102,14 @@ export interface components {
       severity?: 'critical' | 'major' | 'minor' | 'trivial' | 'none'
       /** @enum {string} */
       foundInEnvironment?: 'development' | 'staging' | 'production' | 'testing'
+      /** Format: uuid */
       foundInReleaseId?: string | null
       /** @enum {string} */
       rootCause?: 'requirements' | 'design' | 'code' | 'test' | 'integration' | 'other'
       /** @enum {string} */
       resolution?:
         'fixed' | 'wont_fix' | 'duplicate' | 'cannot_reproduce' | 'deferred' | 'by_design'
+      /** Format: uuid */
       devOwnerId?: string | null
       /** @enum {string} */
       defectState?: 'submitted' | 'open' | 'fixed' | 'closed' | 'closed_declined'
@@ -4091,16 +4132,25 @@ export interface components {
       scheduleState: string
       flowState: string
       priority: string
+      /** Format: uuid */
       assigneeId: string | null
       /** @description Owner display name, joined server-side on the grid reads. A picker feed cannot name a Workspace Admin (no project_members row, §2.1), so the row carries its own name. */
       assigneeName: string | null
       devOwnerName: string | null
+      /** Format: uuid */
       reporterId: string | null
+      /** Format: uuid */
       parentId: string | null
+      /** Format: uuid */
       teamId: string | null
+      /** Format: uuid */
       iterationId: string | null
+      /** Format: uuid */
       releaseId: string | null
-      /** @description The Feature this item rolls up to. Always null for a task. */
+      /**
+       * Format: uuid
+       * @description The Feature this item rolls up to. Always null for a task.
+       */
       featureId: string | null
       storyPoints: number | null
       estimateHours: number | null
@@ -4117,6 +4167,7 @@ export interface components {
       }
       /** Format: uuid */
       createdBy: string
+      /** Format: uuid */
       updatedBy: string | null
       /** Format: date-time */
       createdAt: string
@@ -4124,9 +4175,11 @@ export interface components {
       updatedAt: string
       severity: string | null
       foundInEnvironment: string | null
+      /** Format: uuid */
       foundInReleaseId: string | null
       rootCause: string | null
       resolution: string | null
+      /** Format: uuid */
       devOwnerId: string | null
       defectState: string | null
       fixedInBuild: string | null
@@ -4168,12 +4221,14 @@ export interface components {
       /** Format: uuid */
       projectId: string
       itemIds: string[]
+      /** Format: uuid */
       releaseId: string | null
     }
     BulkAssignIterationDto: {
       /** Format: uuid */
       projectId: string
       itemIds: string[]
+      /** Format: uuid */
       iterationId: string | null
     }
     UpdateWorkItemDto: {
@@ -4187,12 +4242,19 @@ export interface components {
       flowState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
       /** @enum {string} */
       priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
+      /** Format: uuid */
       assigneeId?: string | null
+      /** Format: uuid */
       reporterId?: string | null
+      /** Format: uuid */
       parentId?: string | null
+      /** Format: uuid */
       teamId?: string | null
+      /** Format: uuid */
       iterationId?: string | null
+      /** Format: uuid */
       releaseId?: string | null
+      /** Format: uuid */
       featureId?: string | null
       storyPoints?: number | null
       estimateHours?: number | null
@@ -4206,14 +4268,21 @@ export interface components {
       customFields?: {
         [key: string]: unknown
       }
-      severity?: ('critical' | 'major' | 'minor' | 'trivial' | 'none') | null
-      foundInEnvironment?: ('development' | 'staging' | 'production' | 'testing') | null
+      /** @enum {string|null} */
+      severity?: 'critical' | 'major' | 'minor' | 'trivial' | 'none' | null
+      /** @enum {string|null} */
+      foundInEnvironment?: 'development' | 'staging' | 'production' | 'testing' | null
+      /** Format: uuid */
       foundInReleaseId?: string | null
-      rootCause?: ('requirements' | 'design' | 'code' | 'test' | 'integration' | 'other') | null
+      /** @enum {string|null} */
+      rootCause?: 'requirements' | 'design' | 'code' | 'test' | 'integration' | 'other' | null
+      /** @enum {string|null} */
       resolution?:
-        ('fixed' | 'wont_fix' | 'duplicate' | 'cannot_reproduce' | 'deferred' | 'by_design') | null
+        'fixed' | 'wont_fix' | 'duplicate' | 'cannot_reproduce' | 'deferred' | 'by_design' | null
+      /** Format: uuid */
       devOwnerId?: string | null
-      defectState?: ('submitted' | 'open' | 'fixed' | 'closed' | 'closed_declined') | null
+      /** @enum {string|null} */
+      defectState?: 'submitted' | 'open' | 'fixed' | 'closed' | 'closed_declined' | null
       fixedInBuild?: string | null
       targetEndDate?: string | null
     }
@@ -4231,7 +4300,9 @@ export interface components {
     RankWorkItemDto: {
       /** Format: uuid */
       projectId: string
+      /** Format: uuid */
       beforeId?: string | null
+      /** Format: uuid */
       afterId?: string | null
     }
     TaskTotalsResponseDto: {
@@ -4258,8 +4329,9 @@ export interface components {
     SplitPreviewResponseDto: {
       /** @description The ONLY field the UI branches on (SRS §11). */
       eligible: boolean
+      /** @enum {string|null} */
       ineligibleReason:
-        ('not_a_story' | 'finished_state' | 'unscheduled' | 'no_target' | 'not_editable') | null
+        'not_a_story' | 'finished_state' | 'unscheduled' | 'no_target' | 'not_editable' | null
       story: {
         /** Format: uuid */
         id: string
@@ -4269,11 +4341,14 @@ export interface components {
         planEstimate: number | null
         /** @enum {string} */
         scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
+        /** Format: uuid */
         releaseId: string | null
         /** @description Resolved from the row’s own release_id, not from a release feed: an Editor holds no release:view, so a name sourced from an offer list would be absent for the callers who own the Story. */
         releaseName: string | null
+        /** Format: uuid */
         iterationId: string | null
         iterationName: string | null
+        /** Format: uuid */
         teamId: string | null
         /** Format: uuid */
         projectId: string
@@ -4297,7 +4372,10 @@ export interface components {
         unfinishedTitle: string
         /** @description BR-12 — "[Continued] " + the bare title */
         continuedTitle: string
-        /** @description BR-06 — the EARLIEST valid target. null when there is none (⇒ ineligible, no_target). */
+        /**
+         * Format: uuid
+         * @description BR-06 — the EARLIEST valid target. null when there is none (⇒ ineligible, no_target).
+         */
         targetIterationId: string | null
       }
       tasks: {
@@ -4328,7 +4406,10 @@ export interface components {
         scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         /** @enum {string} */
         priority: 'none' | 'low' | 'normal' | 'high' | 'urgent'
-        /** @description BR-18 — the Defect’s OWN Iteration, which Split never writes. null = Unscheduled. */
+        /**
+         * Format: uuid
+         * @description BR-18 — the Defect’s OWN Iteration, which Split never writes. null = Unscheduled.
+         */
         explicitIterationId: string | null
         explicitIterationName: string | null
         /**
@@ -4374,6 +4455,7 @@ export interface components {
         title: string
         /** @description Plan Estimate (story points). null = unpointed, which is NOT 0. */
         planEstimate: number | null
+        /** Format: uuid */
         releaseId: string | null
         /** @enum {string} */
         scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
@@ -4437,16 +4519,25 @@ export interface components {
         scheduleState: string
         flowState: string
         priority: string
+        /** Format: uuid */
         assigneeId: string | null
         /** @description Owner display name, joined server-side on the grid reads. A picker feed cannot name a Workspace Admin (no project_members row, §2.1), so the row carries its own name. */
         assigneeName: string | null
         devOwnerName: string | null
+        /** Format: uuid */
         reporterId: string | null
+        /** Format: uuid */
         parentId: string | null
+        /** Format: uuid */
         teamId: string | null
+        /** Format: uuid */
         iterationId: string | null
+        /** Format: uuid */
         releaseId: string | null
-        /** @description The Feature this item rolls up to. Always null for a task. */
+        /**
+         * Format: uuid
+         * @description The Feature this item rolls up to. Always null for a task.
+         */
         featureId: string | null
         storyPoints: number | null
         estimateHours: number | null
@@ -4463,6 +4554,7 @@ export interface components {
         }
         /** Format: uuid */
         createdBy: string
+        /** Format: uuid */
         updatedBy: string | null
         /** Format: date-time */
         createdAt: string
@@ -4470,9 +4562,11 @@ export interface components {
         updatedAt: string
         severity: string | null
         foundInEnvironment: string | null
+        /** Format: uuid */
         foundInReleaseId: string | null
         rootCause: string | null
         resolution: string | null
+        /** Format: uuid */
         devOwnerId: string | null
         defectState: string | null
         fixedInBuild: string | null
@@ -4500,16 +4594,25 @@ export interface components {
         scheduleState: string
         flowState: string
         priority: string
+        /** Format: uuid */
         assigneeId: string | null
         /** @description Owner display name, joined server-side on the grid reads. A picker feed cannot name a Workspace Admin (no project_members row, §2.1), so the row carries its own name. */
         assigneeName: string | null
         devOwnerName: string | null
+        /** Format: uuid */
         reporterId: string | null
+        /** Format: uuid */
         parentId: string | null
+        /** Format: uuid */
         teamId: string | null
+        /** Format: uuid */
         iterationId: string | null
+        /** Format: uuid */
         releaseId: string | null
-        /** @description The Feature this item rolls up to. Always null for a task. */
+        /**
+         * Format: uuid
+         * @description The Feature this item rolls up to. Always null for a task.
+         */
         featureId: string | null
         storyPoints: number | null
         estimateHours: number | null
@@ -4526,6 +4629,7 @@ export interface components {
         }
         /** Format: uuid */
         createdBy: string
+        /** Format: uuid */
         updatedBy: string | null
         /** Format: date-time */
         createdAt: string
@@ -4533,9 +4637,11 @@ export interface components {
         updatedAt: string
         severity: string | null
         foundInEnvironment: string | null
+        /** Format: uuid */
         foundInReleaseId: string | null
         rootCause: string | null
         resolution: string | null
+        /** Format: uuid */
         devOwnerId: string | null
         defectState: string | null
         fixedInBuild: string | null
@@ -4577,6 +4683,7 @@ export interface components {
         startDate: string
         /** @description YYYY-MM-DD — always set: a dateless Iteration is never eligible. */
         endDate: string
+        /** Format: uuid */
         teamId: string | null
       }[]
       taskCount: number
@@ -4602,14 +4709,18 @@ export interface components {
         id: string
         /** Format: uuid */
         projectId: string
+        /** Format: uuid */
         teamId: string | null
         /** Format: uuid */
         storyId: string
         /** @enum {string} */
         type: 'carryover' | 'manual_move'
+        /** Format: uuid */
         sourceIterationId: string | null
+        /** Format: uuid */
         targetIterationId: string | null
         targetEndDate: string | null
+        /** Format: uuid */
         actorId: string | null
         /** Format: date-time */
         occurredAt: string
@@ -4633,16 +4744,25 @@ export interface components {
         scheduleState: string
         flowState: string
         priority: string
+        /** Format: uuid */
         assigneeId: string | null
         /** @description Owner display name, joined server-side on the grid reads. A picker feed cannot name a Workspace Admin (no project_members row, §2.1), so the row carries its own name. */
         assigneeName: string | null
         devOwnerName: string | null
+        /** Format: uuid */
         reporterId: string | null
+        /** Format: uuid */
         parentId: string | null
+        /** Format: uuid */
         teamId: string | null
+        /** Format: uuid */
         iterationId: string | null
+        /** Format: uuid */
         releaseId: string | null
-        /** @description The Feature this item rolls up to. Always null for a task. */
+        /**
+         * Format: uuid
+         * @description The Feature this item rolls up to. Always null for a task.
+         */
         featureId: string | null
         storyPoints: number | null
         estimateHours: number | null
@@ -4659,6 +4779,7 @@ export interface components {
         }
         /** Format: uuid */
         createdBy: string
+        /** Format: uuid */
         updatedBy: string | null
         /** Format: date-time */
         createdAt: string
@@ -4666,9 +4787,11 @@ export interface components {
         updatedAt: string
         severity: string | null
         foundInEnvironment: string | null
+        /** Format: uuid */
         foundInReleaseId: string | null
         rootCause: string | null
         resolution: string | null
+        /** Format: uuid */
         devOwnerId: string | null
         defectState: string | null
         fixedInBuild: string | null
@@ -4685,6 +4808,7 @@ export interface components {
       id: string
       /** Format: date-time */
       createdAt: string
+      /** Format: uuid */
       actorId: string | null
       actorName: string | null
       action: string
@@ -4800,6 +4924,7 @@ export interface components {
       notes: string | null
       /** @enum {string} */
       status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      /** Format: uuid */
       ownerId: string | null
       /** @description YYYY-MM-DD, manually set or derived from linked releases */
       targetStartDate: string | null
@@ -4852,6 +4977,7 @@ export interface components {
       notes: string | null
       /** @enum {string} */
       status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      /** Format: uuid */
       ownerId: string | null
       /** @description YYYY-MM-DD, manually set or derived from linked releases */
       targetStartDate: string | null
@@ -4888,8 +5014,11 @@ export interface components {
       notes?: string | null
       /** @enum {string} */
       status?: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      /** Format: uuid */
       ownerId?: string | null
+      /** Format: date */
       targetStartDate?: string | null
+      /** Format: date */
       targetEndDate?: string | null
       releaseIds?: string[]
       projectIds?: string[]
@@ -4903,6 +5032,7 @@ export interface components {
       title: string
       scheduleState: string
       priority: string
+      /** Format: uuid */
       assigneeId: string | null
       assigneeName: string | null
       storyPoints: number | null
@@ -4930,6 +5060,7 @@ export interface components {
       workspaceId: string
       /** Format: uuid */
       projectId: string
+      /** Format: uuid */
       teamId: string | null
       iterationKey: string | null
       name: string
@@ -4944,6 +5075,7 @@ export interface components {
       startDate: string | null
       /** @description YYYY-MM-DD */
       endDate: string | null
+      /** Format: date-time */
       completedAt: string | null
       /** Format: date-time */
       createdAt: string
@@ -4976,6 +5108,7 @@ export interface components {
       startDate: string | null
       /** @description YYYY-MM-DD */
       endDate: string | null
+      /** Format: uuid */
       teamId: string | null
     }
     IterationOptionDto: {
@@ -4995,6 +5128,7 @@ export interface components {
       id: string
       /** Format: date-time */
       createdAt: string
+      /** Format: uuid */
       actorId: string | null
       actorName: string | null
       action: string
@@ -5012,6 +5146,7 @@ export interface components {
       goal?: string | null
       theme?: string | null
       notes?: string | null
+      /** Format: uuid */
       teamId?: string | null
       /** @enum {string} */
       state?: 'planning' | 'committed' | 'accepted'
@@ -5053,7 +5188,9 @@ export interface components {
         title: string
         /** @enum {string} */
         scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
+        /** Format: uuid */
         iterationId: string | null
+        /** Format: uuid */
         teamId: string | null
         isBlocked: boolean
         blockedReason: string | null
@@ -5063,12 +5200,15 @@ export interface components {
         actual: number
         taskTotal: number
         taskDone: number
+        /** Format: uuid */
         assigneeId: string | null
         /** @description Owner display name, joined server-side — a picker feed cannot name a Workspace Admin */
         assigneeName: string | null
+        /** Format: uuid */
         devOwnerId: string | null
         devOwnerName: string | null
         rank: string
+        /** Format: uuid */
         featureId: string | null
         featureKey: string | null
         featureTitle: string | null
@@ -5128,6 +5268,7 @@ export interface components {
       notes: string | null
       releaseNotes: string | null
       version: string | null
+      /** Format: date-time */
       releasedAt: string | null
       /** Format: date-time */
       createdAt: string
@@ -5191,9 +5332,12 @@ export interface components {
       title: string
       scheduleState: string
       priority: string
+      /** Format: uuid */
       assigneeId: string | null
       assigneeName: string | null
+      /** Format: uuid */
       iterationId: string | null
+      /** Format: uuid */
       releaseId: string | null
       storyPoints: number | null
       /** Format: date-time */
@@ -5213,6 +5357,7 @@ export interface components {
       orderedIds: string[]
     }
     CreateWorkflowTransitionDto: {
+      /** Format: uuid */
       fromStatusId?: string | null
       /** Format: uuid */
       toStatusId: string
@@ -5228,8 +5373,10 @@ export interface components {
       /** Format: uuid */
       authorId: string
       body: string
+      /** Format: uuid */
       parentId: string | null
       isEdited: boolean
+      /** Format: date-time */
       editedAt: string | null
       /** Format: date-time */
       createdAt: string
@@ -5282,15 +5429,25 @@ export interface components {
       refinedEstimate: number
       /** @description Top-down child-count forecast. 0 means not forecast. */
       refinedItemCountEstimate: number
-      /** @description Feature → Epic. Always null for an Epic. */
+      /**
+       * Format: uuid
+       * @description Feature → Epic. Always null for an Epic.
+       */
       parentId: string | null
       parentKey: string | null
-      /** @description Feature only */
+      /**
+       * Format: uuid
+       * @description Feature only
+       */
       teamId: string | null
       teamName: string | null
-      /** @description Feature only */
+      /**
+       * Format: uuid
+       * @description Feature only
+       */
       releaseId: string | null
       releaseName: string | null
+      /** Format: uuid */
       ownerId: string | null
       ownerName: string | null
       /** @description YYYY-MM-DD */
@@ -5300,6 +5457,7 @@ export interface components {
       /** @description YYYY-MM-DD */
       marketReleaseDate: string | null
       rank: string
+      /** Format: date-time */
       archivedAt: string | null
       /** Format: date-time */
       createdAt: string
@@ -5332,7 +5490,8 @@ export interface components {
         state: 'complete' | 'on_track' | 'at_risk' | 'late' | 'not_started'
         percentDone: number | null
         percentElapsed: number | null
-        indeterminate: ('no_dates' | 'no_work') | null
+        /** @enum {string|null} */
+        indeterminate: 'no_dates' | 'no_work' | null
       }
       estimate: {
         points: {
@@ -5396,15 +5555,25 @@ export interface components {
       refinedEstimate: number
       /** @description Top-down child-count forecast. 0 means not forecast. */
       refinedItemCountEstimate: number
-      /** @description Feature → Epic. Always null for an Epic. */
+      /**
+       * Format: uuid
+       * @description Feature → Epic. Always null for an Epic.
+       */
       parentId: string | null
       parentKey: string | null
-      /** @description Feature only */
+      /**
+       * Format: uuid
+       * @description Feature only
+       */
       teamId: string | null
       teamName: string | null
-      /** @description Feature only */
+      /**
+       * Format: uuid
+       * @description Feature only
+       */
       releaseId: string | null
       releaseName: string | null
+      /** Format: uuid */
       ownerId: string | null
       ownerName: string | null
       /** @description YYYY-MM-DD */
@@ -5414,6 +5583,7 @@ export interface components {
       /** @description YYYY-MM-DD */
       marketReleaseDate: string | null
       rank: string
+      /** Format: date-time */
       archivedAt: string | null
       /** Format: date-time */
       createdAt: string
@@ -5446,7 +5616,8 @@ export interface components {
         state: 'complete' | 'on_track' | 'at_risk' | 'late' | 'not_started'
         percentDone: number | null
         percentElapsed: number | null
-        indeterminate: ('no_dates' | 'no_work') | null
+        /** @enum {string|null} */
+        indeterminate: 'no_dates' | 'no_work' | null
       }
       estimate: {
         points: {
@@ -5498,14 +5669,18 @@ export interface components {
        * @enum {string}
        */
       priority: 'none' | 'low' | 'normal' | 'high' | 'urgent'
+      /** Format: uuid */
       iterationId: string | null
       /** @description The BA's `Iteration` column */
       iterationName: string | null
       rank: string
       /** Format: uuid */
       projectId: string
+      /** Format: uuid */
       releaseId: string | null
+      /** Format: uuid */
       teamId: string | null
+      /** Format: uuid */
       assigneeId: string | null
       releaseName: string | null
       projectName: string | null
@@ -5539,9 +5714,13 @@ export interface components {
       preliminaryEstimate?: 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
       refinedEstimate?: number
       refinedItemCountEstimate?: number
+      /** Format: uuid */
       parentId?: string | null
+      /** Format: uuid */
       teamId?: string | null
+      /** Format: uuid */
       releaseId?: string | null
+      /** Format: uuid */
       ownerId?: string | null
       plannedStartDate?: string | null
       plannedEndDate?: string | null
@@ -5570,9 +5749,13 @@ export interface components {
       preliminaryEstimate?: 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
       refinedEstimate?: number
       refinedItemCountEstimate?: number
+      /** Format: uuid */
       parentId?: string | null
+      /** Format: uuid */
       teamId?: string | null
+      /** Format: uuid */
       releaseId?: string | null
+      /** Format: uuid */
       ownerId?: string | null
       milestoneIds?: string[]
       plannedStartDate?: string | null
@@ -5580,7 +5763,9 @@ export interface components {
       marketReleaseDate?: string | null
     }
     RankPortfolioItemDto: {
+      /** Format: uuid */
       beforeId?: string | null
+      /** Format: uuid */
       afterId?: string | null
     }
     NotificationResponseDto: {
@@ -5595,7 +5780,9 @@ export interface components {
         [key: string]: unknown
       }
       isRead: boolean
+      /** Format: date-time */
       readAt: string | null
+      /** Format: uuid */
       actorId: string | null
       /** Format: date-time */
       createdAt: string
@@ -5609,6 +5796,7 @@ export interface components {
         /** Format: uuid */
         projectId: string
         projectName: string
+        /** Format: uuid */
         teamId: string | null
         teamName: string | null
         timeZone: string
@@ -5616,6 +5804,7 @@ export interface components {
       timebox: {
         /** Format: uuid */
         iterationId: string
+        /** Format: uuid */
         timeboxGroupId: string | null
         name: string
         startDate: string | null
@@ -5680,6 +5869,7 @@ export interface components {
         /** Format: uuid */
         projectId: string
         projectName: string
+        /** Format: uuid */
         teamId: string | null
         teamName: string | null
         timeZone: string
@@ -5714,6 +5904,7 @@ export interface components {
         /** Format: uuid */
         projectId: string
         projectName: string
+        /** Format: uuid */
         teamId: string | null
         teamName: string | null
         timeZone: string
@@ -5721,6 +5912,7 @@ export interface components {
       timebox: {
         /** Format: uuid */
         iterationId: string
+        /** Format: uuid */
         timeboxGroupId: string | null
         name: string
         startDate: string | null
@@ -5734,6 +5926,7 @@ export interface components {
         actualHours: number
       }
       teams: {
+        /** Format: uuid */
         id: string | null
         name: string
         archived: boolean
@@ -5744,6 +5937,7 @@ export interface components {
           actualHours: number
         }
         members: {
+          /** Format: uuid */
           id: string | null
           name: string
           hours: {
@@ -5767,6 +5961,7 @@ export interface components {
         /** Format: uuid */
         projectId: string
         projectName: string
+        /** Format: uuid */
         teamId: string | null
         teamName: string | null
         timeZone: string
@@ -5774,6 +5969,7 @@ export interface components {
       timebox: {
         /** Format: uuid */
         iterationId: string
+        /** Format: uuid */
         timeboxGroupId: string | null
         name: string
         startDate: string | null
@@ -5806,8 +6002,10 @@ export interface components {
         storyId: string
         storyKey: string
         storyTitle: string
+        /** Format: uuid */
         fromIterationId: string | null
         fromIterationName: string | null
+        /** Format: uuid */
         toIterationId: string | null
         toIterationName: string | null
         /** Format: date-time */
@@ -5825,6 +6023,7 @@ export interface components {
         /** Format: uuid */
         projectId: string
         projectName: string
+        /** Format: uuid */
         teamId: string | null
         teamName: string | null
         timeZone: string
@@ -5852,6 +6051,7 @@ export interface components {
         itemKey: string
         name: string
         teams: {
+          /** Format: uuid */
           id: string | null
           name: string
         }[]
@@ -5970,7 +6170,9 @@ export interface components {
       plannedStartDate: string | null
       /** @description YYYY-MM-DD */
       plannedEndDate: string | null
+      /** Format: date-time */
       publishedAt: string | null
+      /** Format: uuid */
       publishedBy: string | null
       /** Format: date-time */
       createdAt: string
@@ -6012,10 +6214,16 @@ export interface components {
          */
         projectId: string
         projectName: string | null
-        /** @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan */
+        /**
+         * Format: uuid
+         * @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan
+         */
         teamId: string | null
         teamName: string | null
-        /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
+        /**
+         * Format: uuid
+         * @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release
+         */
         releaseId: string | null
         /** @description Committed demand summed over this Feature’s allocations */
         estimated: number
@@ -6042,7 +6250,10 @@ export interface components {
           preliminary: number | null
         }
         teamIds: string[]
-        /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
+        /**
+         * Format: uuid
+         * @description Rally's Planned Team Assignment — the team that owns this Feature in the plan
+         */
         primaryTeamId: string | null
         /** @description Any allocation has no team — Rally’s unassigned warning */
         unallocated: boolean
@@ -6056,6 +6267,7 @@ export interface components {
         portfolioItemId: string
         itemKey: string
         name: string
+        /** Format: uuid */
         teamId: string | null
         isPrimary: boolean
         /** @description The FIXED committed value on this row (SRS §11) — never resolved on read */
@@ -6173,7 +6385,9 @@ export interface components {
         plannedStartDate: string | null
         /** @description YYYY-MM-DD */
         plannedEndDate: string | null
+        /** Format: date-time */
         publishedAt: string | null
+        /** Format: uuid */
         publishedBy: string | null
         /** Format: date-time */
         createdAt: string
@@ -6215,10 +6429,16 @@ export interface components {
            */
           projectId: string
           projectName: string | null
-          /** @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan */
+          /**
+           * Format: uuid
+           * @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan
+           */
           teamId: string | null
           teamName: string | null
-          /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
+          /**
+           * Format: uuid
+           * @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release
+           */
           releaseId: string | null
           /** @description Committed demand summed over this Feature’s allocations */
           estimated: number
@@ -6245,7 +6465,10 @@ export interface components {
             preliminary: number | null
           }
           teamIds: string[]
-          /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
+          /**
+           * Format: uuid
+           * @description Rally's Planned Team Assignment — the team that owns this Feature in the plan
+           */
           primaryTeamId: string | null
           /** @description Any allocation has no team — Rally’s unassigned warning */
           unallocated: boolean
@@ -6259,6 +6482,7 @@ export interface components {
           portfolioItemId: string
           itemKey: string
           name: string
+          /** Format: uuid */
           teamId: string | null
           isPrimary: boolean
           /** @description The FIXED committed value on this row (SRS §11) — never resolved on read */
@@ -6367,7 +6591,9 @@ export interface components {
         plannedStartDate: string | null
         /** @description YYYY-MM-DD */
         plannedEndDate: string | null
+        /** Format: date-time */
         publishedAt: string | null
+        /** Format: uuid */
         publishedBy: string | null
         /** Format: date-time */
         createdAt: string
@@ -6409,10 +6635,16 @@ export interface components {
            */
           projectId: string
           projectName: string | null
-          /** @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan */
+          /**
+           * Format: uuid
+           * @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan
+           */
           teamId: string | null
           teamName: string | null
-          /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
+          /**
+           * Format: uuid
+           * @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release
+           */
           releaseId: string | null
           /** @description Committed demand summed over this Feature’s allocations */
           estimated: number
@@ -6439,7 +6671,10 @@ export interface components {
             preliminary: number | null
           }
           teamIds: string[]
-          /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
+          /**
+           * Format: uuid
+           * @description Rally's Planned Team Assignment — the team that owns this Feature in the plan
+           */
           primaryTeamId: string | null
           /** @description Any allocation has no team — Rally’s unassigned warning */
           unallocated: boolean
@@ -6453,6 +6688,7 @@ export interface components {
           portfolioItemId: string
           itemKey: string
           name: string
+          /** Format: uuid */
           teamId: string | null
           isPrimary: boolean
           /** @description The FIXED committed value on this row (SRS §11) — never resolved on read */
@@ -6520,7 +6756,7 @@ export interface components {
           | 'estimated_exceeds_capacity'
         )[]
       }
-      /** @constant */
+      /** @enum {boolean} */
       fieldsRolledBack: false
     }
     ForecastCapacityDto: {
@@ -6552,7 +6788,8 @@ export interface components {
        * @enum {string}
        */
       basis: 'history' | 'supplied'
-      insufficientData: ('no_history' | 'too_little_history' | 'no_window' | 'no_cadence') | null
+      /** @enum {string|null} */
+      insufficientData: 'no_history' | 'too_little_history' | 'no_window' | 'no_cadence' | null
     }
     SetCapacityDto: {
       capacity: number | null
@@ -6560,6 +6797,7 @@ export interface components {
     AllocateDto: {
       /** Format: uuid */
       portfolioItemId: string
+      /** Format: uuid */
       teamId?: string | null
       value?: number
     }
@@ -6599,7 +6837,9 @@ export interface components {
         plannedStartDate: string | null
         /** @description YYYY-MM-DD */
         plannedEndDate: string | null
+        /** Format: date-time */
         publishedAt: string | null
+        /** Format: uuid */
         publishedBy: string | null
         /** Format: date-time */
         createdAt: string
@@ -6641,10 +6881,16 @@ export interface components {
            */
           projectId: string
           projectName: string | null
-          /** @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan */
+          /**
+           * Format: uuid
+           * @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan
+           */
           teamId: string | null
           teamName: string | null
-          /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
+          /**
+           * Format: uuid
+           * @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release
+           */
           releaseId: string | null
           /** @description Committed demand summed over this Feature’s allocations */
           estimated: number
@@ -6671,7 +6917,10 @@ export interface components {
             preliminary: number | null
           }
           teamIds: string[]
-          /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
+          /**
+           * Format: uuid
+           * @description Rally's Planned Team Assignment — the team that owns this Feature in the plan
+           */
           primaryTeamId: string | null
           /** @description Any allocation has no team — Rally’s unassigned warning */
           unallocated: boolean
@@ -6685,6 +6934,7 @@ export interface components {
           portfolioItemId: string
           itemKey: string
           name: string
+          /** Format: uuid */
           teamId: string | null
           isPrimary: boolean
           /** @description The FIXED committed value on this row (SRS §11) — never resolved on read */
@@ -6768,6 +7018,7 @@ export interface components {
     }
     UpdateAllocationDto: {
       value?: number | null
+      /** Format: uuid */
       teamId?: string | null
     }
     ScmConnectionResponseDto: {
@@ -6806,6 +7057,7 @@ export interface components {
         action: 'A' | 'M' | 'D'
         path: string
       }[]
+      /** Format: date-time */
       committedAt: string | null
     }
     ScmInstallationResponseDto: {
@@ -6833,6 +7085,7 @@ export interface components {
       lastSync: {
         /** @enum {string} */
         status: 'pending' | 'done' | 'failed'
+        /** Format: date-time */
         at: string | null
         prs: number
         commits: number
@@ -6844,6 +7097,7 @@ export interface components {
       /** @enum {string} */
       provider: 'github' | 'ghe'
       fullName: string
+      /** Format: uri */
       baseUrl?: string | null
     }
     ScmSyncResponseDto: {
@@ -6857,9 +7111,13 @@ export interface components {
       workspaceId: string
       /** Format: uuid */
       projectId: string
-      /** @description NULL = "Project backlog" (SRS §5). */
+      /**
+       * Format: uuid
+       * @description NULL = "Project backlog" (SRS §5).
+       */
       teamId: string | null
       teamName: string | null
+      /** Format: uuid */
       workItemId: string | null
       /** @description TC-<n>, workspace-unique */
       testCaseKey: string
@@ -6877,15 +7135,21 @@ export interface components {
       method: 'manual' | 'automated'
       /** @enum {string} */
       priority: 'low' | 'normal' | 'high' | 'urgent'
+      /** Format: uuid */
       ownerId: string | null
       ownerName: string | null
+      /** Format: uuid */
       assigneeId: string | null
       assigneeName: string | null
       rank: string
-      /** @description Maintained by trg_test_case_last_result (D6). NULL renders "Not Run" (BR10). */
-      lastVerdict: ('pass' | 'fail' | 'blocked' | 'error' | 'inconclusive' | 'not_run') | null
+      /**
+       * @description Maintained by trg_test_case_last_result (D6). NULL renders "Not Run" (BR10).
+       * @enum {string|null}
+       */
+      lastVerdict: 'pass' | 'fail' | 'blocked' | 'error' | 'inconclusive' | 'not_run' | null
       /** @description YYYY-MM-DD. NULL renders "Not run yet" (BR10). */
       lastRun: string | null
+      /** Format: uuid */
       lastResultId: string | null
       /** Format: uuid */
       createdBy: string
@@ -6920,13 +7184,17 @@ export interface components {
       method?: 'manual' | 'automated'
       /** @enum {string} */
       priority?: 'low' | 'normal' | 'high' | 'urgent'
+      /** Format: uuid */
       ownerId?: string | null
+      /** Format: uuid */
       assigneeId?: string | null
     }
     RankTestCaseDto: {
       /** Format: uuid */
       workItemId: string
+      /** Format: uuid */
       beforeId?: string | null
+      /** Format: uuid */
       afterId?: string | null
     }
     TestResultResponseDto: {
@@ -6938,8 +7206,13 @@ export interface components {
       projectId: string
       /** Format: uuid */
       testCaseId: string
-      /** @description SNAPSHOT of the Test Case Work Product at result-entry time (BR13). */
+      /**
+       * Format: uuid
+       * @description SNAPSHOT of the Test Case Work Product at result-entry time (BR13).
+       */
       workItemId: string | null
+      /** @description Item key of the `workItemId` snapshot — not the Test Case current Work Product. */
+      workItemKey: string | null
       /** @description TR-<n>, workspace-unique */
       testResultKey: string
       build: string

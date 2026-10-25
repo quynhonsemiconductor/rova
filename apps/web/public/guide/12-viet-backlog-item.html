@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Hướng dẫn viết User Story và Defect rõ ràng, có thể ước lượng và kiểm thử trên Rova.">
+  <title>12. Agile Guideline | Rova User Guide</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b4f87'/%3E%3Cpath d='M16 5 25 10v12l-9 5-9-5V10l9-5Z' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css?v=20260917-06">
+</head>
+<body data-chapter="#chapter-12">
+  <a class="skip-link" href="#main-content">Đi đến nội dung chính</a>
+
+  <header class="topbar">
+    <button class="icon-button menu-toggle" type="button" aria-label="Mở menu hướng dẫn" aria-expanded="false" aria-controls="guide-sidebar">
+      <span></span><span></span><span></span>
+    </button>
+    <a class="brand" href="index.html#top" aria-label="Rova User Guide — trang đầu">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="img">
+          <path d="M16 3 27 9v14l-11 6L5 23V9l11-6Z" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="m10 12 6-3 6 3-6 3-6-3Zm0 5 6 3 6-3M10 22l6 3 6-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="brand-copy">
+        <strong>Rova</strong>
+        <span class="brand-subline"><small>User Guide</small><span class="status-pill brand-version">Phiên bản 1.0</span></span>
+      </span>
+    </a>
+    <div class="topbar-context" aria-label="Thông tin tài liệu">
+      <span>Hướng dẫn sử dụng</span>
+      <label class="language-selector">
+        <span class="sr-only">Chọn ngôn ngữ</span>
+        <select id="guide-language" aria-label="Chọn ngôn ngữ">
+          <option value="vi" selected>Tiếng Việt</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <div class="app-shell" id="top">
+    <aside class="sidebar" id="guide-sidebar" aria-label="Mục lục hướng dẫn">
+      <div class="sidebar-tools">
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+          <span class="sr-only">Tìm trong mục lục</span>
+          <input id="guide-search" type="search" placeholder="Tìm trong hướng dẫn" autocomplete="off">
+        </label>
+      </div>
+
+      <nav class="guide-nav">
+        <p class="nav-label">BẮT ĐẦU</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="index.html#gioi-thieu" data-search="giới thiệu bắt đầu mục lục">
+              <span class="nav-number">00</span>
+              <span><strong>Bắt đầu</strong><small>Giới thiệu & mục lục</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-00" aria-label="Mở các mục trong phần Bắt đầu">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-00">
+            <a href="index.html#truoc-khi-doc" data-search="trước khi bắt đầu kiểm tra phạm vi quyền mục tiêu"><span>00.1</span>Trước khi bắt đầu</a>
+            <a href="index.html#chon-lo-trinh" data-search="chọn lộ trình vai trò nhu cầu"><span>00.2</span>Chọn lộ trình</a>
+            <a href="index.html#phuong-phap-doc" data-search="cách đọc phương pháp đọc bài hướng dẫn"><span>00.3</span>Cách đọc một bài</a>
+          </div>
+        </div>
+
+        <p class="nav-label">SỬ DỤNG HẰNG NGÀY</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="01-lam-quen.html#chapter-01" data-search="làm quen khái niệm workspace project team epic feature user story defect task iteration release milestone quyền owner">
+              <span class="nav-number">01</span><span><strong>Làm quen</strong><small>Workspace, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-01" aria-label="Mở các mục trong phần Làm quen">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-01">
+            <a href="01-lam-quen.html#pham-vi-lam-viec" data-search="workspace project team ba lớp phạm vi"><span>01.1</span>Ba lớp phạm vi</a>
+            <a href="01-lam-quen.html#doi-tuong-cong-viec" data-search="epic feature user story defect task đối tượng công việc"><span>01.2</span>Đối tượng công việc</a>
+            <a href="01-lam-quen.html#doi-tuong-ke-hoach" data-search="iteration release milestone đối tượng lập kế hoạch"><span>01.3</span>Đối tượng lập kế hoạch</a>
+            <a href="01-lam-quen.html#quyen-va-trach-nhiem" data-search="quyền trách nhiệm người tạo owner editor"><span>01.4</span>Quyền & trách nhiệm</a>
+            <a href="01-lam-quen.html#vi-du-xuyen-suot" data-search="tình huống ví dụ mô phỏng"><span>01.5</span>Mô phỏng tình huống</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="02-truy-cap-pham-vi.html#chapter-02" data-search="truy cập chọn phạm vi đăng nhập home điều hướng tìm kiếm thông báo tài khoản">
+              <span class="nav-number">02</span><span><strong>Truy cập & phạm vi</strong><small>Đăng nhập, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-02" aria-label="Mở các mục trong phần Truy cập & phạm vi">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-02">
+            <a href="02-truy-cap-pham-vi.html#dang-nhap" data-search="đăng nhập email continue microsoft"><span>02.1</span>Đăng nhập</a>
+            <a href="02-truy-cap-pham-vi.html#thanh-dieu-huong" data-search="home plan track quality portfolio reports điều hướng"><span>02.2</span>Thanh điều hướng</a>
+            <a href="02-truy-cap-pham-vi.html#chon-project-team" data-search="workspace project team all teams context selector phạm vi"><span>02.3</span>Chọn Project & Team</a>
+            <a href="02-truy-cap-pham-vi.html#doc-trang-home" data-search="home my work recent activity project health"><span>02.4</span>Đọc trang Home</a>
+            <a href="02-truy-cap-pham-vi.html#cong-cu-ca-nhan" data-search="search work items notifications unread profile settings sign out"><span>02.5</span>Công cụ cá nhân</a>
+            <a href="02-truy-cap-pham-vi.html#xu-ly-truy-cap" data-search="không thấy project team từ chối truy cập xử lý"><span>02.6</span>Xử lý khi không thấy phạm vi</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="03-backlog-cong-viec.html#chapter-03" data-search="backlog user story defect tạo công việc owner team cập nhật tìm kiếm">
+              <span class="nav-number">03</span><span><strong>Backlog & công việc</strong><small>US, DE và Owner</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-03" aria-label="Mở các mục trong phần Backlog & công việc">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-03">
+            <a href="03-backlog-cong-viec.html#doc-backlog" data-search="đọc tìm backlog search filter show fields"><span>03.1</span>Đọc & tìm Backlog</a>
+            <a href="03-backlog-cong-viec.html#tao-user-story" data-search="tạo user story us add new"><span>03.2</span>Tạo User Story</a>
+            <a href="03-backlog-cong-viec.html#tao-defect" data-search="tạo ghi nhận defect lỗi parent story"><span>03.3</span>Ghi nhận Defect</a>
+            <a href="03-backlog-cong-viec.html#chon-team-owner" data-search="chọn team owner no entry quyền membership"><span>03.4</span>Chọn Team & Owner</a>
+            <a href="03-backlog-cong-viec.html#cap-nhat-work-item" data-search="cập nhật work item chi tiết feature parent story"><span>03.5</span>Cập nhật Work Item</a>
+            <a href="03-backlog-cong-viec.html#xu-ly-backlog" data-search="không tìm thấy item owner xử lý"><span>03.6</span>Xử lý tình huống</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="04-testing.html#chapter-04" data-search="testing test case test result verdict quality validation">
+              <span class="nav-number">04</span><span><strong>Testing</strong><small>Test Case và Test Result</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-04" aria-label="Mở các mục trong phần Testing">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-04">
+            <a href="04-testing.html#hieu-luong-testing" data-search="luồng testing user story defect test case result"><span>04.1</span>Hiểu luồng Testing</a>
+            <a href="04-testing.html#mo-test-cases" data-search="mở test cases tab danh sách last verdict last run"><span>04.2</span>Mở Test Cases</a>
+            <a href="04-testing.html#tao-test-case" data-search="tạo test case add new type method priority owner assigned"><span>04.3</span>Tạo Test Case</a>
+            <a href="04-testing.html#hoan-thien-test-case" data-search="description objective preconditions input expected result postconditions"><span>04.4</span>Hoàn thiện Test Case</a>
+            <a href="04-testing.html#ghi-test-result" data-search="add result build date verdict duration tester notes"><span>04.5</span>Ghi Test Result</a>
+            <a href="04-testing.html#doc-ket-qua-testing" data-search="last verdict last run results revision history"><span>04.6</span>Đọc kết quả & lịch sử</a>
+            <a href="04-testing.html#quan-ly-test-case-type" data-search="settings project test case types acceptance functional regression"><span>04.7</span>Quản lý Test Case Type</a>
+            <a href="04-testing.html#xu-ly-testing" data-search="xử lý không thấy test case result không lưu được"><span>04.8</span>Xử lý tình huống</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="05-lap-ke-hoach.html#chapter-05" data-search="iteration lập kế hoạch timeboxes unscheduled planning committed accepted">
+              <span class="nav-number">05</span><span><strong>Lập kế hoạch</strong><small>Iteration và phạm vi</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-05" aria-label="Mở các mục trong phần Lập kế hoạch">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-05">
+            <a href="05-lap-ke-hoach.html#doc-timeboxes" data-search="đọc danh sách iteration timeboxes metrics filter"><span>05.1</span>Đọc danh sách Iteration</a>
+            <a href="05-lap-ke-hoach.html#tao-iteration" data-search="tạo iteration add new ngày bắt đầu kết thúc team"><span>05.2</span>Tạo Iteration</a>
+            <a href="05-lap-ke-hoach.html#lap-planned-velocity" data-search="planned velocity points capacity committed accepted lập kế hoạch"><span>05.3</span>Lập Planned Velocity</a>
+            <a href="05-lap-ke-hoach.html#gan-cong-viec-iteration" data-search="gán đưa công việc user story defect iteration"><span>05.4</span>Đưa công việc vào Iteration</a>
+            <a href="05-lap-ke-hoach.html#doi-iteration" data-search="đổi iteration trả về unscheduled backlog"><span>05.5</span>Đổi hoặc trả về Unscheduled</a>
+            <a href="05-lap-ke-hoach.html#trang-thai-iteration" data-search="trạng thái planning committed accepted"><span>05.6</span>Cập nhật trạng thái</a>
+            <a href="05-lap-ke-hoach.html#xu-ly-iteration" data-search="xử lý không thấy iteration không lưu được"><span>05.7</span>Xử lý tình huống</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="06-thuc-hien-cong-viec.html#chapter-06" data-search="task giờ thực hiện công việc hàng ngày trạng thái owner actual estimate todo">
+              <span class="nav-number">06</span><span><strong>Thực hiện công việc</strong><small>Task, trạng thái và giờ</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-06" aria-label="Mở các mục trong phần Thực hiện công việc">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-06">
+            <a href="06-thuc-hien-cong-viec.html#mo-task-list" data-search="mở user story defect tab tasks danh sách task"><span>06.1</span>Mở danh sách Task</a>
+            <a href="06-thuc-hien-cong-viec.html#tao-task-con" data-search="tạo task con add task name estimate todo actual owner"><span>06.2</span>Tạo Task con</a>
+            <a href="06-thuc-hien-cong-viec.html#giao-task" data-search="giao task owner dev owner team member no entry"><span>06.3</span>Giao Task</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-task-state" data-search="task state defined in-progress completed trạng thái"><span>06.4</span>Cập nhật trạng thái</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-gio-task" data-search="estimate to do actual actuals giờ độc lập"><span>06.5</span>Cập nhật giờ</a>
+            <a href="06-thuc-hien-cong-viec.html#bo-sung-task" data-search="description attachment linked items notes comments revision history"><span>06.6</span>Bổ sung thông tin</a>
+            <a href="06-thuc-hien-cong-viec.html#xu-ly-task" data-search="xử lý không thấy task owner giờ trạng thái"><span>06.7</span>Xử lý tình huống</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="07-loi-theo-doi-team.html#chapter-07" data-search="defect quality team status theo dõi lỗi team tiến độ">
+              <span class="nav-number">07</span><span><strong>Lỗi & theo dõi Team</strong><small>Defect và tiến độ</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-07" aria-label="Mở các mục trong phần Lỗi và theo dõi Team">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-07">
+            <a href="07-loi-theo-doi-team.html#mo-quality-defect" data-search="quality defects dashboard chỉ số danh sách"><span>07.1</span>Mở Quality Defects</a>
+            <a href="07-loi-theo-doi-team.html#tao-defect-quality" data-search="add new tạo defect quality title description severity priority"><span>07.2</span>Tạo Defect từ Quality</a>
+            <a href="07-loi-theo-doi-team.html#phan-loai-defect" data-search="severity priority user story fixed in build phân loại"><span>07.3</span>Phân loại Defect</a>
+            <a href="07-loi-theo-doi-team.html#vong-doi-defect" data-search="submitted open fixed closed declined flow state trạng thái"><span>07.4</span>Cập nhật vòng đời</a>
+            <a href="07-loi-theo-doi-team.html#doc-team-status" data-search="track team status iteration member capacity estimate todo actual"><span>07.5</span>Đọc Team Status</a>
+            <a href="07-loi-theo-doi-team.html#kiem-tra-rollup" data-search="task parent rollup completed in progress tiến độ"><span>07.6</span>Kiểm tra tiến độ cha</a>
+            <a href="07-loi-theo-doi-team.html#xu-ly-chat-luong-team" data-search="không thấy defect team status iteration member xử lý"><span>07.7</span>Xử lý tình huống</a>
+          </div>
+        </div>
+
+        <p class="nav-label">QUẢN LÝ & QUẢN TRỊ</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="08-release-milestone.html#chapter-08" data-search="release milestone timebox liên kết artifacts release tracking">
+              <span class="nav-number">08</span><span><strong>Release & Milestone</strong><small>Timebox và liên kết</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-08" aria-label="Mở các mục trong phần Release và Milestone">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-08">
+            <a href="08-release-milestone.html#chon-dung-man-hinh" data-search="plan timeboxes release tracking chọn màn hình"><span>08.1</span>Chọn đúng màn hình</a>
+            <a href="08-release-milestone.html#tao-release" data-search="tạo release add new planning active accepted"><span>08.2</span>Tạo Release</a>
+            <a href="08-release-milestone.html#tao-milestone" data-search="tạo milestone target status associated releases"><span>08.3</span>Tạo Milestone</a>
+            <a href="08-release-milestone.html#lien-ket-release-milestone" data-search="liên kết release milestone ngày suy ra nhập tay"><span>08.4</span>Liên kết & ngày mục tiêu</a>
+            <a href="08-release-milestone.html#quan-ly-artifacts" data-search="release milestone artifacts story defect feature epic"><span>08.5</span>Quản lý Artifacts</a>
+            <a href="08-release-milestone.html#doc-release-tracking" data-search="portfolio release tracking burnup points count"><span>08.6</span>Đọc Release Tracking</a>
+            <a href="08-release-milestone.html#xu-ly-release-milestone" data-search="xử lý không thấy release milestone artifact burnup"><span>08.7</span>Xử lý tình huống</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="09-portfolio-capacity.html#chapter-09" data-search="portfolio capacity epic feature phân bổ publish">
+              <span class="nav-number">09</span><span><strong>Portfolio & Capacity</strong><small>Epic, Feature, phân bổ</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-09" aria-label="Mở các mục trong phần Portfolio và Capacity">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-09">
+            <a href="09-portfolio-capacity.html#mo-portfolio-items" data-search="mở portfolio items all teams epic feature"><span>09.1</span>Mở Portfolio Items</a>
+            <a href="09-portfolio-capacity.html#phan-biet-epic-feature" data-search="phân biệt epic feature hierarchy project team"><span>09.2</span>Phân biệt Epic & Feature</a>
+            <a href="09-portfolio-capacity.html#tao-cap-nhat-portfolio" data-search="tạo cập nhật epic feature owner release state estimate"><span>09.3</span>Tạo & cập nhật Portfolio</a>
+            <a href="09-portfolio-capacity.html#doc-tien-do-portfolio" data-search="percent done estimate count accepted tiến độ"><span>09.4</span>Đọc tiến độ Portfolio</a>
+            <a href="09-portfolio-capacity.html#tao-capacity-plan" data-search="capacity plan single release points items draft"><span>09.5</span>Tạo Capacity Plan</a>
+            <a href="09-portfolio-capacity.html#phan-bo-capacity" data-search="team capacity add feature allocate split unassign demand"><span>09.6</span>Phân bổ Capacity</a>
+            <a href="09-portfolio-capacity.html#publish-capacity-plan" data-search="publish without updating fields revert draft published"><span>09.7</span>Publish & Revert</a>
+            <a href="09-portfolio-capacity.html#xu-ly-portfolio-capacity" data-search="xử lý không thấy epic feature plan capacity warning"><span>09.8</span>Xử lý tình huống</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="10-bao-cao.html#chapter-10" data-search="report báo cáo burndown velocity capacity số liệu">
+              <span class="nav-number">10</span><span><strong>Báo cáo</strong><small>Đọc số liệu đúng</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-10" aria-label="Mở các mục trong phần Báo cáo">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-10">
+            <a href="10-bao-cao.html#chon-bao-cao" data-search="chọn type report phạm vi project team"><span>10.1</span>Chọn đúng báo cáo</a>
+            <a href="10-bao-cao.html#doc-iteration-burndown" data-search="iteration burndown todo ideal accepted points snapshot"><span>10.2</span>Đọc Iteration Burndown</a>
+            <a href="10-bao-cao.html#doc-velocity" data-search="velocity during after not accepted trend average"><span>10.3</span>Đọc Velocity</a>
+            <a href="10-bao-cao.html#doc-team-capacity-report" data-search="team capacity hours estimate todo actual member"><span>10.4</span>Đọc Team Capacity</a>
+            <a href="10-bao-cao.html#hieu-pham-vi-du-lieu" data-search="all teams selected team current frozen history"><span>10.5</span>Hiểu phạm vi & dữ liệu</a>
+            <a href="10-bao-cao.html#kiem-tra-du-lieu-thieu" data-search="empty no history no data unavailable zero"><span>10.6</span>Kiểm tra dữ liệu thiếu</a>
+            <a href="10-bao-cao.html#xu-ly-bao-cao" data-search="xử lý không thấy report iteration số liệu"><span>10.7</span>Xử lý tình huống</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="11-quan-tri-workspace.html#chapter-11" data-search="workspace admin quản trị user project team quyền permission audit">
+              <span class="nav-number">11</span><span><strong>Quản trị Workspace</strong><small>User, quyền, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-11" aria-label="Mở các mục trong phần Quản trị Workspace">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-11">
+            <a href="11-quan-tri-workspace.html#mo-quan-tri-workspace" data-search="settings mở quản trị workspace quyền truy cập"><span>11.1</span>Mở khu vực quản trị</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-users" data-search="user management invite member trạng thái access"><span>11.2</span>Quản lý User</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-project" data-search="workspaces projects tạo sửa archive restore delete estimation"><span>11.3</span>Quản lý Project</a>
+            <a href="11-quan-tri-workspace.html#phan-quyen-project" data-search="users permissions admin editor all teams add existing user"><span>11.4</span>Phân quyền Project</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-team" data-search="team member lead active deactive workspace admin"><span>11.5</span>Quản lý Team</a>
+            <a href="11-quan-tri-workspace.html#doc-permission-model" data-search="permission model role capability quyền cố định"><span>11.6</span>Đọc Permission Model</a>
+            <a href="11-quan-tri-workspace.html#xem-audit-log" data-search="audit log time actor detail filter"><span>11.7</span>Xem Audit Log</a>
+            <a href="11-quan-tri-workspace.html#xu-ly-quan-tri" data-search="xử lý không thấy user project team quyền"><span>11.8</span>Xử lý tình huống</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="12-viet-backlog-item.html#chapter-12" data-search="agile viết backlog item feature user story defect acceptance criteria gherkin">
+              <span class="nav-number">12</span><span><strong>Agile Guideline</strong><small>User Story và Defect</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-12" aria-label="Mở các mục trong phần Agile Guideline">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-12">
+            <a href="12-viet-backlog-item.html#viet-user-story" data-search="user story persona goal value business rule acceptance criteria given when then invest"><span>12.1</span>Viết User Story</a>
+            <a href="12-viet-backlog-item.html#viet-defect" data-search="defect bug actual expected reproduce severity priority evidence"><span>12.2</span>Viết Defect</a>
+          </div>
+        </div>
+      </nav>
+    </aside>
+
+    <button class="sidebar-backdrop" type="button" aria-label="Đóng menu"></button>
+
+    <main class="main-content" id="main-content">
+      <div class="content-width">
+        <nav class="breadcrumb" aria-label="Đường dẫn">
+          <a href="index.html#gioi-thieu">Rova User Guide</a>
+          <span aria-hidden="true">/</span>
+          <strong>12. Agile Guideline</strong>
+        </nav>
+
+        <section class="chapter-intro prose-intro" id="chapter-12">
+          <div>
+            <span class="eyebrow">PHẦN 12 · AGILE GUIDELINE</span>
+            <h2>Viết đủ rõ để cùng hiểu, ước lượng và kiểm thử</h2>
+            <p class="lead">Một backlog item tốt mô tả <strong>vấn đề hoặc giá trị cần đạt</strong>, các điều kiện phải đúng và ranh giới công việc. Phần này hướng dẫn hai loại dùng thường xuyên trên Rova: <strong>User Story</strong> và <strong>Defect</strong>.</p>
+          </div>
+          <aside class="chapter-summary" aria-label="Sau phần này bạn sẽ làm được">
+            <strong>Sau phần này, bạn sẽ làm được</strong>
+            <ul>
+              <li>Viết User Story có persona, mục tiêu và giá trị rõ ràng.</li>
+              <li>Viết Acceptance Criteria bằng Given–When–Then.</li>
+              <li>Ghi nhận Defect có thể tái hiện và xác minh.</li>
+              <li>Phân biệt Defect với yêu cầu thay đổi.</li>
+              <li>Tự kiểm tra item trước khi refinement.</li>
+            </ul>
+          </aside>
+        </section>
+
+        <section class="section-block prose-section" id="viet-user-story">
+          <div class="section-heading"><span class="section-number">12.1</span><div><h2>Viết User Story</h2><p>User Story mô tả một giá trị nhỏ mà người dùng hoặc bên liên quan cần nhận được.</p></div></div>
+
+          <p>Dùng User Story khi công việc tạo ra một hành vi hoặc kết quả có thể bàn giao và kiểm thử độc lập. Tiêu đề nên bắt đầu bằng động từ và nói rõ kết quả, ví dụ <strong>“Lọc Backlog theo Priority”</strong>. Tránh tiêu đề chung như “Cải thiện Backlog” hoặc “Làm màn hình filter”.</p>
+
+          <div class="writing-template" aria-label="Template User Story">
+            <strong>Template User Story</strong>
+            <p><span class="template-label">Title</span>[Động từ + đối tượng + kết quả cần đạt]</p>
+            <p><span class="template-label">As a</span>[persona hoặc vai trò cụ thể]</p>
+            <p><span class="template-label">I want to</span>[hành động hoặc outcome cần thực hiện]</p>
+            <p><span class="template-label">So that</span>[giá trị nhận được hoặc vấn đề được giải quyết]</p>
+            <p><span class="template-label">Business Rules</span>[quyền, phạm vi và giới hạn đã được xác nhận]</p>
+            <p><span class="template-label">Acceptance Criteria</span>Given [bối cảnh] · When [hành động] · Then [kết quả quan sát được]</p>
+            <p><span class="template-label">Non-scope</span>[nội dung dễ bị hiểu nhầm nhưng không thuộc Story]</p>
+            <p><span class="template-label">Open questions</span>[thông tin còn thiếu cần PO/BA xác nhận]</p>
+          </div>
+
+          <div class="permission-table-wrap"><table class="permission-table">
+            <thead><tr><th>Thành phần</th><th>Cách viết</th><th>Cần tránh</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Persona</strong></td><td>Chọn người trực tiếp nhận giá trị hoặc chịu trách nhiệm cho kết quả.</td><td>Dùng “user” cho mọi trường hợp mà không xác định vai trò.</td></tr>
+              <tr><td><strong>Goal</strong></td><td>Mô tả hành động hoặc outcome, đủ nhỏ để hoàn thành trong một Iteration.</td><td>Liệt kê màn hình, API hoặc cách code thay cho nhu cầu.</td></tr>
+              <tr><td><strong>Value</strong></td><td>Nói rõ quyết định, thời gian hoặc rủi ro được cải thiện.</td><td>Lặp lại nguyên văn phần I want to.</td></tr>
+              <tr><td><strong>Business Rules</strong></td><td>Ghi quyền, phạm vi, trạng thái và điều kiện đã có nguồn xác nhận.</td><td>Tự thêm rule, SLA hoặc thông báo chưa được thống nhất.</td></tr>
+              <tr><td><strong>Acceptance Criteria</strong></td><td>Mỗi AC mô tả một tình huống và kết quả có thể quan sát.</td><td>Viết như Test Case chi tiết hoặc mô tả cách triển khai.</td></tr>
+            </tbody>
+          </table></div>
+
+          <p><strong>Acceptance Criteria không thay thế Test Case.</strong> AC xác định điều kiện nghiệm thu của Story; QA có thể phát triển thêm dữ liệu kiểm thử, biến thể và kiểm tra kỹ thuật.</p>
+
+          <p>Ví dụ dưới đây dùng để minh họa cách điền template. Business Rules và AC phải được PO/BA xác nhận trước khi tạo Story thật.</p>
+          <div class="writing-template" aria-label="Ví dụ User Story trên Rova">
+            <strong>Ví dụ minh họa: Lọc Backlog theo Priority</strong>
+            <p><span class="template-label">As a</span>Editor của Team Maintainer</p>
+            <p><span class="template-label">I want to</span>lọc Backlog theo một hoặc nhiều Priority</p>
+            <p><span class="template-label">So that</span>tôi có thể tập trung xử lý các Work Item quan trọng trong phạm vi được giao</p>
+            <p><span class="template-label">Rule 1</span>Kết quả chỉ gồm Work Item thuộc Project và Team người dùng được phép xem.</p>
+            <p><span class="template-label">Rule 2</span>Bỏ toàn bộ lựa chọn Priority sẽ đưa danh sách về trạng thái không lọc theo Priority.</p>
+            <p><span class="template-label">AC 1</span><strong>Given</strong> Backlog có Work Item ở nhiều Priority, <strong>When</strong> người dùng chọn High, <strong>Then</strong> danh sách chỉ hiển thị Work Item có Priority High trong phạm vi hiện tại.</p>
+            <p><span class="template-label">AC 2</span><strong>Given</strong> bộ lọc High đang áp dụng, <strong>When</strong> người dùng bỏ lựa chọn High, <strong>Then</strong> Backlog hiển thị lại mọi Priority trong phạm vi hiện tại.</p>
+            <p><span class="template-label">Non-scope</span>Lưu bộ lọc thành view cá nhân và chia sẻ bộ lọc.</p>
+          </div>
+
+          <p><strong>Kiểm tra theo INVEST trước khi refinement:</strong></p>
+          <div class="troubleshoot-list">
+            <article><span>I</span><div><strong>Independent</strong><p>Có thể triển khai và nghiệm thu mà không phụ thuộc chặt vào nhiều Story chưa xác định.</p></div></article>
+            <article><span>N</span><div><strong>Negotiable</strong><p>Nêu nhu cầu và ranh giới, vẫn cho phép Team trao đổi giải pháp.</p></div></article>
+            <article><span>V</span><div><strong>Valuable</strong><p>Persona nhận được giá trị rõ ràng khi Story hoàn thành.</p></div></article>
+            <article><span>E</span><div><strong>Estimable</strong><p>Team hiểu đủ scope, rule và dependency để ước lượng.</p></div></article>
+            <article><span>S</span><div><strong>Small</strong><p>Đủ nhỏ để hoàn thành trong một Iteration; nếu không, tách theo luồng hoặc rule.</p></div></article>
+            <article><span>T</span><div><strong>Testable</strong><p>AC có kết quả quan sát được và không phụ thuộc cảm nhận chủ quan.</p></div></article>
+          </div>
+        </section>
+
+        <section class="section-block prose-section" id="viet-defect">
+          <div class="section-heading"><span class="section-number">12.2</span><div><h2>Viết Defect</h2><p>Defect ghi lại sự khác biệt giữa hành vi thực tế và kết quả đã được mong đợi.</p></div></div>
+
+          <p>Chỉ tạo Defect khi có bằng chứng hệ thống sai so với requirement, Acceptance Criteria hoặc hành vi đã được chấp thuận. Nếu người dùng muốn một khả năng chưa từng được yêu cầu, đó thường là User Story hoặc yêu cầu thay đổi.</p>
+
+          <div class="writing-template" aria-label="Template Defect">
+            <strong>Template Defect</strong>
+            <p><span class="template-label">Title</span>[Chức năng] – [hành vi sai] khi [điều kiện]</p>
+            <p><span class="template-label">Context</span>Project, Team, màn hình, phiên bản hoặc môi trường xảy ra lỗi</p>
+            <p><span class="template-label">Precondition</span>Dữ liệu, quyền và trạng thái cần có trước khi tái hiện</p>
+            <p><span class="template-label">Steps</span>Các thao tác ngắn, theo đúng thứ tự và không gộp nhiều hành động</p>
+            <p><span class="template-label">Actual</span>Kết quả thực tế quan sát được</p>
+            <p><span class="template-label">Expected</span>Kết quả đúng theo rule hoặc AC đã xác nhận</p>
+            <p><span class="template-label">Severity</span>Mức ảnh hưởng kỹ thuật hoặc nghiệp vụ</p>
+            <p><span class="template-label">Priority</span>Thứ tự cần xử lý theo quyết định sản phẩm</p>
+            <p><span class="template-label">Evidence</span>Ảnh, video, log, thời điểm và ID dữ liệu liên quan</p>
+            <p><span class="template-label">Links</span>User Story, Feature hoặc Defect liên quan</p>
+          </div>
+
+          <div class="permission-table-wrap"><table class="permission-table">
+            <thead><tr><th>Trường</th><th>Tiêu chuẩn tối thiểu</th><th>Ví dụ chưa đạt</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Title</strong></td><td>Nói được chức năng, hành vi sai và điều kiện chính.</td><td>“Filter bị lỗi”, “Không chạy”, “Bug Backlog”.</td></tr>
+              <tr><td><strong>Steps</strong></td><td>Người khác có thể lặp lại trên cùng dữ liệu và quyền.</td><td>“Vào Backlog rồi thử filter”.</td></tr>
+              <tr><td><strong>Actual</strong></td><td>Mô tả đúng điều nhìn thấy, gồm giá trị hoặc thông báo nếu có.</td><td>“Kết quả sai”.</td></tr>
+              <tr><td><strong>Expected</strong></td><td>Gắn với rule hoặc AC đã xác nhận.</td><td>Đề xuất một tính năng mới chưa nằm trong requirement.</td></tr>
+              <tr><td><strong>Evidence</strong></td><td>Cho biết thời điểm, phạm vi và dữ liệu đủ để truy vết.</td><td>Ảnh không thấy URL, Project, Team hoặc trạng thái liên quan.</td></tr>
+            </tbody>
+          </table></div>
+
+          <p>Defect dưới đây minh họa cách ghi nhận. Chỉ tạo item thật sau khi đã tái hiện và có nguồn xác nhận Expected.</p>
+          <div class="writing-template" aria-label="Ví dụ Defect trên Rova">
+            <strong>Ví dụ minh họa: Backlog – bộ lọc High vẫn hiển thị item Medium</strong>
+            <p><span class="template-label">Context</span>Rova web · Project ROVA · Team Maintainer · trang Backlog</p>
+            <p><span class="template-label">Precondition</span>Tài khoản có quyền xem Team; Backlog có ít nhất một item High và một item Medium.</p>
+            <p><span class="template-label">Step 1</span>Mở Backlog và xác nhận đúng Project, Team.</p>
+            <p><span class="template-label">Step 2</span>Mở Filters và chọn Priority = High.</p>
+            <p><span class="template-label">Actual</span>Danh sách vẫn hiển thị Work Item có Priority Medium.</p>
+            <p><span class="template-label">Expected</span>Danh sách chỉ hiển thị Work Item có Priority High trong phạm vi hiện tại.</p>
+            <p><span class="template-label">Evidence</span>Ảnh toàn màn hình có context selector, filter High và dòng Medium; kèm thời điểm và Work Item ID.</p>
+            <p><span class="template-label">Links</span>User Story “Lọc Backlog theo Priority”, AC 1.</p>
+          </div>
+
+          <p><strong>Severity và Priority không phải một.</strong> Severity mô tả mức ảnh hưởng; Priority là quyết định xử lý sớm hay muộn. Một lỗi giao diện nhẹ vẫn có thể có Priority cao nếu nằm trên luồng demo quan trọng.</p>
+
+          <div class="troubleshoot-list">
+            <article><span>01</span><div><strong>Không tái hiện được</strong><p>Bổ sung quyền, Project, Team, dữ liệu mẫu, trình duyệt, thời điểm và tần suất xảy ra.</p></div></article>
+            <article><span>02</span><div><strong>Expected chưa có nguồn</strong><p>Liên kết requirement hoặc AC. Nếu chưa thống nhất hành vi đúng, hỏi PO/BA trước khi kết luận là Defect.</p></div></article>
+            <article><span>03</span><div><strong>Một Defect chứa nhiều lỗi</strong><p>Tách theo nguyên nhân hoặc kết quả có thể sửa và xác minh độc lập.</p></div></article>
+            <article><span>05</span><div><strong>Chỉ có ảnh chụp</strong><p>Ảnh là bằng chứng, không thay thế Steps, Actual và Expected.</p></div></article>
+          </div>
+        </section>
+
+        <div class="check-understanding">
+          <strong>Tự kiểm tra trước khi đưa item vào refinement</strong>
+          <ul>
+            <li>User Story đã nói rõ persona, goal và value chưa?</li>
+            <li>Mỗi Acceptance Criteria có một kết quả quan sát được chưa?</li>
+            <li>Defect có đủ Context, Steps, Actual và Expected chưa?</li>
+            <li>Expected đã có nguồn, hay đây thực chất là yêu cầu mới?</li>
+          </ul>
+        </div>
+
+        <nav class="chapter-pagination" aria-label="Điều hướng giữa các phần">
+          <a class="chapter-nav-link previous" href="11-quan-tri-workspace.html#chapter-11"><span class="chapter-nav-arrow" aria-hidden="true">←</span><span class="chapter-nav-copy"><small>Phần trước</small><strong>11. Quản trị Workspace</strong></span></a>
+          <a class="chapter-nav-link next" href="index.html#chon-lo-trinh"><span class="chapter-nav-copy"><small>Hoàn thành</small><strong>Về mục lục</strong></span><span class="chapter-nav-arrow" aria-hidden="true">→</span></a>
+        </nav>
+
+        <footer class="guide-footer">
+          <div><strong>Rova User Guide</strong><span>12. Agile Guideline · Phiên bản 1.0</span><span>Khung User Story và AC tham khảo: Phúc NT · BA Zone · Digital School</span></div>
+          <a href="#top">Về đầu trang ↑</a>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <script src="guide.js?v=20261007-02"></script>
+</body>
+</html>

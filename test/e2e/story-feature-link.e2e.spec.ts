@@ -21,7 +21,7 @@ import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { workflowStatuses } from '@db/schema/work';
 
-import { adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('story → feature link (e2e)', () => {
   let app: NestFastifyApplication;
@@ -52,7 +52,7 @@ describe('story → feature link (e2e)', () => {
   }
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     workItems = app.get(WorkItemsService);
     portfolio = app.get(PortfolioItemsService);
     projects = app.get(ProjectsService);

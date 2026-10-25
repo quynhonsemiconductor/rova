@@ -11,6 +11,7 @@
  */
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { createBootstrappedApp, signIn } from './support/session';
 
 const previous = process.env['DISABLE_RATE_LIMIT'];
@@ -37,22 +38,19 @@ const get = (headers: Record<string, string>, url = '/v1/projects') =>
 describe('rate limits around authentication', () => {
   it('limits a sweep of guessed API tokens from one address (it used to be 401 forever)', async () => {
     const ip = visitor();
-    const statuses: number[] = [];
-    for (let i = 0; i < 320; i++) {
-      const res = await get({
-        authorization: `Bearer rly_guess${String(i).padStart(3, '0')}_${'x'.repeat(40)}`,
+    // The tier allows 300 guessed tokens a minute from one address. Spend 299 of them directly, through the store the guard writes to,
+    // so the window starts now. Only the next two requests cross the wire: the 300th is refused as a plain 401 and the 301st is a 429.
+    // A sweep of 320 real requests could outlast the 60 s window on a slow runner and never reach the 429; this cannot.
+    const cache = app.get(CacheService);
+    for (let i = 0; i < 299; i++) await cache.consumeRateLimit(`PRE_AUTH_TOKEN:ip:${ip}`, 300, 60);
+
+    const guess = (n: number) =>
+      get({
+        authorization: `Bearer rly_guess${String(n).padStart(3, '0')}_${'x'.repeat(40)}`,
         'cf-connecting-ip': ip,
       });
-      statuses.push(res.statusCode);
-    }
-    expect(
-      statuses.slice(0, 300).every((s) => s === 401),
-      'the first 300 are plain refusals',
-    ).toBe(true);
-    expect(
-      statuses.slice(300).every((s) => s === 429),
-      'then the address is limited',
-    ).toBe(true);
+    expect((await guess(300)).statusCode, 'the 300th guess is a plain refusal').toBe(401);
+    expect((await guess(301)).statusCode, 'the 301st guess is limited').toBe(429);
 
     // another address is not affected
     expect(

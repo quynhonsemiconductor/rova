@@ -7,10 +7,11 @@ import swc from 'unplugin-swc';
 // this, so ConfigModule's Zod validation failed on any machine without these
 // vars already exported in the shell (e.g. ENTRA_* — commented out by default
 // in .env.example for local dev-login-only setups).
+// E2E_ENV_FILE picks an isolated stack's env (scripts/e2e/make-env.mjs writes .env.e2e); default is the local .env.
 try {
-  process.loadEnvFile('.env');
+  process.loadEnvFile(process.env.E2E_ENV_FILE ?? '.env');
 } catch {
-  /* no .env file — CI injects vars directly */
+  /* no env file — CI injects vars directly */
 }
 
 // E2E config: runs tests against a live API + real DB.
@@ -67,7 +68,7 @@ export default defineConfig({
       BETTER_AUTH_SECRET: 'e2e-better-auth-secret-at-least-32-chars!',
       // Override .env's EMAIL_PROVIDER=ses: the email relay e2e coverage
       // exercises the real EmailRelayService/ResilienceService code path, but
-      // must not depend on SES/LocalStack actually being reachable — the
+      // must not depend on SES actually being reachable — the
       // 'dev' provider logs instead of sending, keeping the suite hermetic.
       EMAIL_PROVIDER: 'dev',
     },

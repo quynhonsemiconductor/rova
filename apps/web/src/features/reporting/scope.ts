@@ -58,9 +58,9 @@ export function reportScopeLabel(
  * matter (SQL equality never matches NULL).
  */
 export function iterationsInScope<T extends { teamId: string | null }>(
-  iterations: T[],
+  iterations: readonly T[],
   teamId: string | undefined,
-): T[] {
+): readonly T[] {
   if (!teamId) return iterations
   return iterations.filter((iteration) => iteration.teamId === null || iteration.teamId === teamId)
 }

@@ -146,9 +146,10 @@ test.describe('leaving a work-item detail', () => {
     await page.goto('/')
     await settle(page)
 
-    // My Work's ID column opens the item detail.
+    // My Work's ID column opens the item detail. A real link since US-120 (so it can also open in a
+    // new tab); a plain click still navigates in place, which is what this journey needs.
     const idCell = page
-      .locator('button')
+      .locator('a[href^="/item/"]')
       .filter({ has: page.locator('span.font-mono') })
       .first()
     await expect(idCell).toBeVisible()
@@ -160,5 +161,58 @@ test.describe('leaving a work-item detail', () => {
     await settle(page)
     // Home, not `/backlog`.
     await expect(page).toHaveURL(/\/$/)
+  })
+})
+
+test.describe('work-item detail — Connections tab', () => {
+  // US-120 (Production, 2026-10-06): each row is `minWidth: max-content`, so an unwrapped commit
+  // message sized the row to the whole message and pushed Changes / Author / Commit Timestamp off to
+  // the right. Fixture: US-1's seeded changeset carries a subject + body (`reference-extras.ts`).
+  test('long PR titles and commit messages wrap inside their columns, not widening the row', async ({
+    page,
+  }) => {
+    await loginAndSelectProject(page)
+    await page.goto('/item/US-1')
+    await settle(page)
+    await page.getByRole('tab', { name: /Connections/ }).click()
+
+    // Connections (the default sub-tab): the PR title is the same kind of `grow` free-text column.
+    const title = page.locator('span[title^="feat(nx): upgrade the workspace to Nx v21"]')
+    const nameHeader = page.getByRole('button', { name: /^Name, / })
+    const created = page.getByText('Creation Date', { exact: true })
+    await expect(title).toBeVisible()
+    await expect(nameHeader).toBeVisible()
+    await expect(created).toBeVisible()
+    const titleBox = await title.boundingBox()
+    const nameHeaderBox = await nameHeader.boundingBox()
+    const createdBox = await created.boundingBox()
+    expect(titleBox).not.toBeNull()
+    expect(nameHeaderBox).not.toBeNull()
+    expect(createdBox).not.toBeNull()
+    expect(titleBox!.width).toBeLessThanOrEqual(nameHeaderBox!.width + 1)
+    expect(createdBox!.x + createdBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+
+    await page.getByRole('tab', { name: /Changesets/ }).click()
+
+    const message = page.locator('span[title^="feat(nx): bump workspace to v21 and migrate"]')
+    await expect(message).toBeVisible()
+    const header = page.getByRole('button', { name: /^Message, / })
+    const timestamp = page.getByText('Commit Timestamp', { exact: true })
+    // `boundingBox()` does not wait, so every measured element is waited for first.
+    await expect(header).toBeVisible()
+    await expect(timestamp).toBeVisible()
+
+    const messageBox = await message.boundingBox()
+    const headerBox = await header.boundingBox()
+    const timestampBox = await timestamp.boundingBox()
+    expect(messageBox).not.toBeNull()
+    expect(headerBox).not.toBeNull()
+    expect(timestampBox).not.toBeNull()
+    // Wrapped within the header's width, so it spans several lines rather than one long run.
+    expect(messageBox!.width).toBeLessThanOrEqual(headerBox!.width + 1)
+    expect(messageBox!.height).toBeGreaterThan(40)
+
+    // And the columns after it stay on screen.
+    expect(timestampBox!.x + timestampBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
   })
 })

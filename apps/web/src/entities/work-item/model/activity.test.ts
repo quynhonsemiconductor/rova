@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { carryoverActivityLabel } from './activity'
+import { carryoverActivityLabel, describeActivity } from './activity'
 
 describe('carryoverActivityLabel', () => {
   it('maps a Carryover to its key with source, target and date from metadata', () => {
@@ -77,5 +77,43 @@ describe('carryoverActivityLabel', () => {
   it('returns null for every other action', () => {
     expect(carryoverActivityLabel({ action: 'work_item.updated', changes: null })).toBeNull()
     expect(carryoverActivityLabel({ action: 'work_item.split_in', changes: null })).toBeNull()
+  })
+})
+
+describe('describeActivity — display values beside ids (SU-07 AC4, BA retest TC-51)', () => {
+  it('renders the Story keys a Split captured, never the uuids', () => {
+    expect(
+      describeActivity({
+        action: 'task.parent_changed',
+        changes: { field: 'parentId', old: '0190-aaaa', new: '0190-bbbb' },
+        metadata: { splitId: 's-1', oldName: 'US-7', newName: 'US-12' },
+      }),
+    ).toBe('Parent Story changed from US-7 to US-12')
+  })
+
+  it('renders Iteration names on the [Continued] diff', () => {
+    expect(
+      describeActivity({
+        action: 'work_item.updated',
+        changes: { field: 'iterationId', old: 'it-1', new: 'it-2' },
+        metadata: { splitId: 's-1', oldName: 'Sprint 1', newName: 'Sprint 2' },
+      }),
+    ).toBe('Iteration Id changed from Sprint 1 to Sprint 2')
+  })
+
+  it('keeps a blank side "(empty)" and falls back to the value without a name', () => {
+    expect(
+      describeActivity({
+        action: 'work_item.updated',
+        changes: { field: 'releaseId', old: null, new: 'rel-1' },
+        metadata: { oldName: null, newName: 'R1' },
+      }),
+    ).toBe('Release Id changed from (empty) to R1')
+    expect(
+      describeActivity({
+        action: 'work_item.updated',
+        changes: { field: 'title', old: 'A', new: 'B' },
+      }),
+    ).toBe('Title changed from A to B')
   })
 })

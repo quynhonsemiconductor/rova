@@ -27,11 +27,12 @@ export interface CreateApiTokenInput {
   prefix: string;
   tokenHash: string;
   scopes: string[] | null;
-  expiresAt: Date;
+  /** A lifetime, not an instant: `expires_at` is computed from the database clock in the INSERT. */
+  expiresInDays: number;
 }
 
-/** How stale `last_used_at` may be before a use writes it again. */
-const LAST_USED_THROTTLE_MS = 60_000;
+/** How stale `last_used_at` may be before a use writes it again, in seconds. */
+const LAST_USED_THROTTLE_SECONDS = 60;
 
 @Injectable()
 export class ApiTokenDrizzleRepository {
@@ -51,24 +52,33 @@ export class ApiTokenDrizzleRepository {
         prefix: input.prefix,
         tokenHash: input.tokenHash,
         scopes: input.scopes,
-        expiresAt: input.expiresAt,
+        // The expiry instant is the database's clock plus the lifetime, in the same statement that stores it.
+        expiresAt: sql`now() + make_interval(days => ${input.expiresInDays})`,
       })
       .returning();
     return rows[0];
   }
 
   /**
-   * Look up by prefix — the authentication hot path.
+   * Look up a LIVE token by prefix — the authentication hot path.
    *
-   * By prefix and not by hash, even though both are unique: the caller still has to compare hashes in
-   * constant time, and doing the lookup on the hash would make the query itself the comparison, which
-   * is a database-level equality test with no timing guarantees at all.
+   * Expiry and revocation are decided here, in the same statement, against the database clock: a row
+   * that is expired or revoked by database time is not returned at all, so the caller cannot mistake it
+   * for a usable one. By prefix and not by hash, even though both are unique: the caller still has to
+   * compare hashes in constant time, and doing the lookup on the hash would make the query itself the
+   * comparison, which is a database-level equality test with no timing guarantees at all.
    */
-  async findByPrefix(prefix: string): Promise<ApiTokenRow | null> {
+  async findLiveByPrefix(prefix: string): Promise<ApiTokenRow | null> {
     const rows = await this.db
       .select()
       .from(apiTokens)
-      .where(eq(apiTokens.prefix, prefix))
+      .where(
+        and(
+          eq(apiTokens.prefix, prefix),
+          isNull(apiTokens.revokedAt),
+          sql`${apiTokens.expiresAt} > now()`,
+        ),
+      )
       .limit(1);
     return rows[0] ?? null;
   }
@@ -84,7 +94,10 @@ export class ApiTokenDrizzleRepository {
       .orderBy(desc(apiTokens.createdAt), desc(apiTokens.id));
   }
 
-  /** Every LIVE token in a workspace — the administrator's offboarding view. */
+  /**
+   * Every token in a workspace that is not revoked (`revoked_at IS NULL`), newest first. Expiry is NOT
+   * filtered here: an expired but unrevoked token is included — the administrator's offboarding view.
+   */
   async listActiveForWorkspace(workspaceId: string): Promise<ApiTokenRow[]> {
     return await this.db
       .select()
@@ -106,10 +119,10 @@ export class ApiTokenDrizzleRepository {
    * Revoke, idempotently: `WHERE revoked_at IS NULL` means a second call is a no-op rather than a
    * silent re-dating of the first revocation, which is the field an incident review reads.
    */
-  async revoke(workspaceId: string, id: string, at: Date): Promise<boolean> {
+  async revoke(workspaceId: string, id: string): Promise<boolean> {
     const rows = await this.db
       .update(apiTokens)
-      .set({ revokedAt: at })
+      .set({ revokedAt: sql`now()` })
       .where(
         and(
           eq(apiTokens.workspaceId, workspaceId),
@@ -122,10 +135,10 @@ export class ApiTokenDrizzleRepository {
   }
 
   /** Revoke every live token of one user. The offboarding path. */
-  async revokeAllForUser(workspaceId: string, userId: string, at: Date): Promise<number> {
+  async revokeAllForUser(workspaceId: string, userId: string): Promise<number> {
     const rows = await this.db
       .update(apiTokens)
-      .set({ revokedAt: at })
+      .set({ revokedAt: sql`now()` })
       .where(
         and(
           eq(apiTokens.workspaceId, workspaceId),
@@ -145,10 +158,10 @@ export class ApiTokenDrizzleRepository {
    * conditional update and one of them changes nothing. Without it, authentication — a read — would
    * write a row on every single request, and `last_used_at` is a forensic field, not a counter.
    */
-  async touch(workspaceId: string, id: string, at: Date): Promise<void> {
+  async touch(workspaceId: string, id: string): Promise<void> {
     await this.db
       .update(apiTokens)
-      .set({ lastUsedAt: at })
+      .set({ lastUsedAt: sql`now()` })
       .where(
         and(
           // Carries its own workspace predicate even though `id` is a primary key: the caller has just
@@ -156,9 +169,7 @@ export class ApiTokenDrizzleRepository {
           // that relies on a service remembering to re-check.
           eq(apiTokens.workspaceId, workspaceId),
           eq(apiTokens.id, id),
-          sql`(${apiTokens.lastUsedAt} IS NULL OR ${apiTokens.lastUsedAt} < ${new Date(
-            at.getTime() - LAST_USED_THROTTLE_MS,
-          )})`,
+          sql`(${apiTokens.lastUsedAt} IS NULL OR ${apiTokens.lastUsedAt} < now() - make_interval(secs => ${LAST_USED_THROTTLE_SECONDS}))`,
         ),
       );
   }

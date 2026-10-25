@@ -1,0 +1,3 @@
+# The BA's static User Guide (US-119) ships as authored; reformatting it would make every BA update a
+# whole-file diff. Its structure is guarded by src/test/user-guide.integrity.test.ts instead.
+public/guide/

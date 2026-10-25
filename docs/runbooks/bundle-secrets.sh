@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Populate a bundled Secrets Manager secret from the standalone set it replaces.
 #
-# Step 2 of the four-step migration in rally/infra/modules/stack/variables.tf
+# Step 2 of the four-step migration in rova/infra/modules/stack/variables.tf
 # (`secrets_bundle_name`). Reads each standalone secret and writes ONE JSON object
 # keyed by the same logical names.
 #

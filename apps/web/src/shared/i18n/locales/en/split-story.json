@@ -2,9 +2,7 @@
   "action": {
     "label": "Split unfinished story",
     "menuLabel": "More work item actions",
-    "bulkLabel": "Split",
-    "disabledOneStory": "Select exactly one User Story to split",
-    "disabledNotEligible": "This story cannot be split"
+    "bulkLabel": "Split"
   },
   "modal": {
     "title": "Splitting {{key}}: {{title}}",

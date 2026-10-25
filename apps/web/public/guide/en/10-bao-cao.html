@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Instructions for reading Iteration Burndown, Velocity and Team Capacity on Rova.">
+  <title>10. Reports | Rova User Guide</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b4f87'/%3E%3Cpath d='M16 5 25 10v12l-9 5-9-5V10l9-5Z' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../styles.css?v=20260917-06">
+</head>
+<body data-chapter="#chapter-10">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <header class="topbar">
+    <button class="icon-button menu-toggle" type="button" aria-label="Open guide menu" aria-expanded="false" aria-controls="guide-sidebar">
+      <span></span><span></span><span></span>
+    </button>
+    <a class="brand" href="index.html#top" aria-label="Rova User Guide — front page">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="img">
+          <path d="M16 3 27 9v14l-11 6L5 23V9l11-6Z" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="m10 12 6-3 6 3-6 3-6-3Zm0 5 6 3 6-3M10 22l6 3 6-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="brand-copy">
+        <strong>Rova</strong>
+        <span class="brand-subline"><small>User Guide</small><span class="status-pill brand-version">Version 1.0</span></span>
+      </span>
+    </a>
+    <div class="topbar-context" aria-label="Document information">
+      <span>User Guide</span>
+      <label class="language-selector">
+        <span class="sr-only">Select language</span>
+        <select id="guide-language" aria-label="Select language">
+          <option value="vi">Vietnamese</option>
+          <option value="en" selected>English</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <div class="app-shell" id="top">
+    <aside class="sidebar" id="guide-sidebar" aria-label="Guide contents">
+      <div class="sidebar-tools">
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+          <span class="sr-only">Search the contents</span>
+          <input id="guide-search" type="search" placeholder="Search this guide" autocomplete="off">
+        </label>
+      </div>
+
+      <nav class="guide-nav">
+        <p class="nav-label">GET STARTED</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="index.html#gioi-thieu" data-search="introduction begins the table of contents">
+              <span class="nav-number">00</span>
+              <span><strong>Get started</strong><small>Introduction &amp; contents</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-00" aria-label="Open items in Start">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-00">
+            <a href="index.html#truoc-khi-doc" data-search="before starting the target permission scope check"><span>00.1</span>Before you start</a>
+            <a href="index.html#chon-lo-trinh" data-search="select demand role route"><span>00.2</span>Choose a learning path</a>
+            <a href="index.html#phuong-phap-doc" data-search="how to read the tutorial reading method"><span>00.3</span>How to use each chapter</a>
+          </div>
+        </div>
+
+        <p class="nav-label">DAILY WORK</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="01-lam-quen.html#chapter-01" data-search="familiarize yourself with the concept of workspace project team epic feature user story defect task iteration release milestone owner rights">
+              <span class="nav-number">01</span><span><strong>Introduction</strong><small>Workspace, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-01" aria-label="Open items in Getting Started">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-01">
+            <a href="01-lam-quen.html#pham-vi-lam-viec" data-search="workspace project team three scope layers"><span>01.1</span>Three layers of scope</a>
+            <a href="01-lam-quen.html#doi-tuong-cong-viec" data-search="epic feature user story defect task work object"><span>01.2</span>Work item types</a>
+            <a href="01-lam-quen.html#doi-tuong-ke-hoach" data-search="iteration release milestone planning object"><span>01.3</span>Planning object</a>
+            <a href="01-lam-quen.html#quyen-va-trach-nhiem" data-search="owner editor permissions and responsibilities"><span>01.4</span>Rights &amp; responsibilities</a>
+            <a href="01-lam-quen.html#vi-du-xuyen-suot" data-search="simulation example scenario"><span>01.5</span>Scenario walkthrough</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="02-truy-cap-pham-vi.html#chapter-02" data-search="access select scope login home navigation search account information">
+              <span class="nav-number">02</span><span><strong>Access &amp; Scope</strong><small>Login, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-02" aria-label="Opens items in the Access &amp; scope section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-02">
+            <a href="02-truy-cap-pham-vi.html#dang-nhap" data-search="sign in email continue microsoft"><span>02.1</span>Login</a>
+            <a href="02-truy-cap-pham-vi.html#thanh-dieu-huong" data-search="home plan track quality portfolio reports navigation"><span>02.2</span>Navigation bar</a>
+            <a href="02-truy-cap-pham-vi.html#chon-project-team" data-search="workspace project team all teams context selector scope"><span>02.3</span>Select Project &amp; Team</a>
+            <a href="02-truy-cap-pham-vi.html#doc-trang-home" data-search="home my work recent activity project health"><span>02.4</span>Read the Home page</a>
+            <a href="02-truy-cap-pham-vi.html#cong-cu-ca-nhan" data-search="search work items notifications unread profile settings sign out"><span>02.5</span>Personal tools</a>
+            <a href="02-truy-cap-pham-vi.html#xu-ly-truy-cap" data-search="did not see the project team denying access processing"><span>02.6</span>Troubleshoot missing scope</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="03-backlog-cong-viec.html#chapter-03" data-search="backlog user story defect create work item owner team update search">
+              <span class="nav-number">03</span><span><strong>Backlog &amp; Work Items</strong><small>US, DE and Owner</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-03" aria-label="Open items in the Backlog &amp; tasks section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-03">
+            <a href="03-backlog-cong-viec.html#doc-backlog" data-search="read search backlog search filter show fields"><span>03.1</span>Read &amp; find Backlog</a>
+            <a href="03-backlog-cong-viec.html#tao-user-story" data-search="create user story us add new"><span>03.2</span>Create User Story</a>
+            <a href="03-backlog-cong-viec.html#tao-defect" data-search="creates defect log for parent story"><span>03.3</span>Record Defect</a>
+            <a href="03-backlog-cong-viec.html#chon-team-owner" data-search="select team owner no entry membership rights"><span>03.4</span>Select Team &amp; Owner</a>
+            <a href="03-backlog-cong-viec.html#cap-nhat-work-item" data-search="update work item details feature parent story"><span>03.5</span>Update Work Item</a>
+            <a href="03-backlog-cong-viec.html#xu-ly-backlog" data-search="item owner not found to process"><span>03.6</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="04-testing.html#chapter-04" data-search="testing test case test result verdict quality validation">
+              <span class="nav-number">04</span><span><strong>Testing</strong><small>Test Case and Test Result</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-04" aria-label="Open items in the Testing section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-04">
+            <a href="04-testing.html#hieu-luong-testing" data-search="testing flow user story defect test case result"><span>04.1</span>Understand the Testing flow</a>
+            <a href="04-testing.html#mo-test-cases" data-search="open test cases tab list last verdict last run"><span>04.2</span>Open Test Cases</a>
+            <a href="04-testing.html#tao-test-case" data-search="create test case add new type method priority owner assigned"><span>04.3</span>Create Test Case</a>
+            <a href="04-testing.html#hoan-thien-test-case" data-search="description objective preconditions input expected result postconditions"><span>04.4</span>Complete Test Case</a>
+            <a href="04-testing.html#ghi-test-result" data-search="add result build date verdict duration tester notes"><span>04.5</span>Record Test Result</a>
+            <a href="04-testing.html#doc-ket-qua-testing" data-search="last verdict last run results revision history"><span>04.6</span>Read results &amp; history</a>
+            <a href="04-testing.html#quan-ly-test-case-type" data-search="settings project test case types acceptance functional regression"><span>04.7</span>Manage Test Case Type</a>
+            <a href="04-testing.html#xu-ly-testing" data-search="processing not found test case result cannot be saved"><span>04.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="05-lap-ke-hoach.html#chapter-05" data-search="iteration planning timeboxes unscheduled planning committed accepted">
+              <span class="nav-number">05</span><span><strong>Iteration Planning</strong><small>Iteration and scope</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-05" aria-label="Opens items in the Planning section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-05">
+            <a href="05-lap-ke-hoach.html#doc-timeboxes" data-search="read list iteration timeboxes metrics filter"><span>05.1</span>Read the Iteration list</a>
+            <a href="05-lap-ke-hoach.html#tao-iteration" data-search="create iteration add new team start and end date"><span>05.2</span>Create Iteration</a>
+            <a href="05-lap-ke-hoach.html#lap-planned-velocity" data-search="planned velocity points capacity committed accepted planning"><span>05.3</span>Create Planned Velocity</a>
+            <a href="05-lap-ke-hoach.html#gan-cong-viec-iteration" data-search="assign user story defect work item iteration"><span>05.4</span>Add Work Items to Iteration</a>
+            <a href="05-lap-ke-hoach.html#doi-iteration" data-search="change iteration returns unscheduled backlog"><span>05.5</span>Change or return Unscheduled</a>
+            <a href="05-lap-ke-hoach.html#trang-thai-iteration" data-search="status committed planning accepted"><span>05.6</span>Status update</a>
+            <a href="05-lap-ke-hoach.html#xu-ly-iteration" data-search="processing not found iteration failed to save"><span>05.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="06-thuc-hien-cong-viec.html#chapter-06" data-search="task daily task execution status owner actual estimate todo">
+              <span class="nav-number">06</span><span><strong>Work Execution</strong><small>Task, status and time</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-06" aria-label="Open items in the Work Execution section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-06">
+            <a href="06-thuc-hien-cong-viec.html#mo-task-list" data-search="open user story defect tab tasks task list"><span>06.1</span>Open the Task list</a>
+            <a href="06-thuc-hien-cong-viec.html#tao-task-con" data-search="create child task add task name estimate todo actual owner"><span>06.2</span>Create a child Task</a>
+            <a href="06-thuc-hien-cong-viec.html#giao-task" data-search="giao task owner dev owner team member no entry"><span>06.3</span>Assign Task</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-task-state" data-search="task state defined in-progress completed status"><span>06.4</span>Status update</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-gio-task" data-search="estimate to do actual actuals independent hours"><span>06.5</span>Update hours</a>
+            <a href="06-thuc-hien-cong-viec.html#bo-sung-task" data-search="description attachment linked items notes comments revision history"><span>06.6</span>Additional information</a>
+            <a href="06-thuc-hien-cong-viec.html#xu-ly-task" data-search="process does not see task owner status"><span>06.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="07-loi-theo-doi-team.html#chapter-07" data-search="defect quality team status monitors defect quality team progress">
+              <span class="nav-number">07</span><span><strong>Defects &amp; Team Tracking</strong><small>Defect and progress</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-07" aria-label="Open items in the Errors and Team Tracking section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-07">
+            <a href="07-loi-theo-doi-team.html#mo-quality-defect" data-search="quality defects dashboard index list"><span>07.1</span>Open Quality Defects</a>
+            <a href="07-loi-theo-doi-team.html#tao-defect-quality" data-search="add new create defect quality title description severity priority"><span>07.2</span>Create Defect from Quality</a>
+            <a href="07-loi-theo-doi-team.html#phan-loai-defect" data-search="severity priority user story fixed in build classification"><span>07.3</span>Defect Classification</a>
+            <a href="07-loi-theo-doi-team.html#vong-doi-defect" data-search="submitted open fixed closed declined flow state state"><span>07.4</span>Update lifecycle</a>
+            <a href="07-loi-theo-doi-team.html#doc-team-status" data-search="track team status iteration member capacity estimate todo actual"><span>07.5</span>Read Team Status</a>
+            <a href="07-loi-theo-doi-team.html#kiem-tra-rollup" data-search="task parent rollup completed in progress"><span>07.6</span>Check parent progress</a>
+            <a href="07-loi-theo-doi-team.html#xu-ly-chat-luong-team" data-search="does not see defect team status iteration member processing"><span>07.7</span>Troubleshooting</a>
+          </div>
+        </div>
+
+        <p class="nav-label">MANAGEMENT &amp; ADMINISTRATION</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="08-release-milestone.html#chapter-08" data-search="release milestone timebox link artifacts release tracking">
+              <span class="nav-number">08</span><span><strong>Release &amp; Milestone</strong><small>Timebox and link</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-08" aria-label="Open items in the Release and Milestone sections">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-08">
+            <a href="08-release-milestone.html#chon-dung-man-hinh" data-search="plan timeboxes release tracking select screen"><span>08.1</span>Select the correct display</a>
+            <a href="08-release-milestone.html#tao-release" data-search="create release add new planning active accepted"><span>08.2</span>Create Release</a>
+            <a href="08-release-milestone.html#tao-milestone" data-search="creates milestone target status associated releases"><span>08.3</span>Create Milestone</a>
+            <a href="08-release-milestone.html#lien-ket-release-milestone" data-search="release milestone date inferred hand input date"><span>08.4</span>Link &amp; target date</a>
+            <a href="08-release-milestone.html#quan-ly-artifacts" data-search="release milestone artifacts story defect feature epic"><span>08.5</span>Artifacts Management</a>
+            <a href="08-release-milestone.html#doc-release-tracking" data-search="portfolio release tracking burnup points count"><span>08.6</span>Read Release Tracking</a>
+            <a href="08-release-milestone.html#xu-ly-release-milestone" data-search="handle not seeing release milestone artifact burnup"><span>08.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="09-portfolio-capacity.html#chapter-09" data-search="portfolio capacity epic feature allocation publish">
+              <span class="nav-number">09</span><span><strong>Portfolio &amp; Capacity</strong><small>Epic, Feature, allocation</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-09" aria-label="Open the items in the Portfolio and Capacity sections">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-09">
+            <a href="09-portfolio-capacity.html#mo-portfolio-items" data-search="opens portfolio items all teams epic feature"><span>09.1</span>Open Portfolio Items</a>
+            <a href="09-portfolio-capacity.html#phan-biet-epic-feature" data-search="distinguish epic feature hierarchy project team"><span>09.2</span>Distinguishing Epic &amp; Feature</a>
+            <a href="09-portfolio-capacity.html#tao-cap-nhat-portfolio" data-search="create update epic feature owner release state estimate"><span>09.3</span>Create &amp; update Portfolio</a>
+            <a href="09-portfolio-capacity.html#doc-tien-do-portfolio" data-search="percent done estimate count accepted progress"><span>09.4</span>Read Portfolio progress</a>
+            <a href="09-portfolio-capacity.html#tao-capacity-plan" data-search="capacity plan single release points items draft"><span>09.5</span>Create Capacity Plan</a>
+            <a href="09-portfolio-capacity.html#phan-bo-capacity" data-search="team capacity add feature allocate split unassign demand"><span>09.6</span>Capacity allocation</a>
+            <a href="09-portfolio-capacity.html#publish-capacity-plan" data-search="publish without updating fields revert draft published"><span>09.7</span>Publish &amp; Revert</a>
+            <a href="09-portfolio-capacity.html#xu-ly-portfolio-capacity" data-search="handle epic feature plan capacity warning not found"><span>09.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="10-bao-cao.html#chapter-10" data-search="report reports burndown velocity capacity metrics">
+              <span class="nav-number">10</span><span><strong>Reports</strong><small>Read metrics correctly</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-10" aria-label="Open items in the Reports section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-10">
+            <a href="10-bao-cao.html#chon-bao-cao" data-search="select project team scope report type"><span>10.1</span>Select the correct report</a>
+            <a href="10-bao-cao.html#doc-iteration-burndown" data-search="iteration burndown todo ideal accepted points snapshot"><span>10.2</span>Read Iteration Burndown</a>
+            <a href="10-bao-cao.html#doc-velocity" data-search="velocity during after not accepted trend average"><span>10.3</span>Read Velocity</a>
+            <a href="10-bao-cao.html#doc-team-capacity-report" data-search="team capacity hours estimate todo actual member"><span>10.4</span>Read Team Capacity</a>
+            <a href="10-bao-cao.html#hieu-pham-vi-du-lieu" data-search="all teams selected team current frozen history"><span>10.5</span>Understand scope &amp; data</a>
+            <a href="10-bao-cao.html#kiem-tra-du-lieu-thieu" data-search="empty no history no data unavailable zero"><span>10.6</span>Check for missing data</a>
+            <a href="10-bao-cao.html#xu-ly-bao-cao" data-search="handle not seeing report iteration data"><span>10.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="11-quan-tri-workspace.html#chapter-11" data-search="workspace admin admin user project team permission permission audit">
+              <span class="nav-number">11</span><span><strong>Workspace Administration</strong><small>User, permissions, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-11" aria-label="Open items in Workspace Administration">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-11">
+            <a href="11-quan-tri-workspace.html#mo-quan-tri-workspace" data-search="settings opens admin workspace permissions"><span>11.1</span>Open the admin area</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-users" data-search="user management invite member access status"><span>11.2</span>User Management</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-project" data-search="workspaces projects create edit archive restore delete estimation"><span>11.3</span>Project Management</a>
+            <a href="11-quan-tri-workspace.html#phan-quyen-project" data-search="users permissions admin editor all teams add existing user"><span>11.4</span>Assign Project permissions</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-team" data-search="team member lead active deactive workspace admin"><span>11.5</span>Team Management</a>
+            <a href="11-quan-tri-workspace.html#doc-permission-model" data-search="permission model role capability fixed permission"><span>11.6</span>Read Permission Model</a>
+            <a href="11-quan-tri-workspace.html#xem-audit-log" data-search="audit log time actor detail filter"><span>11.7</span>View Audit Log</a>
+            <a href="11-quan-tri-workspace.html#xu-ly-quan-tri" data-search="handle not seeing user project team permissions"><span>11.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="12-viet-backlog-item.html#chapter-12" data-search="agile write backlog item feature user story defect acceptance criteria gherkin">
+              <span class="nav-number">12</span><span><strong>Agile Guideline</strong><small>User Story and Defect</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-12" aria-label="Opens items in the Agile Guideline section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-12">
+            <a href="12-viet-backlog-item.html#viet-user-story" data-search="user story persona goal value business rule acceptance criteria given when then invest"><span>12.1</span>Write User Story</a>
+            <a href="12-viet-backlog-item.html#viet-defect" data-search="defect bug actual expected reproduce severity priority evidence"><span>12.2</span>Write Defect</a>
+          </div>
+        </div>
+      </nav>
+    </aside>
+
+    <button class="sidebar-backdrop" type="button" aria-label="Close menu"></button>
+
+    <main class="main-content" id="main-content">
+      <div class="content-width">
+        <nav class="breadcrumb" aria-label="Path">
+          <a href="index.html#gioi-thieu">Rova User Guide</a>
+          <span aria-hidden="true">/</span>
+          <strong>10. Reports</strong>
+        </nav>
+
+        <section class="chapter-intro prose-intro" id="chapter-10">
+          <div>
+            <span class="eyebrow">PART 10 · REPORT</span>
+            <h2>Read progress from the correct data source</h2>
+            <p class="lead">Rova provides three read-only reports: <strong>Iteration Burndown</strong> tracks remaining work each day, <strong>Velocity</strong> compares results across completed Iterations and <strong>Team Capacity</strong> summarizes Capacity at the current Task time.</p>
+          </div>
+          <aside class="chapter-summary" aria-label="After this part you will be able to do it">
+            <strong>After this chapter, you will be able to</strong>
+            <ul>
+              <li>Select the correct report for the question to answer.</li>
+              <li>Read Burndown without confusing Hours with Points.</li>
+              <li>Distinguish between Accepted During, After and Not Accepted.</li>
+              <li>Read Capacity, Estimate, ToDo and Actual by Team.</li>
+              <li>Detect zeros, empty data, and no history.</li>
+            </ul>
+          </aside>
+        </section>
+
+        <section class="section-block prose-section" id="chon-bao-cao">
+          <div class="section-heading"><span class="section-number">10.1</span><div><h2>Select the correct report</h2><p>Each report answers a question and uses a different data source.</p></div></div>
+          <div class="permission-table-wrap"><table class="permission-table">
+            <thead><tr><th>When you need to know</th><th>Select Type</th><th>Time range</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Is the remaining work reduced as planned?</strong></td><td>Iteration Burndown</td><td>An Iteration is selected.</td></tr>
+              <tr><td><strong>How many Points does the team usually complete on time?</strong></td><td>Velocity</td><td>The last 5 or 10 Iterations have finished.</td></tr>
+              <tr><td><strong>Capacity and time How is the current Task allocated?</strong></td><td>Team Capacity</td><td>An Iteration is selected.</td></tr>
+            </tbody>
+          </table></div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Select Project and Team</strong><p>Reports uses context selector on the header bar; There is no separate Project/Team filter inside the page.</p></div></li>
+            <li><span>2</span><div><strong>Open Reports</strong><p>Select Type next to the Reports heading: Iteration Burndown, Velocity or Team Capacity.</p></div></li>
+            <li><span>3</span><div><strong>Select time</strong><p>Burndown and Team Capacity use Iteration picker. Velocity uses Window = Last 5 or Last 10 sprints.</p></div></li>
+            <li><span>4</span><div><strong>Read data status first</strong><p>If the newspaper page has no history or no data, resolve the cause before using the data.</p></div></li>
+          </ol>
+          <p>Reports are only available to Workspace Admins and assigned Project Admins. Editors and accounts without Project rights cannot open Reports. The entire report is <strong>is read-only</strong>.</p>
+        </section>
+
+        <section class="section-block prose-section" id="doc-iteration-burndown">
+          <div class="section-heading"><span class="section-number">10.2</span><div><h2>Read Iteration Burndown</h2><p>Burndown combines US/DE Task and Points hours on two different axes.</p></div></div>
+          <div class="permission-table-wrap"><table class="permission-table">
+            <thead><tr><th>Data string</th><th>Unit</th><th>How to understand</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Task To Do</strong></td><td>Hours</td><td>Total Task ToDo at the end of each day. The value should gradually decrease as work progresses.</td></tr>
+              <tr><td><strong>Ideal</strong></td><td>Hours</td><td>The ideal reduction line from the total Task Estimate at the time Iteration starts to 0 on the last working day.</td></tr>
+              <tr><td><strong>Accepted</strong></td><td>Points</td><td>US/DE's cumulative Plan Estimate has reached Accepted or Release as of each date.</td></tr>
+            </tbody>
+          </table></div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Select Iteration</strong><p>Use the previous button, Iteration list and the following button. Confirm the correct date range is displayed.</p></div></li>
+            <li><span>2</span><div><strong>Compare ToDo with Ideal</strong><p>Remaining To Do is higher than Ideal at the latest snapshot date which is understood as Behind plan; equal or lower is On track.</p></div></li>
+            <li><span>3</span><div><strong>Read Accepted Points separately</strong><p>Accepted uses Points axis. Do not take Points to deduct directly from ToDo Hours.</p></div></li>
+            <li><span>4</span><div><strong>Check continuity</strong><p>Burndown uses end-of-day snapshots. Dates missing history must be displayed as having no data, not automatically concatenated or rebuilt from today's value.</p></div></li>
+          </ol>
+          <p><strong>Burndown history is frozen.</strong> Changing today's To Do, Estimate, or scope does not rewrite the previous day's snapshot. The ideal also remains unchanged when the Task is added or re-estimated after the Iteration begins.</p>
+          <p>When Iteration does not have daily history, the report is displayed <strong>No burndown to show</strong> and do not draw Ideal if start baseline has not been written.</p>
+        </section>
+
+        <section class="section-block prose-section" id="doc-velocity">
+          <div class="section-heading"><span class="section-number">10.3</span><div><h2>Read Velocity</h2><p>Velocity separates work accepted on time, late, and unaccepted.</p></div></div>
+          <div class="permission-table-wrap"><table class="permission-table">
+            <thead><tr><th>Group</th><th>Conditions</th><th>Does it count towards Velocity?</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Accepted During Iteration</strong></td><td>US/DE reaches Accepted or Release no later than the Iteration end date.</td><td>Yes. This is the source of Trend and average values.</td></tr>
+              <tr><td><strong>Accepted After Iteration</strong></td><td>US/DE is accepted after Iteration has ended.</td><td>No; Used for context only.</td></tr>
+              <tr><td><strong>Not Accepted</strong></td><td>US/DE is not currently in Accepted or Release.</td><td>No; Used for context only.</td></tr>
+            </tbody>
+          </table></div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Select Window</strong><p>Last 5 sprints focus on the near trend; Last 10 sprints give a more stable picture when enough data is available.</p></div></li>
+            <li><span>2</span><div><strong>Read each stacked column</strong><p>The three-part sum is all US/DE Points currently assigned to that Iteration.</p></div></li>
+            <li><span>3</span><div><strong>Read Trend and Averages</strong><p>Trend, Last 3, Best 3 and Worst 3 only count as Accepted During. Accepted After doesn't make Velocity better.</p></div></li>
+            <li><span>4</span><div><strong>Check available Iteration number</strong><p>When there are fewer than three Iterations, the report uses the entire available sample and must show the actual sample size.</p></div></li>
+          </ol>
+          <p><strong>Velocity is a classification based on current data.</strong> Moving US/DE into or out of an old Iteration, changing Plan Estimate or reopening items can cause the old chart to change. This report does not use frozen snapshots like Burndown.</p>
+          <p>Accepted or Release missing acceptedDate is a data quality error. Don't guess whether the item belongs to During or After.</p>
+        </section>
+
+        <section class="section-block prose-section" id="doc-team-capacity-report">
+          <div class="section-heading"><span class="section-number">10.4</span><div><h2>Read Team Capacity</h2><p>Report uses the same Capacity source and Task hours with Track → Team Status.</p></div></div>
+          <div class="permission-table-wrap"><table class="permission-table">
+            <thead><tr><th>Index</th><th>Source</th><th>How to understand</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Capacity</strong></td><td>Capacity according to Member in Iteration.</td><td>Available hours planned.</td></tr>
+              <tr><td><strong>Estimate</strong></td><td>Total Task Estimate.</td><td>Initial estimate of Tasks in scope.</td></tr>
+              <tr><td><strong>ToDo</strong></td><td>Total current Task ToDo.</td><td>Remaining volume updated by user.</td></tr>
+              <tr><td><strong>Actual</strong></td><td>Current Actual Task Total.</td><td>Actual time recorded; may be larger than Estimate.</td></tr>
+            </tbody>
+          </table></div>
+          <ol class="instruction-list">
+            <li><span>1</span><div><strong>Select Iteration</strong><p>Changing Iteration will recalculate the four totals and the entire Team/Member line.</p></div></li>
+            <li><span>2</span><div><strong>Read by Team scope</strong><p>Select a Team to view that Team separately. All Teams displays Teams into groups and can open Members below.</p></div></li>
+            <li><span>3</span><div><strong>Compare four hour numbers</strong><p>Read values as independent data. ToDo is not equal to Estimate except Actual and Actual is not limited by Estimate.</p></div></li>
+            <li><span>4</span><div><strong>Check special Member</strong><p>Member with Capacity but no Task is still displayed. Tasks that do not have an Owner are under Unassigned with Capacity 0h.</p></div></li>
+          </ol>
+          <p><strong>Do not adjust Capacity in Reports.</strong> To change Capacity, go back to Track → Team Status. The report does not create a separate Capacity store.</p>
+        </section>
+
+        <section class="section-block prose-section" id="hieu-pham-vi-du-lieu">
+          <div class="section-heading"><span class="section-number">10.5</span><div><h2>Understand the scope and timing of data</h2><p>The same update operation can affect three reports differently.</p></div></div>
+          <div class="permission-table-wrap"><table class="permission-table">
+            <thead><tr><th>Report</th><th>Data type</th><th>When source data changes</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Iteration Burndown</strong></td><td>Start baseline and daily snapshot have frozen.</td><td>Only the current date or future snapshot changes; History has been kept intact.</td></tr>
+              <tr><td><strong>Velocity</strong></td><td>Reclassify the current assignment, state, acceptedDate and Plan Estimate.</td><td>The chart of the old Iteration may change.</td></tr>
+              <tr><td><strong>Team Capacity</strong></td><td>Projection directly from Capacity and current Task time.</td><td>Re-display immediately using the latest data in the current scope.</td></tr>
+            </tbody>
+          </table></div>
+          <p>Selected Team only retrieves that Team's data. <strong>All Teams</strong> summarizes the Teams in the Project and must eliminate duplicates according to stable IDs. Do not manually add the number of All Teams to the number of each Team.</p>
+          <p>Workspace timezone usage date. When comparing Accepted During/After or end-of-day snapshots, check the Iteration date and timezone before concluding.</p>
+        </section>
+
+        <section class="section-block prose-section" id="kiem-tra-du-lieu-thieu">
+          <div class="section-heading"><span class="section-number">10.6</span><div><h2>Distinguishes zero from missing data</h2><p>Do not use an empty status as evidence that Team is not working.</p></div></div>
+          <div class="permission-table-wrap"><table class="permission-table">
+            <thead><tr><th>Notice or indication</th><th>Meaning</th><th>Needs checking</th></tr></thead>
+            <tbody>
+              <tr><td><strong>No daily history</strong></td><td>Burndown does not have a snapshot at the end of the day.</td><td>Check the snapshot process, start date, and Iteration history.</td></tr>
+              <tr><td><strong>No start baseline</strong></td><td>The total Task Estimate was not recorded at the time Iteration started.</td><td>Do not use or draw Ideal yourself.</td></tr>
+              <tr><td><strong>No completed Iteration with work</strong></td><td>Velocity does not have a qualified Iteration in scope yet.</td><td>End date and US/DE assigning.</td></tr>
+              <tr><td><strong>No planned capacity and no scoped task hours</strong></td><td>Team Capacity does not have both Capacity and Task hours.</td><td>Iteration, Team, Capacity record and Task assignment.</td></tr>
+              <tr><td><strong>0h or 0 Points</strong></td><td>There is valid data and the measured value is 0.</td><td>Compare the same scope, data source, and time period.</td></tr>
+            </tbody>
+          </table></div>
+          <p>Do not interpolate missing history, do not replace null with 0, and do not construct graphs from fixture/mockup for operational reporting.</p>
+        </section>
+
+        <section class="section-block prose-section" id="xu-ly-bao-cao">
+          <div class="section-heading"><span class="section-number">10.7</span><div><h2>Troubleshooting</h2><p>Check permissions, scope, timing, and data quality in order.</p></div></div>
+          <div class="troubleshoot-list">
+            <article><span>01</span><div><strong>Can't see the Reports menu</strong><p>Confirm the account is Workspace Admin or Admin of the selected Project. Editor does not have Reports permission.</p></div></article>
+            <article><span>02</span><div><strong>Can't see Iteration to select</strong><p>Check Project, Team and date range. Burndown/Capacity uses an Iteration; Velocity only takes Iteration that has ended and has US/DE.</p></div></article>
+            <article><span>03</span><div><strong>Burndown is empty</strong><p>Read daily history and start baseline notifications. Do not use the current Task value to manually reconstruct the history.</p></div></article>
+            <article><span>05</span><div><strong>Velocity changed in old Iteration</strong><p>Check that US/DE has just changed Iteration, Plan Estimate, state or acceptedDate. This is a recalculated report according to the current assignment.</p></div></article>
+            <article><span>06</span><div><strong>Capacity is different from Team Status</strong><p>Compare with Project, Team and Iteration; Check Member, Task Owner and data loading time.</p></div></article>
+            <article><span>07</span><div><strong>Actual is larger than Estimate</strong><p>This may be valid data. Actual is not capped and ToDo is not inferred from Estimate − Actual.</p></div></article>
+            <article><span>08</span><div><strong>The number of All Teams is unusually large</strong><p>Check for items or Tasks with duplicate IDs across multiple Teams. Do not add the number of each Team to the total of All Teams.</p></div></article>
+          </div>
+          <p>Export, saved report configurations, and custom date ranges are not currently covered by the guidance.</p>
+        </section>
+
+        <div class="check-understanding">
+          <strong>Check yourself before moving on to the next section</strong>
+          <ul>
+            <li>Did you know Burndown uses Hours and Points on two axes?</li>
+            <li>Do you know which part of Velocity is used for Trend?</li>
+            <li>Did you know that Team Capacity is a read-only report from Team Status?</li>
+            <li>Have you distinguished the number 0 from the state of no data?</li>
+          </ul>
+        </div>
+
+        <nav class="chapter-pagination" aria-label="Navigate between sections">
+          <a class="chapter-nav-link previous" href="09-portfolio-capacity.html#chapter-09"><span class="chapter-nav-arrow" aria-hidden="true">←</span><span class="chapter-nav-copy"><small>Previous</small><strong>09. Portfolio &amp; Capacity</strong></span></a>
+          <a class="chapter-nav-link next" href="11-quan-tri-workspace.html#chapter-11"><span class="chapter-nav-copy"><small>Next</small><strong>11. Workspace Administration</strong></span><span class="chapter-nav-arrow" aria-hidden="true">→</span></a>
+        </nav>
+
+        <footer class="guide-footer">
+          <div><strong>Rova User Guide</strong><span>10. Reports · Version 1.0</span></div>
+          <a href="#top">Back to top ↑</a>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <script src="../guide.js?v=20261007-02"></script>
+</body>
+</html>

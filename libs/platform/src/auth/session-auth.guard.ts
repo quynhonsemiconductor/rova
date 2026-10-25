@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { contextIdOf } from '@quynhonsemiconductor/identity';
+import { isMcpBridged } from '../mcp-call-token';
 import { IS_PUBLIC_KEY } from './public-key';
 import type { JwtPayload } from './principal';
 
@@ -48,6 +49,13 @@ export class SessionAuthGuard implements CanActivate {
 
     // Authenticated by an API token: the principal is already on the request (ApiTokenGuard).
     if (request.apiTokenId && request.user?.sub) return true;
+
+    // Authenticated by the MCP principal bridge: McpPrincipalGuard consumed an in-process call
+    // token — a credential that exists only inside the process, never on the wire — and wrote
+    // `request.user` directly. There is no session and no token id by design (a tool call is not
+    // a login); see apps/api/src/mcp/principal.guard.ts. The marker, not `request.user`'s mere
+    // presence, is the proof: a bare user object alone must never pass this belt.
+    if (isMcpBridged(request) && request.user?.sub) return true;
 
     const found = request.session;
     if (!found?.user?.id) {

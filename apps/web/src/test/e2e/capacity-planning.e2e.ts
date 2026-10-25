@@ -35,7 +35,7 @@ test.describe('Capacity Planning', () => {
     // CP-1 by name, not `.first()`: the seed now also carries CP-2, a PUBLISHED plan, and the list
     // is newest-first — so `.first()` opened the read-only one and every draft-only control was
     // missing.
-    await page.getByRole('button', { name: /^CP-1$/ }).click()
+    await page.getByRole('link', { name: /^CP-1$/ }).click()
     await expect(page).toHaveURL(/\/capacity-planning\/[0-9a-f-]{36}/)
     await expect(page.getByText('Team Alpha').first()).toBeVisible()
   }
@@ -209,7 +209,7 @@ test.describe('Capacity Planning', () => {
     }
     await expect(page.getByText('NX Platform v2 capacity')).toBeVisible()
     // The plan's key leads the row and is the only cell that navigates.
-    await expect(page.getByRole('button', { name: /^CP-1$/ })).toBeVisible()
+    await expect(page.getByRole('link', { name: /^CP-1$/ })).toBeVisible()
   })
 
   test('the create dialog will not offer a release that already has a plan', async ({ page }) => {

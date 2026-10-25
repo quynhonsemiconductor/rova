@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Instructions for writing clear User Stories and Defects that can be evaluated and tested on Rova.">
+  <title>04. Testing | Rova User Guide</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b4f87'/%3E%3Cpath d='M16 5 25 10v12l-9 5-9-5V10l9-5Z' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../styles.css?v=20260917-06">
+</head>
+<body data-chapter="#chapter-04">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <header class="topbar">
+    <button class="icon-button menu-toggle" type="button" aria-label="Open guide menu" aria-expanded="false" aria-controls="guide-sidebar">
+      <span></span><span></span><span></span>
+    </button>
+    <a class="brand" href="index.html#top" aria-label="Rova User Guide — front page">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="img">
+          <path d="M16 3 27 9v14l-11 6L5 23V9l11-6Z" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="m10 12 6-3 6 3-6 3-6-3Zm0 5 6 3 6-3M10 22l6 3 6-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="brand-copy">
+        <strong>Rova</strong>
+        <span class="brand-subline"><small>User Guide</small><span class="status-pill brand-version">Version 1.0</span></span>
+      </span>
+    </a>
+    <div class="topbar-context" aria-label="Document information">
+      <span>User Guide</span>
+      <label class="language-selector">
+        <span class="sr-only">Select language</span>
+        <select id="guide-language" aria-label="Select language">
+          <option value="vi">Vietnamese</option>
+          <option value="en" selected>English</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <div class="app-shell" id="top">
+    <aside class="sidebar" id="guide-sidebar" aria-label="Guide contents">
+      <div class="sidebar-tools">
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+          <span class="sr-only">Search the contents</span>
+          <input id="guide-search" type="search" placeholder="Search this guide" autocomplete="off">
+        </label>
+      </div>
+
+      <nav class="guide-nav">
+        <p class="nav-label">GET STARTED</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="index.html#gioi-thieu" data-search="introduction begins the table of contents">
+              <span class="nav-number">00</span>
+              <span><strong>Get started</strong><small>Introduction &amp; contents</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-00" aria-label="Open items in Start">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-00">
+            <a href="index.html#truoc-khi-doc" data-search="before starting the target permission scope check"><span>00.1</span>Before you start</a>
+            <a href="index.html#chon-lo-trinh" data-search="select demand role route"><span>00.2</span>Choose a learning path</a>
+            <a href="index.html#phuong-phap-doc" data-search="how to read the tutorial reading method"><span>00.3</span>How to use each chapter</a>
+          </div>
+        </div>
+
+        <p class="nav-label">DAILY WORK</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="01-lam-quen.html#chapter-01" data-search="familiarize yourself with the concept of workspace project team epic feature user story defect task iteration release milestone owner rights">
+              <span class="nav-number">01</span><span><strong>Introduction</strong><small>Workspace, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-01" aria-label="Open items in Getting Started">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-01">
+            <a href="01-lam-quen.html#pham-vi-lam-viec" data-search="workspace project team three scope layers"><span>01.1</span>Three layers of scope</a>
+            <a href="01-lam-quen.html#doi-tuong-cong-viec" data-search="epic feature user story defect task work object"><span>01.2</span>Work item types</a>
+            <a href="01-lam-quen.html#doi-tuong-ke-hoach" data-search="iteration release milestone planning object"><span>01.3</span>Planning object</a>
+            <a href="01-lam-quen.html#quyen-va-trach-nhiem" data-search="owner editor permissions and responsibilities"><span>01.4</span>Rights &amp; responsibilities</a>
+            <a href="01-lam-quen.html#vi-du-xuyen-suot" data-search="simulation example scenario"><span>01.5</span>Scenario walkthrough</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="02-truy-cap-pham-vi.html#chapter-02" data-search="access select scope login home navigation search account information">
+              <span class="nav-number">02</span><span><strong>Access &amp; Scope</strong><small>Login, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-02" aria-label="Opens items in the Access &amp; scope section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-02">
+            <a href="02-truy-cap-pham-vi.html#dang-nhap" data-search="sign in email continue microsoft"><span>02.1</span>Login</a>
+            <a href="02-truy-cap-pham-vi.html#thanh-dieu-huong" data-search="home plan track quality portfolio reports navigation"><span>02.2</span>Navigation bar</a>
+            <a href="02-truy-cap-pham-vi.html#chon-project-team" data-search="workspace project team all teams context selector scope"><span>02.3</span>Select Project &amp; Team</a>
+            <a href="02-truy-cap-pham-vi.html#doc-trang-home" data-search="home my work recent activity project health"><span>02.4</span>Read the Home page</a>
+            <a href="02-truy-cap-pham-vi.html#cong-cu-ca-nhan" data-search="search work items notifications unread profile settings sign out"><span>02.5</span>Personal tools</a>
+            <a href="02-truy-cap-pham-vi.html#xu-ly-truy-cap" data-search="did not see the project team denying access processing"><span>02.6</span>Troubleshoot missing scope</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="03-backlog-cong-viec.html#chapter-03" data-search="backlog user story defect create work item owner team update search">
+              <span class="nav-number">03</span><span><strong>Backlog &amp; Work Items</strong><small>US, DE and Owner</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-03" aria-label="Open items in the Backlog &amp; tasks section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-03">
+            <a href="03-backlog-cong-viec.html#doc-backlog" data-search="read search backlog search filter show fields"><span>03.1</span>Read &amp; find Backlog</a>
+            <a href="03-backlog-cong-viec.html#tao-user-story" data-search="create user story us add new"><span>03.2</span>Create User Story</a>
+            <a href="03-backlog-cong-viec.html#tao-defect" data-search="creates defect log for parent story"><span>03.3</span>Record Defect</a>
+            <a href="03-backlog-cong-viec.html#chon-team-owner" data-search="select team owner no entry membership rights"><span>03.4</span>Select Team &amp; Owner</a>
+            <a href="03-backlog-cong-viec.html#cap-nhat-work-item" data-search="update work item details feature parent story"><span>03.5</span>Update Work Item</a>
+            <a href="03-backlog-cong-viec.html#xu-ly-backlog" data-search="item owner not found to process"><span>03.6</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="04-testing.html#chapter-04" data-search="testing test case test result verdict quality validation">
+              <span class="nav-number">04</span><span><strong>Testing</strong><small>Test Case and Test Result</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-04" aria-label="Open items in the Testing section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-04">
+            <a href="04-testing.html#hieu-luong-testing" data-search="testing flow user story defect test case result"><span>04.1</span>Understand the Testing flow</a>
+            <a href="04-testing.html#mo-test-cases" data-search="open test cases tab list last verdict last run"><span>04.2</span>Open Test Cases</a>
+            <a href="04-testing.html#tao-test-case" data-search="create test case add new type method priority owner assigned"><span>04.3</span>Create Test Case</a>
+            <a href="04-testing.html#hoan-thien-test-case" data-search="description objective preconditions input expected result postconditions"><span>04.4</span>Complete Test Case</a>
+            <a href="04-testing.html#ghi-test-result" data-search="add result build date verdict duration tester notes"><span>04.5</span>Record Test Result</a>
+            <a href="04-testing.html#doc-ket-qua-testing" data-search="last verdict last run results revision history"><span>04.6</span>Read results &amp; history</a>
+            <a href="04-testing.html#quan-ly-test-case-type" data-search="settings project test case types acceptance functional regression"><span>04.7</span>Manage Test Case Type</a>
+            <a href="04-testing.html#xu-ly-testing" data-search="processing not found test case result cannot be saved"><span>04.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="05-lap-ke-hoach.html#chapter-05" data-search="iteration planning timeboxes unscheduled planning committed accepted">
+              <span class="nav-number">05</span><span><strong>Iteration Planning</strong><small>Iteration and scope</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-05" aria-label="Opens items in the Planning section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-05">
+            <a href="05-lap-ke-hoach.html#doc-timeboxes" data-search="read list iteration timeboxes metrics filter"><span>05.1</span>Read the Iteration list</a>
+            <a href="05-lap-ke-hoach.html#tao-iteration" data-search="create iteration add new team start and end date"><span>05.2</span>Create Iteration</a>
+            <a href="05-lap-ke-hoach.html#lap-planned-velocity" data-search="planned velocity points capacity committed accepted planning"><span>05.3</span>Create Planned Velocity</a>
+            <a href="05-lap-ke-hoach.html#gan-cong-viec-iteration" data-search="assign user story defect work item iteration"><span>05.4</span>Add Work Items to Iteration</a>
+            <a href="05-lap-ke-hoach.html#doi-iteration" data-search="change iteration returns unscheduled backlog"><span>05.5</span>Change or return Unscheduled</a>
+            <a href="05-lap-ke-hoach.html#trang-thai-iteration" data-search="status committed planning accepted"><span>05.6</span>Status update</a>
+            <a href="05-lap-ke-hoach.html#xu-ly-iteration" data-search="processing not found iteration failed to save"><span>05.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="06-thuc-hien-cong-viec.html#chapter-06" data-search="task daily task execution status owner actual estimate todo">
+              <span class="nav-number">06</span><span><strong>Work Execution</strong><small>Task, status and time</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-06" aria-label="Open items in the Work Execution section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-06">
+            <a href="06-thuc-hien-cong-viec.html#mo-task-list" data-search="open user story defect tab tasks task list"><span>06.1</span>Open the Task list</a>
+            <a href="06-thuc-hien-cong-viec.html#tao-task-con" data-search="create child task add task name estimate todo actual owner"><span>06.2</span>Create a child Task</a>
+            <a href="06-thuc-hien-cong-viec.html#giao-task" data-search="giao task owner dev owner team member no entry"><span>06.3</span>Assign Task</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-task-state" data-search="task state defined in-progress completed status"><span>06.4</span>Status update</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-gio-task" data-search="estimate to do actual actuals independent hours"><span>06.5</span>Update hours</a>
+            <a href="06-thuc-hien-cong-viec.html#bo-sung-task" data-search="description attachment linked items notes comments revision history"><span>06.6</span>Additional information</a>
+            <a href="06-thuc-hien-cong-viec.html#xu-ly-task" data-search="process does not see task owner status"><span>06.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="07-loi-theo-doi-team.html#chapter-07" data-search="defect quality team status monitors defect quality team progress">
+              <span class="nav-number">07</span><span><strong>Defects &amp; Team Tracking</strong><small>Defect and progress</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-07" aria-label="Open items in the Errors and Team Tracking section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-07">
+            <a href="07-loi-theo-doi-team.html#mo-quality-defect" data-search="quality defects dashboard index list"><span>07.1</span>Open Quality Defects</a>
+            <a href="07-loi-theo-doi-team.html#tao-defect-quality" data-search="add new create defect quality title description severity priority"><span>07.2</span>Create Defect from Quality</a>
+            <a href="07-loi-theo-doi-team.html#phan-loai-defect" data-search="severity priority user story fixed in build classification"><span>07.3</span>Defect Classification</a>
+            <a href="07-loi-theo-doi-team.html#vong-doi-defect" data-search="submitted open fixed closed declined flow state state"><span>07.4</span>Update lifecycle</a>
+            <a href="07-loi-theo-doi-team.html#doc-team-status" data-search="track team status iteration member capacity estimate todo actual"><span>07.5</span>Read Team Status</a>
+            <a href="07-loi-theo-doi-team.html#kiem-tra-rollup" data-search="task parent rollup completed in progress"><span>07.6</span>Check parent progress</a>
+            <a href="07-loi-theo-doi-team.html#xu-ly-chat-luong-team" data-search="does not see defect team status iteration member processing"><span>07.7</span>Troubleshooting</a>
+          </div>
+        </div>
+
+        <p class="nav-label">MANAGEMENT &amp; ADMINISTRATION</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="08-release-milestone.html#chapter-08" data-search="release milestone timebox link artifacts release tracking">
+              <span class="nav-number">08</span><span><strong>Release &amp; Milestone</strong><small>Timebox and link</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-08" aria-label="Open items in the Release and Milestone sections">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-08">
+            <a href="08-release-milestone.html#chon-dung-man-hinh" data-search="plan timeboxes release tracking select screen"><span>08.1</span>Select the correct display</a>
+            <a href="08-release-milestone.html#tao-release" data-search="create release add new planning active accepted"><span>08.2</span>Create Release</a>
+            <a href="08-release-milestone.html#tao-milestone" data-search="creates milestone target status associated releases"><span>08.3</span>Create Milestone</a>
+            <a href="08-release-milestone.html#lien-ket-release-milestone" data-search="release milestone date inferred hand input date"><span>08.4</span>Link &amp; target date</a>
+            <a href="08-release-milestone.html#quan-ly-artifacts" data-search="release milestone artifacts story defect feature epic"><span>08.5</span>Artifacts Management</a>
+            <a href="08-release-milestone.html#doc-release-tracking" data-search="portfolio release tracking burnup points count"><span>08.6</span>Read Release Tracking</a>
+            <a href="08-release-milestone.html#xu-ly-release-milestone" data-search="handle not seeing release milestone artifact burnup"><span>08.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="09-portfolio-capacity.html#chapter-09" data-search="portfolio capacity epic feature allocation publish">
+              <span class="nav-number">09</span><span><strong>Portfolio &amp; Capacity</strong><small>Epic, Feature, allocation</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-09" aria-label="Open the items in the Portfolio and Capacity sections">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-09">
+            <a href="09-portfolio-capacity.html#mo-portfolio-items" data-search="opens portfolio items all teams epic feature"><span>09.1</span>Open Portfolio Items</a>
+            <a href="09-portfolio-capacity.html#phan-biet-epic-feature" data-search="distinguish epic feature hierarchy project team"><span>09.2</span>Distinguishing Epic &amp; Feature</a>
+            <a href="09-portfolio-capacity.html#tao-cap-nhat-portfolio" data-search="create update epic feature owner release state estimate"><span>09.3</span>Create &amp; update Portfolio</a>
+            <a href="09-portfolio-capacity.html#doc-tien-do-portfolio" data-search="percent done estimate count accepted progress"><span>09.4</span>Read Portfolio progress</a>
+            <a href="09-portfolio-capacity.html#tao-capacity-plan" data-search="capacity plan single release points items draft"><span>09.5</span>Create Capacity Plan</a>
+            <a href="09-portfolio-capacity.html#phan-bo-capacity" data-search="team capacity add feature allocate split unassign demand"><span>09.6</span>Capacity allocation</a>
+            <a href="09-portfolio-capacity.html#publish-capacity-plan" data-search="publish without updating fields revert draft published"><span>09.7</span>Publish &amp; Revert</a>
+            <a href="09-portfolio-capacity.html#xu-ly-portfolio-capacity" data-search="handle epic feature plan capacity warning not found"><span>09.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="10-bao-cao.html#chapter-10" data-search="report reports burndown velocity capacity metrics">
+              <span class="nav-number">10</span><span><strong>Reports</strong><small>Read metrics correctly</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-10" aria-label="Open items in the Reports section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-10">
+            <a href="10-bao-cao.html#chon-bao-cao" data-search="select project team scope report type"><span>10.1</span>Select the correct report</a>
+            <a href="10-bao-cao.html#doc-iteration-burndown" data-search="iteration burndown todo ideal accepted points snapshot"><span>10.2</span>Read Iteration Burndown</a>
+            <a href="10-bao-cao.html#doc-velocity" data-search="velocity during after not accepted trend average"><span>10.3</span>Read Velocity</a>
+            <a href="10-bao-cao.html#doc-team-capacity-report" data-search="team capacity hours estimate todo actual member"><span>10.4</span>Read Team Capacity</a>
+            <a href="10-bao-cao.html#hieu-pham-vi-du-lieu" data-search="all teams selected team current frozen history"><span>10.5</span>Understand scope &amp; data</a>
+            <a href="10-bao-cao.html#kiem-tra-du-lieu-thieu" data-search="empty no history no data unavailable zero"><span>10.6</span>Check for missing data</a>
+            <a href="10-bao-cao.html#xu-ly-bao-cao" data-search="handle not seeing report iteration data"><span>10.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="11-quan-tri-workspace.html#chapter-11" data-search="workspace admin admin user project team permission permission audit">
+              <span class="nav-number">11</span><span><strong>Workspace Administration</strong><small>User, permissions, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-11" aria-label="Open items in Workspace Administration">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-11">
+            <a href="11-quan-tri-workspace.html#mo-quan-tri-workspace" data-search="settings opens admin workspace permissions"><span>11.1</span>Open the admin area</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-users" data-search="user management invite member access status"><span>11.2</span>User Management</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-project" data-search="workspaces projects create edit archive restore delete estimation"><span>11.3</span>Project Management</a>
+            <a href="11-quan-tri-workspace.html#phan-quyen-project" data-search="users permissions admin editor all teams add existing user"><span>11.4</span>Assign Project permissions</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-team" data-search="team member lead active deactive workspace admin"><span>11.5</span>Team Management</a>
+            <a href="11-quan-tri-workspace.html#doc-permission-model" data-search="permission model role capability fixed permission"><span>11.6</span>Read Permission Model</a>
+            <a href="11-quan-tri-workspace.html#xem-audit-log" data-search="audit log time actor detail filter"><span>11.7</span>View Audit Log</a>
+            <a href="11-quan-tri-workspace.html#xu-ly-quan-tri" data-search="handle not seeing user project team permissions"><span>11.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="12-viet-backlog-item.html#chapter-12" data-search="agile write backlog item feature user story defect acceptance criteria gherkin">
+              <span class="nav-number">12</span><span><strong>Agile Guideline</strong><small>User Story and Defect</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-12" aria-label="Opens items in the Agile Guideline section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-12">
+            <a href="12-viet-backlog-item.html#viet-user-story" data-search="user story persona goal value business rule acceptance criteria given when then invest"><span>12.1</span>Write User Story</a>
+            <a href="12-viet-backlog-item.html#viet-defect" data-search="defect bug actual expected reproduce severity priority evidence"><span>12.2</span>Write Defect</a>
+          </div>
+        </div>
+      </nav>
+    </aside>
+
+    <button class="sidebar-backdrop" type="button" aria-label="Close menu"></button>
+
+    <main class="main-content" id="main-content">
+      <div class="content-width">
+        <nav class="breadcrumb" aria-label="Path">
+          <a href="index.html#gioi-thieu">Rova User Guide</a><span aria-hidden="true">/</span><strong>04. Testing</strong>
+        </nav>
+
+        <section class="chapter-intro prose-intro" id="chapter-04">
+          <div>
+            <span class="eyebrow">PART 04 · TESTING</span>
+            <h2>Create Test Case and record test results</h2>
+            <p class="lead"><strong>Test Case</strong> describes what to test for a User Story or Defect. <strong>Test Result</strong> records the results of each run on a particular Build.</p>
+          </div>
+          <aside class="chapter-summary" aria-label="After this part you will be able to do it">
+            <strong>After this chapter, you will be able to</strong>
+            <ul>
+              <li>Open the US/DE Test Case list.</li>
+              <li>Create and complete a Test Case.</li>
+              <li>Record Test Result for each run.</li>
+              <li>Read Last Verdict, Last Run and history.</li>
+              <li>Manage Test Case Type by Project.</li>
+            </ul>
+          </aside>
+        </section>
+
+        <section class="section-block prose-section" id="hieu-luong-testing">
+          <div class="section-heading">
+            <span class="section-number">04.1</span>
+            <div><h2>Understand the Testing flow</h2><p>Testing starts from the Work Item needs to verify and keep test content separate from the results of each run.</p></div>
+          </div>
+
+          <div class="writing-template" aria-label="Relationship between Work Item, Test Case and Test Result">
+            <strong>User Story or Defect → Test Case → Test Result</strong>
+            <p><span class="template-label">Work Item</span>Indicates a need or error that needs verification. A US/DE can have many Test Cases.</p>
+            <p><span class="template-label">Test Case</span>Describes the goal, conditions, input data, and expected results. Test Cases are always linked to an existing Work Product.</p>
+            <p><span class="template-label">Test Result</span>Record Build, run date, Verdict, duration and Tester of an execution. A Test Case can have many Results.</p>
+          </div>
+
+          <p><strong>Do not overwrite Test Case to save run results.</strong> When running again on another Build, add a new Result to preserve the previous Pass, Fail or Blocked history.</p>
+        </section>
+
+        <section class="section-block prose-section" id="mo-test-cases">
+          <div class="section-heading">
+            <span class="section-number">04.2</span>
+            <div><h2>Open Work Item Test Cases</h2><p>Test Cases are located in the User Story or Defect details page, right after the Tasks tab.</p></div>
+          </div>
+
+          <ol class="instruction-list compact-steps">
+            <li><span>1</span><div><strong>Open User Story or Defect</strong><p>From Backlog, Iteration Status or Quality, select the ID of the Work Item to be tested.</p></div></li>
+            <li><span>2</span><div><strong>Select the Test Cases tab</strong><p>The number on the tab shows how many Test Cases are linked to the Work Item.</p></div></li>
+            <li><span>3</span><div><strong>Read the list</strong><p>Use Search, Filters and Show Fields when the list is long. Select Test Case ID to open the details.</p></div></li>
+          </ol>
+
+          <div class="permission-table-wrap">
+            <table class="permission-table">
+              <thead><tr><th>Column</th><th>Meaning</th><th>How to use</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Name</strong></td><td>Brief test objectives.</td><td>Read Name first to avoid creating Test Case with the same target.</td></tr>
+                <tr><td><strong>Type / Method</strong></td><td>Test type and execution method: Manual or Automated.</td><td>Used to find and group appropriate Test Cases.</td></tr>
+                <tr><td><strong>Priority / Owner</strong></td><td>Priority and responsible person.</td><td>Check before starting execution.</td></tr>
+                <tr><td><strong>Last Verdict</strong></td><td>Verdict of latest Result.</td><td>Indicates the most recent test status, does not replace Result history.</td></tr>
+                <tr><td><strong>Last Run</strong></td><td>Date of latest Result.</td><td>Used to identify whether a Test Case has been run recently or not.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section-block prose-section" id="tao-test-case">
+          <div class="section-heading">
+            <span class="section-number">04.3</span>
+            <div><h2>Create Test Case</h2><p>Create Test Case from US/DE itself so that Rova can properly link Work Product, Project and Team.</p></div>
+          </div>
+
+          <ol class="instruction-list compact-steps">
+            <li><span>1</span><div><strong>Select Add New</strong><p>In tab <b>Test Cases</b>, select <b>Add New</b> to open the Create Test Case form.</p></div></li>
+            <li><span>2</span><div><strong>Enter Name</strong><p>Write a clear, concise test objective. The Create button is locked when Name is empty.</p></div></li>
+            <li><span>3</span><div><strong>Check classification information</strong><p>Select the appropriate Type, Method, Priority, Owner and Assigned To. Project is taken from the current Work Item.</p></div></li>
+            <li><span>4</span><div><strong>Create and open details</strong><p>Select <b>Create</b>. The new Test Case is associated with US/DE and starts in an unrun state.</p></div></li>
+          </ol>
+
+          <div class="permission-table-wrap">
+            <table class="permission-table">
+              <thead><tr><th>Field</th><th>How to enter</th><th>Note</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Name</strong></td><td>State the main behavior or condition to be verified.</td><td>Required; Each Test Case should have one main goal.</td></tr>
+                <tr><td><strong>Type</strong></td><td>Select a Type configured for the Project, such as Acceptance, Functional, or Regression.</td><td>Type list is configured for each Project.</td></tr>
+                <tr><td><strong>Method</strong></td><td>Select Manual or Automated.</td><td>Reflects how the Test Case is executed.</td></tr>
+                <tr><td><strong>Priority</strong></td><td>Select Low, Normal, High or Urgent.</td><td>Priority represents the order in which to test.</td></tr>
+                <tr><td><strong>Owner</strong></td><td>Select the person responsible for the Test Case.</td><td>Different from Assigned To.</td></tr>
+                <tr><td><strong>Assigned To</strong></td><td>Select the person being assigned to do it or leave it Unassigned.</td><td>Can be changed later on Test Case Detail.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section-block prose-section" id="hoan-thien-test-case">
+          <div class="section-heading">
+            <span class="section-number">04.4</span>
+            <div><h2>Complete Test Case content</h2><p>Fill in the conditions, inputs, and expected results so others can run it again without asking further questions.</p></div>
+          </div>
+
+          <div class="permission-table-wrap">
+            <table class="permission-table">
+              <thead><tr><th>Contents</th><th>Should write</th><th>Should be avoided</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Description</strong></td><td>Summary of scope and behavior to test.</td><td>Repeat Name without adding context.</td></tr>
+                <tr><td><strong>Objective</strong></td><td>State target or verified Acceptance Criteria.</td><td>Merge multiple unrelated targets.</td></tr>
+                <tr><td><strong>Preconditions</strong></td><td>Record permissions, data, Project, Team and status required before running.</td><td>Using implicit conditions that the Tester does not know.</td></tr>
+                <tr><td><strong>Input</strong></td><td>Write operations and test data in the correct order.</td><td>Write generically like “function test”.</td></tr>
+                <tr><td><strong>Expected Result</strong></td><td>State observable and comparable results.</td><td>Use vague words like “functions properly”.</td></tr>
+                <tr><td><strong>Postconditions</strong></td><td>Indicates remaining data or status after running.</td><td>Ignore data that needs to be cleaned or restored.</td></tr>
+                <tr><td><strong>Notes / Attachments</strong></td><td>Add necessary instructions, files or evidence.</td><td>Put the Pass/Fail conclusion here instead of Result.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p><strong>Rova does not have a separate Test Steps list.</strong> Please use the pair <b>Input</b> and <b>Expected Result</b> to describe the test step and the results to observe.</p>
+        </section>
+
+        <section class="section-block prose-section" id="ghi-test-result">
+          <div class="section-heading">
+            <span class="section-number">04.5</span>
+            <div><h2>Record a Test Result</h2><p>Each Result represents one Test Case run on a Build and does not replace previous Results.</p></div>
+          </div>
+
+          <ol class="instruction-list compact-steps">
+            <li><span>1</span><div><strong>Open Test Case Detail</strong><p>Select tab <b>Results</b>; The number on the tab is the total saved Result.</p></div></li>
+            <li><span>2</span><div><strong>Select Add Result</strong><p>Rova automatically populates the current Test Case and Work Product as read-only.</p></div></li>
+            <li><span>3</span><div><strong>Enter run information</strong><p>Enter Build, Date, Verdict, Duration, Tester and Notes as needed.</p></div></li>
+            <li><span>4</span><div><strong>Save Result</strong><p>Select <b>Save</b>. New results are added to the history and old results are not deleted.</p></div></li>
+            <li><span>5</span><div><strong>Check roll-up</strong><p>Go back to Test Case and confirm Last Verdict, Last Run reflects the latest Result.</p></div></li>
+          </ol>
+
+          <div class="permission-table-wrap">
+            <table class="permission-table">
+              <thead><tr><th>Field</th><th>How to enter</th><th>Note</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Build</strong></td><td>Name or code of the instance under test.</td><td>Required; Use uniform conventions for easy tracking.</td></tr>
+                <tr><td><strong>Date</strong></td><td>Actual date of test execution.</td><td>Affects the Result that is considered the latest.</td></tr>
+                <tr><td><strong>Verdict</strong></td><td>Select Pass, Fail, Blocked, Error or Inconclusive.</td><td>Only select Pass when it has run and has enough evidence.</td></tr>
+                <tr><td><strong>Duration</strong></td><td>Minutes taken; Use numbers from 0 and above.</td><td>Do not enter hour in minute field.</td></tr>
+                <tr><td><strong>Tester</strong></td><td>The person who made the run.</td><td>Different Owner and Assigned To of Test Case.</td></tr>
+                <tr><td><strong>Notes</strong></td><td>Record data, environment, blocker or additional evidence.</td><td>Do not use Notes instead of Build or Verdict.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section-block prose-section" id="doc-ket-qua-testing">
+          <div class="section-heading">
+            <span class="section-number">04.6</span>
+            <div><h2>Read results and history</h2><p>Read Last Verdict for the most recent results, then open Results when you need to understand the entire run history.</p></div>
+          </div>
+
+          <p><strong>Last Verdict</strong> gets the Verdict of the latest Result. <strong>Last Run</strong> gets the date of that Result. If two results have the same date, Rova uses the date of creation to determine the newer version.</p>
+
+          <div class="permission-table-wrap">
+            <table class="permission-table">
+              <thead><tr><th>Area</th><th>Indicates</th><th>When to use</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Test Cases list</strong></td><td>Last Verdict and Last Run of each Test Case.</td><td>Quickly check coverage and latest status.</td></tr>
+                <tr><td><strong>Results list</strong></td><td>Build, Date, Work Product, Verdict, Duration and Tester of each run.</td><td>Compare results between multiple Builds or runs.</td></tr>
+                <tr><td><strong>Result Detail</strong></td><td>Information and attachments of a specific Result.</td><td>Investigate Fail, Blocked, Error or Inconclusive.</td></tr>
+                <tr><td><strong>Revision History</strong></td><td>Changes recorded on Test Case or Result.</td><td>Trace who changed the data and what changed.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section-block prose-section" id="quan-ly-test-case-type">
+          <div class="section-heading">
+            <span class="section-number">04.7</span>
+            <div><h2>Manage Test Case Type</h2><p>Workspace Admin manages a separate Type list for each Project.</p></div>
+          </div>
+
+          <ol class="instruction-list compact-steps">
+            <li><span>1</span><div><strong>Open Project</strong><p>Enter <b>Settings → Workspaces &amp; Projects</b>, select the Project to configure and open the tab <b>Details</b>.</p></div></li>
+            <li><span>2</span><div><strong>Find Test Case Types</strong><p>The new project has default Types: Acceptance, Functional, Regression, Performance and Usability.</p></div></li>
+            <li><span>3</span><div><strong>Add Type</strong><p>Select <b>Add New</b>, enter a unique name in Project and then save.</p></div></li>
+            <li><span>4</span><div><strong>Stop using Type</strong><p>Select Remove and confirm. Type no longer appears when creating a new one; Old Test Cases still retain historical value.</p></div></li>
+          </ol>
+        </section>
+
+        <section class="section-block prose-section" id="xu-ly-testing">
+          <div class="section-heading">
+            <span class="section-number">04.8</span>
+            <div><h2>Troubleshooting</h2><p>Check the latest Work Product, required data and Result before recreating the record.</p></div>
+          </div>
+
+          <div class="troubleshoot-list">
+            <article><span>01</span><div><strong>Test Cases tab not visible</strong><p>Confirm you have the User Story or Defect Detail open and have permission to view the Work Item in that Project/Team.</p></div></article>
+            <article><span>02</span><div><strong>Create is locked</strong><p>Enter Name and check Type, Method, Priority, Owner, Assigned To before creating.</p></div></article>
+            <article><span>03</span><div><strong>Test Case is not correct Work Product</strong><p>Go back to US/DE and create it from the Test Cases tab of that same Work Item; Do not create another copy to cover the link error.</p></div></article>
+            <article><span>05</span><div><strong>Save Result is locked</strong><p>Check Build, Date and Tester. Duration cannot be less than 0.</p></div></article>
+            <article><span>06</span><div><strong>Last Verdict was not as expected</strong><p>Open the Results list and check Date. Last Verdict takes the latest Result, not the just opened Result.</p></div></article>
+            <article><span>07</span><div><strong>Can't see the Type to select</strong><p>Ask Workspace Admin to check the Test Case Types of the correct Project; Type may have been discontinued.</p></div></article>
+          </div>
+
+          <div class="check-understanding">
+            <strong>Check your understanding</strong>
+            <ul>
+              <li>Is the Test Case linked to the correct User Story or Defect?</li>
+              <li>Is Input and Expected Result enough for others to run again?</li>
+              <li>Is the Result correct for Build, Date, Verdict and Tester?</li>
+              <li>Are you reading the latest result or a historical result?</li>
+            </ul>
+          </div>
+        </section>
+
+        <nav class="chapter-pagination" aria-label="Navigate between sections">
+          <a class="chapter-nav-link previous" href="03-backlog-cong-viec.html#chapter-03"><span class="chapter-nav-arrow" aria-hidden="true">←</span><span class="chapter-nav-copy"><small>Previous</small><strong>03. Backlog &amp; Work Items</strong></span></a>
+          <a class="chapter-nav-link next" href="05-lap-ke-hoach.html#chapter-05"><span class="chapter-nav-copy"><small>Next</small><strong>05. Iteration Planning</strong></span><span class="chapter-nav-arrow" aria-hidden="true">→</span></a>
+        </nav>
+
+        <footer class="guide-footer">
+          <div><strong>Rova User Guide</strong><span>04. Testing · Version 1.0</span></div>
+          <a href="#top">Back to top ↑</a>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <script src="../guide.js?v=20261007-02"></script>
+</body>
+</html>

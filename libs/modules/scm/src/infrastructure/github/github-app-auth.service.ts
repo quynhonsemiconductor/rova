@@ -7,7 +7,7 @@ import { rateLimitWaitMs } from './github-rest.client';
 import { SECRET_RESOLVER, type ISecretResolver } from '@platform';
 
 /**
- * Authenticates as the "Rally SCM" GitHub App and mints short-lived installation
+ * Authenticates as the "Rally SCM" GitHub App (legacy physical name, do not rename) and mints short-lived installation
  * access tokens for REST calls (backfill). Flow:
  *   1. App JWT — RS256, signed with the App private key (iss = App ID, ≤10 min).
  *   2. Installation id — GET /repos/{o}/{r}/installation (Bearer app JWT).

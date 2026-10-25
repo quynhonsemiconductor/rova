@@ -1,23 +1,26 @@
 # Local stack for rova. Project name `rova` unless COMPOSE_PROJECT_NAME is set (in .env or the shell): that is what lets
 # a second copy of this repo run beside the first. No container_name is set on purpose, for the same reason.
 #
-# Image majors match production: RDS Postgres 17 (tf-modules rds module default) and ElastiCache Valkey 7.2
-# (tf-modules cache module default, node mode). Tags are pinned to a full version, not a moving major tag.
+# Image versions match the data-store track: PostgreSQL 18.6 (RDS target) and Valkey 8.1.10 (ElastiCache target 8.1,
+# the same engine; no Valkey 8.2 image is published). Tags are pinned to a full version, not a moving major tag.
+# PostgreSQL is the Debian image, not -alpine: glibc collation, as on RDS.
 #
 # Every host port is bound to 127.0.0.1 and read from .env (`*_HOST_PORT`, defaults below). `.env.example` lists them.
 name: rova
 
 services:
   postgres:
-    image: postgres:17.11-alpine
+    image: postgres:18.6
     environment:
       POSTGRES_DB: rova_dev
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - '127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432'
+      - '127.0.0.1:${POSTGRES_HOST_PORT:-5420}:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # PostgreSQL 18 images keep data in a major-version subdirectory of /var/lib/postgresql; mounting
+      # the old /data path makes the image refuse to start.
+      - postgres_data:/var/lib/postgresql
       - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
@@ -26,51 +29,65 @@ services:
       retries: 5
 
   valkey:
-    image: valkey/valkey:7.2.14-alpine
+    image: valkey/valkey:8.1.10-alpine
     ports:
-      - '127.0.0.1:${VALKEY_HOST_PORT:-6379}:6379'
+      - '127.0.0.1:${VALKEY_HOST_PORT:-6320}:6379'
     healthcheck:
       test: ['CMD', 'valkey-cli', 'ping']
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # LocalStack for AWS services (S3/Secrets) in dev.
-  # Replaces real AWS for local development — no AWS account needed.
-  # Production AWS resources live in the rova repo (Terraform).
-  localstack:
-    image: localstack/localstack:4.14
-    environment:
-      AWS_DEFAULT_REGION: ap-southeast-1
-      PERSISTENCE: 1
-      # Standard fake credentials — required by AWS SDK v3 even against LocalStack
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-      # The SPA origin the buckets' CORS allows (scripts/localstack/01-bootstrap.sh). Follows WEB_DEV_PORT in .env.
-      WEB_ORIGIN: http://localhost:${WEB_DEV_PORT:-5173}
+  # Mailpit catches the mail the API sends with EMAIL_PROVIDER=smtp. Nothing leaves the machine: SMTP accepts any message and the
+  # web UI (and its API, which the check command reads) shows it. Pinned to a full version. Development only.
+  mailpit:
+    image: axllent/mailpit:v1.31.4
     ports:
-      # STORAGE_ENDPOINT and AWS_ENDPOINT_URL in .env must carry the same port.
-      - '127.0.0.1:${LOCALSTACK_HOST_PORT:-4566}:4566'
+      # MAIL_SMTP_PORT in .env must carry the SMTP port; the UI and API are on the UI port.
+      - '127.0.0.1:${MAILPIT_SMTP_HOST_PORT:-1120}:1025'
+      - '127.0.0.1:${MAILPIT_UI_HOST_PORT:-8120}:8025'
+
+  # Garage is the local stand-in for the R2 buckets: one node, named volumes, so uploads survive `docker compose restart`
+  # (LocalStack's community edition does not keep data across a restart). Pinned to a full version. Development only.
+  garage:
+    image: dxflrs/garage:v1.3.1
+    ports:
+      # STORAGE_ENDPOINT in .env must carry the same port.
+      - '127.0.0.1:${STORAGE_HOST_PORT:-4620}:3900'
     volumes:
-      - localstack_data:/var/lib/localstack
-      # Init hook: runs automatically when LocalStack is ready.
-      # Creates the S3 buckets (there is no SNS topic or SQS queue: see the script's header).
-      # Mirrors how db/init/ bootstraps Postgres on first start.
-      - ./scripts/localstack:/etc/localstack/init/ready.d:ro
+      - ./docker/garage/garage.toml:/etc/garage.toml:ro
+      - garagemeta:/var/lib/garage/meta
+      - garagedata:/var/lib/garage/data
     healthcheck:
-      # Healthy means the init hook has RUN: both buckets exist. `docker compose up --wait` therefore returns when
-      # uploads can work, and the API never races a bucket that is still being created. Keep the names in step with
-      # S3_ATTACHMENTS_BUCKET / S3_PUBLIC_ASSETS_BUCKET in .env.example and PRIVATE_BUCKET / PUBLIC_BUCKET in
-      # scripts/localstack/01-bootstrap.sh (test/env-example.spec.ts checks all three).
-      test:
-        [
-          'CMD-SHELL',
-          'awslocal s3api head-bucket --bucket rova-attachments && awslocal s3api head-bucket --bucket rova-public-assets',
-        ]
-      interval: 10s
+      # The image has no shell and no curl; `garage status` answers once the node is up.
+      test: ['CMD', '/garage', 'status']
+      interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 15s
+      retries: 20
+      start_period: 5s
+    mem_limit: 512m
+
+  # One-shot: layout, the fixed local key, both buckets, their lifecycle and CORS for the web origins, then a preflight proof per
+  # origin. It exits 0 only when all of that holds. Nothing in this file depends on it yet; run it with the stack and read its exit
+  # status (see README → "Local stack"). The bucket names and CORS origins are kept in step with .env.example and
+  # test/env-example.spec.ts, which checks them.
+  garage-init:
+    image: amazon/aws-cli:2.17.50
+    entrypoint: ['/bin/bash', '/init/init.sh']
+    depends_on:
+      garage:
+        condition: service_healthy
+    environment:
+      GARAGE_ADMIN_TOKEN: local-dev-garage-admin-token-not-a-secret
+      STORAGE_ACCESS_KEY_ID: GK000000000000000000000001
+      # Quoted on purpose: an unquoted all-zero scalar is read by YAML as the integer 0, and Garage then gets "0".
+      STORAGE_SECRET_ACCESS_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
+      PRIVATE_BUCKET: rova-attachments
+      PUBLIC_BUCKET: rova-public-assets
+      WEB_ORIGINS: http://localhost:${WEB_DEV_PORT:-5175},http://127.0.0.1:${WEB_DEV_PORT:-5175}
+    volumes:
+      - ./scripts/garage:/init:ro
+    restart: 'no'
 
   otel:
     image: otel/opentelemetry-collector-contrib:0.162.0
@@ -79,8 +96,8 @@ services:
       - ./scripts/otel/collector.yaml:/etc/otel/collector.yaml:ro
     ports:
       # OTEL_EXPORTER_OTLP_ENDPOINT in .env must carry the OTLP port.
-      - '127.0.0.1:${OTEL_OTLP_HOST_PORT:-4318}:4318'
-      - '127.0.0.1:${OTEL_METRICS_HOST_PORT:-8889}:8889'
+      - '127.0.0.1:${OTEL_OTLP_HOST_PORT:-4420}:4318'
+      - '127.0.0.1:${OTEL_METRICS_HOST_PORT:-8420}:8889'
     healthcheck:
       # The image has no shell and no curl, so run the binary's own subcommand instead.
       test: ['CMD', '/otelcol-contrib', 'components']
@@ -90,4 +107,5 @@ services:
 
 volumes:
   postgres_data:
-  localstack_data:
+  garagemeta:
+  garagedata:

@@ -3,7 +3,7 @@ import { and, desc, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-or
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
-import { testResults } from '../../../../../../db/schema/work';
+import { testResults, workItems } from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
 import type { TestResult } from '../../domain/test-result.types';
 import {
@@ -19,6 +19,11 @@ const TESTER_NAME = sql<
   string | null
 >`coalesce(${TR_TESTER_USER.displayName}, ${TR_TESTER_USER.email})`;
 
+/** The Work Product SNAPSHOT's key (BR13) — joined from the Result's OWN `work_item_id`, never
+ *  from the Test Case's current one, which a Split moves (SU-05 AC4, BA retest TC-51 / TR-84).
+ *  No `deleted_at` filter: a deleted Story is still the Work Product the Result was recorded on. */
+const TR_WORK_ITEM = alias(workItems, 'tr_work_item');
+
 @Injectable()
 export class TestResultDrizzleRepository implements ITestResultRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
@@ -27,9 +32,20 @@ export class TestResultDrizzleRepository implements ITestResultRepository {
   // stale connection would not yet see a row committed on the transaction's own connection (R1).
   private selectWithNames(exec: DbExecutor = this.db) {
     return exec
-      .select({ ...getTableColumns(testResults), testerName: TESTER_NAME })
+      .select({
+        ...getTableColumns(testResults),
+        testerName: TESTER_NAME,
+        workItemKey: TR_WORK_ITEM.itemKey,
+      })
       .from(testResults)
-      .leftJoin(TR_TESTER_USER, eq(TR_TESTER_USER.id, testResults.testerId));
+      .leftJoin(TR_TESTER_USER, eq(TR_TESTER_USER.id, testResults.testerId))
+      .leftJoin(
+        TR_WORK_ITEM,
+        and(
+          eq(TR_WORK_ITEM.id, testResults.workItemId),
+          eq(TR_WORK_ITEM.workspaceId, testResults.workspaceId),
+        ),
+      );
   }
 
   // BR14: `run_date desc, created_at desc` — the same ordering `trg_test_case_last_result`
@@ -93,6 +109,24 @@ export class TestResultDrizzleRepository implements ITestResultRepository {
     return this.mapRow(rows[0]);
   }
 
+  async findKeysByIds(ids: string[], workspaceId: string): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.db
+      .select({ id: testResults.id, key: testResults.testResultKey })
+      .from(testResults)
+      .where(and(inArray(testResults.id, ids), eq(testResults.workspaceId, workspaceId)));
+    return new Map(rows.map((r) => [r.id, r.key]));
+  }
+
+  async findUserNames(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.db
+      .select({ id: users.id, name: sql<string>`coalesce(${users.displayName}, ${users.email})` })
+      .from(users)
+      .where(inArray(users.id, ids));
+    return new Map(rows.map((r) => [r.id, r.name]));
+  }
+
   async update(
     id: string,
     input: UpdateTestResultInput,
@@ -150,13 +184,19 @@ export class TestResultDrizzleRepository implements ITestResultRepository {
       );
   }
 
-  private mapRow(row: typeof testResults.$inferSelect & { testerName: string | null }): TestResult {
+  private mapRow(
+    row: typeof testResults.$inferSelect & {
+      testerName: string | null;
+      workItemKey: string | null;
+    },
+  ): TestResult {
     return {
       id: row.id,
       workspaceId: row.workspaceId,
       projectId: row.projectId,
       testCaseId: row.testCaseId,
       workItemId: row.workItemId,
+      workItemKey: row.workItemKey,
       testResultKey: row.testResultKey,
       build: row.build,
       runDate: row.runDate,

@@ -5,8 +5,8 @@ import { RequestContextService, requestContextStorage } from './request-context'
 /**
  * Guards the single-store invariant.
  *
- * The observability package ships its own AsyncLocalStorage. If rally also had one,
- * HTTP requests would seed rally's store while the package's pino mixin read the
+ * The observability package ships its own AsyncLocalStorage. If rova also had one,
+ * HTTP requests would seed rova's store while the package's pino mixin read the
  * package's, and every request log line would quietly lose `workspaceId`, `userId`
  * and `correlationId`. Nothing throws in that world — the fields are simply absent,
  * which is why it needs a test rather than a comment.
@@ -17,7 +17,7 @@ describe('request context wiring', () => {
 
     // withJobContext writes to the PACKAGE's storage...
     void withJobContext('probe', () => {
-      // ...and rally's re-exported storage must observe the same values.
+      // ...and rova's re-exported storage must observe the same values.
       seenByRally = requestContextStorage.getStore()?.correlationId;
     });
 

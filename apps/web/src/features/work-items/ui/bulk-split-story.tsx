@@ -19,8 +19,8 @@
  * target" — is the "picker narrower than the write" fault class in the plan risk register, with the
  * two halves in different languages.
  *
- * `ineligibleReason` is never rendered. The tooltip says only that the story cannot be split, which
- * is what SRS §11 allows: disabled, with no explanation of which rule refused.
+ * `ineligibleReason` is never rendered, and the disabled control carries no tooltip: SRS §3 — "the
+ * UI does not add a reason, banner or toast".
  */
 import { useState } from 'react'
 import { Scissors } from 'lucide-react'
@@ -74,18 +74,9 @@ export function BulkSplitStory({
       <BulkBarButton
         icon={<Scissors size={13} />}
         label={t('action.bulkLabel')}
+        // NO tooltip, in either state: SU-01 AC3–AC7 say "disabled, and no explanatory message is
+        // added", and the BA retest (TC-39) counts a `title` as one.
         disabled={!eligible}
-        // Only while DISABLED — an enabled button whose tooltip says it cannot be used is worse than
-        // no tooltip. Which of the two sentences applies is the ONE distinction allowed: "pick a
-        // single story" is about the SELECTION and is actionable by the reader. Once the selection is
-        // right and the server still says no, SRS §11 forbids explaining which rule refused.
-        title={
-          eligible
-            ? undefined
-            : selection.count === 1 && isStory
-              ? t('action.disabledNotEligible')
-              : t('action.disabledOneStory')
-        }
         onClick={() => setOpen(true)}
       />
       {open && selected && (

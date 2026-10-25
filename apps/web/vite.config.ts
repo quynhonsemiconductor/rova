@@ -3,22 +3,22 @@ import path from 'node:path'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-// The dev server's settings come from the root `.env` (where the API's PORT and LocalStack's STORAGE_ENDPOINT live), read
+// The dev server's settings come from the root `.env` (where the API's PORT and the storage STORAGE_ENDPOINT live), read
 // here because Vite only puts VITE_-prefixed keys into `import.meta.env`. The process environment wins, as usual. The
 // defaults are this stack's own ports.
 const dotenv = { ...loadEnv('', path.resolve(__dirname, '../..'), ''), ...process.env }
-const apiOrigin = dotenv.API_TARGET || `http://localhost:${dotenv.PORT || 3000}`
-const storageOrigin = dotenv.STORAGE_ENDPOINT || 'http://localhost:4566'
+const apiOrigin = dotenv.API_TARGET || `http://localhost:${dotenv.PORT || 3010}`
+const storageOrigin = dotenv.STORAGE_ENDPOINT || 'http://localhost:4620'
 
 /**
- * index.html's dev CSP and preconnect hint name the API and LocalStack by their default ports. A second copy of the stack has
+ * index.html's dev CSP and preconnect hint name the API and the storage node by their default ports. A second copy of the stack has
  * other ports, and the browser would block its API, so the dev server rewrites those origins to the configured ones. Served
  * only by `vite` (apply: 'serve'), so the production build keeps the file as written.
  */
 export function devOrigins(html: string): string {
   return html
     .replace(/http:\/\/localhost:3000\b/g, apiOrigin)
-    .replace(/http:\/\/localhost:4566\b/g, storageOrigin)
+    .replace(/http:\/\/localhost:4620\b/g, storageOrigin)
 }
 
 const devOriginsPlugin: Plugin = {
@@ -57,7 +57,7 @@ export default defineConfig(({ mode, command }) => ({
     // 5173 (WEB_DEV_PORT in .env to change it) is the origin the rest of the stack is wired to (.env.example CORS_ORIGINS and APP_BASE_URL, whose
     // /api/auth/callback/microsoft is the Entra redirect URI, LocalStack's bucket CORS, Playwright's baseURL). strictPort: if another dev server holds it,
     // FAIL instead of silently moving to 5174, where the sign-in redirect and the upload bucket's CORS no longer match.
-    port: Number(dotenv.WEB_DEV_PORT) || 5173,
+    port: Number(dotenv.WEB_DEV_PORT) || 5175,
     strictPort: true,
     allowedHosts: ['.trycloudflare.com'],
     proxy: {

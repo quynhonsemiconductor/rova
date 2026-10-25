@@ -47,7 +47,10 @@ const ROOT = join(__dirname, '..');
  * Junction tables with no surrogate `id`. Their composite primary key is the
  * unique tuple, so ending on those columns is a total order.
  */
-const COMPOSITE_KEY_TIEBREAKERS = ['fileId'];
+// 'userId' — workspace_members' unique key is the composite (workspace_id, user_id), so a query
+// already pinned by workspace_id may end its ORDER BY on user_id (the MCP adapter's workspace
+// resolution is the one such query).
+const COMPOSITE_KEY_TIEBREAKERS = ['fileId', 'userId'];
 
 interface Ordering {
   file: string;

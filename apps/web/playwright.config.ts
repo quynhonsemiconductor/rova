@@ -1,9 +1,13 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// An isolated e2e stack passes its env file (scripts/e2e/run.sh); its web port is the one the stack was generated with.
+if (process.env.E2E_ENV_FILE) process.loadEnvFile(process.env.E2E_ENV_FILE)
+const webPort = process.env.WEB_DEV_PORT ?? '5175'
+
 /**
  * Playwright config for Rova web e2e.
  *
- * Assumes the backend API is running on :3000 (docker stack + `nest start api`)
+ * Assumes the backend API is running (docker stack + `nest start api`; PORT in the env file, 3010 by default)
  * and the seed data is loaded. Playwright starts the Vite dev server itself.
  *
  * Run:  pnpm --filter rova-web test:e2e
@@ -36,14 +40,14 @@ export default defineConfig({
   // backend rotates + reuse-protects refresh tokens, so a shared session breaks.
   // Requires the API to run with DISABLE_RATE_LIMIT=true so per-test login is OK.
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: `http://localhost:${webPort}`,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'pnpm dev --port 5173',
-    url: 'http://localhost:5173',
+    command: `pnpm dev --port ${webPort}`,
+    url: `http://localhost:${webPort}`,
     reuseExistingServer: true,
     timeout: 60_000,
   },

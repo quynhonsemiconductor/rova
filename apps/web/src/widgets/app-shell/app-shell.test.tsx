@@ -33,4 +33,11 @@ describe('the app shell', () => {
     // deleting it would have stranded the surface rather than moved it.
     expect(SHELL).toMatch(/to=\{'\/settings'/)
   })
+
+  // US-119: the Help icon opens the User Guide directly — no menu, no placeholder toast.
+  it('opens the User Guide from the Help icon instead of a "coming soon" toast', () => {
+    expect(SHELL).not.toMatch(/Help & documentation coming soon/)
+    expect(SHELL).not.toMatch(/HelpCircle/)
+    expect(SHELL).toMatch(/<HelpLink \/>/)
+  })
 })

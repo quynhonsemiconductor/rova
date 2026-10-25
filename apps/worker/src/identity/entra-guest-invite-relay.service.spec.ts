@@ -51,11 +51,11 @@ const row = (o: Partial<Row> = {}): Row => ({
 });
 
 /** The invitation row the relay re-reads before it will mail a link. */
-type Invitation = { status: string; tokenHash: string; expiresAt: Date };
+type Invitation = { status: string; tokenHash: string; expiresInDays: number };
 const invitation = (o: Partial<Invitation> = {}): Invitation => ({
   status: 'pending',
   tokenHash: TOKEN_HASH,
-  expiresAt: new Date(Date.now() + 7 * 86_400_000),
+  expiresInDays: 7,
   ...o,
 });
 
@@ -122,8 +122,12 @@ class TestRelay extends EntraGuestInviteRelayService {
   protected override reapAbandoned(): Promise<number> {
     return Promise.resolve(0);
   }
-  protected override stampLeases(_tx: DrizzleTx, ids: string[]): Promise<Map<string, number>> {
-    return Promise.resolve(new Map(ids.map((id) => [id, 1])));
+  protected override stampLeases(
+    _tx: DrizzleTx,
+    ids: string[],
+  ): Promise<Map<string, { attempts: number; lockedUntil: Date }>> {
+    const lockedUntil = new Date(Date.now() + 180_000);
+    return Promise.resolve(new Map(ids.map((id) => [id, { attempts: 1, lockedUntil }])));
   }
   protected override renewLease(): Promise<Date | null> {
     return Promise.resolve(new Date(Date.now() + 180_000));
@@ -246,19 +250,19 @@ describe('EntraGuestInviteRelayService', () => {
       expect(updatesTo(updates, guestInviteOutbox)[0]).toMatchObject({ inviteToken: null });
     });
 
-    it('reports the days REMAINING, not the configured TTL', async () => {
-      // The mail leaves after provisioning and possibly several backoff windows, so the configured
-      // TTL would overstate the window the invitee actually has.
+    it('forwards the days REMAINING that the database computed, not the configured TTL', async () => {
+      // The days-remaining value is computed in the invitation SELECT with the database's now(); the relay
+      // only forwards it. The SQL itself is pinned against PostgreSQL by test/e2e/invite-days-db-clock.e2e.spec.ts.
       const { relay, emailScheduler } = build(
         async () => ({ outcome: 'invited', guestObjectId: 'g1' }),
-        { invitation: invitation({ expiresAt: new Date(Date.now() + 2.2 * 86_400_000) }) },
+        { invitation: invitation({ expiresInDays: 5 }) },
       );
       relay.batch = [row()];
 
       await relay.relay();
 
       expect(emailScheduler.schedule).toHaveBeenCalledWith(
-        expect.objectContaining({ vars: expect.objectContaining({ expiresInDays: '3' }) }),
+        expect.objectContaining({ vars: expect.objectContaining({ expiresInDays: '5' }) }),
         expect.anything(),
       );
     });
@@ -403,8 +407,9 @@ describe('EntraGuestInviteRelayService', () => {
       expect(outbox[0]).toMatchObject({ status: 'pending' });
       // `attempts` is spent at CLAIM time, so the failure write does not touch it.
       expect(outbox[0]).not.toHaveProperty('attempts');
-      // A retry, so scheduled_at moves forward by the base class's backoff.
-      expect(outbox[0].scheduledAt).toBeInstanceOf(Date);
+      // A retry, so scheduled_at moves forward by the base class's backoff. It is written as a database
+      // expression (now() + interval), not a host Date; test/e2e/outbox-lease.e2e.spec.ts checks the value.
+      expect(outbox[0].scheduledAt).toBeDefined();
     });
 
     it('a transient fault schedules no email and KEEPS the token for the retry', async () => {

@@ -9,10 +9,12 @@
  * `onDark` because `DetailLayout`'s header is the dark bar: `ActionMenu`'s default trigger is
  * `text-muted-foreground`, which is invisible there.
  *
- * ELIGIBILITY IS THE SERVER'S. This component decides only whether to render the ITEM at all, from
- * two facts the page already holds — the row is a Story, and the caller holds `work_item:edit`. Both
- * are NARROWINGS that avoid offering a verb the server would refuse; neither is the rule. The
- * server's `eligible` governs from inside the modal.
+ * ELIGIBILITY IS THE SERVER'S. Two facts the page already holds — the row is a Story, and the caller
+ * holds `work_item:edit` — decide whether the kebab renders at all. Whether the item is ENABLED is the
+ * server's `eligible` from the split preview, the same answer the Iteration Status entry point reads:
+ * SU-01 AC4–AC6 require the action itself to be disabled for an Accepted, unscheduled or
+ * target-less Story, with no explanatory message (BA retest TC-39 — it used to open the modal and
+ * refuse there). `eligible === true` and nothing looser, so it stays disabled while in flight.
  *
  * Absent rather than disabled without `work_item:edit`, matching Delete beside it: "the verb is
  * either granted or it is not, and a control that only refuses is noise" (`CLAUDE.md`). The kebab
@@ -24,6 +26,8 @@ import { Scissors } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
+import { valueResource } from '@/shared/lib/query/resource'
+import { useSplitPreview } from '@/features/work-items/api'
 import { SplitStoryModal } from '@/features/work-items/ui/split-story-modal'
 
 export function WorkItemActionsMenu({
@@ -43,10 +47,16 @@ export function WorkItemActionsMenu({
 }) {
   const { t } = useTranslation('split-story')
   const [splitOpen, setSplitOpen] = useState(false)
+  const splittable = type === 'story' && canEdit
+
+  // Bound to its own const before `valueResource` — see `resource.ts` on the React Compiler.
+  const previewQuery = useSplitPreview(workItemId, { enabled: splittable })
+  const preview = valueResource(previewQuery)
+  const eligible = splittable && preview.value?.eligible === true
 
   // The menu holds exactly one verb today, so "may not split" and "menu is empty" are the same
   // state. Render nothing rather than an empty popover.
-  if (type !== 'story' || !canEdit) return null
+  if (!splittable) return null
 
   return (
     <>
@@ -54,6 +64,7 @@ export function WorkItemActionsMenu({
         <ActionMenuItem
           icon={<Scissors size={13} />}
           label={t('action.label')}
+          disabled={!eligible}
           onClick={() => setSplitOpen(true)}
         />
       </ActionMenu>

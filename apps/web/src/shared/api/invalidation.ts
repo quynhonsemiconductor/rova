@@ -55,7 +55,6 @@ export const WORK_ITEM_VIEW_ROOTS: readonly QueryKey[] = [
 const WORK_ITEM_DASHBOARD_ROOTS: readonly QueryKey[] = [
   ['my-work-items'],
   ['work-item-counts'],
-  ['work-items-committed-iterations'],
   ['home'],
 ]
 

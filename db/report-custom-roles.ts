@@ -36,7 +36,7 @@
  */
 import { Pool } from 'pg';
 
-import { pgOptions } from './pg-ssl';
+import { pgOptions, tlsFromEnv } from './pg-ssl';
 import { SYSTEM_ROLE } from './permissions.catalog';
 
 /** A report is output a person reads, not a log: it goes to stdout as plain lines. */
@@ -73,7 +73,7 @@ export interface CustomRoleReport {
 export async function reportCustomRoles(options: {
   databaseUrl: string;
 }): Promise<CustomRoleReport> {
-  const pool = new Pool(pgOptions(options.databaseUrl));
+  const pool = new Pool(pgOptions(options.databaseUrl, tlsFromEnv()));
   try {
     // Keyed on the SLUG, not on `is_system` — see the header. `SYSTEM_ROLE` is the catalogue's own
     // list, so a tier role added there later is automatically excluded here rather than becoming a
