@@ -16,10 +16,10 @@ let dir: string;
 // unreliable across runners, and assignments are POSIX-exact everywhere.
 const run = (
   extraEnv: Record<string, string>,
-  cmd = 'node -e "console.log(process.env.AZURE_CLIENT_CERTIFICATE_PATH)"',
+  cmd = 'node -e "console.log(process.env.AZURE_CLIENT_CERTIFICATE_PATH ?? \'\')"',
 ) => {
   const assignments = Object.entries({ GRAPH_CERT_FILE: join(dir, 'cert.pem'), ...extraEnv })
-    .map(([k, v]) => `${k}=${v}`)
+    .map(([k, v]) => `${k}='${v}'`)
     .join(' ');
   return execFileSync('/bin/sh', ['-c', `${assignments} "${script}" ${cmd}`], { encoding: 'utf8' });
 };
