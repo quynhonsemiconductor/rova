@@ -555,6 +555,14 @@ describe('/mcp over the real guard chain (e2e)', () => {
             `${name}: documented field '${field}' missing/undefined`,
           ).toBeDefined();
         }
+        if (name === 'get_portfolio_item') {
+          // the seeded NXP Feature 3 carries linked stories — the children feed must be
+          // non-empty (the delta-review blocker: Epics have none, Features must not be empty)
+          expect(
+            (out.children as unknown[]).length,
+            'get_portfolio_item: children must be non-empty for the Feature fixture',
+          ).toBeGreaterThan(0);
+        }
       }
     });
   });
