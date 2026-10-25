@@ -70,9 +70,4 @@ describe('shapePortfolioDetail (detail + paged children -> tool payload)', () =>
     const out = shapePortfolioDetail({}, { data: [] });
     expect(out['id']).toBeUndefined();
   });
-
-  it('an empty detail body produces a payload with undefined core fields (deny happens before shaping)', () => {
-    const out = shapePortfolioDetail({}, { data: [] });
-    expect(out['id']).toBeUndefined();
-  });
 });

@@ -290,7 +290,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
       team_status: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
       list_portfolio_items: { type: 'epic' },
       // NXP_FEATURE_3: the seeded Feature WITH children (2 stories linked, demo.ts)
-      get_portfolio_item: { portfolioItemId: '00000000-0000-7000-8000-0000000000c3' },
+      get_portfolio_item: { portfolioItemId: NXP_FEATURE_3_ID },
     };
     // SelfScoped: the caller's own data — must keep working for any member.
     const SELF_SCOPED = new Set(['whoami', 'my_work', 'unread_notifications']);

@@ -45,7 +45,7 @@ export function registerQualityDefects(server: McpServer, ctx: ToolContext) {
         projectId: z.uuid().describe('The project whose defects to list'),
         search: z.string().max(200).optional().describe('Free-text filter'),
         severity: z
-          .enum(['all', 'critical', 'major', 'minor', 'trivial'])
+          .enum(['all', 'none', 'critical', 'major', 'minor', 'trivial'])
           .optional()
           .describe('Filter by severity'),
         offset: z.number().int().min(0).optional().describe('Rows to skip (offset pagination)'),
