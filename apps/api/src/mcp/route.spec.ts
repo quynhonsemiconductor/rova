@@ -630,6 +630,14 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       for (const { name, notFoundArg } of NOT_FOUND_CASES) {
         await expectErrorRelay(verifier, name, notFoundArg, 404);
       }
+
+      // unknown-id -> 403 (no existence leak) for the routes PolicyGuard guards before lookup
+      for (const [name, args] of [
+        ['get_project', { projectId: UNKNOWN_ID }],
+        ['list_project_members', { projectId: UNKNOWN_ID }],
+      ] as const) {
+        await expectErrorRelay(verifier, name, args, 403);
+      }
     });
   });
 
