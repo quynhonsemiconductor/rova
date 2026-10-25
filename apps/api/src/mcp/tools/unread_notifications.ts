@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { result, type ToolContext } from './rest';
+import { denied, result, type ToolContext } from './rest';
 
 /**
  * `unread_notifications` — the caller's unread notification count
@@ -19,6 +19,8 @@ export function registerUnreadNotifications(server: McpServer, ctx: ToolContext)
         method: 'GET',
         url: '/v1/notifications/unread-count',
       });
+      if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
+        return denied(statusCode, json);
       const body = json as Record<string, unknown>;
       return result(statusCode, json, { count: body['count'] });
     },

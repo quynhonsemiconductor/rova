@@ -35,6 +35,7 @@ const OWNER: Record<
     file: 'identity/src/interface/http/auth.controller.ts',
     controller: "@Controller('auth')",
     get: "@Get('me')",
+    selfScoped: true,
   },
   list_projects: {
     file: 'projects/src/interface/http/projects.controller.ts',
@@ -152,7 +153,7 @@ const OWNER: Record<
     file: 'notifications/src/interface/http/notifications.controller.ts',
     controller: "@Controller('notifications')",
     get: "@Get('unread-count')",
-    // SelfScoped: the caller's own unread count
+    selfScoped: true,
   },
 };
 

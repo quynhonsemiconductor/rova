@@ -34,7 +34,10 @@ export function registerSearchWorkItems(server: McpServer, ctx: ToolContext) {
         assigneeId: z.uuid().optional().describe('Filter by assignee'),
         iterationId: z.uuid().optional().describe('Filter by iteration'),
         statusId: z.uuid().optional().describe('Filter by workflow status'),
-        priority: z.string().optional().describe('Filter by priority'),
+        priority: z
+          .enum(['none', 'low', 'normal', 'high', 'urgent'])
+          .optional()
+          .describe('Filter by priority'),
         ...pageArgs,
       },
     },

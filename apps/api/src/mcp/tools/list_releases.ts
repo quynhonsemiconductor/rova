@@ -1,32 +1,34 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { pageInfoOf, pageArgs, result, type ToolContext } from './rest';
+import { denied, type ToolContext } from './rest';
 
 /**
  * `list_releases` — the releases of one project the person can read
- * (GET /v1/releases, `release:view` from the `projectId` query).
+ * (GET /v1/releases, `release:view` from the `projectId` query). The REST route does not
+ * paginate, so the tool caps the feed and sets `truncated`.
  */
 export function registerListReleases(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
     'list_releases',
     {
       title: 'List releases',
-      description: 'The releases of one project you can read. Paginated.',
+      description: 'The releases of one project you can read (capped at 100).',
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: {
         projectId: z.uuid().describe('The project to list releases from'),
-        ...pageArgs,
       },
     },
-    async ({ projectId, limit, cursor }) => {
+    async ({ projectId }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
         url: '/v1/releases',
-        query: { projectId, limit: limit ?? 20, cursor },
+        query: { projectId },
       });
-      const page = json as { data?: Record<string, unknown>[] };
-      return result(statusCode, json, {
-        releases: (page.data ?? []).map((r) => ({
+      if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
+      const all = json as Record<string, unknown>[];
+      const capped = all.slice(0, 100);
+      const payload: Record<string, unknown> = {
+        releases: capped.map((r) => ({
           id: r['id'],
           releaseKey: r['releaseKey'],
           name: r['name'],
@@ -34,8 +36,11 @@ export function registerListReleases(server: McpServer, ctx: ToolContext) {
           startDate: r['startDate'] ?? null,
           releaseDate: r['releaseDate'] ?? null,
         })),
-        ...pageInfoOf(json),
-      });
+      };
+      if (all.length > 100) payload['truncated'] = true;
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(payload) }],
+      };
     },
   );
 }

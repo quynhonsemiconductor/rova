@@ -174,6 +174,13 @@ class FixtureWorkItemsController {
     };
   }
 
+  @Get(':id/comments')
+  comments(@Req() req: { user: { workspaceId: string } }, @Param('id') id: string) {
+    if (req.user.workspaceId === RESTRICTED || id === UNKNOWN_ITEM)
+      throw new ForbiddenException('Forbidden resource');
+    return [];
+  }
+
   @Get(':id/activity')
   activity(@Req() req: { user: { workspaceId: string } }, @Param('id') id: string) {
     if (req.user.workspaceId === RESTRICTED) throw new ForbiddenException('Forbidden resource');
@@ -554,6 +561,11 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       notFoundArg: { projectId: UNKNOWN_ID },
     },
     {
+      name: 'list_comments',
+      args: { workItemId: KNOWN_ITEM },
+      notFoundArg: { workItemId: UNKNOWN_ITEM },
+    },
+    {
       name: 'get_work_item_by_key',
       args: { itemKey: 'OBSE-42' },
       notFoundArg: { itemKey: 'MISSING-1' },
@@ -608,7 +620,9 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       // only tools whose REST route can 404 on the referenced resource; bare lists have no
       // not-found case (they deny 403 or return empty).
       // get_project and list_project_members 403 instead (PolicyGuard denies before the
-      // lookup — no existence leak); by-key/activity/status resolve first and 404.
+      // lookup — no existence leak). by-key/activity/status resolve first and 404.
+      // list_comments is resource-tier too but resolves the item like activity — its 403
+      // case above already covers the denial shape; the SelfScoped my_work 200s empty.
       const NOT_FOUND_CASES = ERROR_MATRIX.filter((c) =>
         ['get_work_item_by_key', 'work_item_activity', 'iteration_status'].includes(c.name),
       );

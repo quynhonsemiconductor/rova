@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { pageInfoOf, pageArgs, result, type ToolContext } from './rest';
+import { denied, pageInfoOf, pageArgs, result, type ToolContext } from './rest';
 
 /**
  * `iteration_status` — the Iteration Status read-model of one iteration
@@ -33,6 +33,8 @@ export function registerIterationStatus(server: McpServer, ctx: ToolContext) {
           cursor,
         },
       });
+      if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
+        return denied(statusCode, json);
       const body = json as {
         iteration?: Record<string, unknown>;
         metrics?: Record<string, unknown>;

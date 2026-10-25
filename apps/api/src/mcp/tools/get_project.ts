@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { result, type ToolContext } from './rest';
+import { denied, result, type ToolContext } from './rest';
 
 /**
  * `get_project` — one project by id, if the person can read it
@@ -22,6 +22,8 @@ export function registerGetProject(server: McpServer, ctx: ToolContext) {
         method: 'GET',
         url: `/v1/projects/${projectId}`,
       });
+      if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
+        return denied(statusCode, json);
       const p = json as Record<string, unknown>;
       return result(statusCode, json, {
         id: p['id'],

@@ -81,7 +81,7 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
     expect(toolInputs().get('get_project')).toEqual(['projectId']);
   });
 
-  it('list_project_members takes only the path param (GET /v1/projects/:id/members)', () => {
+  it('list_project_members takes only the path param (GET /v1/projects/:id/member-options)', () => {
     expect(toolInputs().get('list_project_members')).toEqual(['projectId']);
   });
 

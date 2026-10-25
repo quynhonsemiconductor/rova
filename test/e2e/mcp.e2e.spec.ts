@@ -333,45 +333,36 @@ describe('/mcp over the real guard chain (e2e)', () => {
       expect(projectProbe.statusCode, 'get_project: unknown id must be 403 (no leak)').toBe(403);
     });
 
-    it('unread_notifications counts ONLY the caller — a second user’s unread row is excluded', async () => {
+    it('unread_notifications counts ONLY the caller — exact +1 for their row, other users excluded', async () => {
       const { inAppNotifications } = await import('../../db/schema/notifications');
       const db = app.get<DrizzleDB>(DRIZZLE);
 
       const mine = await bindPerson('mcp-unread-mine');
       const other = await provisionUser(app, 'mcp-unread-other', 'E2E mcp unread other');
 
-      // one unread row for each of the two people
-      await db.insert(inAppNotifications).values([
-        {
-          workspaceId: WORKSPACE_ID,
-          recipientId: mine.userId,
-          type: 'WORK_ITEM_ASSIGNED',
-          title: 'for the mcp caller',
-        },
-        {
-          workspaceId: WORKSPACE_ID,
-          recipientId: other.userId,
-          type: 'WORK_ITEM_ASSIGNED',
-          title: 'for the other user',
-        },
-      ]);
+      // baseline: no unread rows for anyone
+      const before = await callTool(mine.token, 'unread_notifications', {});
+      expect(Number(before.count)).toBe(0);
 
-      // the caller's count includes theirs and excludes the other user's
-      const out = await callTool(mine.token, 'unread_notifications', {});
-      expect(out.statusCode).toBeUndefined();
-      expect(Number(out.count)).toBeGreaterThanOrEqual(1);
+      // the caller's own row: exactly +1
+      await db.insert(inAppNotifications).values({
+        workspaceId: WORKSPACE_ID,
+        recipientId: mine.userId,
+        type: 'WORK_ITEM_ASSIGNED',
+        title: 'for the mcp caller',
+      });
+      const withMine = await callTool(mine.token, 'unread_notifications', {});
+      expect(Number(withMine.count)).toBe(Number(before.count) + 1);
 
-      // the direct REST route agrees, and scoping is by recipient — verified by inserting a
-      // row whose recipient is the OTHER user and confirming the count does not double
-      const before = Number(out.count);
+      // a second user's unread row must NOT move the caller's count
       await db.insert(inAppNotifications).values({
         workspaceId: WORKSPACE_ID,
         recipientId: other.userId,
         type: 'WORK_ITEM_ASSIGNED',
-        title: 'another row for the other user only',
+        title: 'for the other user only',
       });
       const again = await callTool(mine.token, 'unread_notifications', {});
-      expect(Number(again.count)).toBe(before);
+      expect(Number(again.count)).toBe(Number(before.count) + 1);
     });
 
     it('an OFFBOARDED principal is denied on EVERY tool — the routes refuse, the tools relay', async () => {
