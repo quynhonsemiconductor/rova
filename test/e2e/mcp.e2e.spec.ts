@@ -314,11 +314,14 @@ describe('/mcp over the real guard chain (e2e)', () => {
         const out = await callTool(token, name, args);
         if (SELF_SCOPED.has(name)) {
           expect(out.statusCode, `${name} (self-scoped) should have worked`).toBeUndefined();
-        } else if (EMPTY_OK.has(name)) {
-          // the rows key is the tool's own list key: projects for list_projects
-          const rows = out['projects'] as unknown[];
-          expect(Array.isArray(rows), 'list_projects must return a list').toBe(true);
-          expect(rows.length, 'list_projects must be empty for a no-role member').toBe(0);
+        } else if (EMPTY_OK.has(name) || name === 'list_portfolio_items') {
+          // list_projects / list_portfolio_items are AccessService-scoped (the guard passes;
+          // listReadableProjectIds returns zero rows for a no-role member): 200 with an EMPTY
+          // list — the rows key is each tool's own list key
+          const key = name === 'list_portfolio_items' ? 'portfolioItems' : 'projects';
+          const rows = out[key] as unknown[];
+          expect(Array.isArray(rows), `${name} must return a list`).toBe(true);
+          expect(rows.length, `${name} must be empty for a no-role member`).toBe(0);
         } else if (POLICY_403.has(name)) {
           expect(out.statusCode, `${name} must be denied by its route`).toBe(403);
         } else {
