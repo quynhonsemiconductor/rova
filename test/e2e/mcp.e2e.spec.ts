@@ -12,7 +12,13 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { registerMcpRoute } from '../../apps/api/src/mcp/index';
 import type { McpAccessPrincipal, McpAccessVerifier } from '../../apps/api/src/mcp/index';
-import { PAY_ITER_ID, PAY_STORY_ID, WORKSPACE_ID } from '../../db/seeds/constants';
+import {
+  PAY_EPIC_ID,
+  PAY_ITER_ID,
+  PAY_PROJECT_ID,
+  PAY_STORY_ID,
+  WORKSPACE_ID,
+} from '../../db/seeds/constants';
 import { provisionUser, readCookie } from './support/session';
 
 // The seeded NXP project (db/seeds SEED_PROJECTS[0]) — the stranger holds no membership in
@@ -271,6 +277,14 @@ describe('/mcp over the real guard chain (e2e)', () => {
       velocity: { projectId: STRANGER_PROJECT },
       team_capacity: { projectId: STRANGER_PROJECT, iterationId: STRANGER_ITERATION },
       unread_notifications: {},
+      // The six new tools: TC-1 is the seeded NXP test case (the stranger has no NXP
+      // membership); the quality/team-status/report tools are project-scoped to PAY.
+      list_test_cases: { workItemId: PAY_STORY_ID },
+      get_test_case_by_key: { testCaseKey: 'TC-1' },
+      quality_defects: { projectId: PAY_PROJECT_ID },
+      team_status: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
+      list_portfolio_items: { type: 'epic' },
+      get_portfolio_item: { portfolioItemId: PAY_EPIC_ID },
     };
     // SelfScoped: the caller's own data — must keep working for any member.
     const SELF_SCOPED = new Set(['whoami', 'my_work', 'unread_notifications']);

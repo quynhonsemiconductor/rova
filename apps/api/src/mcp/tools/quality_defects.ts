@@ -38,7 +38,7 @@ export function registerQualityDefects(server: McpServer, ctx: ToolContext) {
       });
       if (statusCode >= 400) return denied(statusCode, json);
       const body = json as { data?: unknown };
-      if (statusCode < 400 && !Array.isArray(body.data)) return denied(statusCode, json);
+      if (!Array.isArray(body.data)) return denied(statusCode, json);
       const shaped = {
         metrics: (json as Record<string, unknown>)['metrics'] ?? undefined,
         defects: (body.data as Record<string, unknown>[]).map((d) => ({
