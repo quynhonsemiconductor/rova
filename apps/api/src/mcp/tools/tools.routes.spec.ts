@@ -54,7 +54,7 @@ const OWNER: Record<
   list_project_members: {
     file: 'projects/src/interface/http/projects.controller.ts',
     controller: "@Controller('projects')",
-    get: "@Get(':id/members')",
+    get: "@Get(':id/member-options')",
     permission: "'project:view'",
   },
   search_work_items: {
