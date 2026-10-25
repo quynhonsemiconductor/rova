@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   plan:
-    uses: quynhonsemiconductor/ci/.github/workflows/infra-plan.yml@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+    uses: quynhonsemiconductor/ci/.github/workflows/infra-plan.yml@0feca69debe06835300c1e28cf14ac5723577a51 # v1.24.0
     with:
       product: rova
       # The Cloudflare zone id, which infra/live/_shared REQUIRES (no default, 32-hex validation).

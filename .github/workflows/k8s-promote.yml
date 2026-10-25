@@ -99,7 +99,7 @@ jobs:
       contents: read
       id-token: write
       packages: read
-    uses: quynhonsemiconductor/ci/.github/workflows/k8s-promote.yml@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+    uses: quynhonsemiconductor/ci/.github/workflows/k8s-promote.yml@0feca69debe06835300c1e28cf14ac5723577a51 # v1.24.0
     with:
       product: rova
       # Same service list as k8s-deploy.yml / gitops base.yaml — the promote
