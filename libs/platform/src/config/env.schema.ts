@@ -338,9 +338,9 @@ export const EnvSchema = z
      *
      * When true, `WorkspaceService.inviteMember` writes a `messaging.guest_invite_outbox` row in
      * the invite transaction and the worker relay calls
-     * `POST https://graph.microsoft.com/v1.0/invitations` app-only, reusing the SAME app
-     * registration and secret as the BFF (`ENTRA_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`) —
-     * no new secret and no infra change.
+     * `POST https://graph.microsoft.com/v1.0/invitations` app-only, on the "Rova <Env> Service"
+     * app's certificate (`MAIL_GRAPH_CLIENT_ID` + the worker-only file
+     * `AZURE_CLIENT_CERTIFICATE_PATH`) — no client secret anywhere (ONPREM-PLAN §7.3).
      *
      * DEFAULT FALSE, and load-bearing. The registration needs the `User.Invite.All` APPLICATION
      * permission with admin consent before any of it can work; without it every Graph call is a
