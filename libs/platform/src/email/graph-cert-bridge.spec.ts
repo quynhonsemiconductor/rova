@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 // The bridge turns the ECS-injected MAIL_GRAPH_CERTIFICATE env value into the
 // worker-only file platform-mail reads (AZURE_CLIENT_CERTIFICATE_PATH). It is
@@ -28,7 +28,8 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'graph-cert-bridge-'));
 });
 
-afterAll(() => {
+// Every test makes its own temp dir; clean each one up as it is done with it.
+afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -64,5 +65,13 @@ describe('docker/graph-cert-bridge.sh', () => {
       'node -e "console.log(\'boot\')"',
     ).trim();
     expect(out).toBe('boot');
+  });
+
+  it('unsets the injected PEM before exec: the wrapped command must not see it (§7.3)', () => {
+    const out = run(
+      { MAIL_GRAPH_CERTIFICATE: '-----BEGIN TEST KEY-----' },
+      'node -e "console.log(process.env.MAIL_GRAPH_CERTIFICATE ?? \'unset\')"',
+    ).trim();
+    expect(out).toBe('unset');
   });
 });

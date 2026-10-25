@@ -20,4 +20,7 @@ if [ -n "${MAIL_GRAPH_CERTIFICATE:-}" ] && [ -z "${AZURE_CLIENT_CERTIFICATE_PATH
   export AZURE_CLIENT_CERTIFICATE_PATH="$cert_file"
 fi
 
+# §7.3: the app reads the FILE; the PEM must not stay in the process env.
+unset MAIL_GRAPH_CERTIFICATE || true
+
 exec "$@"
