@@ -19,7 +19,7 @@ export interface GraphMailConfig {
   /** The environment's shared mailbox (`noreply-rova-dev@qnsc.vn` in develop, `noreply-rova@qnsc.vn` in production). Messages go out as this mailbox and no other. */
   sender: string;
   tenantId: string | undefined;
-  /** The Entra app that holds the Exchange `Application Mail.Send` role for that mailbox (no Graph permission in Entra): the "Rova <Env> Service" app, `MAIL_GRAPH_CLIENT_ID`, NOT the sign-in app. */
+  /** The Entra app that holds the Exchange `Application Mail.Send` role for that mailbox (no Graph permission in Entra): the "Rova <Dev|Prod> Service" app, `MAIL_GRAPH_CLIENT_ID`, NOT the sign-in app. */
   clientId: string | undefined;
   /** PEM, key + certificate (ECS). */
   certificate: string | undefined;

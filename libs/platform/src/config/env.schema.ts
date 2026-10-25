@@ -231,7 +231,7 @@ export const EnvSchema = z
     /**
      * Which email transport to use. Defaults to 'dev' (logs to stdout).
      * 'graph' sends through Microsoft 365 (Graph sendMail) from the environment's shared mailbox: needs MAIL_GRAPH_SENDER and
-     * MAIL_GRAPH_CLIENT_ID (the "Rova <Env> Service" app, NOT the sign-in app), and in the WORKER its certificate MAIL_GRAPH_CERTIFICATE.
+     * MAIL_GRAPH_CLIENT_ID (the "Rova <Dev|Prod> Service" app, NOT the sign-in app), and in the WORKER its certificate MAIL_GRAPH_CERTIFICATE.
      * See docs/runbooks/mail-graph.md.
      * 'ses' and 'resend' are the transports it replaces and stay only until the cut-over is done.
      * 'ses' requires MAIL_FROM_EMAIL + IAM role with ses:SendEmail.
@@ -248,7 +248,7 @@ export const EnvSchema = z
      */
     MAIL_GRAPH_SENDER: emptyToUndefined(z.string().email().optional()),
     /**
-     * The "Rova <Env> Service" Entra app: certificate only, worker only, no client secret. NOT `ENTRA_CLIENT_ID`, the sign-in app (delegated,
+     * The "Rova <Dev|Prod> Service" Entra app: certificate only, worker only, no client secret. NOT `ENTRA_CLIENT_ID`, the sign-in app (delegated,
      * client secret, API): a compromised API process must not hold a credential that can send mail. The Exchange RBAC role "Application
      * Mail.Send" is assigned to THIS app, scoped to this environment's mailbox. A public identifier.
      */
@@ -467,7 +467,7 @@ export const EnvSchema = z
         code: z.ZodIssueCode.custom,
         path: ['MAIL_GRAPH_CLIENT_ID'],
         message:
-          'MAIL_GRAPH_CLIENT_ID is required when EMAIL_PROVIDER is "graph": the "Rova <Env> Service" app that holds the ' +
+          'MAIL_GRAPH_CLIENT_ID is required when EMAIL_PROVIDER is "graph": the "Rova <Dev|Prod> Service" app that holds the ' +
           'Exchange "Application Mail.Send" role for the mailbox (not the sign-in app, ENTRA_CLIENT_ID).',
       });
     }
