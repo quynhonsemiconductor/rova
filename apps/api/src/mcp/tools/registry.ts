@@ -11,6 +11,19 @@ export const TOOL_ROUTES = {
   list_iterations: { method: 'GET', url: '/v1/iterations' },
   list_comments: { method: 'GET', url: '/v1/work-items/:workItemId/comments' },
   get_work_item: { method: 'GET', url: '/v1/work-items/:workItemId' },
+  get_project: { method: 'GET', url: '/v1/projects/:projectId' },
+  list_project_members: { method: 'GET', url: '/v1/projects/:id/member-options' },
+  get_work_item_by_key: { method: 'GET', url: '/v1/work-items/by-key' },
+  list_backlog: { method: 'GET', url: '/v1/work-items/backlog' },
+  work_item_activity: { method: 'GET', url: '/v1/work-items/:id/activity' },
+  iteration_options: { method: 'GET', url: '/v1/iterations/options' },
+  iteration_status: { method: 'GET', url: '/v1/iterations/:id/status' },
+  list_releases: { method: 'GET', url: '/v1/releases' },
+  list_milestones: { method: 'GET', url: '/v1/milestones' },
+  iteration_burndown: { method: 'GET', url: '/v1/reports/iteration-burndown' },
+  velocity: { method: 'GET', url: '/v1/reports/velocity' },
+  team_capacity: { method: 'GET', url: '/v1/reports/team-capacity' },
+  unread_notifications: { method: 'GET', url: '/v1/notifications/unread-count' },
 } as const;
 
 export type ToolName = keyof typeof TOOL_ROUTES;

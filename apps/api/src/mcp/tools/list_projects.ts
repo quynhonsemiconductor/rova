@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { pageInfoOf, pageArgs, result, type ToolContext } from './rest';
+import { listResult, pageArgs, type ToolContext } from './rest';
 
 /** The small project shape every project tool returns. */
 export function toToolProject(p: Record<string, unknown>) {
@@ -32,11 +32,7 @@ export function registerListProjects(server: McpServer, ctx: ToolContext) {
         url: '/v1/projects',
         query: { limit: limit ?? 20, cursor },
       });
-      const page = json as { data?: Record<string, unknown>[] };
-      return result(statusCode, json, {
-        projects: (page.data ?? []).map(toToolProject),
-        ...pageInfoOf(json),
-      });
+      return listResult(statusCode, json, toToolProject, 'projects');
     },
   );
 }

@@ -4,9 +4,12 @@ import {
   Get,
   Injectable,
   Module,
+  Param,
+  Query,
   Req,
   UnauthorizedException,
   UseGuards,
+  NotFoundException,
   type CanActivate,
   type ExecutionContext,
 } from '@nestjs/common';
@@ -69,7 +72,9 @@ class RequirePrincipalGuard implements CanActivate {
   }
 }
 
-/** Names the row after the principal the guard pipeline actually delivered — no way to guess it. */
+const UNKNOWN_ID = '00000000-0000-7000-8000-0000000000e1';
+
+/** Names rows after the principal the guard pipeline actually delivered — no way to guess it. */
 @Controller('projects')
 @UseGuards(RequirePrincipalGuard)
 class FixtureProjectsController {
@@ -95,11 +100,159 @@ class FixtureProjectsController {
       pageInfo: { hasNextPage: false },
     };
   }
+
+  @Get(':id')
+  getOne(@Req() req: { user: { workspaceId: string } }, @Param('id') id: string) {
+    if (req.user.workspaceId === RESTRICTED || id === UNKNOWN_ID)
+      throw new ForbiddenException('Forbidden resource');
+    return { id, key: 'OBSE', name: 'Infrastructure', status: 'active', leadName: null };
+  }
+
+  @Get(':id/members')
+  members(@Req() req: { user: { workspaceId: string } }, @Param('id') id: string) {
+    return this.optionsOrMembers(req, id);
+  }
+
+  @Get(':id/member-options')
+  options(@Req() req: { user: { workspaceId: string } }, @Param('id') id: string) {
+    return this.optionsOrMembers(req, id);
+  }
+
+  private optionsOrMembers(req: { user: { workspaceId: string } }, id: string) {
+    if (req.user.workspaceId === RESTRICTED || id === UNKNOWN_ID)
+      throw new ForbiddenException('Forbidden resource');
+    return [
+      {
+        userId: '0194a000-0000-7000-8000-000000000201',
+        displayName: 'Member One',
+        email: 'member.one@qnsc.dev',
+        avatarUrl: null,
+      },
+    ];
+  }
+}
+
+const UNKNOWN_ITEM = '00000000-0000-7000-8000-0000000000e2';
+const UNKNOWN_ITERATION = '00000000-0000-7000-8000-0000000000e3';
+
+@Controller('work-items')
+@UseGuards(RequirePrincipalGuard)
+class FixtureWorkItemsController {
+  @Get('by-key')
+  byKey(@Req() req: { user: { workspaceId: string } }, @Query('itemKey') itemKey?: string) {
+    if (req.user.workspaceId === RESTRICTED) throw new ForbiddenException('Forbidden resource');
+    if (itemKey === 'MISSING-1') throw new NotFoundException('Not found');
+    return {
+      id: '0194a000-0000-7000-8000-000000000102',
+      itemKey: 'OBSE-42',
+      title: 'Fix the flume',
+      type: 'task',
+      scheduleState: 'in_progress',
+      priority: 'high',
+      assigneeName: 'Member One',
+      iterationId: null,
+    };
+  }
+
+  @Get('backlog')
+  backlog(@Req() req: { user: { workspaceId: string } }) {
+    if (req.user.workspaceId === RESTRICTED) throw new ForbiddenException('Forbidden resource');
+    return {
+      data: [
+        {
+          id: '0194a000-0000-7000-8000-000000000103',
+          itemKey: 'OBSE-7',
+          title: 'Backlog story',
+          type: 'story',
+          scheduleState: 'proposed',
+          priority: 'low',
+          assigneeName: null,
+          iterationId: null,
+        },
+      ],
+      pageInfo: { hasNextPage: false },
+    };
+  }
+
+  @Get(':id/comments')
+  comments(@Req() req: { user: { workspaceId: string } }, @Param('id') id: string) {
+    if (req.user.workspaceId === RESTRICTED || id === UNKNOWN_ITEM)
+      throw new ForbiddenException('Forbidden resource');
+    return [];
+  }
+
+  @Get(':id/activity')
+  activity(@Req() req: { user: { workspaceId: string } }, @Param('id') id: string) {
+    if (req.user.workspaceId === RESTRICTED) throw new ForbiddenException('Forbidden resource');
+    if (id === UNKNOWN_ITEM) throw new NotFoundException('Not found');
+    return [
+      {
+        id: '0194a000-0000-7000-8000-000000000104',
+        createdAt: '2026-10-24T10:00:00.000Z',
+        actorName: 'Member One',
+        action: 'work_item.created',
+      },
+    ];
+  }
+}
+
+@Controller('iterations')
+@UseGuards(RequirePrincipalGuard)
+class FixtureIterationsController {
+  @Get('options')
+  options(@Req() req: { user: { workspaceId: string } }) {
+    if (req.user.workspaceId === RESTRICTED) throw new ForbiddenException('Forbidden resource');
+    return [
+      {
+        id: '0194a000-0000-7000-8000-000000000105',
+        name: 'Sprint 1',
+        iterationKey: 'IT-1',
+        state: 'active',
+        startDate: '2026-10-01',
+        endDate: '2026-10-15',
+        teamId: null,
+      },
+    ];
+  }
+
+  @Get(':id/status')
+  status(@Req() req: { user: { workspaceId: string } }, @Param('id') id: string) {
+    if (req.user.workspaceId === RESTRICTED) throw new ForbiddenException('Forbidden resource');
+    if (id === UNKNOWN_ITERATION) throw new NotFoundException('Not found');
+    return {
+      iteration: {
+        name: 'Sprint 1',
+        state: 'active',
+        startDate: '2026-10-01',
+        endDate: '2026-10-15',
+      },
+      metrics: {
+        plannedVelocity: 40,
+        acceptedPoints: 12,
+        acceptedPercent: 30,
+        daysLeft: 3,
+        defectCount: 1,
+        taskCount: 8,
+      },
+      items: [
+        {
+          workItemId: '0194a000-0000-7000-8000-000000000103',
+          itemKey: 'OBSE-7',
+          type: 'story',
+          title: 'Backlog story',
+          scheduleState: 'proposed',
+          isBlocked: false,
+          planEstimate: 5,
+        },
+      ],
+      pageInfo: { hasNextPage: false },
+    };
+  }
 }
 
 @Module({
   imports: [McpModule],
-  controllers: [FixtureProjectsController],
+  controllers: [FixtureProjectsController, FixtureWorkItemsController, FixtureIterationsController],
   providers: [RequestContextService, RequirePrincipalGuard],
 })
 class TestModule {}
@@ -195,13 +348,26 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     const list = await rpc(fastify, 'tools/list');
     const tools = list.json<ToolListResponse>().result!.tools!;
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'get_project',
       'get_work_item',
+      'get_work_item_by_key',
+      'iteration_burndown',
+      'iteration_options',
+      'iteration_status',
+      'list_backlog',
       'list_comments',
       'list_iterations',
+      'list_milestones',
+      'list_project_members',
       'list_projects',
+      'list_releases',
       'my_work',
       'search_work_items',
+      'team_capacity',
+      'unread_notifications',
+      'velocity',
       'whoami',
+      'work_item_activity',
     ]);
     for (const t of tools) expect(t.annotations?.readOnlyHint).toBe(true);
   });
@@ -364,13 +530,115 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     await initialize(fastify);
     const list = await rpc(fastify, 'tools/list');
     const tools = list.json().result!.tools!;
-    expect(tools.length).toBe(7);
+    expect(tools.length).toBe(20);
     for (const tool of tools) {
       expect(
         JSON.stringify(tool.inputSchema).match(/workspace/i),
         `${tool.name} must not take a workspace argument`,
       ).toBeNull();
     }
+  });
+
+  const KNOWN_ID = '0194a000-0000-7000-8000-000000000101';
+  const KNOWN_ITEM = '0194a000-0000-7000-8000-000000000103';
+  const KNOWN_ITERATION = '0194a000-0000-7000-8000-000000000105';
+  const UNKNOWN_ID = '00000000-0000-7000-8000-0000000000e1';
+  const UNKNOWN_ITEM = '00000000-0000-7000-8000-0000000000e2';
+  const UNKNOWN_ITERATION = '00000000-0000-7000-8000-0000000000e3';
+
+  // ERROR-SHAPE matrix: every object-typed tool relays the route's own 403 and 404 as
+  // isError with the statusCode — no `.map` crashes, no shaped stubs on errors.
+  const ERROR_MATRIX: Array<{
+    name: string;
+    args: Record<string, unknown>;
+    notFoundArg: Record<string, unknown>;
+  }> = [
+    { name: 'list_projects', args: {}, notFoundArg: {} },
+    { name: 'get_project', args: { projectId: KNOWN_ID }, notFoundArg: { projectId: UNKNOWN_ID } },
+    {
+      name: 'list_project_members',
+      args: { projectId: KNOWN_ID },
+      notFoundArg: { projectId: UNKNOWN_ID },
+    },
+    {
+      name: 'list_comments',
+      args: { workItemId: KNOWN_ITEM },
+      notFoundArg: { workItemId: UNKNOWN_ITEM },
+    },
+    {
+      name: 'get_work_item_by_key',
+      args: { itemKey: 'OBSE-42' },
+      notFoundArg: { itemKey: 'MISSING-1' },
+    },
+    { name: 'list_backlog', args: { projectId: KNOWN_ID }, notFoundArg: { projectId: UNKNOWN_ID } },
+    {
+      name: 'work_item_activity',
+      args: { workItemId: KNOWN_ITEM },
+      notFoundArg: { workItemId: UNKNOWN_ITEM },
+    },
+    {
+      name: 'iteration_status',
+      args: { iterationId: KNOWN_ITERATION },
+      notFoundArg: { iterationId: UNKNOWN_ITERATION },
+    },
+    {
+      name: 'iteration_options',
+      args: { projectId: KNOWN_ID },
+      notFoundArg: { projectId: UNKNOWN_ID },
+    },
+  ];
+  // The fixtures deny (403) only when the verifier binds the caller to the RESTRICTED workspace.
+  const restrictedVerifier: McpAccessVerifier = {
+    verify: async () => ({ userId: VICTIM, workspaceId: RESTRICTED }),
+  };
+
+  async function expectErrorRelay(
+    verifier: McpAccessVerifier,
+    name: string,
+    args: Record<string, unknown>,
+    statusCode: number,
+  ) {
+    const f = await boot(verifier);
+    const { body } = await callTool(f, name, args);
+    expect(
+      body.result!.isError,
+      `${name}: expected isError — got ${JSON.stringify(body.result).slice(0, 260)}`,
+    ).toBe(true);
+    const relayed = JSON.parse(body.result!.content![0].text);
+    expect(relayed.statusCode, `${name}: status relayed`).toBe(statusCode);
+    expect(relayed.error).toBeTruthy();
+  }
+
+  describe('per-tool error-shape relay (all object/list tools)', () => {
+    it('a 403 from the route is relayed as isError with statusCode', async () => {
+      for (const { name, args } of ERROR_MATRIX) {
+        await expectErrorRelay(restrictedVerifier, name, args, 403);
+      }
+    });
+
+    it('a 404 from the route is relayed as isError with statusCode', async () => {
+      // only tools whose REST route can 404 on the referenced resource; bare lists have no
+      // not-found case (they deny 403 or return empty).
+      // get_project and list_project_members 403 instead (PolicyGuard denies before the
+      // lookup — no existence leak). by-key/activity/status resolve first and 404.
+      // list_comments is resource-tier too but resolves the item like activity — its 403
+      // case above already covers the denial shape; the SelfScoped my_work 200s empty.
+      const NOT_FOUND_CASES = ERROR_MATRIX.filter((c) =>
+        ['get_work_item_by_key', 'work_item_activity', 'iteration_status'].includes(c.name),
+      );
+      expect(NOT_FOUND_CASES.length).toBe(3);
+      for (const { name, notFoundArg } of NOT_FOUND_CASES) {
+        await expectErrorRelay(verifier, name, notFoundArg, 404);
+      }
+
+      // unknown-id -> 403 (no existence leak) for the routes PolicyGuard guards before lookup
+      for (const [name, args] of [
+        ['get_project', { projectId: UNKNOWN_ID }],
+        ['list_project_members', { projectId: UNKNOWN_ID }],
+      ] as const) {
+        await expectErrorRelay(verifier, name, args, 403);
+      }
+    });
   });
 
   it('stateless: GET and DELETE answer 405', async () => {

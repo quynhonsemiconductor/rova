@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { pageInfoOf, pageArgs, result, type ToolContext } from './rest';
+import { listResult, pageArgs, type ToolContext } from './rest';
 
 /** The small work-item shape the search/get tools return. */
 export function toToolWorkItem(p: Record<string, unknown>) {
@@ -30,11 +30,14 @@ export function registerSearchWorkItems(server: McpServer, ctx: ToolContext) {
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: {
         projectId: z.uuid().describe('The project to search in'),
-        q: z.string().optional().describe('Free-text search over title and key'),
+        q: z.string().max(255).optional().describe('Free-text search over title and key'),
         assigneeId: z.uuid().optional().describe('Filter by assignee'),
         iterationId: z.uuid().optional().describe('Filter by iteration'),
         statusId: z.uuid().optional().describe('Filter by workflow status'),
-        priority: z.string().optional().describe('Filter by priority'),
+        priority: z
+          .enum(['none', 'low', 'normal', 'high', 'urgent'])
+          .optional()
+          .describe('Filter by priority'),
         ...pageArgs,
       },
     },
@@ -53,11 +56,7 @@ export function registerSearchWorkItems(server: McpServer, ctx: ToolContext) {
           cursor,
         },
       });
-      const page = json as { data?: Record<string, unknown>[] };
-      return result(statusCode, json, {
-        items: (page.data ?? []).map(toToolWorkItem),
-        ...pageInfoOf(json),
-      });
+      return listResult(statusCode, json, toToolWorkItem, 'items');
     },
   );
 }
