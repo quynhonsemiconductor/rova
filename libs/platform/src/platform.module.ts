@@ -90,7 +90,7 @@ import { StorageService } from './storage/storage.service';
             sender: config.get('MAIL_GRAPH_SENDER') ?? '',
             tenantId: config.get('ENTRA_TENANT_ID'),
             clientId: config.get('MAIL_GRAPH_CLIENT_ID'),
-            certificate: config.get('MAIL_GRAPH_CERTIFICATE'),
+            certificatePath: config.get('AZURE_CLIENT_CERTIFICATE_PATH'),
             federatedTokenFile: config.get('MAIL_GRAPH_FEDERATED_TOKEN_FILE'),
             nodeEnv: config.get('NODE_ENV'),
           });

@@ -272,23 +272,25 @@ describe('EnvSchema — EMAIL_PROVIDER=graph (Microsoft 365 mail)', () => {
       env({
         EMAIL_PROVIDER: 'dev',
         MAIL_GRAPH_SENDER: '',
-        MAIL_GRAPH_CERTIFICATE: '',
+        AZURE_CLIENT_CERTIFICATE_PATH: '',
         MAIL_GRAPH_FEDERATED_TOKEN_FILE: '',
       }),
     );
     expect(result.success).toBe(true);
-    expect(result.success && result.data.MAIL_GRAPH_CERTIFICATE).toBeUndefined();
+    expect(result.success && result.data.AZURE_CLIENT_CERTIFICATE_PATH).toBeUndefined();
   });
 
   it('carries the credential for the worker (certificate now, federated token later)', () => {
     const result = EnvSchema.safeParse(
       env({
         ...graph,
-        MAIL_GRAPH_CERTIFICATE: 'PEM',
+        AZURE_CLIENT_CERTIFICATE_PATH: '/mnt/secrets/graph-cert.pem',
         MAIL_GRAPH_FEDERATED_TOKEN_FILE: '/var/run/token',
       }),
     );
-    expect(result.success && result.data.MAIL_GRAPH_CERTIFICATE).toBe('PEM');
+    expect(result.success && result.data.AZURE_CLIENT_CERTIFICATE_PATH).toBe(
+      '/mnt/secrets/graph-cert.pem',
+    );
     expect(result.success && result.data.MAIL_GRAPH_FEDERATED_TOKEN_FILE).toBe('/var/run/token');
   });
 });
