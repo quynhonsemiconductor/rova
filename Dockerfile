@@ -216,7 +216,10 @@ RUN addgroup --system --gid 1001 nodejs \
 
 USER nestjs
 
-ENTRYPOINT ["/sbin/tini", "--"]
+# ECS bridge: materialize the injected MAIL_GRAPH_CERTIFICATE secret value as
+# the file AZURE_CLIENT_CERTIFICATE_PATH (worker only; see the script header).
+COPY docker/graph-cert-bridge.sh /app/docker/graph-cert-bridge.sh
+ENTRYPOINT ["/sbin/tini", "--", "/bin/sh", "/app/docker/graph-cert-bridge.sh"]
 CMD ["node", "dist/apps/worker/apps/worker/src/main.js"]
 
 # ─────────────────────────────────────────────────────────────────────────────

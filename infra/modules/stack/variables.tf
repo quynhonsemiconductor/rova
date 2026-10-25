@@ -249,7 +249,7 @@ variable "mail_graph_certificate_set" {
     OFF by default, for the same mechanical reason as `edge_client_ip_secret_set`: the deploy preflight refuses to deploy when an
     injected Secrets Manager secret holds no value. Order, per environment (docs/runbooks/mail-graph.md):
       1. generate a key and certificate with openssl, upload the public certificate to the Entra app;
-      2. put the PEM (the private key, then the certificate; raw or base64) into the standalone secret `<product>/<env>/mail-graph-certificate`
+      2. put the PEM (the private key, then the certificate; raw PEM, never base64) into the standalone secret `<product>/<env>/mail-graph-certificate`
          (NOT the app bundle: the API's task role reads the bundle, and must not be able to read this);
       3. set this true, together with email_provider = "graph".
   EOT
