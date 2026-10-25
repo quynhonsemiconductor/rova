@@ -13,8 +13,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { registerMcpRoute } from '../../apps/api/src/mcp/index';
 import type { McpAccessPrincipal, McpAccessVerifier } from '../../apps/api/src/mcp/index';
 import {
+  NXP_FEATURE_3_ID,
   NXP_STORY_1_ID,
-  PAY_EPIC_ID,
   PAY_ITER_ID,
   PAY_PROJECT_ID,
   PAY_STORY_ID,
@@ -289,7 +289,8 @@ describe('/mcp over the real guard chain (e2e)', () => {
       quality_defects: { projectId: PAY_PROJECT_ID },
       team_status: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
       list_portfolio_items: { type: 'epic' },
-      get_portfolio_item: { portfolioItemId: PAY_EPIC_ID },
+      // NXP_FEATURE_3: the seeded Feature WITH children (2 stories linked, demo.ts)
+      get_portfolio_item: { portfolioItemId: '00000000-0000-7000-8000-0000000000c3' },
     };
     // SelfScoped: the caller's own data — must keep working for any member.
     const SELF_SCOPED = new Set(['whoami', 'my_work', 'unread_notifications']);
@@ -528,7 +529,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
       { name: 'list_portfolio_items', args: { type: 'epic' }, fields: ['portfolioItems'] },
       {
         name: 'get_portfolio_item',
-        args: { portfolioItemId: PAY_EPIC_ID },
+        args: { portfolioItemId: NXP_FEATURE_3_ID },
         fields: ['id', 'itemKey', 'type', 'name', 'estimate', 'rollup', 'progress', 'children'],
       },
     ];
