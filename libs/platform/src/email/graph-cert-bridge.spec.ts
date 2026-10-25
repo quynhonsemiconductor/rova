@@ -12,19 +12,17 @@ const script = join(process.cwd(), 'docker/graph-cert-bridge.sh');
 
 let dir: string;
 
+// Env assignments go INSIDE the sh -c string: spawn-env options proved
+// unreliable across runners, and assignments are POSIX-exact everywhere.
 const run = (
   extraEnv: Record<string, string>,
-  cmd = 'node -e "console.log(process.env.AZURE_CLIENT_CERTIFICATE_PATH ?? \'\')"',
-) =>
-  execFileSync('/bin/sh', ['-c', `"${script}" ${cmd}`], {
-    env: {
-      PATH: process.env.PATH,
-      GRAPH_CERT_FILE: join(dir, 'cert.pem'),
-      ...extraEnv,
-    },
-    encoding: 'utf8',
-    shell: '/bin/sh',
-  });
+  cmd = 'node -e "console.log(process.env.AZURE_CLIENT_CERTIFICATE_PATH)"',
+) => {
+  const assignments = Object.entries({ GRAPH_CERT_FILE: join(dir, 'cert.pem'), ...extraEnv })
+    .map(([k, v]) => `${k}=${v}`)
+    .join(' ');
+  return execFileSync('/bin/sh', ['-c', `${assignments} "${script}" ${cmd}`], { encoding: 'utf8' });
+};
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'graph-cert-bridge-'));
