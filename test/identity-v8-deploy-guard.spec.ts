@@ -40,7 +40,13 @@ describe('the identity 8 prod-tag guard', () => {
 
   it('develop has both flags true (so the guard has something to pass against), and the backfill-on-deploy flag is not set anywhere live', () => {
     const develop = read('infra/live/develop/main.tf');
-    for (const flag of FLAGS) expect(develop).toMatch(new RegExp(`^\\s*${flag}\\s*=\\s*true`, 'm'));
+    // The AWS-exit destroy (E1) strips the develop stack to its provider blocks; with no
+    // stack module there is nothing to carry the flags, and prod's file is the guard's
+    // remaining anchor. See product-docs/platform/runbooks/aws-exit-teardown.md.
+    if (develop.includes('module "stack"')) {
+      for (const flag of FLAGS)
+        expect(develop).toMatch(new RegExp(`^\\s*${flag}\\s*=\\s*true`, 'm'));
+    }
     for (const env of ['develop', 'prod']) {
       expect(read(`infra/live/${env}/main.tf`)).not.toContain('identity_v8_backfill_on_deploy');
     }
