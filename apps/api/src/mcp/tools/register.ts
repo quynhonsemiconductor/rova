@@ -1,6 +1,8 @@
 import type { RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { registerGetPortfolioItem } from './get_portfolio_item';
 import { registerGetProject } from './get_project';
+import { registerGetTestCaseByKey } from './get_test_case_by_key';
 import { registerIterationBurndown } from './iteration_burndown';
 import { registerListMilestones } from './list_milestones';
 import { registerListReleases } from './list_releases';
@@ -9,15 +11,19 @@ import { registerGetWorkItemByKey } from './get_work_item_by_key';
 import { registerIterationOptions } from './iteration_options';
 import { registerIterationStatus } from './iteration_status';
 import { registerListBacklog } from './list_backlog';
+import { registerListPortfolioItems } from './list_portfolio_items';
 import { registerListComments } from './list_comments';
 import { registerListIterations } from './list_iterations';
 import { registerListProjectMembers } from './list_project_members';
 import { registerListProjects } from './list_projects';
+import { registerListTestCases } from './list_test_cases';
 import { registerMyWork } from './my_work';
 import { registerSearchWorkItems } from './search_work_items';
 import { registerTeamCapacity } from './team_capacity';
 import { registerUnreadNotifications } from './unread_notifications';
 import { registerVelocity } from './velocity';
+import { registerQualityDefects } from './quality_defects';
+import { registerTeamStatus } from './team_status';
 import { registerWhoami } from './whoami';
 import { registerWorkItemActivity } from './work_item_activity';
 import type { ToolContext } from './rest';
@@ -51,5 +57,11 @@ export function registerTools(server: McpServer, ctx: ToolContext): MountedTool[
     { name: 'velocity', tool: registerVelocity(server, ctx) },
     { name: 'team_capacity', tool: registerTeamCapacity(server, ctx) },
     { name: 'unread_notifications', tool: registerUnreadNotifications(server, ctx) },
+    { name: 'list_test_cases', tool: registerListTestCases(server, ctx) },
+    { name: 'get_test_case_by_key', tool: registerGetTestCaseByKey(server, ctx) },
+    { name: 'quality_defects', tool: registerQualityDefects(server, ctx) },
+    { name: 'team_status', tool: registerTeamStatus(server, ctx) },
+    { name: 'list_portfolio_items', tool: registerListPortfolioItems(server, ctx) },
+    { name: 'get_portfolio_item', tool: registerGetPortfolioItem(server, ctx) },
   ];
 }

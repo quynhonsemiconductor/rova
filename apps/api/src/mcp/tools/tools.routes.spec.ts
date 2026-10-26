@@ -51,6 +51,43 @@ const OWNER: Record<
     // assertWorkspaceMember, then readable-by-actor, inside the service
     authorizedInService: "'project:view'",
   },
+  list_test_cases: {
+    file: 'test-cases/src/interface/http/test-cases.controller.ts',
+    controller: "@Controller('work-items/:id/test-cases')",
+    get: '@Get()',
+    permission: "'test_case:view'",
+  },
+  get_test_case_by_key: {
+    file: 'test-cases/src/interface/http/test-case-records.controller.ts',
+    controller: "@Controller('test-cases')",
+    get: "@Get('by-key/:key')",
+    // resolve-then-check: @AuthorizedInService + getWorkItemForView(work_item:view)
+    authorizedInService: 'getWorkItemForView(work_item:view)',
+  },
+  quality_defects: {
+    file: 'quality/src/interface/http/quality.controller.ts',
+    controller: "@Controller('quality')",
+    get: "@Get('defects')",
+    permission: "'quality:view'",
+  },
+  team_status: {
+    file: 'team-status/src/interface/http/team-status.controller.ts',
+    controller: "@Controller('team-status')",
+    get: '@Get()',
+    permission: "'team_status:view'",
+  },
+  list_portfolio_items: {
+    file: 'portfolio/src/interface/http/portfolio-items.controller.ts',
+    controller: "@Controller('portfolio-items')",
+    get: '@Get()',
+    // AccessService-scoped cross-project list: a no-role member gets an EMPTY page
+  },
+  get_portfolio_item: {
+    file: 'portfolio/src/interface/http/portfolio-items.controller.ts',
+    controller: "@Controller('portfolio-items')",
+    get: "@Get(':id')",
+    permission: "'portfolio:view'",
+  },
   list_project_members: {
     file: 'projects/src/interface/http/projects.controller.ts',
     controller: "@Controller('projects')",
@@ -161,7 +198,9 @@ describe('MCP tool catalogue maps to real routes', () => {
   it('every registered tool route exists in the owning controller', () => {
     const names = Object.keys(TOOL_ROUTES) as (keyof typeof TOOL_ROUTES)[];
     expect(names.sort()).toEqual([
+      'get_portfolio_item',
       'get_project',
+      'get_test_case_by_key',
       'get_work_item',
       'get_work_item_by_key',
       'iteration_burndown',
@@ -171,18 +210,22 @@ describe('MCP tool catalogue maps to real routes', () => {
       'list_comments',
       'list_iterations',
       'list_milestones',
+      'list_portfolio_items',
       'list_project_members',
       'list_projects',
       'list_releases',
+      'list_test_cases',
       'my_work',
+      'quality_defects',
       'search_work_items',
       'team_capacity',
+      'team_status',
       'unread_notifications',
       'velocity',
       'whoami',
       'work_item_activity',
     ]);
-    expect(names.length).toBe(20);
+    expect(names.length).toBe(26);
     for (const name of names) {
       const src = readFileSync(join(CONTROLLERS, OWNER[name].file), 'utf8');
       expect(src.includes(OWNER[name].controller), `${name}: controller prefix moved`).toBe(true);

@@ -24,6 +24,12 @@ export const TOOL_ROUTES = {
   velocity: { method: 'GET', url: '/v1/reports/velocity' },
   team_capacity: { method: 'GET', url: '/v1/reports/team-capacity' },
   unread_notifications: { method: 'GET', url: '/v1/notifications/unread-count' },
+  list_test_cases: { method: 'GET', url: '/v1/work-items/:id/test-cases' },
+  get_test_case_by_key: { method: 'GET', url: '/v1/test-cases/by-key/:key' },
+  quality_defects: { method: 'GET', url: '/v1/quality/defects' },
+  team_status: { method: 'GET', url: '/v1/team-status' },
+  list_portfolio_items: { method: 'GET', url: '/v1/portfolio-items' },
+  get_portfolio_item: { method: 'GET', url: '/v1/portfolio-items/:portfolioItemId' },
 } as const;
 
 export type ToolName = keyof typeof TOOL_ROUTES;
