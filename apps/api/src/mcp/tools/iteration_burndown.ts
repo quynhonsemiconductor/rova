@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { result, type ToolContext } from './rest';
 
 /**
- * `iteration_burndown` — the Iteration Burndown report of one project
+ * `rova_iteration_burndown` — the Iteration Burndown report of one project
  * (GET /v1/reports/iteration-burndown, `report:view` from the `projectId` query). The route's
  * payload is the bounded daily series for one iteration — relayed as-is.
  */
 export function registerIterationBurndown(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'iteration_burndown',
+    'rova_iteration_burndown',
     {
       title: 'Iteration burndown',
       description:

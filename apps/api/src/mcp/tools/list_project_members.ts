@@ -5,14 +5,14 @@ import { denied, type ToolContext } from './rest';
 const MAX_MEMBERS = 100;
 
 /**
- * `list_project_members` — the people who can own work in one project the person can read
+ * `rova_list_project_members` — the people who can own work in one project the person can read
  * (GET /v1/projects/:id/member-options, `project:view` on the project). This is the
  * audience-matched feed the web UI gives non-admins (the assignee projection: id, name,
  * email) — NOT the administrative roster route, which is Workspace/Project-Admin only.
  */
 export function registerListProjectMembers(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_project_members',
+    'rova_list_project_members',
     {
       title: 'List project members',
       description: 'The people who can own work in one project you can read, with their email.',

@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { denied, result, type ToolContext } from './rest';
 
 /**
- * `get_test_case_by_key` — one Test Case by its workspace-unique key
+ * `rova_get_test_case_by_key` — one Test Case by its workspace-unique key
  * (GET /v1/test-cases/by-key/:key — resolve-then-check: the service asserts `work_item:view`
  * on the parent work item, so the key alone grants nothing).
  */
 export function registerGetTestCaseByKey(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'get_test_case_by_key',
+    'rova_get_test_case_by_key',
     {
       title: 'Get test case by key',
       description: 'One Test Case by its key (e.g. TC-3), what its detail page shows you.',

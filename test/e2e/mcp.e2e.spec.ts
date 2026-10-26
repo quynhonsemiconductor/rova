@@ -12,20 +12,29 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { registerMcpRoute } from '../../apps/api/src/mcp/index';
 import type { McpAccessPrincipal, McpAccessVerifier } from '../../apps/api/src/mcp/index';
+import { CSRF_HEADER, CSRF_SECRET_COOKIE } from '@platform';
 import {
   NXP_FEATURE_3_ID,
+  NXP_ITER_CURRENT_ID,
+  NXP_MILESTONE_1_ID,
+  NXP_RELEASE_1_ID,
   NXP_STORY_1_ID,
-  PAY_ITER_ID,
   PAY_PROJECT_ID,
   PAY_STORY_ID,
+  SEED_PROJECTS,
   WORKSPACE_ID,
+  PAY_ITER_ID,
 } from '../../db/seeds/constants';
 import { provisionUser, readCookie, signInAs } from './support/session';
 
 // The seeded NXP project (db/seeds SEED_PROJECTS[0]) — the stranger holds no membership in
 // it, so every project-scoped tool must be denied by its route.
-const STRANGER_PROJECT = '00000000-0000-7000-8000-000000000010';
+const NXP_PROJECT_ID = SEED_PROJECTS[0].id;
+const STRANGER_PROJECT = NXP_PROJECT_ID;
 const STRANGER_ITEM = PAY_STORY_ID; // the stranger holds no membership in PAY either
+// set by the happy-path test once the carryover fixture iterations exist (CASES is static)
+const carryoverIteration = { id: NXP_ITER_CURRENT_ID };
+const carryoverProject: { id: string } = { id: NXP_PROJECT_ID };
 const STRANGER_ITERATION = PAY_ITER_ID;
 
 /**
@@ -112,7 +121,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
       jsonrpc: '2.0',
       id: 2,
       method: 'tools/call',
-      params: { name: 'whoami', arguments: {} },
+      params: { name: 'rova_whoami', arguments: {} },
     });
     expect(res.statusCode, JSON.stringify(res.json)).toBe(200);
     return {
@@ -262,55 +271,85 @@ describe('/mcp over the real guard chain (e2e)', () => {
     // The three SelfScoped tools (whoami, my_work, unread_notifications) keep working:
     // self-scoped is subtract-only.
     const TOOL_ARGS: Record<string, Record<string, unknown>> = {
-      whoami: {},
-      list_projects: {},
-      get_project: { projectId: STRANGER_PROJECT },
-      list_project_members: { projectId: STRANGER_PROJECT },
-      search_work_items: { projectId: STRANGER_PROJECT },
-      get_work_item: { workItemId: STRANGER_ITEM },
-      get_work_item_by_key: { itemKey: 'US-1' }, // the seeded NXP story — stranger has no access
-      my_work: {},
-      list_backlog: { projectId: STRANGER_PROJECT },
-      work_item_activity: { workItemId: STRANGER_ITEM },
-      list_iterations: { projectId: STRANGER_PROJECT },
-      iteration_options: { projectId: STRANGER_PROJECT },
-      iteration_status: { iterationId: STRANGER_ITERATION },
-      list_comments: { workItemId: STRANGER_ITEM },
-      list_releases: { projectId: STRANGER_PROJECT },
-      list_milestones: { projectId: STRANGER_PROJECT },
-      iteration_burndown: { projectId: STRANGER_PROJECT, iterationId: STRANGER_ITERATION },
-      velocity: { projectId: STRANGER_PROJECT },
-      team_capacity: { projectId: STRANGER_PROJECT, iterationId: STRANGER_ITERATION },
-      unread_notifications: {},
+      rova_whoami: {},
+      rova_list_projects: {},
+      rova_get_project: { projectId: STRANGER_PROJECT },
+      rova_list_project_members: { projectId: STRANGER_PROJECT },
+      rova_search_work_items: { projectId: STRANGER_PROJECT },
+      rova_get_work_item: { workItemId: STRANGER_ITEM },
+      rova_get_work_item_by_key: { itemKey: 'US-1' }, // the seeded NXP story — stranger has no access
+      rova_my_work: {},
+      rova_list_backlog: { projectId: STRANGER_PROJECT },
+      rova_work_item_activity: { workItemId: STRANGER_ITEM },
+      rova_list_iterations: { projectId: STRANGER_PROJECT },
+      rova_iteration_options: { projectId: STRANGER_PROJECT },
+      rova_iteration_status: { iterationId: STRANGER_ITERATION },
+      rova_list_comments: { workItemId: STRANGER_ITEM },
+      rova_list_releases: { projectId: STRANGER_PROJECT },
+      rova_list_milestones: { projectId: STRANGER_PROJECT },
+      rova_iteration_burndown: { projectId: STRANGER_PROJECT, iterationId: STRANGER_ITERATION },
+      rova_velocity: { projectId: STRANGER_PROJECT },
+      rova_team_capacity: { projectId: STRANGER_PROJECT, iterationId: STRANGER_ITERATION },
+      rova_unread_notifications: {},
       // The six new tools: TC-1 is the seeded NXP test case (the stranger has no NXP
       // membership); the quality/team-status/report tools are project-scoped to PAY.
-      list_test_cases: { workItemId: PAY_STORY_ID },
-      get_test_case_by_key: { testCaseKey: 'TC-1' },
-      quality_defects: { projectId: PAY_PROJECT_ID },
-      team_status: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
-      list_portfolio_items: { type: 'epic' },
+      rova_list_test_cases: { workItemId: PAY_STORY_ID },
+      rova_get_test_case_by_key: { testCaseKey: 'TC-1' },
+      rova_quality_defects: { projectId: PAY_PROJECT_ID },
+      rova_team_status: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
+      rova_list_portfolio_items: { type: 'epic' },
       // NXP_FEATURE_3: the seeded Feature WITH children (2 stories linked, demo.ts)
-      get_portfolio_item: { portfolioItemId: NXP_FEATURE_3_ID },
+      rova_get_portfolio_item: { portfolioItemId: NXP_FEATURE_3_ID },
+      // The eight tools of PR B: the resource/report-scoped ones deny the stranger via
+      // their route; the AccessService-scoped lists run EMPTY (see EMPTY_OK below).
+      rova_carryover_report: { projectId: NXP_PROJECT_ID, iterationId: NXP_ITER_CURRENT_ID },
+      rova_release_tracking: { projectId: NXP_PROJECT_ID, releaseId: NXP_RELEASE_1_ID },
+      rova_get_release: { releaseId: NXP_RELEASE_1_ID },
+      rova_get_milestone: { milestoneId: NXP_MILESTONE_1_ID },
+      rova_project_health: {},
+      rova_work_item_code_changes: { workItemId: PAY_STORY_ID },
+      rova_list_teams: {},
+      rova_list_notifications: {},
     };
     // SelfScoped: the caller's own data — must keep working for any member.
-    const SELF_SCOPED = new Set(['whoami', 'my_work', 'unread_notifications']);
+    const SELF_SCOPED = new Set([
+      'rova_whoami',
+      'rova_my_work',
+      'rova_unread_notifications',
+      'rova_list_notifications',
+    ]);
     // ONLY list_projects is AccessService-scoped (the guard passes; listReadableProjectIds
     // returns zero rows for a no-role member): 200 with an EMPTY list. search_work_items,
     // list_backlog and list_iterations are PolicyGuard-gated (`work_item:view` /
     // `timebox:view` / `iteration:view` from the projectId) — a no-role member is denied 403.
-    const EMPTY_OK = new Set(['list_projects']);
+    const EMPTY_OK = new Set([
+      'rova_list_projects',
+      'rova_list_portfolio_items',
+      'rova_project_health',
+      'rova_list_teams',
+    ]);
+    // the rows key is each of these tools' own list key (the rest use `projects`)
+    const EMPTY_KEYS: Record<string, string> = {
+      rova_list_portfolio_items: 'portfolioItems',
+      rova_list_teams: 'teams',
+    };
     // Explicitly PolicyGuard-gated tools (permission from the projectId query or the resource):
     // a no-role member is denied 403 per route.
     const POLICY_403 = new Set([
-      'search_work_items',
-      'list_backlog',
-      'list_iterations',
-      'quality_defects',
-      'team_status',
-      'get_test_case_by_key',
-      'list_test_cases',
-      'get_project',
-      'list_project_members',
+      'rova_search_work_items',
+      'rova_list_backlog',
+      'rova_list_iterations',
+      'rova_quality_defects',
+      'rova_team_status',
+      'rova_get_test_case_by_key',
+      'rova_list_test_cases',
+      'rova_get_project',
+      'rova_list_project_members',
+      'rova_carryover_report',
+      'rova_release_tracking',
+      'rova_get_release',
+      'rova_get_milestone',
+      'rova_work_item_code_changes',
     ]);
 
     it('the denial matrix is derived from the live tools/list and covers every tool', async () => {
@@ -328,15 +367,15 @@ describe('/mcp over the real guard chain (e2e)', () => {
       // the stranger holds NO project roles in NXP/PAY
 
       await initialize(token);
+      // skipInitialize: 34 tools x 2 POSTs would blow the per-person 60/min MCP budget
       for (const [name, args] of Object.entries(TOOL_ARGS)) {
-        const out = await callTool(token, name, args);
+        const out = await callTool(token, name, args, { skipInitialize: true });
         if (SELF_SCOPED.has(name)) {
           expect(out.statusCode, `${name} (self-scoped) should have worked`).toBeUndefined();
-        } else if (EMPTY_OK.has(name) || name === 'list_portfolio_items') {
-          // list_projects / list_portfolio_items are AccessService-scoped (the guard passes;
-          // listReadableProjectIds returns zero rows for a no-role member): 200 with an EMPTY
-          // list — the rows key is each tool's own list key
-          const key = name === 'list_portfolio_items' ? 'portfolioItems' : 'projects';
+        } else if (EMPTY_OK.has(name)) {
+          // AccessService-scoped lists (the guard passes; listReadableProjectIds returns zero
+          // rows for a no-role member): 200 with an EMPTY list under the tool's own list key
+          const key = EMPTY_KEYS[name] ?? 'projects';
           const rows = out[key] as unknown[];
           expect(Array.isArray(rows), `${name} must return a list`).toBe(true);
           expect(rows.length, `${name} must be empty for a no-role member`).toBe(0);
@@ -357,14 +396,14 @@ describe('/mcp over the real guard chain (e2e)', () => {
       // get_project 403s on unknown ids on purpose: PolicyGuard denies before the project
       // lookup, so a non-member cannot probe which ids exist (no existence leak).
       for (const [name, args] of Object.entries({
-        get_work_item: { workItemId: UNKNOWN },
-        work_item_activity: { workItemId: UNKNOWN },
-        iteration_status: { iterationId: UNKNOWN },
+        rova_get_work_item: { workItemId: UNKNOWN },
+        rova_work_item_activity: { workItemId: UNKNOWN },
+        rova_iteration_status: { iterationId: UNKNOWN },
       })) {
         const out = await callTool(token, name, args);
         expect(out.statusCode, `${name}: unknown id must be 404`).toBe(404);
       }
-      const projectProbe = await callTool(token, 'get_project', { projectId: UNKNOWN });
+      const projectProbe = await callTool(token, 'rova_get_project', { projectId: UNKNOWN });
       expect(projectProbe.statusCode, 'get_project: unknown id must be 403 (no leak)').toBe(403);
     });
 
@@ -376,7 +415,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
       const other = await provisionUser(app, 'mcp-unread-other', 'E2E mcp unread other');
 
       // baseline: no unread rows for anyone
-      const before = await callTool(mine.token, 'unread_notifications', {});
+      const before = await callTool(mine.token, 'rova_unread_notifications', {});
       expect(Number(before.count)).toBe(0);
 
       // the caller's own row: exactly +1
@@ -386,7 +425,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
         type: 'WORK_ITEM_ASSIGNED',
         title: 'for the mcp caller',
       });
-      const withMine = await callTool(mine.token, 'unread_notifications', {});
+      const withMine = await callTool(mine.token, 'rova_unread_notifications', {});
       expect(Number(withMine.count)).toBe(Number(before.count) + 1);
 
       // a second user's unread row must NOT move the caller's count
@@ -396,7 +435,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
         type: 'WORK_ITEM_ASSIGNED',
         title: 'for the other user only',
       });
-      const again = await callTool(mine.token, 'unread_notifications', {});
+      const again = await callTool(mine.token, 'rova_unread_notifications', {});
       expect(Number(again.count)).toBe(Number(before.count) + 1);
     });
 
@@ -406,15 +445,16 @@ describe('/mcp over the real guard chain (e2e)', () => {
       try {
         await setUserBanned(auth, userId, true, 'e2e: offboard the mcp user');
         await initialize(token);
+        // skipInitialize: 34 tools x 2 POSTs would blow the per-person 60/min MCP budget
         for (const [name, args] of Object.entries(TOOL_ARGS)) {
-          const out = await callTool(token, name, args);
+          const out = await callTool(token, name, args, { skipInitialize: true });
           expect(String(out.statusCode), `${name} must relay the ban denial`).toMatch(/401|403/);
         }
       } finally {
         await setUserBanned(auth, userId, false);
       }
       // reinstated: the same tool works again, as the person themselves
-      const out = await callTool(token, 'whoami', {});
+      const out = await callTool(token, 'rova_whoami', {});
       expect(out.statusCode).toBeUndefined();
       expect(out.id).toBe(userId);
     });
@@ -426,116 +466,155 @@ describe('/mcp over the real guard chain (e2e)', () => {
   // team_status / quality_defects — fails here instead of at an agent's first question.
   describe('happy-path output shape, per tool', () => {
     const CASES: Array<{ name: string; args: Record<string, unknown>; fields: string[] }> = [
-      { name: 'whoami', args: {}, fields: ['id', 'email', 'displayName', 'memberships'] },
-      { name: 'list_projects', args: {}, fields: ['projects', 'pageInfo'] },
+      { name: 'rova_whoami', args: {}, fields: ['id', 'email', 'displayName', 'memberships'] },
+      { name: 'rova_list_projects', args: {}, fields: ['projects', 'pageInfo'] },
       {
-        name: 'get_project',
+        name: 'rova_get_project',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['id', 'key', 'name', 'status'],
       },
       {
-        name: 'list_project_members',
+        name: 'rova_list_project_members',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['members'],
       },
       {
-        name: 'search_work_items',
+        name: 'rova_search_work_items',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['items', 'pageInfo'],
       },
       {
-        name: 'get_work_item',
+        name: 'rova_get_work_item',
         args: { workItemId: PAY_STORY_ID },
         fields: ['id', 'itemKey', 'title', 'scheduleState'],
       },
       {
-        name: 'get_work_item_by_key',
+        name: 'rova_get_work_item_by_key',
         args: { itemKey: 'US-1' },
         fields: ['id', 'itemKey', 'title'],
       },
-      { name: 'my_work', args: {}, fields: ['items'] },
+      { name: 'rova_my_work', args: {}, fields: ['items'] },
       {
-        name: 'list_backlog',
+        name: 'rova_list_backlog',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['items', 'pageInfo'],
       },
       {
-        name: 'work_item_activity',
+        name: 'rova_work_item_activity',
         args: { workItemId: PAY_STORY_ID },
         fields: ['activity', 'total'],
       },
       {
-        name: 'list_iterations',
+        name: 'rova_list_iterations',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['iterations'],
       },
       {
-        name: 'iteration_options',
+        name: 'rova_iteration_options',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['iterations'],
       },
       {
-        name: 'iteration_status',
+        name: 'rova_iteration_status',
         args: { iterationId: PAY_ITER_ID },
         fields: ['iteration', 'metrics', 'items'],
       },
-      { name: 'list_comments', args: { workItemId: PAY_STORY_ID }, fields: ['comments'] },
+      { name: 'rova_list_comments', args: { workItemId: PAY_STORY_ID }, fields: ['comments'] },
       {
-        name: 'list_releases',
+        name: 'rova_list_releases',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['releases'],
       },
       {
-        name: 'list_milestones',
+        name: 'rova_list_milestones',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['milestones'],
       },
       {
-        name: 'iteration_burndown',
+        name: 'rova_iteration_burndown',
         args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
         fields: [],
       },
       {
-        name: 'velocity',
+        name: 'rova_velocity',
         args: { projectId: PAY_PROJECT_ID, window: 5 },
         fields: [],
       },
       {
-        name: 'team_capacity',
+        name: 'rova_team_capacity',
         args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
         fields: [],
       },
-      { name: 'unread_notifications', args: {}, fields: ['count'] },
+      { name: 'rova_unread_notifications', args: {}, fields: ['count'] },
       {
-        name: 'list_test_cases',
+        name: 'rova_list_test_cases',
         args: { workItemId: NXP_STORY_1_ID },
         fields: ['testCases', 'pageInfo'],
       },
       {
-        name: 'get_test_case_by_key',
+        name: 'rova_get_test_case_by_key',
         args: { testCaseKey: 'TC-1' },
         fields: ['id', 'testCaseKey', 'name'],
       },
       {
-        name: 'quality_defects',
+        name: 'rova_quality_defects',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['defects', 'metrics'],
       },
       {
-        name: 'team_status',
+        name: 'rova_team_status',
         args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
         fields: ['members', 'iteration', 'totals'],
       },
-      { name: 'list_portfolio_items', args: { type: 'epic' }, fields: ['portfolioItems'] },
+      { name: 'rova_list_portfolio_items', args: { type: 'epic' }, fields: ['portfolioItems'] },
       {
-        name: 'get_portfolio_item',
+        name: 'rova_get_portfolio_item',
         args: { portfolioItemId: NXP_FEATURE_3_ID },
         fields: ['id', 'itemKey', 'type', 'name', 'estimate', 'rollup', 'progress', 'children'],
       },
+      // PR B's eight tools. The two reports relay the route payload as-is (fields []); the
+      // seeded ids come from db/seeds/constants (NXP release 1, milestone 1, team Alpha).
+      {
+        name: 'rova_carryover_report',
+        // CASES is built at describe time; the getter defers the fixture iteration id to
+        // call time (the happy-path test sets it after creating the carryover fixture)
+        args: {
+          get projectId() {
+            return carryoverProject.id;
+          },
+          get iterationId() {
+            return carryoverIteration.id;
+          },
+        },
+        fields: ['rows'],
+      },
+      {
+        name: 'rova_release_tracking',
+        args: { projectId: NXP_PROJECT_ID, releaseId: NXP_RELEASE_1_ID },
+        fields: ['rows'],
+      },
+      {
+        name: 'rova_get_release',
+        args: { releaseId: NXP_RELEASE_1_ID },
+        fields: ['id', 'releaseKey', 'name', 'status', 'taskEstimate', 'artifacts'],
+      },
+      {
+        name: 'rova_get_milestone',
+        args: { milestoneId: NXP_MILESTONE_1_ID },
+        fields: ['id', 'milestoneKey', 'name', 'status', 'artifacts', 'releases', 'projects'],
+      },
+      { name: 'rova_project_health', args: {}, fields: ['projects'] },
+      {
+        name: 'rova_work_item_code_changes',
+        args: { workItemId: NXP_STORY_1_ID },
+        fields: ['connections', 'changesets'],
+      },
+      { name: 'rova_list_teams', args: {}, fields: ['teams'] },
+      { name: 'rova_list_notifications', args: {}, fields: ['notifications'] },
     ];
 
     it('every tool appears exactly once in the happy-path matrix', () => {
-      expect(CASES.length).toBe(26);
+      expect(CASES.length).toBe(34);
       const names = CASES.map((c) => c.name);
       expect(new Set(names).size).toBe(names.length);
     });
@@ -543,24 +622,136 @@ describe('/mcp over the real guard chain (e2e)', () => {
     it('each tool answers with its documented fields on seeded data', async () => {
       // The happy-path caller must be able to READ everything the seed provides: the seeded
       // workspace admin. A plain member cannot read PAY/NXP (project:view is project-tier).
-      const { userId: adminId } = await signInAs(app, 'admin@qnsc.dev');
+      const { userId: adminId, credential } = await signInAs(app, 'admin@qnsc.dev');
       const adminToken = `${VERIFIER_TOKEN_PREFIX}admin-${adminId.slice(0, 8)}`;
       people.set(adminToken, { userId: adminId, workspaceId: WORKSPACE_ID });
 
+      // A THROWAWAY story, carried over through the REAL API: the carryover report computes
+      // its rows from carryover EVENTS, and the seed alone creates none — so without this the
+      // report would answer 200 with `rows: []` and a non-empty assert on seeded data would
+      // be a lie. The iteration pair is dated AROUND THE DB CLOCK (the only clock, per the
+      // Time rule) because carryover requires the SOURCE iteration to be current — the seeded
+      // NXP sprints are dated 2026-06 and are not.
+      const db = app.get<DrizzleDB>(DRIZZLE);
+      const { iterations } = await import('../../db/schema/work');
+      const day = (offset: number) => {
+        const d = new Date();
+        d.setUTCDate(d.getUTCDate() + offset);
+        return d.toISOString().slice(0, 10);
+      };
+      // Session-cookie POSTs through the REAL bootstrap need the CSRF pair: the secret
+      // cookie + the signed token /v1/auth/me hands out (see csrf-protection.e2e.spec.ts).
+      const me = await app.inject({
+        method: 'GET',
+        url: '/v1/auth/me',
+        headers: { cookie: credential },
+      });
+      expect(me.statusCode, me.body).toBe(200);
+      const auth = {
+        cookie: `${credential}; ${readCookie(me.headers['set-cookie'], CSRF_SECRET_COOKIE)}`,
+        [CSRF_HEADER]: me.json<{ csrfToken: string }>().csrfToken,
+      };
+      // A THROWAWAY PROJECT for the carryover fixture, not NXP: iteration_transitions are immutable
+      // (no teardown is possible) and a dated iteration left in NXP would sit AFTER `Sprint 26.2`,
+      // breaking split-story-routes' "last iteration" case in the shared e2e database.
+      const created = await app.inject({
+        method: 'POST',
+        url: '/v1/projects',
+        headers: auth,
+        payload: {
+          key: `M${randomUUID().replace(/-/g, '').slice(0, 9).toUpperCase()}`,
+          name: 'MCP carryover fixture',
+        },
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      carryoverProject.id = created.json<{ id: string }>().id;
+      const itA = randomUUID();
+      const itB = randomUUID();
+      await db.insert(iterations).values([
+        {
+          id: itA,
+          workspaceId: WORKSPACE_ID,
+          projectId: carryoverProject.id,
+          iterationKey: 'IT-MCP-A',
+          name: 'MCP Carryover Source',
+          state: 'committed',
+          startDate: day(-1),
+          endDate: day(1),
+        },
+        {
+          id: itB,
+          workspaceId: WORKSPACE_ID,
+          projectId: carryoverProject.id,
+          iterationKey: 'IT-MCP-B',
+          name: 'MCP Carryover Target',
+          state: 'planning',
+          startDate: day(2),
+          endDate: day(12),
+        },
+      ]);
+      carryoverIteration.id = itA;
+      const fixture = await app.inject({
+        method: 'POST',
+        url: '/v1/work-items',
+        headers: auth,
+        payload: {
+          projectId: carryoverProject.id,
+          type: 'story',
+          title: 'mcp carryover fixture',
+        },
+      });
+      expect(fixture.statusCode, fixture.body).toBe(201);
+      // Create takes no iterationId (Update does): schedule the fixture afterwards.
+      const scheduled = await app.inject({
+        method: 'PATCH',
+        url: `/v1/work-items/${fixture.json<{ id: string }>().id}`,
+        headers: auth,
+        payload: { iterationId: itA },
+      });
+      expect(scheduled.statusCode, scheduled.body).toBe(200);
+      expect(
+        scheduled.json<{ iterationId?: string }>().iterationId,
+        'fixture must be scheduled in the source iteration',
+      ).toBe(itA);
+      const carried = await app.inject({
+        method: 'POST',
+        url: `/v1/work-items/${fixture.json<{ id: string }>().id}/carryover`,
+        headers: auth,
+        payload: {
+          expectedSourceIterationId: itA,
+          targetIterationId: itB,
+          targetEndDate: day(5),
+        },
+      });
+      expect(carried.statusCode, carried.body).toBe(201);
+
+      // fields that must hold SEEDED (or fixture) rows — a denial or an empty answer from a
+      // wrong project/iteration pairing must fail here, not pass vacuously
+      const NON_EMPTY: Record<string, string[]> = {
+        rova_carryover_report: ['rows'],
+        rova_release_tracking: ['rows'],
+        rova_get_release: ['artifacts'],
+        rova_get_milestone: ['artifacts', 'releases'],
+        rova_work_item_code_changes: ['connections', 'changesets'],
+        rova_project_health: ['projects'],
+        rova_list_teams: ['teams'],
+        rova_get_portfolio_item: ['children'],
+      };
+
       for (const { name, args, fields } of CASES) {
         const out = await callTool(adminToken, name, args, { skipInitialize: true });
+        // a denial relays { statusCode, error } — any case answering one fails HERE
+        expect(out.statusCode, `${name} must succeed on seeded data`).toBeUndefined();
         for (const field of fields) {
           expect(
             out[field],
             `${name}: documented field '${field}' missing/undefined`,
           ).toBeDefined();
         }
-        if (name === 'get_portfolio_item') {
-          // the seeded NXP Feature 3 carries linked stories — the children feed must be
-          // non-empty (the delta-review blocker: Epics have none, Features must not be empty)
+        for (const key of NON_EMPTY[name] ?? []) {
           expect(
-            (out.children as unknown[]).length,
-            'get_portfolio_item: children must be non-empty for the Feature fixture',
+            (out[key] as unknown[]).length,
+            `${name}: '${key}' must be non-empty on the seeded workspace`,
           ).toBeGreaterThan(0);
         }
       }

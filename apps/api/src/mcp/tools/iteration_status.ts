@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { denied, pageInfoOf, pageArgs, result, type ToolContext } from './rest';
 
 /**
- * `iteration_status` — the Iteration Status read-model of one iteration
+ * `rova_iteration_status` — the Iteration Status read-model of one iteration
  * (GET /v1/iterations/:id/status, `iteration:view` on the iteration): metrics plus the
  * assigned work items.
  */
 export function registerIterationStatus(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'iteration_status',
+    'rova_iteration_status',
     {
       title: 'Iteration status',
       description:

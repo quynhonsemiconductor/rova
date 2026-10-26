@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { result, type ToolContext } from './rest';
 
 /**
- * `velocity` — the Velocity report of one project (GET /v1/reports/velocity, `report:view`
+ * `rova_velocity` — the Velocity report of one project (GET /v1/reports/velocity, `report:view`
  * from the `projectId` query): Accepted During / After / Not Accepted per completed timebox.
  * The route's payload is bounded by the window (5 or 10 timeboxes) — relayed as-is.
  */
 export function registerVelocity(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'velocity',
+    'rova_velocity',
     {
       title: 'Velocity report',
       description:

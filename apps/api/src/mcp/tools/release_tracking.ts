@@ -3,17 +3,17 @@ import { z } from 'zod';
 import { result, type ToolContext } from './rest';
 
 /**
- * `release_tracking` — the Release Tracking report for one project and release
- * (GET /v1/reports/release-tracking, `report:view` from the `projectId` query): the grid's
- * Status rows plus the burnup chart data — relayed as-is. Paged by the route.
+ * `rova_release_tracking` — the Release Tracking report for one project and release
+ * (GET /v1/reports/release-tracking, `report:view` from the `projectId` query): the summary,
+ * the ACTIVE bucket's rows and totals — relayed as-is. The route pages the rows itself.
  */
 export function registerReleaseTracking(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'release_tracking',
+    'rova_release_tracking',
     {
       title: 'Release tracking',
       description:
-        'The Release Tracking report for one project and release: per-item status rows and the burnup chart. Paged.',
+        "The Release Tracking report for one project and release: bucket totals and the active bucket's status rows. Paged.",
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: {
         projectId: z.uuid().describe('The project the report runs for'),

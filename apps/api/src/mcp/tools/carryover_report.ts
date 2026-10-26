@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { result, type ToolContext } from './rest';
 
 /**
- * `carryover_report` — the Carryover report for one project and iteration
+ * `rova_carryover_report` — the Carryover report for one project and iteration
  * (GET /v1/reports/carryover, `report:view` from the `projectId` query): Carry In / Out,
  * transferred To Do, rate, trend and rows — relayed as-is.
  */
 export function registerCarryoverReport(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'carryover_report',
+    'rova_carryover_report',
     {
       title: 'Carryover report',
       description:
