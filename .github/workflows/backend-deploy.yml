@@ -157,7 +157,7 @@ jobs:
         # had this hand-written; both deploys here failed on 2026-09-13 for commits whose CI
         # had passed, because `gh run watch --exit-status` reports a 403 the same way it
         # reports a failed run.
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@2a85ef7bb3c793edbc9b424ba2abeaed8080aab6 # v1.24.3
         with:
           workflow: infra-apply.yml
           label: Infrastructure · Apply
@@ -224,7 +224,7 @@ jobs:
     steps:
       - name: Wait for Backend · CI on this commit
         if: github.ref_type != 'tag'
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@2a85ef7bb3c793edbc9b424ba2abeaed8080aab6 # v1.24.3
         with:
           workflow: backend-ci.yml
           # `main` and not the tag ref: Backend · CI only runs on main.
@@ -239,7 +239,7 @@ jobs:
       # real precondition. See the block comment above this job for the race it closes.
       - name: Wait for the develop deploy of this commit
         if: github.ref_type == 'tag'
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@2a85ef7bb3c793edbc9b424ba2abeaed8080aab6 # v1.24.3
         with:
           workflow: backend-deploy.yml
           # `main` is what excludes THIS run: the develop deploy's headBranch is `main` while
@@ -272,7 +272,7 @@ jobs:
       id-token: write
       attestations: write
       packages: read # build-push-ecr pulls private @quynhonsemiconductor/* from GitHub Packages
-    uses: quynhonsemiconductor/ci/.github/workflows/backend-deploy.yml@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+    uses: quynhonsemiconductor/ci/.github/workflows/backend-deploy.yml@2a85ef7bb3c793edbc9b424ba2abeaed8080aab6 # v1.24.3
     with:
       product: rova
       has_worker: true
@@ -328,7 +328,6 @@ jobs:
       cache_backend: gha
     # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
     secrets:
-      AWS_ACCOUNT_ID:       ${{ vars.AWS_ACCOUNT_ID }}
 
   # ───────────────────────────────────────────────────────────────────────────
   # Deploy annotation — a vertical marker on every Grafana dashboard panel
