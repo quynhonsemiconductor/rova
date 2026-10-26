@@ -34,6 +34,7 @@ const STRANGER_PROJECT = NXP_PROJECT_ID;
 const STRANGER_ITEM = PAY_STORY_ID; // the stranger holds no membership in PAY either
 // set by the happy-path test once the carryover fixture iterations exist (CASES is static)
 const carryoverIteration = { id: NXP_ITER_CURRENT_ID };
+const carryoverProject: { id: string } = { id: NXP_PROJECT_ID };
 const STRANGER_ITERATION = PAY_ITER_ID;
 
 /**
@@ -578,7 +579,9 @@ describe('/mcp over the real guard chain (e2e)', () => {
         // CASES is built at describe time; the getter defers the fixture iteration id to
         // call time (the happy-path test sets it after creating the carryover fixture)
         args: {
-          projectId: NXP_PROJECT_ID,
+          get projectId() {
+            return carryoverProject.id;
+          },
           get iterationId() {
             return carryoverIteration.id;
           },
@@ -636,31 +639,6 @@ describe('/mcp over the real guard chain (e2e)', () => {
         d.setUTCDate(d.getUTCDate() + offset);
         return d.toISOString().slice(0, 10);
       };
-      const itA = randomUUID();
-      const itB = randomUUID();
-      await db.insert(iterations).values([
-        {
-          id: itA,
-          workspaceId: WORKSPACE_ID,
-          projectId: NXP_PROJECT_ID,
-          iterationKey: 'IT-MCP-A',
-          name: 'MCP Carryover Source',
-          state: 'committed',
-          startDate: day(-1),
-          endDate: day(1),
-        },
-        {
-          id: itB,
-          workspaceId: WORKSPACE_ID,
-          projectId: NXP_PROJECT_ID,
-          iterationKey: 'IT-MCP-B',
-          name: 'MCP Carryover Target',
-          state: 'planning',
-          startDate: day(2),
-          endDate: day(12),
-        },
-      ]);
-      carryoverIteration.id = itA;
       // Session-cookie POSTs through the REAL bootstrap need the CSRF pair: the secret
       // cookie + the signed token /v1/auth/me hands out (see csrf-protection.e2e.spec.ts).
       const me = await app.inject({
@@ -673,12 +651,51 @@ describe('/mcp over the real guard chain (e2e)', () => {
         cookie: `${credential}; ${readCookie(me.headers['set-cookie'], CSRF_SECRET_COOKIE)}`,
         [CSRF_HEADER]: me.json<{ csrfToken: string }>().csrfToken,
       };
+      // A THROWAWAY PROJECT for the carryover fixture, not NXP: iteration_transitions are immutable
+      // (no teardown is possible) and a dated iteration left in NXP would sit AFTER `Sprint 26.2`,
+      // breaking split-story-routes' "last iteration" case in the shared e2e database.
+      const created = await app.inject({
+        method: 'POST',
+        url: '/v1/projects',
+        headers: auth,
+        payload: {
+          key: `M${randomUUID().replace(/-/g, '').slice(0, 9).toUpperCase()}`,
+          name: 'MCP carryover fixture',
+        },
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      carryoverProject.id = created.json<{ id: string }>().id;
+      const itA = randomUUID();
+      const itB = randomUUID();
+      await db.insert(iterations).values([
+        {
+          id: itA,
+          workspaceId: WORKSPACE_ID,
+          projectId: carryoverProject.id,
+          iterationKey: 'IT-MCP-A',
+          name: 'MCP Carryover Source',
+          state: 'committed',
+          startDate: day(-1),
+          endDate: day(1),
+        },
+        {
+          id: itB,
+          workspaceId: WORKSPACE_ID,
+          projectId: carryoverProject.id,
+          iterationKey: 'IT-MCP-B',
+          name: 'MCP Carryover Target',
+          state: 'planning',
+          startDate: day(2),
+          endDate: day(12),
+        },
+      ]);
+      carryoverIteration.id = itA;
       const fixture = await app.inject({
         method: 'POST',
         url: '/v1/work-items',
         headers: auth,
         payload: {
-          projectId: NXP_PROJECT_ID,
+          projectId: carryoverProject.id,
           type: 'story',
           title: 'mcp carryover fixture',
         },
