@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   plan:
-    uses: quynhonsemiconductor/ci/.github/workflows/infra-plan.yml@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+    uses: quynhonsemiconductor/ci/.github/workflows/infra-plan.yml@2a85ef7bb3c793edbc9b424ba2abeaed8080aab6 # v1.24.3
     with:
       product: rova
       # The Cloudflare zone id, which infra/live/_shared REQUIRES (no default, 32-hex validation).
@@ -61,7 +61,6 @@ jobs:
       # every plan reported three ECS task definitions "must be replaced". Held in
       # git, plan and apply see the same value and the plan tells the truth.
     secrets:
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       # Read-only qnsc-repo-reader key: the reusable mints a contents:read token for tf-modules.
       # This workflow runs on pull requests, so it never receives a write-capable key.
       QNSC_REPO_READER_PRIVATE_KEY: ${{ secrets.QNSC_REPO_READER_PRIVATE_KEY }}

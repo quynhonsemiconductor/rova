@@ -274,6 +274,12 @@ overrides:
   # they are not a new trust decision.
 allowBuilds:
   '@scarf/scarf': true
+  # wrangler's tree pulls miniflare's sharp; its postinstall downloads the prebuilt
+  # libvips binary (allowed — mirror of opshub#495: pnpm 11 aborts the whole install
+  # while the decision is unrecorded, which re-broke Web · Deploy on the pnpm 11.28.8
+  # bump). workerd stays `false` below: its postinstall only verifies a binary that
+  # `pages deploy` never runs.
+  sharp: true
   '@swc/core': true
   argon2: true
   cpu-features: true
@@ -290,6 +296,7 @@ allowBuilds:
   workerd: false
 onlyBuiltDependencies:
   - '@scarf/scarf'
+  - sharp
   - '@swc/core'
   - argon2
   - cpu-features
