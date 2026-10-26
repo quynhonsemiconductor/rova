@@ -26,7 +26,7 @@ export function shapeTeam(t: Record<string, unknown>) {
 }
 
 /**
- * `list_teams` — the teams of the bound workspace linked to at least one project the person
+ * `rova_list_teams` — the teams of the bound workspace linked to at least one project the person
  * can read (GET /v1/workspaces/:workspaceId/teams with the PRINCIPAL's workspace — the route
  * 404s on any other id, so the tool takes no workspace argument; AuthorizedInService scopes
  * the list itself). The route answers a bare array; the tool caps to 100 with `truncated`.

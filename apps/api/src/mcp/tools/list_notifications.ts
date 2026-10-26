@@ -1,18 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, type ToolContext } from './rest';
-
-/** The tool's page stays under the REST max; one extra row detects more without a second call. */
-export const MAX_LIMIT = 20;
-
-/** One page of the feed; `truncated` when the route returned more than `take` rows. */
-export function shapeNotifications(rows: Record<string, unknown>[], take: number) {
-  const payload: Record<string, unknown> = {
-    notifications: rows.slice(0, take).map(shapeNotification),
-  };
-  if (rows.length > take) payload['truncated'] = true;
-  return payload;
-}
+import { listResult, pageArgs, type ToolContext } from './rest';
 
 /** The NotificationResponseDto fields an agent acts on (metadata left to REST). */
 export function shapeNotification(n: Record<string, unknown>) {
@@ -30,9 +18,9 @@ export function shapeNotification(n: Record<string, unknown>) {
 }
 
 /**
- * `list_notifications` — the caller's own notifications (GET /v1/notifications, @SelfScoped).
- * The route answers a bare array capped by its `limit` (newest first); the tool pages at 20 and
- * fetches one extra row to set `truncated` when more exist.
+ * `rova_list_notifications` — the caller's own notifications (GET /v1/notifications/paged,
+ * @SelfScoped). The route is cursor-paged; the tool pages at the shared tool cap and relays
+ * the route's own pageInfo, so a full page means re-ask with the cursor, never a guess.
  */
 export function registerListNotifications(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
@@ -40,43 +28,29 @@ export function registerListNotifications(server: McpServer, ctx: ToolContext) {
     {
       title: 'List notifications',
       description:
-        'Your own notifications, newest first (capped at 20 per page). Filter to unread only or one category.',
+        'Your own notifications, newest first. Filter to unread only or one category. Paginated.',
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: {
+        ...pageArgs,
         unreadOnly: z.boolean().optional().describe('Only unread notifications (default all)'),
         category: z
           .enum(['assigned', 'mentions'])
           .optional()
           .describe('Only one category (default all)'),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(MAX_LIMIT)
-          .optional()
-          .describe(`Page size (default ${MAX_LIMIT})`),
       },
     },
-    async ({ unreadOnly, category, limit }) => {
-      const take = limit ?? MAX_LIMIT;
+    async ({ unreadOnly, category, limit, cursor }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: '/v1/notifications',
+        url: '/v1/notifications/paged',
         query: {
+          limit: limit ?? 20,
+          cursor,
           ...(unreadOnly ? { unreadOnly: 'true' } : {}),
           ...(category ? { category } : {}),
-          limit: take + 1, // one extra row: the route's own cap says whether more exist
         },
       });
-      if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify(shapeNotifications(json as Record<string, unknown>[], take)),
-          },
-        ],
-      };
+      return listResult(statusCode, json, shapeNotification, 'notifications');
     },
   );
 }

@@ -38,7 +38,7 @@ export function shapeWorkItem(p: Record<string, unknown>) {
 }
 
 /**
- * `get_work_item` — one work item by id, if the person can read it
+ * `rova_get_work_item` — one work item by id, if the person can read it
  * (GET /v1/work-items/:id, `work_item:view` on the item).
  */
 export function registerGetWorkItem(server: McpServer, ctx: ToolContext) {

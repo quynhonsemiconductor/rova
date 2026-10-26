@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { listResult, type ToolContext } from './rest';
 
 /**
- * `iteration_options` — the reference feed of every iteration in one project
+ * `rova_iteration_options` — the reference feed of every iteration in one project
  * (GET /v1/iterations/options, `iteration:view` from the `projectId` query). Identity plus
  * window — the picker feed, for resolving iteration ids to names.
  */

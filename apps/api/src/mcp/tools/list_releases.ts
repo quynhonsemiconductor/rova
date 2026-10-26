@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { denied, type ToolContext } from './rest';
 
 /**
- * `list_releases` — the releases of one project the person can read
+ * `rova_list_releases` — the releases of one project the person can read
  * (GET /v1/releases, `release:view` from the `projectId` query). The REST route does not
  * paginate, so the tool caps the feed and sets `truncated`.
  */

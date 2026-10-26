@@ -58,7 +58,7 @@ export function shapePortfolioDetail(
 }
 
 /**
- * `get_portfolio_item` — one Epic or Feature with its estimate/rollup/progress, plus the
+ * `rova_get_portfolio_item` — one Epic or Feature with its estimate/rollup/progress, plus the
  * capped children feed for Features (GET /v1/portfolio-items/:id + :id/children —
  * `portfolio:view` resolved from the row; a bad id is a clean 404). Children are capped at
  * 50 with `truncated`.

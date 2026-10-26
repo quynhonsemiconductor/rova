@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { result, type ToolContext } from './rest';
 
 /**
- * `team_capacity` — the Team Capacity report of one project (GET /v1/reports/team-capacity,
+ * `rova_team_capacity` — the Team Capacity report of one project (GET /v1/reports/team-capacity,
  * `report:view` from the `projectId` query): a read-only projection of Team Status hours,
  * bounded by the team roster — relayed as-is.
  */

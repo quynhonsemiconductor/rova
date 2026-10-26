@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { listResult, type ToolContext } from './rest';
 
 /**
- * `list_portfolio_items` — Epics or Features across the projects the person can read
+ * `rova_list_portfolio_items` — Epics or Features across the projects the person can read
  * (GET /v1/portfolio-items, AccessService-scoped: `listReadableProjectIds` — a no-role
  * member gets an EMPTY page, not a denial). `type` is REQUIRED by the REST route.
  */

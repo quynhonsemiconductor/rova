@@ -5,6 +5,9 @@ import { MAX_TEAMS, shapeTeam, shapeTeams } from './list_teams';
  * The REAL response shape, from the producer (workspace/team.controller.ts
  * GET /workspaces/:workspaceId/teams -> toTeamWithStatsDto): a BARE array of
  * toTeamDto + memberCount + projects — no pageInfo; the tool caps the feed itself.
+ * There is NO zod schema for this route (the controller maps plain objects), so unlike the
+ * other dto-shape specs this fixture is pinned BY HAND — a mapper change on the producer
+ * must be mirrored here by review, not by parse().
  */
 const TEAM_ROW = {
   id: 't1',

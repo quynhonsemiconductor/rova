@@ -5,9 +5,8 @@ import { denied, type ToolContext } from './rest';
 /** Both routes page at the REST max; anything past the caps is flagged, not fetched. */
 export const MAX_CONNECTIONS = 50;
 export const MAX_CHANGESETS = 100;
-const REST_PAGE_LIMIT = 100;
 
-/** The two feeds, capped and field-mapped; `truncated` when a cap or the route's page bit. */
+/** The two feeds, field-mapped; `truncated` when the route's own pageInfo says more exist. */
 export function shapeCodeChanges(
   connections: Record<string, unknown>[],
   connectionsMore: boolean,
@@ -35,13 +34,8 @@ export function shapeCodeChanges(
       committedAt: c['committedAt'] ?? null,
     })),
   };
-  if (
-    connectionsMore ||
-    connections.length > MAX_CONNECTIONS ||
-    changesetsMore ||
-    changesets.length > MAX_CHANGESETS
-  )
-    payload['truncated'] = true;
+  // the route pages at exactly the caps, so only ITS hasNextPage can say more exist
+  if (connectionsMore || changesetsMore) payload['truncated'] = true;
   return payload;
 }
 
@@ -49,6 +43,7 @@ export function shapeCodeChanges(
 async function page(
   ctx: ToolContext,
   url: string,
+  limit: number,
 ): Promise<{
   denial?: ReturnType<typeof denied>;
   rows: Record<string, unknown>[];
@@ -57,7 +52,7 @@ async function page(
   const res = await ctx.callRest(ctx.principal, {
     method: 'GET',
     url,
-    query: { limit: REST_PAGE_LIMIT },
+    query: { limit },
   });
   if (
     res.statusCode >= 400 ||
@@ -76,11 +71,10 @@ async function page(
 }
 
 /**
- * `work_item_code_changes` — the SCM links (pull requests) and changesets of one work item
- * (GET /v1/work-items/:id/connections and /changesets, both `work_item:view` resolved from
- * the item, both cursor-paged). Connections are capped at 50, changesets at 100 — past the cap
- * the payload carries `truncated` instead of more rows (an agent re-asks through REST, not by
- * paging an unbounded feed).
+ * `rova_work_item_code_changes` — the SCM links (pull requests) and changesets of one work
+ * item (GET /v1/work-items/:id/connections and /changesets, both `work_item:view` resolved
+ * from the item, both cursor-paged). Each feed is fetched up to its cap (50 / 100) and
+ * `truncated` comes from the route's own pageInfo — the tool fetches only what it returns.
  */
 export function registerWorkItemCodeChanges(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
@@ -94,9 +88,13 @@ export function registerWorkItemCodeChanges(server: McpServer, ctx: ToolContext)
       },
     },
     async ({ workItemId }) => {
-      const connections = await page(ctx, `/v1/work-items/${workItemId}/connections`);
+      const connections = await page(
+        ctx,
+        `/v1/work-items/${workItemId}/connections`,
+        MAX_CONNECTIONS,
+      );
       if (connections.denial) return connections.denial;
-      const changesets = await page(ctx, `/v1/work-items/${workItemId}/changesets`);
+      const changesets = await page(ctx, `/v1/work-items/${workItemId}/changesets`, MAX_CHANGESETS);
       if (changesets.denial) return changesets.denial;
 
       return {

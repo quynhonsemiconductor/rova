@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { denied, type ToolContext } from './rest';
 
 /**
- * `quality_defects` — the Defects grid of one project with its metrics rollup
+ * `rova_quality_defects` — the Defects grid of one project with its metrics rollup
  * (GET /v1/quality/defects, `quality:view` from the `projectId` query). The route pages by
  * OFFSET; the tool caps the page and relays the offset for the next slice.
  */

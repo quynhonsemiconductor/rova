@@ -36,7 +36,7 @@ export function shapeComments(all: Record<string, unknown>[]) {
 }
 
 /**
- * `list_comments` — the comments on one work item (GET /v1/work-items/:workItemId/comments,
+ * `rova_list_comments` — the comments on one work item (GET /v1/work-items/:workItemId/comments,
  * `work_item:view` on the item). The REST route returns ALL of an item's comments (no page
  * args, no ordering guarantee), so the tool sorts newest-first, caps to 100, truncates
  * bodies, and sets `truncated`.

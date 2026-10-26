@@ -7,7 +7,7 @@ export const MAX_LINKS = 100;
 
 /**
  * The MilestoneResponseDto fields an agent acts on, with the three junction feeds attached
- * (each a bare id array, capped) and `truncated` when a cap bit.
+ * (each a bare id array, capped) and `truncated` when a RAW feed exceeded the cap.
  */
 export function shapeMilestone(
   m: Record<string, unknown>,
@@ -24,19 +24,19 @@ export function shapeMilestone(
     targetStartDate: m['targetStartDate'] ?? null,
     targetEndDate: m['targetEndDate'] ?? null,
     progress: m['progress'] ?? null,
-    artifacts,
-    releases,
-    projects,
+    artifacts: artifacts.slice(0, MAX_LINKS),
+    releases: releases.slice(0, MAX_LINKS),
+    projects: projects.slice(0, MAX_LINKS),
   };
-  if ([artifacts, releases, projects].some((ids) => ids.length >= MAX_LINKS))
+  if ([artifacts, releases, projects].some((ids) => ids.length > MAX_LINKS))
     payload['truncated'] = true;
   return payload;
 }
 
 /**
- * `get_milestone` — one Milestone with its links (GET /v1/milestones/:id, `milestone:view` on
- * the milestone; then the :id/artifacts, :id/releases and :id/projects junction feeds, the same
- * permission, each a bare id array capped at 100 with `truncated`).
+ * `rova_get_milestone` — one Milestone with its links (GET /v1/milestones/:id, `milestone:view`
+ * on the milestone; then the :id/artifacts, :id/releases and :id/projects junction feeds, the
+ * same permission, each a bare id array capped at 100 with `truncated`).
  */
 export function registerGetMilestone(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
@@ -66,7 +66,7 @@ export function registerGetMilestone(server: McpServer, ctx: ToolContext) {
         const res = await ctx.callRest(ctx.principal, { method: 'GET', url });
         if (res.statusCode >= 400 || !Array.isArray(res.json))
           return { denial: denied(res.statusCode, res.json), ids: [] };
-        return { ids: (res.json as string[]).slice(0, MAX_LINKS) };
+        return { ids: res.json as string[] };
       };
       const artifacts = await feed(`/v1/milestones/${milestoneId}/artifacts`);
       if (artifacts.denial) return artifacts.denial;

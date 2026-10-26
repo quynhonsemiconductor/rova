@@ -1,35 +1,36 @@
 import { describe, expect, it } from 'vitest';
-import { shapeHealthRow } from './project_health';
+import { ProjectHealthResponseSchema } from '@modules/projects/interface/http/dto/project-response.dto';
 import { listResult } from './rest';
+import { shapeHealthRow } from './project_health';
 
 /**
- * The REAL ProjectHealthResponseDto shape (projects.controller.ts GET /health ->
- * ProjectHealthResponseSchema): a bare ARRAY of rows — id/key/name, nullable lead + sprint
- * name, and the three rollup counters. No pageInfo: the route bounds itself with `limit`.
+ * `rova_project_health` relays GET /v1/projects/health: a BARE array of
+ * ProjectHealthResponseSchema rows (no pageInfo — the route bounds itself with `limit`).
+ * The fixture parses through the REAL schema.
  */
 const HEALTH_ROWS = [
-  {
-    id: 'p1',
+  ProjectHealthResponseSchema.parse({
+    id: '0194a000-0000-7000-8000-000000000001',
     key: 'PAY',
     name: 'Payments',
-    leadId: 'u1',
-    leadName: 'Ada',
-    activeSprintName: 'Sprint 4',
-    progressPercent: 62,
-    openDefects: 3,
-    blockedCount: 1,
-  },
-  {
-    id: 'p2',
-    key: 'NXP',
-    name: 'NXP',
     leadId: null,
     leadName: null,
     activeSprintName: null,
+    progressPercent: 62,
+    openDefects: 3,
+    blockedCount: 1,
+  }),
+  ProjectHealthResponseSchema.parse({
+    id: '0194a000-0000-7000-8000-000000000002',
+    key: 'NXP',
+    name: 'NX Platform',
+    leadId: '0194a000-0000-7000-8000-000000000003',
+    leadName: 'Ada',
+    activeSprintName: 'Sprint 25.14',
     progressPercent: 0,
     openDefects: 0,
     blockedCount: 0,
-  },
+  }),
 ];
 
 const ERROR_BODY = { statusCode: 401, message: 'Unauthorized', error: 'Unauthorized' };
@@ -39,15 +40,15 @@ describe('shapeHealthRow + listResult (ProjectHealthResponseDto[] -> tool payloa
     const out = listResult(200, HEALTH_ROWS, shapeHealthRow, 'projects');
     const body = JSON.parse(out.content[0].text);
     expect(body.projects).toHaveLength(2);
-    expect(body.projects[0]).toEqual({
-      id: 'p1',
-      key: 'PAY',
-      name: 'Payments',
+    expect(body.projects[1]).toEqual({
+      id: HEALTH_ROWS[1].id,
+      key: 'NXP',
+      name: 'NX Platform',
       leadName: 'Ada',
-      activeSprintName: 'Sprint 4',
-      progressPercent: 62,
-      openDefects: 3,
-      blockedCount: 1,
+      activeSprintName: 'Sprint 25.14',
+      progressPercent: 0,
+      openDefects: 0,
+      blockedCount: 0,
     });
     // a bare-array route carries no pageInfo — none may be invented
     expect(body).not.toHaveProperty('pageInfo');

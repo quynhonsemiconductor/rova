@@ -13,7 +13,7 @@ export function toToolProject(p: Record<string, unknown>) {
 }
 
 /**
- * `list_projects` — the projects of the bound workspace this person can read
+ * `rova_list_projects` — the projects of the bound workspace this person can read
  * (GET /v1/projects, scoped by AccessService.listReadableProjectIds).
  */
 export function registerListProjects(server: McpServer, ctx: ToolContext) {

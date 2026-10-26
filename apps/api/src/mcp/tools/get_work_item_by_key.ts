@@ -4,7 +4,7 @@ import { denied, result, type ToolContext } from './rest';
 import { toToolWorkItem } from './search_work_items';
 
 /**
- * `get_work_item_by_key` — one work item by its human key (e.g. `OBSE-42`)
+ * `rova_get_work_item_by_key` — one work item by its human key (e.g. `OBSE-42`)
  * (GET /v1/work-items/by-key?itemKey=…, `work_item:view` on the item).
  */
 export function registerGetWorkItemByKey(server: McpServer, ctx: ToolContext) {

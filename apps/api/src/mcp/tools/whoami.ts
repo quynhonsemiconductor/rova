@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { result, type ToolContext } from './rest';
 
 /**
- * `whoami` — the person, their role and workspace memberships (GET /v1/auth/me, self-scoped).
+ * `rova_whoami` — the person, their role and workspace memberships (GET /v1/auth/me, self-scoped).
  * Small: no permissions array, no timestamps.
  */
 export function registerWhoami(server: McpServer, ctx: ToolContext) {

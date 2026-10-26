@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { denied, result, type ToolContext } from './rest';
 
 /**
- * `unread_notifications` — the caller's unread notification count
+ * `rova_unread_notifications` — the caller's unread notification count
  * (GET /v1/notifications/unread-count, SelfScoped).
  */
 export function registerUnreadNotifications(server: McpServer, ctx: ToolContext) {

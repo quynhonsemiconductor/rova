@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { denied, pageInfoOf, pageArgs, result, type ToolContext } from './rest';
 
 /**
- * `iteration_status` — the Iteration Status read-model of one iteration
+ * `rova_iteration_status` — the Iteration Status read-model of one iteration
  * (GET /v1/iterations/:id/status, `iteration:view` on the iteration): metrics plus the
  * assigned work items.
  */

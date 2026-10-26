@@ -1,54 +1,70 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_LIMIT, shapeNotification, shapeNotifications } from './list_notifications';
+import { NotificationResponseSchema } from '@modules/notifications/interface/http/dto/notification-response.dto';
+import { listResult } from './rest';
+import { shapeNotification } from './list_notifications';
 
 /**
- * The REAL NotificationResponseDto shape (notifications.controller.ts GET / ->
- * NotificationResponseSchema): a BARE array — body/resourceType/resourceId/readAt NULLABLE,
- * metadata is a record the tool leaves to REST. The route caps by `limit`; the tool fetches
- * one extra row to know when more exist.
+ * `rova_list_notifications` relays GET /v1/notifications/paged: a PAGE of
+ * NotificationResponseSchema rows ({ data, pageInfo }). The fixture parses through the REAL
+ * schema; pageInfo is the platform's plain PageInfo interface (no zod schema exists for it —
+ * pinned by hand, like the schema-drift convention).
  */
-const NOTIFICATION_ROW = {
-  id: 'n1',
-  type: 'WORK_ITEM_ASSIGNED',
-  title: 'You were assigned PAY-1',
-  body: 'take a look',
-  resourceType: 'work_item',
-  resourceId: 'w1',
-  metadata: { itemKey: 'PAY-1', projectId: 'p1' },
-  isRead: false,
-  readAt: null,
-  actorId: 'u2',
-  createdAt: '2026-10-01T00:00:00.000Z',
+const PAGE_BODY = {
+  data: [
+    NotificationResponseSchema.parse({
+      id: '0194a000-0000-7000-8000-000000000001',
+      type: 'WORK_ITEM_ASSIGNED',
+      title: 'You were assigned US-1',
+      body: 'take a look',
+      resourceType: 'work_item',
+      resourceId: '0194a000-0000-7000-8000-000000000002',
+      metadata: { itemKey: 'US-1', projectId: '0194a000-0000-7000-8000-000000000003' },
+      isRead: false,
+      readAt: null,
+      actorId: '0194a000-0000-7000-8000-000000000004',
+      createdAt: '2026-06-20T08:00:00.000Z',
+    }),
+  ],
+  pageInfo: { nextCursor: null, hasNextPage: false },
 };
 
-describe('shapeNotifications (NotificationResponseDto[] -> tool payload)', () => {
+const ERROR_BODY = { statusCode: 401, message: 'Unauthorized', error: 'Unauthorized' };
+
+describe('shapeNotification + listResult (paged NotificationResponseDto -> tool payload)', () => {
   it('maps the DTO fields an agent acts on, under the `notifications` list key', () => {
-    const out = shapeNotifications([NOTIFICATION_ROW], MAX_LIMIT);
-    expect(out.notifications).toEqual([
+    const out = listResult(200, PAGE_BODY, shapeNotification, 'notifications');
+    const body = JSON.parse(out.content[0].text);
+    expect(body.notifications).toEqual([
       {
-        id: 'n1',
+        id: PAGE_BODY.data[0].id,
         type: 'WORK_ITEM_ASSIGNED',
-        title: 'You were assigned PAY-1',
+        title: 'You were assigned US-1',
         body: 'take a look',
         resourceType: 'work_item',
-        resourceId: 'w1',
+        resourceId: PAGE_BODY.data[0].resourceId,
         isRead: false,
         readAt: null,
-        createdAt: '2026-10-01T00:00:00.000Z',
+        createdAt: '2026-06-20T08:00:00.000Z',
       },
     ]);
-    expect(out['truncated']).toBeUndefined();
+    // the route's own pageInfo is relayed untouched
+    expect(body.pageInfo).toEqual({ nextCursor: null, hasNextPage: false });
   });
 
   it('nullable body/readAt stay null', () => {
-    const bare = { ...NOTIFICATION_ROW, body: null, readAt: null };
+    const bare = NotificationResponseSchema.parse({
+      ...PAGE_BODY.data[0],
+      body: null,
+      readAt: null,
+      resourceType: null,
+      resourceId: null,
+    });
     expect(shapeNotification(bare)).toMatchObject({ body: null, readAt: null });
   });
 
-  it('one extra row beyond the page means truncated', () => {
-    const many = Array.from({ length: MAX_LIMIT + 1 }, () => NOTIFICATION_ROW);
-    const out = shapeNotifications(many, MAX_LIMIT);
-    expect((out.notifications as unknown[]).length).toBe(MAX_LIMIT);
-    expect(out).toHaveProperty('truncated', true);
+  it('a denial relays the route status as isError', () => {
+    const out = listResult(401, ERROR_BODY, shapeNotification, 'notifications');
+    expect('isError' in out && out.isError).toBe(true);
+    expect(JSON.parse(out.content[0].text)).toEqual({ statusCode: 401, error: ERROR_BODY });
   });
 });

@@ -4,7 +4,7 @@ import { listResult, pageArgs, type ToolContext } from './rest';
 import { toToolWorkItem } from './search_work_items';
 
 /**
- * `list_backlog` — the backlog (stories + defects) of one project the person can read
+ * `rova_list_backlog` — the backlog (stories + defects) of one project the person can read
  * (GET /v1/work-items/backlog, `work_item:view` from the `projectId` query).
  */
 export function registerListBacklog(server: McpServer, ctx: ToolContext) {

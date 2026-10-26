@@ -12,22 +12,28 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { registerMcpRoute } from '../../apps/api/src/mcp/index';
 import type { McpAccessPrincipal, McpAccessVerifier } from '../../apps/api/src/mcp/index';
+import { CSRF_HEADER, CSRF_SECRET_COOKIE } from '@platform';
 import {
   NXP_FEATURE_3_ID,
+  NXP_ITER_CURRENT_ID,
   NXP_MILESTONE_1_ID,
   NXP_RELEASE_1_ID,
   NXP_STORY_1_ID,
-  PAY_ITER_ID,
   PAY_PROJECT_ID,
   PAY_STORY_ID,
+  SEED_PROJECTS,
   WORKSPACE_ID,
+  PAY_ITER_ID,
 } from '../../db/seeds/constants';
 import { provisionUser, readCookie, signInAs } from './support/session';
 
 // The seeded NXP project (db/seeds SEED_PROJECTS[0]) — the stranger holds no membership in
 // it, so every project-scoped tool must be denied by its route.
-const STRANGER_PROJECT = '00000000-0000-7000-8000-000000000010';
+const NXP_PROJECT_ID = SEED_PROJECTS[0].id;
+const STRANGER_PROJECT = NXP_PROJECT_ID;
 const STRANGER_ITEM = PAY_STORY_ID; // the stranger holds no membership in PAY either
+// set by the happy-path test once the carryover fixture iterations exist (CASES is static)
+const carryoverIteration = { id: NXP_ITER_CURRENT_ID };
 const STRANGER_ITERATION = PAY_ITER_ID;
 
 /**
@@ -295,8 +301,8 @@ describe('/mcp over the real guard chain (e2e)', () => {
       rova_get_portfolio_item: { portfolioItemId: NXP_FEATURE_3_ID },
       // The eight tools of PR B: the resource/report-scoped ones deny the stranger via
       // their route; the AccessService-scoped lists run EMPTY (see EMPTY_OK below).
-      rova_carryover_report: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
-      rova_release_tracking: { projectId: PAY_PROJECT_ID, releaseId: NXP_RELEASE_1_ID },
+      rova_carryover_report: { projectId: NXP_PROJECT_ID, iterationId: NXP_ITER_CURRENT_ID },
+      rova_release_tracking: { projectId: NXP_PROJECT_ID, releaseId: NXP_RELEASE_1_ID },
       rova_get_release: { releaseId: NXP_RELEASE_1_ID },
       rova_get_milestone: { milestoneId: NXP_MILESTONE_1_ID },
       rova_project_health: {},
@@ -569,13 +575,20 @@ describe('/mcp over the real guard chain (e2e)', () => {
       // seeded ids come from db/seeds/constants (NXP release 1, milestone 1, team Alpha).
       {
         name: 'rova_carryover_report',
-        args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
-        fields: [],
+        // CASES is built at describe time; the getter defers the fixture iteration id to
+        // call time (the happy-path test sets it after creating the carryover fixture)
+        args: {
+          projectId: NXP_PROJECT_ID,
+          get iterationId() {
+            return carryoverIteration.id;
+          },
+        },
+        fields: ['rows'],
       },
       {
         name: 'rova_release_tracking',
-        args: { projectId: PAY_PROJECT_ID, releaseId: NXP_RELEASE_1_ID },
-        fields: [],
+        args: { projectId: NXP_PROJECT_ID, releaseId: NXP_RELEASE_1_ID },
+        fields: ['rows'],
       },
       {
         name: 'rova_get_release',
@@ -606,31 +619,122 @@ describe('/mcp over the real guard chain (e2e)', () => {
     it('each tool answers with its documented fields on seeded data', async () => {
       // The happy-path caller must be able to READ everything the seed provides: the seeded
       // workspace admin. A plain member cannot read PAY/NXP (project:view is project-tier).
-      const { userId: adminId } = await signInAs(app, 'admin@qnsc.dev');
+      const { userId: adminId, credential } = await signInAs(app, 'admin@qnsc.dev');
       const adminToken = `${VERIFIER_TOKEN_PREFIX}admin-${adminId.slice(0, 8)}`;
       people.set(adminToken, { userId: adminId, workspaceId: WORKSPACE_ID });
 
+      // A THROWAWAY story, carried over through the REAL API: the carryover report computes
+      // its rows from carryover EVENTS, and the seed alone creates none — so without this the
+      // report would answer 200 with `rows: []` and a non-empty assert on seeded data would
+      // be a lie. The iteration pair is dated AROUND THE DB CLOCK (the only clock, per the
+      // Time rule) because carryover requires the SOURCE iteration to be current — the seeded
+      // NXP sprints are dated 2026-06 and are not.
+      const db = app.get<DrizzleDB>(DRIZZLE);
+      const { iterations } = await import('../../db/schema/work');
+      const day = (offset: number) => {
+        const d = new Date();
+        d.setUTCDate(d.getUTCDate() + offset);
+        return d.toISOString().slice(0, 10);
+      };
+      const itA = randomUUID();
+      const itB = randomUUID();
+      await db.insert(iterations).values([
+        {
+          id: itA,
+          workspaceId: WORKSPACE_ID,
+          projectId: NXP_PROJECT_ID,
+          iterationKey: 'IT-MCP-A',
+          name: 'MCP Carryover Source',
+          state: 'committed',
+          startDate: day(-1),
+          endDate: day(1),
+        },
+        {
+          id: itB,
+          workspaceId: WORKSPACE_ID,
+          projectId: NXP_PROJECT_ID,
+          iterationKey: 'IT-MCP-B',
+          name: 'MCP Carryover Target',
+          state: 'planning',
+          startDate: day(2),
+          endDate: day(12),
+        },
+      ]);
+      carryoverIteration.id = itA;
+      // Session-cookie POSTs through the REAL bootstrap need the CSRF pair: the secret
+      // cookie + the signed token /v1/auth/me hands out (see csrf-protection.e2e.spec.ts).
+      const me = await app.inject({
+        method: 'GET',
+        url: '/v1/auth/me',
+        headers: { cookie: credential },
+      });
+      expect(me.statusCode, me.body).toBe(200);
+      const auth = {
+        cookie: `${credential}; ${readCookie(me.headers['set-cookie'], CSRF_SECRET_COOKIE)}`,
+        [CSRF_HEADER]: me.json<{ csrfToken: string }>().csrfToken,
+      };
+      const fixture = await app.inject({
+        method: 'POST',
+        url: '/v1/work-items',
+        headers: auth,
+        payload: {
+          projectId: NXP_PROJECT_ID,
+          type: 'story',
+          title: 'mcp carryover fixture',
+        },
+      });
+      expect(fixture.statusCode, fixture.body).toBe(201);
+      // Create takes no iterationId (Update does): schedule the fixture afterwards.
+      const scheduled = await app.inject({
+        method: 'PATCH',
+        url: `/v1/work-items/${fixture.json<{ id: string }>().id}`,
+        headers: auth,
+        payload: { iterationId: itA },
+      });
+      expect(scheduled.statusCode, scheduled.body).toBe(200);
+      expect(
+        scheduled.json<{ iterationId?: string }>().iterationId,
+        'fixture must be scheduled in the source iteration',
+      ).toBe(itA);
+      const carried = await app.inject({
+        method: 'POST',
+        url: `/v1/work-items/${fixture.json<{ id: string }>().id}/carryover`,
+        headers: auth,
+        payload: {
+          expectedSourceIterationId: itA,
+          targetIterationId: itB,
+          targetEndDate: day(5),
+        },
+      });
+      expect(carried.statusCode, carried.body).toBe(201);
+
+      // fields that must hold SEEDED (or fixture) rows — a denial or an empty answer from a
+      // wrong project/iteration pairing must fail here, not pass vacuously
+      const NON_EMPTY: Record<string, string[]> = {
+        rova_carryover_report: ['rows'],
+        rova_release_tracking: ['rows'],
+        rova_get_release: ['artifacts'],
+        rova_get_milestone: ['artifacts', 'releases'],
+        rova_work_item_code_changes: ['connections', 'changesets'],
+        rova_project_health: ['projects'],
+        rova_list_teams: ['teams'],
+        rova_get_portfolio_item: ['children'],
+      };
+
       for (const { name, args, fields } of CASES) {
         const out = await callTool(adminToken, name, args, { skipInitialize: true });
+        // a denial relays { statusCode, error } — any case answering one fails HERE
+        expect(out.statusCode, `${name} must succeed on seeded data`).toBeUndefined();
         for (const field of fields) {
           expect(
             out[field],
             `${name}: documented field '${field}' missing/undefined`,
           ).toBeDefined();
         }
-        if (name === 'rova_project_health' || name === 'rova_list_teams') {
-          // the seeded workspace has readable projects and linked teams — never an empty rollup
+        for (const key of NON_EMPTY[name] ?? []) {
           expect(
-            (out[name === 'rova_project_health' ? 'projects' : 'teams'] as unknown[]).length,
-            `${name}: must be non-empty on the seeded workspace`,
-          ).toBeGreaterThan(0);
-        }
-        if (name === 'rova_get_portfolio_item') {
-          // the seeded NXP Feature 3 carries linked stories — the children feed must be
-          // non-empty (the delta-review blocker: Epics have none, Features must not be empty)
-          expect(
-            (out.children as unknown[]).length,
-            'get_portfolio_item: children must be non-empty for the Feature fixture',
+            (out[key] as unknown[]).length,
+            `${name}: '${key}' must be non-empty on the seeded workspace`,
           ).toBeGreaterThan(0);
         }
       }

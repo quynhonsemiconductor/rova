@@ -17,7 +17,7 @@ export function toToolWorkItem(p: Record<string, unknown>) {
 }
 
 /**
- * `search_work_items` — filtered list in one project (GET /v1/work-items, `work_item:view` from
+ * `rova_search_work_items` — filtered list in one project (GET /v1/work-items, `work_item:view` from
  * the `projectId` query). Filters mirror the REST `WorkItemQueryDto` subset an agent needs.
  */
 export function registerSearchWorkItems(server: McpServer, ctx: ToolContext) {

@@ -1,60 +1,64 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_CHANGESETS, MAX_CONNECTIONS, shapeCodeChanges } from './work_item_code_changes';
+import {
+  ScmChangesetResponseSchema,
+  ScmConnectionResponseSchema,
+} from '@modules/scm/interface/http/dto/scm-response.dto';
+import { shapeCodeChanges } from './work_item_code_changes';
 
 /**
- * The REAL response shapes, from the producers (scm.controller.ts): BOTH routes answer
- * PagedResult = { data, pageInfo } — cursor-paged, NOT bare arrays (the shape that broke the
- * first draft of this tool). Rows come from toConnectionDto / toChangesetDto.
+ * `rova_work_item_code_changes` composes TWO producer shapes: BOTH routes answer a PAGE
+ * ({ data, pageInfo }) — cursor-paged, NOT bare arrays (the shape that broke the first draft).
+ * Fixtures parse through the REAL ScmConnectionResponseSchema / ScmChangesetResponseSchema.
  */
-const CONNECTION_ROW = {
-  id: 'c1',
-  workItemId: 'w1',
+const CONNECTION_ROW = ScmConnectionResponseSchema.parse({
+  id: '0194a000-0000-7000-8000-000000000001',
+  workItemId: '0194a000-0000-7000-8000-000000000002',
   provider: 'github',
   type: 'pull_request',
-  name: 'Fix login #12',
-  url: 'https://github.com/o/r/pull/12',
+  name: 'feat(nx): upgrade the workspace to Nx v21 (#4821)',
+  url: 'https://github.com/o/r/pull/4821',
   state: 'open',
   authorName: 'Member One',
-  createdAt: '2026-10-01T00:00:00.000Z',
-};
+  createdAt: '2026-06-20T08:00:00.000Z',
+});
 
-const CHANGESET_ROW = {
-  id: 'cs1',
-  workItemId: 'w1',
+const CHANGESET_ROW = ScmChangesetResponseSchema.parse({
+  id: '0194a000-0000-7000-8000-000000000003',
+  workItemId: '0194a000-0000-7000-8000-000000000002',
   provider: 'github',
-  revision: 'abc1234',
-  name: 'abc1234',
-  message: 'fix: login crash',
-  uri: 'https://github.com/o/r/commit/abc1234',
+  revision: '9f2c1ab',
+  name: 'feat(nx): bump workspace to v21',
+  message: 'feat(nx): bump workspace to v21',
+  uri: 'https://github.com/o/r/commit/9f2c1ab',
   authorName: 'Member One',
-  changes: 3,
-  committedAt: '2026-10-01T12:00:00.000Z',
-};
+  changes: [{ action: 'M', path: 'workspace.json' }],
+  committedAt: '2026-06-24T11:02:00.000Z',
+});
 
 describe('shapeCodeChanges (ScmConnection/ScmChangeset pages -> tool payload)', () => {
   it('maps both feeds with the DTO field names', () => {
     const out = shapeCodeChanges([CONNECTION_ROW], false, [CHANGESET_ROW], false);
     expect(out.connections).toEqual([
       {
-        id: 'c1',
+        id: CONNECTION_ROW.id,
         provider: 'github',
         type: 'pull_request',
-        name: 'Fix login #12',
-        url: 'https://github.com/o/r/pull/12',
+        name: CONNECTION_ROW.name,
+        url: CONNECTION_ROW.url,
         state: 'open',
         authorName: 'Member One',
       },
     ]);
     expect(out.changesets).toEqual([
       {
-        id: 'cs1',
+        id: CHANGESET_ROW.id,
         provider: 'github',
-        revision: 'abc1234',
-        name: 'abc1234',
-        message: 'fix: login crash',
-        uri: 'https://github.com/o/r/commit/abc1234',
+        revision: '9f2c1ab',
+        name: CHANGESET_ROW.name,
+        message: CHANGESET_ROW.message,
+        uri: CHANGESET_ROW.uri,
         authorName: 'Member One',
-        committedAt: '2026-10-01T12:00:00.000Z',
+        committedAt: '2026-06-24T11:02:00.000Z',
       },
     ]);
     expect(out['truncated']).toBeUndefined();
@@ -65,19 +69,12 @@ describe('shapeCodeChanges (ScmConnection/ScmChangeset pages -> tool payload)', 
     expect((out.changesets as Record<string, unknown>[])[0]).toHaveProperty('committedAt', null);
   });
 
-  it('the route saying more exists flags truncated even below the caps', () => {
-    expect(shapeCodeChanges([CONNECTION_ROW], true, [], false)).toHaveProperty('truncated', true);
-    expect(shapeCodeChanges([], false, [CHANGESET_ROW], true)).toHaveProperty('truncated', true);
-  });
-
-  it('rows past the caps are cut and flag truncated', () => {
-    const many = Array.from({ length: MAX_CONNECTIONS + 1 }, () => CONNECTION_ROW);
-    const out = shapeCodeChanges(many, false, [], false);
-    expect((out.connections as unknown[]).length).toBe(MAX_CONNECTIONS);
-    expect(out).toHaveProperty('truncated', true);
-    const manySets = Array.from({ length: MAX_CHANGESETS + 1 }, () => CHANGESET_ROW);
-    const out2 = shapeCodeChanges([], false, manySets, false);
-    expect((out2.changesets as unknown[]).length).toBe(MAX_CHANGESETS);
-    expect(out2).toHaveProperty('truncated', true);
+  it('truncated comes ONLY from the route pages (hasNextPage), never a length guess', () => {
+    // at the cap but no next page: the route returned everything there was
+    expect(shapeCodeChanges([CONNECTION_ROW], false, [CHANGESET_ROW], false)).not.toHaveProperty(
+      'truncated',
+    );
+    expect(shapeCodeChanges([], true, [], false)).toHaveProperty('truncated', true);
+    expect(shapeCodeChanges([], false, [], true)).toHaveProperty('truncated', true);
   });
 });

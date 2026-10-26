@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { denied, type ToolContext } from './rest';
 
 /**
- * `list_milestones` — the milestones of one project the person can read
+ * `rova_list_milestones` — the milestones of one project the person can read
  * (GET /v1/milestones, `milestone:view` from the `projectId` query). The REST route does not
  * paginate, so the tool caps the feed and sets `truncated`.
  */

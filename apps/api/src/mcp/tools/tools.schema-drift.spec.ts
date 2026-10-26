@@ -17,7 +17,7 @@ import {
   TeamCapacityQuerySchema,
   VelocityQuerySchema,
 } from '@modules/reporting/interface/http/dto/reporting-request.dto';
-import { ListNotificationsSchema } from '@modules/notifications/interface/http/dto/notification-request.dto';
+import { PagedNotificationsSchema } from '@modules/notifications/interface/http/dto/notification-request.dto';
 import { MilestoneQuerySchema } from '@modules/milestones/interface/http/dto/milestone-request.dto';
 import { ReleaseQuerySchema } from '@modules/releases/interface/http/dto/release-request.dto';
 import { registerTools } from './register';
@@ -175,8 +175,8 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
-  it('list_notifications ⊆ ListNotificationsSchema (GET /v1/notifications)', () => {
-    const rest = Object.keys(ListNotificationsSchema.shape);
+  it('list_notifications ⊆ PagedNotificationsSchema (GET /v1/notifications/paged)', () => {
+    const rest = Object.keys(PagedNotificationsSchema.shape);
     const tool = toolInputs().get('rova_list_notifications')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);

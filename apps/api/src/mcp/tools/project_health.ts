@@ -17,7 +17,7 @@ export function shapeHealthRow(p: Record<string, unknown>) {
 }
 
 /**
- * `project_health` — the bounded, attention-sorted per-project health rollup
+ * `rova_project_health` — the bounded, attention-sorted per-project health rollup
  * (GET /v1/projects/health, scoped by AccessService.listReadableProjectIds like list_projects:
  * a no-role member gets an EMPTY list, not a denial). The route reads `@Query('limit')` only
  * and answers a bare array.

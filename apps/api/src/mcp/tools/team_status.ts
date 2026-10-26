@@ -35,7 +35,7 @@ export function shapeTeamStatus(body: Record<string, unknown>): Record<string, u
 }
 
 /**
- * `team_status` — the Team Status board of one project for one iteration
+ * `rova_team_status` — the Team Status board of one project for one iteration
  * (GET /v1/team-status, `team_status:view` from the `projectId` query): per-member
  * task status and progress. (Hours live in the team_capacity report.)
  */

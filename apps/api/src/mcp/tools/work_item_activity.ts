@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { denied, result, type ToolContext } from './rest';
 
 /**
- * `work_item_activity` — the revision history of one work item
+ * `rova_work_item_activity` — the revision history of one work item
  * (GET /v1/work-items/:id/activity, `work_item:view` on the item). The REST route pages by
  * page/pageSize (no cursor); the tool caps the page and relays the total.
  */

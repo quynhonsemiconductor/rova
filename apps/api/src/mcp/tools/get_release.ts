@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { denied, type ToolContext } from './rest';
 
-/** The artifacts dashboard page is capped here; more gets a `truncated` flag. */
+/** The artifacts dashboard is fetched one page at a time; `pageInfo.hasNextPage` says if more exist. */
 const MAX_ARTIFACTS = 100;
 
 /**
@@ -33,7 +33,7 @@ export function shapeRelease(r: Record<string, unknown>, artifacts: Record<strin
 }
 
 /**
- * `get_release` — one release with its work-item roll-up, plus the release's artifacts
+ * `rova_get_release` — one release with its work-item roll-up, plus the release's artifacts
  * (GET /v1/releases/:id, `release:view` on the release; then the :id/artifacts dashboard,
  * the same permission, cursor-paged — capped at 100 with `truncated`).
  */
@@ -76,9 +76,8 @@ export function registerGetRelease(server: McpServer, ctx: ToolContext) {
         pageInfo?: { hasNextPage?: boolean };
       };
 
-      const payload = shapeRelease(r, body.data.slice(0, MAX_ARTIFACTS));
-      if (body.pageInfo?.hasNextPage === true || body.data.length >= MAX_ARTIFACTS)
-        payload['truncated'] = true;
+      const payload = shapeRelease(r, body.data);
+      if (body.pageInfo?.hasNextPage === true) payload['truncated'] = true;
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(payload) }],
       };

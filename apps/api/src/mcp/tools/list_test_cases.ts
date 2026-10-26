@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { listResult, pageArgs, type ToolContext } from './rest';
 
 /**
- * `list_test_cases` — a Work Item's Test Cases, in rank order
+ * `rova_list_test_cases` — a Work Item's Test Cases, in rank order
  * (GET /v1/work-items/:id/test-cases, `test_case:view` via the parent work item).
  */
 export function registerListTestCases(server: McpServer, ctx: ToolContext) {
