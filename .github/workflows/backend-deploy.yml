@@ -327,7 +327,6 @@ jobs:
       # over `none`, which would keep the saving and lose the cache.
       cache_backend: gha
     # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
-    secrets:
 
   # ───────────────────────────────────────────────────────────────────────────
   # Deploy annotation — a vertical marker on every Grafana dashboard panel
