@@ -214,12 +214,11 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: quynhonsemiconductor/ci/.github/workflows/web-deploy.yml@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+    uses: quynhonsemiconductor/ci/.github/workflows/web-deploy.yml@de56bff40c5468623aa9e69d1ebe8e638e874bdf # v1.24.2
     with:
       product: rova
       # Must equal `packageManager` in package.json: pnpm/action-setup refuses to run when the two differ
       # ("Multiple versions of pnpm specified"). The reusable's default is 10.33.2.
-      pnpm_version: '11.28.5'
       # Monorepo: run wrangler from the web package dir so it discovers the
       # file-based Pages Functions (apps/web/functions/**) and bundles the
       # /v1/* BFF reverse-proxy. web_dist_path is relative to working_directory.
