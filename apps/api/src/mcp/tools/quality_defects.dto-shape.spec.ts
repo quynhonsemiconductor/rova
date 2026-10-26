@@ -1,37 +1,83 @@
 import { describe, expect, it } from 'vitest';
+import { DefectListResponseSchema } from '@modules/quality/interface/http/dto/defect-response.dto';
 import { shapeDefects } from './quality_defects';
 
-/** The real DefectListResponse shape: { metrics, data, total } (offset-paged grid). */
-const LIST_BODY = {
-  metrics: { openDefects: 2, critical: 1, inProgress: 1, verifiedAccepted: 0 },
+/**
+ * The REAL DefectListResponse shape: { metrics, data, total } (offset-paged grid). The fixture
+ * parses through the producer's own zod schema, so a DTO change breaks THIS test instead of
+ * shipping a tool mapping a body the route never sends.
+ */
+const LIST_BODY = DefectListResponseSchema.parse({
+  metrics: {
+    openDefects: 2,
+    critical: 1,
+    inProgress: 1,
+    verifiedAccepted: 0,
+    reopened: 0,
+    blockers: 0,
+  },
   data: [
     {
-      id: 'd1',
+      id: '0194a000-0000-7000-8000-00000000000d',
       itemKey: 'PAY-DE-1',
       title: 'Crash on submit',
       type: 'defect',
       priority: 'high',
       severity: 'critical',
-      defectState: 'open',
+      foundInEnvironment: 'production',
       rootCause: 'code',
-      resolution: 'unresolved',
+      resolution: 'by_design',
+      foundInReleaseId: null,
+      foundInReleaseName: null,
+      assigneeId: null,
+      teamId: null,
       assigneeName: 'Member One',
+      scheduleState: 'in_progress',
+      iterationId: null,
+      iterationName: null,
+      releaseId: null,
+      releaseName: null,
+      parentId: null,
+      parentKey: null,
+      parentTitle: null,
+      isBlocked: false,
+      defectState: 'open',
+      fixedInBuild: null,
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-02T00:00:00.000Z',
     },
     {
-      id: 'd2',
+      id: '0194a000-0000-7000-8000-00000000000e',
       itemKey: 'PAY-DE-2',
       title: 'Minor typo in the footer',
       type: 'defect',
       priority: 'low',
       severity: 'trivial',
-      defectState: 'closed',
+      foundInEnvironment: 'staging',
       rootCause: 'other',
-      resolution: 'resolved',
+      resolution: 'wont_fix',
+      foundInReleaseId: null,
+      foundInReleaseName: null,
+      assigneeId: null,
+      teamId: null,
       assigneeName: null,
+      scheduleState: 'completed',
+      iterationId: null,
+      iterationName: null,
+      releaseId: null,
+      releaseName: null,
+      parentId: null,
+      parentKey: null,
+      parentTitle: null,
+      isBlocked: false,
+      defectState: 'closed',
+      fixedInBuild: null,
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-03T00:00:00.000Z',
     },
   ],
   total: 2,
-};
+});
 
 describe('shapeDefects (DefectListResponse -> tool payload)', () => {
   it('maps the grid rows with defectState and relays total/offset', () => {
@@ -41,7 +87,7 @@ describe('shapeDefects (DefectListResponse -> tool payload)', () => {
     expect(out.defects).toHaveLength(2);
     const first = (out.defects as Record<string, unknown>[])[0];
     expect(first).toMatchObject({
-      id: 'd1',
+      id: LIST_BODY.data[0].id,
       itemKey: 'PAY-DE-1',
       title: 'Crash on submit',
       severity: 'critical',
