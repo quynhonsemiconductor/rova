@@ -74,7 +74,6 @@ env:
   # warning — but it does mean a change that drops real coverage by a point turns Tests red
   # rather than drifting. Raise the floors with coverage, never the reverse.
   NODE_VERSION: '24'
-  PNPM_VERSION: '11.28.5'
 
 jobs:
   # Does this pull request change anything this workflow tests? A change that touches only files the matching DEPLOY workflow ignores
@@ -122,10 +121,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@de56bff40c5468623aa9e69d1ebe8e638e874bdf # v1.24.2
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       # pnpm only WARNS about an unmet peer. platform-runtime 0.2.0 needs platform-cache >=3.2.0; the product resolved 3.1.x, everything else
       # passed, and every ExclusiveJob-guarded job failed in develop. This turns that warning into a failure (for our own packages only).
@@ -186,10 +184,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@de56bff40c5468623aa9e69d1ebe8e638e874bdf # v1.24.2
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Generate a self-signed CA, a rogue CA, and a server certificate (SAN localhost)
         run: |
@@ -280,10 +277,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@de56bff40c5468623aa9e69d1ebe8e638e874bdf # v1.24.2
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Run migrations
         run: pnpm db:migrate
@@ -459,10 +455,9 @@ jobs:
             echo "No backward-incompatible DDL detected."
           fi
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@de56bff40c5468623aa9e69d1ebe8e638e874bdf # v1.24.2
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       # Baseline: check out main's ENTIRE db/ tree (migrations, seed AND the
       # Drizzle schema) and run it end-to-end, so the DB mirrors a real deployed
@@ -590,10 +585,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@de56bff40c5468623aa9e69d1ebe8e638e874bdf # v1.24.2
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Run migrations
         run: pnpm db:migrate

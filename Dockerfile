@@ -22,8 +22,8 @@
 
 ARG NODE_VERSION=24
 ARG ALPINE_VERSION=3.22
-# Keep equal to `packageManager` in package.json and to PNPM_VERSION in the workflows.
-ARG PNPM_VERSION=11.28.5
+# pnpm is NOT pinned here: corepack reads `packageManager` from package.json (single source of
+# truth, bumped by Renovate); the build stages below COPY package.json before the first pnpm call.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1 │ deps
@@ -36,9 +36,7 @@ ARG PNPM_VERSION=11.28.5
 # environment variable, which exists only inside that RUN (read from the BuildKit secret).
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS deps
-ARG PNPM_VERSION
-
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+RUN corepack enable
 
 WORKDIR /app
 
@@ -64,9 +62,7 @@ ADD https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /bundle.pe
 RUN chmod 0644 /bundle.pem
 
 FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS prod-deps
-ARG PNPM_VERSION
-
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+RUN corepack enable
 
 WORKDIR /app
 
@@ -88,9 +84,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
 # TypeScript compiler and NestJS CLI plugins are available.
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS builder
-ARG PNPM_VERSION
-
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+RUN corepack enable
 
 # pnpm 11 runs an implicit `install` before every script when node_modules does not match the workspace.
 # Here it never does, on purpose: node_modules is copied from `deps` (root package only), while the full
