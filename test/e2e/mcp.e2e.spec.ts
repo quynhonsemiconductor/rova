@@ -14,6 +14,8 @@ import { registerMcpRoute } from '../../apps/api/src/mcp/index';
 import type { McpAccessPrincipal, McpAccessVerifier } from '../../apps/api/src/mcp/index';
 import {
   NXP_FEATURE_3_ID,
+  NXP_MILESTONE_1_ID,
+  NXP_RELEASE_1_ID,
   NXP_STORY_1_ID,
   PAY_ITER_ID,
   PAY_PROJECT_ID,
@@ -291,14 +293,39 @@ describe('/mcp over the real guard chain (e2e)', () => {
       list_portfolio_items: { type: 'epic' },
       // NXP_FEATURE_3: the seeded Feature WITH children (2 stories linked, demo.ts)
       get_portfolio_item: { portfolioItemId: NXP_FEATURE_3_ID },
+      // The eight tools of PR B: the resource/report-scoped ones deny the stranger via
+      // their route; the AccessService-scoped lists run EMPTY (see EMPTY_OK below).
+      carryover_report: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
+      release_tracking: { projectId: PAY_PROJECT_ID, releaseId: NXP_RELEASE_1_ID },
+      get_release: { releaseId: NXP_RELEASE_1_ID },
+      get_milestone: { milestoneId: NXP_MILESTONE_1_ID },
+      project_health: {},
+      work_item_code_changes: { workItemId: PAY_STORY_ID },
+      list_teams: {},
+      list_notifications: {},
     };
     // SelfScoped: the caller's own data — must keep working for any member.
-    const SELF_SCOPED = new Set(['whoami', 'my_work', 'unread_notifications']);
+    const SELF_SCOPED = new Set([
+      'whoami',
+      'my_work',
+      'unread_notifications',
+      'list_notifications',
+    ]);
     // ONLY list_projects is AccessService-scoped (the guard passes; listReadableProjectIds
     // returns zero rows for a no-role member): 200 with an EMPTY list. search_work_items,
     // list_backlog and list_iterations are PolicyGuard-gated (`work_item:view` /
     // `timebox:view` / `iteration:view` from the projectId) — a no-role member is denied 403.
-    const EMPTY_OK = new Set(['list_projects']);
+    const EMPTY_OK = new Set([
+      'list_projects',
+      'list_portfolio_items',
+      'project_health',
+      'list_teams',
+    ]);
+    // the rows key is each of these tools' own list key (the rest use `projects`)
+    const EMPTY_KEYS: Record<string, string> = {
+      list_portfolio_items: 'portfolioItems',
+      list_teams: 'teams',
+    };
     // Explicitly PolicyGuard-gated tools (permission from the projectId query or the resource):
     // a no-role member is denied 403 per route.
     const POLICY_403 = new Set([
@@ -311,6 +338,11 @@ describe('/mcp over the real guard chain (e2e)', () => {
       'list_test_cases',
       'get_project',
       'list_project_members',
+      'carryover_report',
+      'release_tracking',
+      'get_release',
+      'get_milestone',
+      'work_item_code_changes',
     ]);
 
     it('the denial matrix is derived from the live tools/list and covers every tool', async () => {
@@ -328,15 +360,15 @@ describe('/mcp over the real guard chain (e2e)', () => {
       // the stranger holds NO project roles in NXP/PAY
 
       await initialize(token);
+      // skipInitialize: 34 tools x 2 POSTs would blow the per-person 60/min MCP budget
       for (const [name, args] of Object.entries(TOOL_ARGS)) {
-        const out = await callTool(token, name, args);
+        const out = await callTool(token, name, args, { skipInitialize: true });
         if (SELF_SCOPED.has(name)) {
           expect(out.statusCode, `${name} (self-scoped) should have worked`).toBeUndefined();
-        } else if (EMPTY_OK.has(name) || name === 'list_portfolio_items') {
-          // list_projects / list_portfolio_items are AccessService-scoped (the guard passes;
-          // listReadableProjectIds returns zero rows for a no-role member): 200 with an EMPTY
-          // list — the rows key is each tool's own list key
-          const key = name === 'list_portfolio_items' ? 'portfolioItems' : 'projects';
+        } else if (EMPTY_OK.has(name)) {
+          // AccessService-scoped lists (the guard passes; listReadableProjectIds returns zero
+          // rows for a no-role member): 200 with an EMPTY list under the tool's own list key
+          const key = EMPTY_KEYS[name] ?? 'projects';
           const rows = out[key] as unknown[];
           expect(Array.isArray(rows), `${name} must return a list`).toBe(true);
           expect(rows.length, `${name} must be empty for a no-role member`).toBe(0);
@@ -406,8 +438,9 @@ describe('/mcp over the real guard chain (e2e)', () => {
       try {
         await setUserBanned(auth, userId, true, 'e2e: offboard the mcp user');
         await initialize(token);
+        // skipInitialize: 34 tools x 2 POSTs would blow the per-person 60/min MCP budget
         for (const [name, args] of Object.entries(TOOL_ARGS)) {
-          const out = await callTool(token, name, args);
+          const out = await callTool(token, name, args, { skipInitialize: true });
           expect(String(out.statusCode), `${name} must relay the ban denial`).toMatch(/401|403/);
         }
       } finally {
@@ -532,10 +565,40 @@ describe('/mcp over the real guard chain (e2e)', () => {
         args: { portfolioItemId: NXP_FEATURE_3_ID },
         fields: ['id', 'itemKey', 'type', 'name', 'estimate', 'rollup', 'progress', 'children'],
       },
+      // PR B's eight tools. The two reports relay the route payload as-is (fields []); the
+      // seeded ids come from db/seeds/constants (NXP release 1, milestone 1, team Alpha).
+      {
+        name: 'carryover_report',
+        args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
+        fields: [],
+      },
+      {
+        name: 'release_tracking',
+        args: { projectId: PAY_PROJECT_ID, releaseId: NXP_RELEASE_1_ID },
+        fields: [],
+      },
+      {
+        name: 'get_release',
+        args: { releaseId: NXP_RELEASE_1_ID },
+        fields: ['id', 'releaseKey', 'name', 'status', 'taskEstimate', 'artifacts'],
+      },
+      {
+        name: 'get_milestone',
+        args: { milestoneId: NXP_MILESTONE_1_ID },
+        fields: ['id', 'milestoneKey', 'name', 'status', 'artifacts', 'releases', 'projects'],
+      },
+      { name: 'project_health', args: {}, fields: ['projects'] },
+      {
+        name: 'work_item_code_changes',
+        args: { workItemId: NXP_STORY_1_ID },
+        fields: ['connections', 'changesets'],
+      },
+      { name: 'list_teams', args: {}, fields: ['teams'] },
+      { name: 'list_notifications', args: {}, fields: ['notifications'] },
     ];
 
     it('every tool appears exactly once in the happy-path matrix', () => {
-      expect(CASES.length).toBe(26);
+      expect(CASES.length).toBe(34);
       const names = CASES.map((c) => c.name);
       expect(new Set(names).size).toBe(names.length);
     });
@@ -554,6 +617,13 @@ describe('/mcp over the real guard chain (e2e)', () => {
             out[field],
             `${name}: documented field '${field}' missing/undefined`,
           ).toBeDefined();
+        }
+        if (name === 'project_health' || name === 'list_teams') {
+          // the seeded workspace has readable projects and linked teams — never an empty rollup
+          expect(
+            (out[name === 'project_health' ? 'projects' : 'teams'] as unknown[]).length,
+            `${name}: must be non-empty on the seeded workspace`,
+          ).toBeGreaterThan(0);
         }
         if (name === 'get_portfolio_item') {
           // the seeded NXP Feature 3 carries linked stories — the children feed must be

@@ -11,10 +11,13 @@ import {
   WorkItemQuerySchema,
 } from '@modules/work-items/interface/http/dto/work-item-request.dto';
 import {
+  CarryoverQuerySchema,
   IterationBurndownQuerySchema,
+  ReleaseTrackingQuerySchema,
   TeamCapacityQuerySchema,
   VelocityQuerySchema,
 } from '@modules/reporting/interface/http/dto/reporting-request.dto';
+import { ListNotificationsSchema } from '@modules/notifications/interface/http/dto/notification-request.dto';
 import { MilestoneQuerySchema } from '@modules/milestones/interface/http/dto/milestone-request.dto';
 import { ReleaseQuerySchema } from '@modules/releases/interface/http/dto/release-request.dto';
 import { registerTools } from './register';
@@ -158,6 +161,27 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
+  it('carryover_report ⊆ CarryoverQuerySchema (GET /v1/reports/carryover)', () => {
+    const rest = Object.keys(CarryoverQuerySchema.shape);
+    const tool = toolInputs().get('carryover_report')!;
+    expect(tool.length).toBeGreaterThan(0);
+    expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
+  });
+
+  it('release_tracking ⊆ ReleaseTrackingQuerySchema (GET /v1/reports/release-tracking)', () => {
+    const rest = Object.keys(ReleaseTrackingQuerySchema.shape);
+    const tool = toolInputs().get('release_tracking')!;
+    expect(tool.length).toBeGreaterThan(0);
+    expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
+  });
+
+  it('list_notifications ⊆ ListNotificationsSchema (GET /v1/notifications)', () => {
+    const rest = Object.keys(ListNotificationsSchema.shape);
+    const tool = toolInputs().get('list_notifications')!;
+    expect(tool.length).toBeGreaterThan(0);
+    expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
+  });
+
   it('the schema-less routes take only what their controllers read by hand', () => {
     const inputs = toolInputs();
     // GET /v1/work-items/my reads `@Query('limit')` only
@@ -169,5 +193,12 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
     expect(inputs.get('get_work_item')).toEqual(['workItemId']);
     // GET /v1/notifications/unread-count reads NO query
     expect(inputs.get('unread_notifications')).toEqual([]);
+    // path-param-only routes
+    expect(inputs.get('get_release')).toEqual(['releaseId']);
+    expect(inputs.get('get_milestone')).toEqual(['milestoneId']);
+    expect(inputs.get('work_item_code_changes')).toEqual(['workItemId']);
+    expect(inputs.get('list_teams')).toEqual([]);
+    // GET /v1/projects/health reads `@Query('limit')` only
+    expect(inputs.get('project_health')).toEqual(['limit']);
   });
 });

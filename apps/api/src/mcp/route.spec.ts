@@ -348,8 +348,11 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     const list = await rpc(fastify, 'tools/list');
     const tools = list.json<ToolListResponse>().result!.tools!;
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'carryover_report',
+      'get_milestone',
       'get_portfolio_item',
       'get_project',
+      'get_release',
       'get_test_case_by_key',
       'get_work_item',
       'get_work_item_by_key',
@@ -360,13 +363,17 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       'list_comments',
       'list_iterations',
       'list_milestones',
+      'list_notifications',
       'list_portfolio_items',
       'list_project_members',
       'list_projects',
       'list_releases',
+      'list_teams',
       'list_test_cases',
       'my_work',
+      'project_health',
       'quality_defects',
+      'release_tracking',
       'search_work_items',
       'team_capacity',
       'team_status',
@@ -374,6 +381,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       'velocity',
       'whoami',
       'work_item_activity',
+      'work_item_code_changes',
     ]);
     for (const t of tools) expect(t.annotations?.readOnlyHint).toBe(true);
   });
@@ -536,7 +544,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     await initialize(fastify);
     const list = await rpc(fastify, 'tools/list');
     const tools = list.json().result!.tools!;
-    expect(tools.length).toBe(26);
+    expect(tools.length).toBe(34);
     for (const tool of tools) {
       expect(
         JSON.stringify(tool.inputSchema).match(/workspace/i),

@@ -30,6 +30,14 @@ export const TOOL_ROUTES = {
   team_status: { method: 'GET', url: '/v1/team-status' },
   list_portfolio_items: { method: 'GET', url: '/v1/portfolio-items' },
   get_portfolio_item: { method: 'GET', url: '/v1/portfolio-items/:portfolioItemId' },
+  carryover_report: { method: 'GET', url: '/v1/reports/carryover' },
+  release_tracking: { method: 'GET', url: '/v1/reports/release-tracking' },
+  get_release: { method: 'GET', url: '/v1/releases/:id' },
+  get_milestone: { method: 'GET', url: '/v1/milestones/:id' },
+  project_health: { method: 'GET', url: '/v1/projects/health' },
+  work_item_code_changes: { method: 'GET', url: '/v1/work-items/:id/connections' },
+  list_teams: { method: 'GET', url: '/v1/workspaces/:workspaceId/teams' },
+  list_notifications: { method: 'GET', url: '/v1/notifications' },
 } as const;
 
 export type ToolName = keyof typeof TOOL_ROUTES;

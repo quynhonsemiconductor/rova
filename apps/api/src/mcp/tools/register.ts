@@ -1,6 +1,14 @@
 import type { RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { registerCarryoverReport } from './carryover_report';
+import { registerGetMilestone } from './get_milestone';
 import { registerGetPortfolioItem } from './get_portfolio_item';
+import { registerGetRelease } from './get_release';
+import { registerListNotifications } from './list_notifications';
+import { registerListTeams } from './list_teams';
+import { registerProjectHealth } from './project_health';
+import { registerReleaseTracking } from './release_tracking';
+import { registerWorkItemCodeChanges } from './work_item_code_changes';
 import { registerGetProject } from './get_project';
 import { registerGetTestCaseByKey } from './get_test_case_by_key';
 import { registerIterationBurndown } from './iteration_burndown';
@@ -63,5 +71,13 @@ export function registerTools(server: McpServer, ctx: ToolContext): MountedTool[
     { name: 'team_status', tool: registerTeamStatus(server, ctx) },
     { name: 'list_portfolio_items', tool: registerListPortfolioItems(server, ctx) },
     { name: 'get_portfolio_item', tool: registerGetPortfolioItem(server, ctx) },
+    { name: 'carryover_report', tool: registerCarryoverReport(server, ctx) },
+    { name: 'release_tracking', tool: registerReleaseTracking(server, ctx) },
+    { name: 'get_release', tool: registerGetRelease(server, ctx) },
+    { name: 'get_milestone', tool: registerGetMilestone(server, ctx) },
+    { name: 'project_health', tool: registerProjectHealth(server, ctx) },
+    { name: 'work_item_code_changes', tool: registerWorkItemCodeChanges(server, ctx) },
+    { name: 'list_teams', tool: registerListTeams(server, ctx) },
+    { name: 'list_notifications', tool: registerListNotifications(server, ctx) },
   ];
 }

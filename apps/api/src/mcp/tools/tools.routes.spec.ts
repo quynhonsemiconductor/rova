@@ -88,6 +88,59 @@ const OWNER: Record<
     get: "@Get(':id')",
     permission: "'portfolio:view'",
   },
+  carryover_report: {
+    file: 'reporting/src/interface/http/reporting.controller.ts',
+    controller: "@Controller('reports')",
+    get: "@Get('carryover')",
+    permission: "'report:view'",
+  },
+  release_tracking: {
+    file: 'reporting/src/interface/http/reporting.controller.ts',
+    controller: "@Controller('reports')",
+    get: "@Get('release-tracking')",
+    permission: "'report:view'",
+  },
+  get_release: {
+    file: 'releases/src/interface/http/releases.controller.ts',
+    controller: "@Controller('releases')",
+    get: "@Get(':id')",
+    permission: "'release:view'",
+  },
+  get_milestone: {
+    file: 'milestones/src/interface/http/milestones.controller.ts',
+    controller: "@Controller('milestones')",
+    get: "@Get(':id')",
+    permission: "'milestone:view'",
+  },
+  project_health: {
+    file: 'projects/src/interface/http/projects.controller.ts',
+    controller: "@Controller('projects')",
+    get: "@Get('health')",
+    // AccessService-scoped like list_projects: a no-role member gets an EMPTY list
+    authorizedInService: 'scoped by listReadableProjectIds, like the list above',
+  },
+  work_item_code_changes: {
+    // the `scm` path prefix is applied at registration, not on the decorator
+    file: 'scm/src/interface/http/scm.controller.ts',
+    controller: '@Controller()',
+    get: "@Get('work-items/:id/connections')",
+    permission: "'work_item:view'",
+    // the tool's second call, /changesets, carries the identical guard in the same file
+  },
+  list_teams: {
+    file: 'workspace/src/interface/http/team.controller.ts',
+    controller: '@Controller()',
+    get: "@Get('workspaces/:workspaceId/teams')",
+    // AuthorizedInService: listReadableProjectIds scopes the list; the route 404s any
+    // workspaceId but the principal's own
+    authorizedInService: 'a cross-project list scoped by AccessService.listReadableProjectIds',
+  },
+  list_notifications: {
+    file: 'notifications/src/interface/http/notifications.controller.ts',
+    controller: "@Controller('notifications')",
+    get: '@Get()',
+    selfScoped: true,
+  },
   list_project_members: {
     file: 'projects/src/interface/http/projects.controller.ts',
     controller: "@Controller('projects')",
@@ -198,8 +251,11 @@ describe('MCP tool catalogue maps to real routes', () => {
   it('every registered tool route exists in the owning controller', () => {
     const names = Object.keys(TOOL_ROUTES) as (keyof typeof TOOL_ROUTES)[];
     expect(names.sort()).toEqual([
+      'carryover_report',
+      'get_milestone',
       'get_portfolio_item',
       'get_project',
+      'get_release',
       'get_test_case_by_key',
       'get_work_item',
       'get_work_item_by_key',
@@ -210,13 +266,17 @@ describe('MCP tool catalogue maps to real routes', () => {
       'list_comments',
       'list_iterations',
       'list_milestones',
+      'list_notifications',
       'list_portfolio_items',
       'list_project_members',
       'list_projects',
       'list_releases',
+      'list_teams',
       'list_test_cases',
       'my_work',
+      'project_health',
       'quality_defects',
+      'release_tracking',
       'search_work_items',
       'team_capacity',
       'team_status',
@@ -224,8 +284,9 @@ describe('MCP tool catalogue maps to real routes', () => {
       'velocity',
       'whoami',
       'work_item_activity',
+      'work_item_code_changes',
     ]);
-    expect(names.length).toBe(26);
+    expect(names.length).toBe(34);
     for (const name of names) {
       const src = readFileSync(join(CONTROLLERS, OWNER[name].file), 'utf8');
       expect(src.includes(OWNER[name].controller), `${name}: controller prefix moved`).toBe(true);
