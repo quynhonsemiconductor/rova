@@ -228,6 +228,36 @@ overrides:
   # in 1.2.2. DEV / BUILD-ONLY: postcss, vite, tailwind, jsdom and coverage all read source maps
   # this repo generates. Every consumer declares `^1.x`; kept in 1.x.
   "source-map-js@<1.2.2": ">=1.2.2 <2.0.0"
+
+  # Keep Better Auth's optional peers out of the production tree, declaratively (replaces
+  # .pnpmfile.cjs, whose pnpmfileChecksum broke every Renovate lockfile regen; see "Keeping Better
+  # Auth's optional peers out of the runtime image" in identity's README). better-auth declares 18
+  # OPTIONAL peers (its CLI `drizzle-kit`, its test helpers `vitest`, its React/Solid clients, the
+  # databases it can run on ...); pnpm resolves an optional peer against whatever the importing
+  # project has installed, and `pnpm install --prod` follows the resulting optionalDependencies —
+  # the runtime image gains vitest, vite and esbuild. The old .pnpmfile.cjs stripped only the four
+  # peers installed when it was written (solid-js already slipped through into the web tree); this
+  # drops every optional peer — all 16 — so a newly installed devDependency cannot reopen the leak.
+  # drizzle-orm and pg stay: identity uses them. scripts/check-better-auth-overrides.mjs compares
+  # this list against better-auth's installed peerDependenciesMeta and fails on any Better Auth
+  # peer change. pnpm 11 honours these; pnpm 10.33.2 keeps the peers out of the --prod tree too,
+  # though it still records the peer declarations in the lockfile manifest copy (checked 2026-10-26).
+  "better-auth>@lynx-js/react": "-"
+  "better-auth>@prisma/client": "-"
+  "better-auth>@sveltejs/kit": "-"
+  "better-auth>@tanstack/react-start": "-"
+  "better-auth>@tanstack/solid-start": "-"
+  "better-auth>drizzle-kit": "-"
+  "better-auth>mongodb": "-"
+  "better-auth>mysql2": "-"
+  "better-auth>next": "-"
+  "better-auth>prisma": "-"
+  "better-auth>react": "-"
+  "better-auth>react-dom": "-"
+  "better-auth>solid-js": "-"
+  "better-auth>svelte": "-"
+  "better-auth>vitest": "-"
+  "better-auth>vue": "-"
   # GHSA-qqmp-wf37-98f9 (CVSS 5.8, the DB username on every query span as `db.user`) is NOT pinned
   # here: the eight instrumentation-* packages are fixed by moving @opentelemetry/
   # auto-instrumentations-node to ^0.79.0 together with the 0.221 experimental line (package.json),

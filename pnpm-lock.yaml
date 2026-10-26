@@ -34,8 +34,22 @@ overrides:
   http-cache-semantics@<4.3.0: '>=4.3.0 <5.0.0'
   fast-copy@>=4.0.0 <4.1.0: 4.2.0
   source-map-js@<1.2.2: '>=1.2.2 <2.0.0'
-
-pnpmfileChecksum: sha256-e9ORY6/4RMxosjgSodw86hrDbkQyNggLLd+/0QKy1Tw=
+  better-auth>@lynx-js/react: '-'
+  better-auth>@prisma/client: '-'
+  better-auth>@sveltejs/kit: '-'
+  better-auth>@tanstack/react-start: '-'
+  better-auth>@tanstack/solid-start: '-'
+  better-auth>drizzle-kit: '-'
+  better-auth>mongodb: '-'
+  better-auth>mysql2: '-'
+  better-auth>next: '-'
+  better-auth>prisma: '-'
+  better-auth>react: '-'
+  better-auth>react-dom: '-'
+  better-auth>solid-js: '-'
+  better-auth>svelte: '-'
+  better-auth>vitest: '-'
+  better-auth>vue: '-'
 
 patchedDependencies:
   nestjs-zod@5.5.0: fa2029e87bb600a0b7fa6b0faffefe8cc8c9b2733343113ad1b02d171af1915b
@@ -130,7 +144,7 @@ importers:
         version: 1.43.0
       '@quynhonsemiconductor/identity':
         specifier: ^8.5.1
-        version: 8.5.1(1953a1947e5828b85af580efe4faa97e)
+        version: 8.5.1(c092e5eb629373f233a22dcbde06b22d)
       '@quynhonsemiconductor/observability':
         specifier: ^0.6.2
         version: 0.6.3(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.10.0)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.10.0))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.10.0)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/semantic-conventions@1.43.0)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2))(pino@10.4.0)
@@ -5007,48 +5021,12 @@ packages:
   better-auth@1.7.7:
     resolution: {integrity: sha512-Zhgxi/c5ylmfB/sX+nwnBbsFf/j6k0L8DvL6CJXZSrXgxc5pPMC/e7j812zNd4L4B4ELmdURCPw3X8nAOUdcjw==}
     peerDependencies:
-      '@lynx-js/react': '*'
-      '@prisma/client': ^5.0.0 || ^6.0.0 || ^7.0.0
-      '@sveltejs/kit': ^2.0.0
-      '@tanstack/react-start': ^1.0.0
-      '@tanstack/solid-start': ^1.0.0
       drizzle-orm: ^0.45.2 || >=1.0.0-rc.1 <2.0.0
-      mongodb: ^6.0.0 || ^7.0.0
-      mysql2: ^3.0.0
-      next: ^14.0.0 || ^15.0.0 || ^16.0.0
       pg: ^8.0.0
-      prisma: ^5.0.0 || ^6.0.0 || ^7.0.0
-      solid-js: ^1.0.0
-      svelte: ^4.0.0 || ^5.0.0
-      vue: ^3.0.0
     peerDependenciesMeta:
-      '@lynx-js/react':
-        optional: true
-      '@prisma/client':
-        optional: true
-      '@sveltejs/kit':
-        optional: true
-      '@tanstack/react-start':
-        optional: true
-      '@tanstack/solid-start':
-        optional: true
       drizzle-orm:
         optional: true
-      mongodb:
-        optional: true
-      mysql2:
-        optional: true
-      next:
-        optional: true
       pg:
-        optional: true
-      prisma:
-        optional: true
-      solid-js:
-        optional: true
-      svelte:
-        optional: true
-      vue:
         optional: true
 
   better-call@1.4.0:
@@ -9153,13 +9131,13 @@ snapshots:
       '@better-auth/core': 1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5)
       '@better-auth/utils': 0.4.2
 
-  '@better-auth/sso@1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-auth@1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)(solid-js@1.9.17))(better-call@1.4.0(zod@4.6.6))':
+  '@better-auth/sso@1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-auth@1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1))(better-call@1.4.0(zod@4.6.6))':
     dependencies:
       '@better-auth/core': 1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.2
       '@xmldom/xmldom': 0.9.12
-      better-auth: 1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)(solid-js@1.9.17)
+      better-auth: 1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)
       better-call: 1.4.0(zod@4.6.6)
       fast-xml-parser: 5.11.2
       jose: 6.2.13
@@ -11140,16 +11118,16 @@ snapshots:
 
   '@protobufjs/utf8@1.1.2': {}
 
-  '@quynhonsemiconductor/identity@8.5.1(1953a1947e5828b85af580efe4faa97e)':
+  '@quynhonsemiconductor/identity@8.5.1(c092e5eb629373f233a22dcbde06b22d)':
     dependencies:
       '@better-auth/core': 1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5)
       '@better-auth/drizzle-adapter': 1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))
-      '@better-auth/sso': 1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-auth@1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)(solid-js@1.9.17))(better-call@1.4.0(zod@4.6.6))
+      '@better-auth/sso': 1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-auth@1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1))(better-call@1.4.0(zod@4.6.6))
       '@node-rs/argon2': 2.2.2
       '@quynhonsemiconductor/platform-cache': 3.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(ioredis@5.11.1(supports-color@10.2.2))
       '@quynhonsemiconductor/platform-db': 0.1.2(c045edfea4e7eddcd84311b54012d06c)
       '@quynhonsemiconductor/platform-http': 5.0.1(42aa729222b0178b3cca00f8ea159a9c)
-      better-auth: 1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)(solid-js@1.9.17)
+      better-auth: 1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)
       drizzle-orm: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
       jose: 6.2.4
       pg: 8.23.1
@@ -11164,22 +11142,13 @@ snapshots:
     transitivePeerDependencies:
       - '@better-auth/utils'
       - '@better-fetch/fetch'
-      - '@lynx-js/react'
       - '@opentelemetry/api'
       - '@prisma/client'
-      - '@sveltejs/kit'
-      - '@tanstack/react-start'
-      - '@tanstack/solid-start'
       - better-call
       - kysely
       - mongodb
-      - mysql2
       - nanostores
-      - next
       - prisma
-      - solid-js
-      - svelte
-      - vue
 
   '@quynhonsemiconductor/observability@0.6.3(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.10.0)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.10.0))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.10.0)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/semantic-conventions@1.43.0)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2))(pino@10.4.0)':
     dependencies:
@@ -13315,7 +13284,7 @@ snapshots:
 
   baseline-browser-mapping@2.11.31: {}
 
-  better-auth@1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)(solid-js@1.9.17):
+  better-auth@1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1):
     dependencies:
       '@better-auth/core': 1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.13)(kysely@0.29.7)(nanostores@1.5.5)
       '@better-auth/drizzle-adapter': 1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))
@@ -13337,9 +13306,11 @@ snapshots:
     optionalDependencies:
       drizzle-orm: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
       pg: 8.23.1
-      solid-js: 1.9.17
     transitivePeerDependencies:
       - '@opentelemetry/api'
+      - '@prisma/client'
+      - mongodb
+      - prisma
 
   better-call@1.4.0(zod@4.6.6):
     dependencies:
