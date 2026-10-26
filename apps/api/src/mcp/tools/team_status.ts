@@ -41,7 +41,7 @@ export function shapeTeamStatus(body: Record<string, unknown>): Record<string, u
  */
 export function registerTeamStatus(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'team_status',
+    'rova_team_status',
     {
       title: 'Team status',
       description:

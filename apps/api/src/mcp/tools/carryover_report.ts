@@ -9,7 +9,7 @@ import { result, type ToolContext } from './rest';
  */
 export function registerCarryoverReport(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'carryover_report',
+    'rova_carryover_report',
     {
       title: 'Carryover report',
       description:

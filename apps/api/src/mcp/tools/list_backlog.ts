@@ -9,7 +9,7 @@ import { toToolWorkItem } from './search_work_items';
  */
 export function registerListBacklog(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_backlog',
+    'rova_list_backlog',
     {
       title: 'List backlog',
       description:

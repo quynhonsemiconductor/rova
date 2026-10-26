@@ -9,7 +9,7 @@ import { result, type ToolContext } from './rest';
  */
 export function registerReleaseTracking(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'release_tracking',
+    'rova_release_tracking',
     {
       title: 'Release tracking',
       description:

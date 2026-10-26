@@ -9,7 +9,7 @@ import { toToolWorkItem } from './search_work_items';
  */
 export function registerMyWork(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'my_work',
+    'rova_my_work',
     {
       title: 'My work',
       description: 'The work items assigned to you, in the projects you can read.',

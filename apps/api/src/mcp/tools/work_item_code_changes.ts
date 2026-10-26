@@ -84,7 +84,7 @@ async function page(
  */
 export function registerWorkItemCodeChanges(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'work_item_code_changes',
+    'rova_work_item_code_changes',
     {
       title: 'Work item code changes',
       description: 'The linked pull requests and code changesets of one work item you can read.',

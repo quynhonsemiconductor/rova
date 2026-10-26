@@ -9,7 +9,7 @@ import { result, type ToolContext } from './rest';
  */
 export function registerVelocity(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'velocity',
+    'rova_velocity',
     {
       title: 'Velocity report',
       description:

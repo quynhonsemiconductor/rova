@@ -33,7 +33,7 @@ export function shapeTeam(t: Record<string, unknown>) {
  */
 export function registerListTeams(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_teams',
+    'rova_list_teams',
     {
       title: 'List teams',
       description:

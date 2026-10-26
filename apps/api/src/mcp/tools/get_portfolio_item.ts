@@ -65,7 +65,7 @@ export function shapePortfolioDetail(
  */
 export function registerGetPortfolioItem(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'get_portfolio_item',
+    'rova_get_portfolio_item',
     {
       title: 'Get portfolio item',
       description:

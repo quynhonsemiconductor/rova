@@ -114,7 +114,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
       jsonrpc: '2.0',
       id: 2,
       method: 'tools/call',
-      params: { name: 'whoami', arguments: {} },
+      params: { name: 'rova_whoami', arguments: {} },
     });
     expect(res.statusCode, JSON.stringify(res.json)).toBe(200);
     return {
@@ -264,85 +264,85 @@ describe('/mcp over the real guard chain (e2e)', () => {
     // The three SelfScoped tools (whoami, my_work, unread_notifications) keep working:
     // self-scoped is subtract-only.
     const TOOL_ARGS: Record<string, Record<string, unknown>> = {
-      whoami: {},
-      list_projects: {},
-      get_project: { projectId: STRANGER_PROJECT },
-      list_project_members: { projectId: STRANGER_PROJECT },
-      search_work_items: { projectId: STRANGER_PROJECT },
-      get_work_item: { workItemId: STRANGER_ITEM },
-      get_work_item_by_key: { itemKey: 'US-1' }, // the seeded NXP story — stranger has no access
-      my_work: {},
-      list_backlog: { projectId: STRANGER_PROJECT },
-      work_item_activity: { workItemId: STRANGER_ITEM },
-      list_iterations: { projectId: STRANGER_PROJECT },
-      iteration_options: { projectId: STRANGER_PROJECT },
-      iteration_status: { iterationId: STRANGER_ITERATION },
-      list_comments: { workItemId: STRANGER_ITEM },
-      list_releases: { projectId: STRANGER_PROJECT },
-      list_milestones: { projectId: STRANGER_PROJECT },
-      iteration_burndown: { projectId: STRANGER_PROJECT, iterationId: STRANGER_ITERATION },
-      velocity: { projectId: STRANGER_PROJECT },
-      team_capacity: { projectId: STRANGER_PROJECT, iterationId: STRANGER_ITERATION },
-      unread_notifications: {},
+      rova_whoami: {},
+      rova_list_projects: {},
+      rova_get_project: { projectId: STRANGER_PROJECT },
+      rova_list_project_members: { projectId: STRANGER_PROJECT },
+      rova_search_work_items: { projectId: STRANGER_PROJECT },
+      rova_get_work_item: { workItemId: STRANGER_ITEM },
+      rova_get_work_item_by_key: { itemKey: 'US-1' }, // the seeded NXP story — stranger has no access
+      rova_my_work: {},
+      rova_list_backlog: { projectId: STRANGER_PROJECT },
+      rova_work_item_activity: { workItemId: STRANGER_ITEM },
+      rova_list_iterations: { projectId: STRANGER_PROJECT },
+      rova_iteration_options: { projectId: STRANGER_PROJECT },
+      rova_iteration_status: { iterationId: STRANGER_ITERATION },
+      rova_list_comments: { workItemId: STRANGER_ITEM },
+      rova_list_releases: { projectId: STRANGER_PROJECT },
+      rova_list_milestones: { projectId: STRANGER_PROJECT },
+      rova_iteration_burndown: { projectId: STRANGER_PROJECT, iterationId: STRANGER_ITERATION },
+      rova_velocity: { projectId: STRANGER_PROJECT },
+      rova_team_capacity: { projectId: STRANGER_PROJECT, iterationId: STRANGER_ITERATION },
+      rova_unread_notifications: {},
       // The six new tools: TC-1 is the seeded NXP test case (the stranger has no NXP
       // membership); the quality/team-status/report tools are project-scoped to PAY.
-      list_test_cases: { workItemId: PAY_STORY_ID },
-      get_test_case_by_key: { testCaseKey: 'TC-1' },
-      quality_defects: { projectId: PAY_PROJECT_ID },
-      team_status: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
-      list_portfolio_items: { type: 'epic' },
+      rova_list_test_cases: { workItemId: PAY_STORY_ID },
+      rova_get_test_case_by_key: { testCaseKey: 'TC-1' },
+      rova_quality_defects: { projectId: PAY_PROJECT_ID },
+      rova_team_status: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
+      rova_list_portfolio_items: { type: 'epic' },
       // NXP_FEATURE_3: the seeded Feature WITH children (2 stories linked, demo.ts)
-      get_portfolio_item: { portfolioItemId: NXP_FEATURE_3_ID },
+      rova_get_portfolio_item: { portfolioItemId: NXP_FEATURE_3_ID },
       // The eight tools of PR B: the resource/report-scoped ones deny the stranger via
       // their route; the AccessService-scoped lists run EMPTY (see EMPTY_OK below).
-      carryover_report: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
-      release_tracking: { projectId: PAY_PROJECT_ID, releaseId: NXP_RELEASE_1_ID },
-      get_release: { releaseId: NXP_RELEASE_1_ID },
-      get_milestone: { milestoneId: NXP_MILESTONE_1_ID },
-      project_health: {},
-      work_item_code_changes: { workItemId: PAY_STORY_ID },
-      list_teams: {},
-      list_notifications: {},
+      rova_carryover_report: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
+      rova_release_tracking: { projectId: PAY_PROJECT_ID, releaseId: NXP_RELEASE_1_ID },
+      rova_get_release: { releaseId: NXP_RELEASE_1_ID },
+      rova_get_milestone: { milestoneId: NXP_MILESTONE_1_ID },
+      rova_project_health: {},
+      rova_work_item_code_changes: { workItemId: PAY_STORY_ID },
+      rova_list_teams: {},
+      rova_list_notifications: {},
     };
     // SelfScoped: the caller's own data — must keep working for any member.
     const SELF_SCOPED = new Set([
-      'whoami',
-      'my_work',
-      'unread_notifications',
-      'list_notifications',
+      'rova_whoami',
+      'rova_my_work',
+      'rova_unread_notifications',
+      'rova_list_notifications',
     ]);
     // ONLY list_projects is AccessService-scoped (the guard passes; listReadableProjectIds
     // returns zero rows for a no-role member): 200 with an EMPTY list. search_work_items,
     // list_backlog and list_iterations are PolicyGuard-gated (`work_item:view` /
     // `timebox:view` / `iteration:view` from the projectId) — a no-role member is denied 403.
     const EMPTY_OK = new Set([
-      'list_projects',
-      'list_portfolio_items',
-      'project_health',
-      'list_teams',
+      'rova_list_projects',
+      'rova_list_portfolio_items',
+      'rova_project_health',
+      'rova_list_teams',
     ]);
     // the rows key is each of these tools' own list key (the rest use `projects`)
     const EMPTY_KEYS: Record<string, string> = {
-      list_portfolio_items: 'portfolioItems',
-      list_teams: 'teams',
+      rova_list_portfolio_items: 'portfolioItems',
+      rova_list_teams: 'teams',
     };
     // Explicitly PolicyGuard-gated tools (permission from the projectId query or the resource):
     // a no-role member is denied 403 per route.
     const POLICY_403 = new Set([
-      'search_work_items',
-      'list_backlog',
-      'list_iterations',
-      'quality_defects',
-      'team_status',
-      'get_test_case_by_key',
-      'list_test_cases',
-      'get_project',
-      'list_project_members',
-      'carryover_report',
-      'release_tracking',
-      'get_release',
-      'get_milestone',
-      'work_item_code_changes',
+      'rova_search_work_items',
+      'rova_list_backlog',
+      'rova_list_iterations',
+      'rova_quality_defects',
+      'rova_team_status',
+      'rova_get_test_case_by_key',
+      'rova_list_test_cases',
+      'rova_get_project',
+      'rova_list_project_members',
+      'rova_carryover_report',
+      'rova_release_tracking',
+      'rova_get_release',
+      'rova_get_milestone',
+      'rova_work_item_code_changes',
     ]);
 
     it('the denial matrix is derived from the live tools/list and covers every tool', async () => {
@@ -389,14 +389,14 @@ describe('/mcp over the real guard chain (e2e)', () => {
       // get_project 403s on unknown ids on purpose: PolicyGuard denies before the project
       // lookup, so a non-member cannot probe which ids exist (no existence leak).
       for (const [name, args] of Object.entries({
-        get_work_item: { workItemId: UNKNOWN },
-        work_item_activity: { workItemId: UNKNOWN },
-        iteration_status: { iterationId: UNKNOWN },
+        rova_get_work_item: { workItemId: UNKNOWN },
+        rova_work_item_activity: { workItemId: UNKNOWN },
+        rova_iteration_status: { iterationId: UNKNOWN },
       })) {
         const out = await callTool(token, name, args);
         expect(out.statusCode, `${name}: unknown id must be 404`).toBe(404);
       }
-      const projectProbe = await callTool(token, 'get_project', { projectId: UNKNOWN });
+      const projectProbe = await callTool(token, 'rova_get_project', { projectId: UNKNOWN });
       expect(projectProbe.statusCode, 'get_project: unknown id must be 403 (no leak)').toBe(403);
     });
 
@@ -408,7 +408,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
       const other = await provisionUser(app, 'mcp-unread-other', 'E2E mcp unread other');
 
       // baseline: no unread rows for anyone
-      const before = await callTool(mine.token, 'unread_notifications', {});
+      const before = await callTool(mine.token, 'rova_unread_notifications', {});
       expect(Number(before.count)).toBe(0);
 
       // the caller's own row: exactly +1
@@ -418,7 +418,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
         type: 'WORK_ITEM_ASSIGNED',
         title: 'for the mcp caller',
       });
-      const withMine = await callTool(mine.token, 'unread_notifications', {});
+      const withMine = await callTool(mine.token, 'rova_unread_notifications', {});
       expect(Number(withMine.count)).toBe(Number(before.count) + 1);
 
       // a second user's unread row must NOT move the caller's count
@@ -428,7 +428,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
         type: 'WORK_ITEM_ASSIGNED',
         title: 'for the other user only',
       });
-      const again = await callTool(mine.token, 'unread_notifications', {});
+      const again = await callTool(mine.token, 'rova_unread_notifications', {});
       expect(Number(again.count)).toBe(Number(before.count) + 1);
     });
 
@@ -447,7 +447,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
         await setUserBanned(auth, userId, false);
       }
       // reinstated: the same tool works again, as the person themselves
-      const out = await callTool(token, 'whoami', {});
+      const out = await callTool(token, 'rova_whoami', {});
       expect(out.statusCode).toBeUndefined();
       expect(out.id).toBe(userId);
     });
@@ -459,142 +459,142 @@ describe('/mcp over the real guard chain (e2e)', () => {
   // team_status / quality_defects — fails here instead of at an agent's first question.
   describe('happy-path output shape, per tool', () => {
     const CASES: Array<{ name: string; args: Record<string, unknown>; fields: string[] }> = [
-      { name: 'whoami', args: {}, fields: ['id', 'email', 'displayName', 'memberships'] },
-      { name: 'list_projects', args: {}, fields: ['projects', 'pageInfo'] },
+      { name: 'rova_whoami', args: {}, fields: ['id', 'email', 'displayName', 'memberships'] },
+      { name: 'rova_list_projects', args: {}, fields: ['projects', 'pageInfo'] },
       {
-        name: 'get_project',
+        name: 'rova_get_project',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['id', 'key', 'name', 'status'],
       },
       {
-        name: 'list_project_members',
+        name: 'rova_list_project_members',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['members'],
       },
       {
-        name: 'search_work_items',
+        name: 'rova_search_work_items',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['items', 'pageInfo'],
       },
       {
-        name: 'get_work_item',
+        name: 'rova_get_work_item',
         args: { workItemId: PAY_STORY_ID },
         fields: ['id', 'itemKey', 'title', 'scheduleState'],
       },
       {
-        name: 'get_work_item_by_key',
+        name: 'rova_get_work_item_by_key',
         args: { itemKey: 'US-1' },
         fields: ['id', 'itemKey', 'title'],
       },
-      { name: 'my_work', args: {}, fields: ['items'] },
+      { name: 'rova_my_work', args: {}, fields: ['items'] },
       {
-        name: 'list_backlog',
+        name: 'rova_list_backlog',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['items', 'pageInfo'],
       },
       {
-        name: 'work_item_activity',
+        name: 'rova_work_item_activity',
         args: { workItemId: PAY_STORY_ID },
         fields: ['activity', 'total'],
       },
       {
-        name: 'list_iterations',
+        name: 'rova_list_iterations',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['iterations'],
       },
       {
-        name: 'iteration_options',
+        name: 'rova_iteration_options',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['iterations'],
       },
       {
-        name: 'iteration_status',
+        name: 'rova_iteration_status',
         args: { iterationId: PAY_ITER_ID },
         fields: ['iteration', 'metrics', 'items'],
       },
-      { name: 'list_comments', args: { workItemId: PAY_STORY_ID }, fields: ['comments'] },
+      { name: 'rova_list_comments', args: { workItemId: PAY_STORY_ID }, fields: ['comments'] },
       {
-        name: 'list_releases',
+        name: 'rova_list_releases',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['releases'],
       },
       {
-        name: 'list_milestones',
+        name: 'rova_list_milestones',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['milestones'],
       },
       {
-        name: 'iteration_burndown',
+        name: 'rova_iteration_burndown',
         args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
         fields: [],
       },
       {
-        name: 'velocity',
+        name: 'rova_velocity',
         args: { projectId: PAY_PROJECT_ID, window: 5 },
         fields: [],
       },
       {
-        name: 'team_capacity',
+        name: 'rova_team_capacity',
         args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
         fields: [],
       },
-      { name: 'unread_notifications', args: {}, fields: ['count'] },
+      { name: 'rova_unread_notifications', args: {}, fields: ['count'] },
       {
-        name: 'list_test_cases',
+        name: 'rova_list_test_cases',
         args: { workItemId: NXP_STORY_1_ID },
         fields: ['testCases', 'pageInfo'],
       },
       {
-        name: 'get_test_case_by_key',
+        name: 'rova_get_test_case_by_key',
         args: { testCaseKey: 'TC-1' },
         fields: ['id', 'testCaseKey', 'name'],
       },
       {
-        name: 'quality_defects',
+        name: 'rova_quality_defects',
         args: { projectId: PAY_PROJECT_ID },
         fields: ['defects', 'metrics'],
       },
       {
-        name: 'team_status',
+        name: 'rova_team_status',
         args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
         fields: ['members', 'iteration', 'totals'],
       },
-      { name: 'list_portfolio_items', args: { type: 'epic' }, fields: ['portfolioItems'] },
+      { name: 'rova_list_portfolio_items', args: { type: 'epic' }, fields: ['portfolioItems'] },
       {
-        name: 'get_portfolio_item',
+        name: 'rova_get_portfolio_item',
         args: { portfolioItemId: NXP_FEATURE_3_ID },
         fields: ['id', 'itemKey', 'type', 'name', 'estimate', 'rollup', 'progress', 'children'],
       },
       // PR B's eight tools. The two reports relay the route payload as-is (fields []); the
       // seeded ids come from db/seeds/constants (NXP release 1, milestone 1, team Alpha).
       {
-        name: 'carryover_report',
+        name: 'rova_carryover_report',
         args: { projectId: PAY_PROJECT_ID, iterationId: PAY_ITER_ID },
         fields: [],
       },
       {
-        name: 'release_tracking',
+        name: 'rova_release_tracking',
         args: { projectId: PAY_PROJECT_ID, releaseId: NXP_RELEASE_1_ID },
         fields: [],
       },
       {
-        name: 'get_release',
+        name: 'rova_get_release',
         args: { releaseId: NXP_RELEASE_1_ID },
         fields: ['id', 'releaseKey', 'name', 'status', 'taskEstimate', 'artifacts'],
       },
       {
-        name: 'get_milestone',
+        name: 'rova_get_milestone',
         args: { milestoneId: NXP_MILESTONE_1_ID },
         fields: ['id', 'milestoneKey', 'name', 'status', 'artifacts', 'releases', 'projects'],
       },
-      { name: 'project_health', args: {}, fields: ['projects'] },
+      { name: 'rova_project_health', args: {}, fields: ['projects'] },
       {
-        name: 'work_item_code_changes',
+        name: 'rova_work_item_code_changes',
         args: { workItemId: NXP_STORY_1_ID },
         fields: ['connections', 'changesets'],
       },
-      { name: 'list_teams', args: {}, fields: ['teams'] },
-      { name: 'list_notifications', args: {}, fields: ['notifications'] },
+      { name: 'rova_list_teams', args: {}, fields: ['teams'] },
+      { name: 'rova_list_notifications', args: {}, fields: ['notifications'] },
     ];
 
     it('every tool appears exactly once in the happy-path matrix', () => {
@@ -618,14 +618,14 @@ describe('/mcp over the real guard chain (e2e)', () => {
             `${name}: documented field '${field}' missing/undefined`,
           ).toBeDefined();
         }
-        if (name === 'project_health' || name === 'list_teams') {
+        if (name === 'rova_project_health' || name === 'rova_list_teams') {
           // the seeded workspace has readable projects and linked teams — never an empty rollup
           expect(
-            (out[name === 'project_health' ? 'projects' : 'teams'] as unknown[]).length,
+            (out[name === 'rova_project_health' ? 'projects' : 'teams'] as unknown[]).length,
             `${name}: must be non-empty on the seeded workspace`,
           ).toBeGreaterThan(0);
         }
-        if (name === 'get_portfolio_item') {
+        if (name === 'rova_get_portfolio_item') {
           // the seeded NXP Feature 3 carries linked stories — the children feed must be
           // non-empty (the delta-review blocker: Epics have none, Features must not be empty)
           expect(

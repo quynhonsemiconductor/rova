@@ -22,7 +22,7 @@ export function toToolWorkItem(p: Record<string, unknown>) {
  */
 export function registerSearchWorkItems(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'search_work_items',
+    'rova_search_work_items',
     {
       title: 'Search work items',
       description:

@@ -35,7 +35,7 @@ export function shapeDefects(
 
 export function registerQualityDefects(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'quality_defects',
+    'rova_quality_defects',
     {
       title: 'Quality defects',
       description:

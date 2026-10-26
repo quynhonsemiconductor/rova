@@ -12,7 +12,7 @@ const MAX_MEMBERS = 100;
  */
 export function registerListProjectMembers(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_project_members',
+    'rova_list_project_members',
     {
       title: 'List project members',
       description: 'The people who can own work in one project you can read, with their email.',

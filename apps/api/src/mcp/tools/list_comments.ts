@@ -43,7 +43,7 @@ export function shapeComments(all: Record<string, unknown>[]) {
  */
 export function registerListComments(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_comments',
+    'rova_list_comments',
     {
       title: 'List comments',
       description: 'The comments on one work item you can read (newest first, capped at 100).',

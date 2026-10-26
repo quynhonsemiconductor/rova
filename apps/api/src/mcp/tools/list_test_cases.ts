@@ -8,7 +8,7 @@ import { listResult, pageArgs, type ToolContext } from './rest';
  */
 export function registerListTestCases(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_test_cases',
+    'rova_list_test_cases',
     {
       title: 'List test cases',
       description:

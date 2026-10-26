@@ -9,7 +9,7 @@ import { listResult, type ToolContext } from './rest';
  */
 export function registerIterationOptions(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'iteration_options',
+    'rova_iteration_options',
     {
       title: 'Iteration options',
       description:

@@ -8,7 +8,7 @@ import { listResult, pageArgs, type ToolContext } from './rest';
  */
 export function registerListIterations(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_iterations',
+    'rova_list_iterations',
     {
       title: 'List iterations',
       description: 'The iterations of one project you can read. Paginated.',

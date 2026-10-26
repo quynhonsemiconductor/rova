@@ -9,7 +9,7 @@ import { result, type ToolContext } from './rest';
  */
 export function registerTeamCapacity(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'team_capacity',
+    'rova_team_capacity',
     {
       title: 'Team capacity',
       description:

@@ -24,7 +24,7 @@ export function shapeHealthRow(p: Record<string, unknown>) {
  */
 export function registerProjectHealth(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'project_health',
+    'rova_project_health',
     {
       title: 'Project health',
       description:

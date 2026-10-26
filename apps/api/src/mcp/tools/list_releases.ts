@@ -9,7 +9,7 @@ import { denied, type ToolContext } from './rest';
  */
 export function registerListReleases(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_releases',
+    'rova_list_releases',
     {
       title: 'List releases',
       description: 'The releases of one project you can read (capped at 100).',

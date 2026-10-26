@@ -9,7 +9,7 @@ import { listResult, type ToolContext } from './rest';
  */
 export function registerListPortfolioItems(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_portfolio_items',
+    'rova_list_portfolio_items',
     {
       title: 'List portfolio items',
       description:

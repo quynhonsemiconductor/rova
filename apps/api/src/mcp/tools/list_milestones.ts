@@ -9,7 +9,7 @@ import { denied, type ToolContext } from './rest';
  */
 export function registerListMilestones(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_milestones',
+    'rova_list_milestones',
     {
       title: 'List milestones',
       description: 'The milestones of one project you can read (capped at 100).',

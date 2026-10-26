@@ -11,7 +11,7 @@ const MAX_PAGE_SIZE = 25;
 
 export function registerWorkItemActivity(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'work_item_activity',
+    'rova_work_item_activity',
     {
       title: 'Work item activity',
       description: 'The revision history of one work item you can read, newest page first.',

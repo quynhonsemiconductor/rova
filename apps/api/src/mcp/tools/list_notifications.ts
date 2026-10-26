@@ -36,7 +36,7 @@ export function shapeNotification(n: Record<string, unknown>) {
  */
 export function registerListNotifications(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_notifications',
+    'rova_list_notifications',
     {
       title: 'List notifications',
       description:

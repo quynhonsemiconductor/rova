@@ -9,7 +9,7 @@ import { result, type ToolContext } from './rest';
  */
 export function registerIterationBurndown(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'iteration_burndown',
+    'rova_iteration_burndown',
     {
       title: 'Iteration burndown',
       description:

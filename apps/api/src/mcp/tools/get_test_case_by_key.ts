@@ -9,7 +9,7 @@ import { denied, result, type ToolContext } from './rest';
  */
 export function registerGetTestCaseByKey(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'get_test_case_by_key',
+    'rova_get_test_case_by_key',
     {
       title: 'Get test case by key',
       description: 'One Test Case by its key (e.g. TC-3), what its detail page shows you.',

@@ -7,7 +7,7 @@ import { denied, result, type ToolContext } from './rest';
  */
 export function registerUnreadNotifications(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'unread_notifications',
+    'rova_unread_notifications',
     {
       title: 'Unread notifications',
       description: 'How many unread notifications you have.',

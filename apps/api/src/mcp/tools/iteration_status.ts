@@ -9,7 +9,7 @@ import { denied, pageInfoOf, pageArgs, result, type ToolContext } from './rest';
  */
 export function registerIterationStatus(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'iteration_status',
+    'rova_iteration_status',
     {
       title: 'Iteration status',
       description:

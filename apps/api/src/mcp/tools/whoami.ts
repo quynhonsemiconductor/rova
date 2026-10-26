@@ -7,7 +7,7 @@ import { result, type ToolContext } from './rest';
  */
 export function registerWhoami(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'whoami',
+    'rova_whoami',
     {
       title: 'Who am I',
       description:

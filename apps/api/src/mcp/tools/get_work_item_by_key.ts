@@ -9,7 +9,7 @@ import { toToolWorkItem } from './search_work_items';
  */
 export function registerGetWorkItemByKey(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'get_work_item_by_key',
+    'rova_get_work_item_by_key',
     {
       title: 'Get work item by key',
       description: 'One work item by its human key (e.g. OBSE-42), what its detail page shows you.',

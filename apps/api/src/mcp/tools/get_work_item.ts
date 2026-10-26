@@ -43,7 +43,7 @@ export function shapeWorkItem(p: Record<string, unknown>) {
  */
 export function registerGetWorkItem(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'get_work_item',
+    'rova_get_work_item',
     {
       title: 'Get work item',
       description:

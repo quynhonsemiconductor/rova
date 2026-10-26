@@ -39,7 +39,7 @@ export function shapeRelease(r: Record<string, unknown>, artifacts: Record<strin
  */
 export function registerGetRelease(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'get_release',
+    'rova_get_release',
     {
       title: 'Get release',
       description:

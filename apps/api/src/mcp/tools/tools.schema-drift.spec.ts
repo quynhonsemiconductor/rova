@@ -61,40 +61,40 @@ function toolInputs(): Map<string, string[]> {
 describe("MCP tool inputs ⊆ their REST route's query schema", () => {
   it('list_projects ⊆ PageQuerySchema (GET /v1/projects)', () => {
     const rest = Object.keys(PageQuerySchema.shape);
-    const tool = toolInputs().get('list_projects')!;
+    const tool = toolInputs().get('rova_list_projects')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
   it('search_work_items ⊆ WorkItemQuerySchema (GET /v1/work-items)', () => {
     const rest = Object.keys(WorkItemQuerySchema.shape);
-    const tool = toolInputs().get('search_work_items')!;
+    const tool = toolInputs().get('rova_search_work_items')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
   it('list_iterations ⊆ IterationQuerySchema (GET /v1/iterations)', () => {
     const rest = Object.keys(IterationQuerySchema.shape);
-    const tool = toolInputs().get('list_iterations')!;
+    const tool = toolInputs().get('rova_list_iterations')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
   it('get_project ⊆ WorkItemByKeyQuerySchema-shapeless (GET /v1/projects/:id — path param only)', () => {
-    expect(toolInputs().get('get_project')).toEqual(['projectId']);
+    expect(toolInputs().get('rova_get_project')).toEqual(['projectId']);
   });
 
   it('list_project_members takes only the path param (GET /v1/projects/:id/member-options)', () => {
-    expect(toolInputs().get('list_project_members')).toEqual(['projectId']);
+    expect(toolInputs().get('rova_list_project_members')).toEqual(['projectId']);
   });
 
   it('get_work_item_by_key mirrors WorkItemByKeyQuerySchema (GET /v1/work-items/by-key)', () => {
-    expect(toolInputs().get('get_work_item_by_key')).toEqual(['itemKey']);
+    expect(toolInputs().get('rova_get_work_item_by_key')).toEqual(['itemKey']);
   });
 
   it('list_backlog ⊆ WorkItemQuerySchema (GET /v1/work-items/backlog)', () => {
     const rest = Object.keys(WorkItemQuerySchema.shape);
-    const tool = toolInputs().get('list_backlog')!;
+    const tool = toolInputs().get('rova_list_backlog')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
@@ -103,7 +103,7 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
     const rest = Object.keys(ActivityQuerySchema.shape);
     // workItemId is the path param, not a query key
     const tool = toolInputs()
-      .get('work_item_activity')!
+      .get('rova_work_item_activity')!
       .filter((k) => k !== 'workItemId');
     // the tool exposes `page` only and pins pageSize itself
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
@@ -111,7 +111,7 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
 
   it('iteration_options ⊆ IterationAssignmentOptionsQuerySchema (GET /v1/iterations/options)', () => {
     const rest = Object.keys(IterationAssignmentOptionsQuerySchema.shape);
-    const tool = toolInputs().get('iteration_options')!;
+    const tool = toolInputs().get('rova_iteration_options')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
@@ -120,7 +120,7 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
     const rest = Object.keys(IterationStatusQuerySchema.shape);
     // iterationId is the path param, not a query key
     const tool = toolInputs()
-      .get('iteration_status')!
+      .get('rova_iteration_status')!
       .filter((k) => k !== 'iterationId');
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
@@ -128,56 +128,56 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
 
   it('list_releases ⊆ ReleaseQuerySchema (GET /v1/releases)', () => {
     const rest = Object.keys(ReleaseQuerySchema.shape);
-    const tool = toolInputs().get('list_releases')!;
+    const tool = toolInputs().get('rova_list_releases')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
   it('list_milestones ⊆ MilestoneQuerySchema (GET /v1/milestones)', () => {
     const rest = Object.keys(MilestoneQuerySchema.shape);
-    const tool = toolInputs().get('list_milestones')!;
+    const tool = toolInputs().get('rova_list_milestones')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
   it('iteration_burndown ⊆ IterationBurndownQuerySchema (GET /v1/reports/iteration-burndown)', () => {
     const rest = Object.keys(IterationBurndownQuerySchema.shape);
-    const tool = toolInputs().get('iteration_burndown')!;
+    const tool = toolInputs().get('rova_iteration_burndown')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
   it('velocity ⊆ VelocityQuerySchema (GET /v1/reports/velocity)', () => {
     const rest = Object.keys(VelocityQuerySchema.shape);
-    const tool = toolInputs().get('velocity')!;
+    const tool = toolInputs().get('rova_velocity')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
   it('team_capacity ⊆ TeamCapacityQuerySchema (GET /v1/reports/team-capacity)', () => {
     const rest = Object.keys(TeamCapacityQuerySchema.shape);
-    const tool = toolInputs().get('team_capacity')!;
+    const tool = toolInputs().get('rova_team_capacity')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
   it('carryover_report ⊆ CarryoverQuerySchema (GET /v1/reports/carryover)', () => {
     const rest = Object.keys(CarryoverQuerySchema.shape);
-    const tool = toolInputs().get('carryover_report')!;
+    const tool = toolInputs().get('rova_carryover_report')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
   it('release_tracking ⊆ ReleaseTrackingQuerySchema (GET /v1/reports/release-tracking)', () => {
     const rest = Object.keys(ReleaseTrackingQuerySchema.shape);
-    const tool = toolInputs().get('release_tracking')!;
+    const tool = toolInputs().get('rova_release_tracking')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
 
   it('list_notifications ⊆ ListNotificationsSchema (GET /v1/notifications)', () => {
     const rest = Object.keys(ListNotificationsSchema.shape);
-    const tool = toolInputs().get('list_notifications')!;
+    const tool = toolInputs().get('rova_list_notifications')!;
     expect(tool.length).toBeGreaterThan(0);
     expect(tool.filter((key) => !rest.includes(key))).toEqual([]);
   });
@@ -185,20 +185,20 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
   it('the schema-less routes take only what their controllers read by hand', () => {
     const inputs = toolInputs();
     // GET /v1/work-items/my reads `@Query('limit')` only
-    expect(inputs.get('my_work')).toEqual(['limit']);
+    expect(inputs.get('rova_my_work')).toEqual(['limit']);
     // GET /v1/work-items/:workItemId/comments reads NO query (unpaginated REST route)
-    expect(inputs.get('list_comments')).toEqual(['workItemId']);
+    expect(inputs.get('rova_list_comments')).toEqual(['workItemId']);
     // no query at all
-    expect(inputs.get('whoami')).toEqual([]);
-    expect(inputs.get('get_work_item')).toEqual(['workItemId']);
+    expect(inputs.get('rova_whoami')).toEqual([]);
+    expect(inputs.get('rova_get_work_item')).toEqual(['workItemId']);
     // GET /v1/notifications/unread-count reads NO query
-    expect(inputs.get('unread_notifications')).toEqual([]);
+    expect(inputs.get('rova_unread_notifications')).toEqual([]);
     // path-param-only routes
-    expect(inputs.get('get_release')).toEqual(['releaseId']);
-    expect(inputs.get('get_milestone')).toEqual(['milestoneId']);
-    expect(inputs.get('work_item_code_changes')).toEqual(['workItemId']);
-    expect(inputs.get('list_teams')).toEqual([]);
+    expect(inputs.get('rova_get_release')).toEqual(['releaseId']);
+    expect(inputs.get('rova_get_milestone')).toEqual(['milestoneId']);
+    expect(inputs.get('rova_work_item_code_changes')).toEqual(['workItemId']);
+    expect(inputs.get('rova_list_teams')).toEqual([]);
     // GET /v1/projects/health reads `@Query('limit')` only
-    expect(inputs.get('project_health')).toEqual(['limit']);
+    expect(inputs.get('rova_project_health')).toEqual(['limit']);
   });
 });

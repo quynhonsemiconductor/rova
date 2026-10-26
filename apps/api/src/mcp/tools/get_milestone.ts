@@ -40,7 +40,7 @@ export function shapeMilestone(
  */
 export function registerGetMilestone(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'get_milestone',
+    'rova_get_milestone',
     {
       title: 'Get milestone',
       description:

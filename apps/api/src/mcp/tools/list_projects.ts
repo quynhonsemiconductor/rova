@@ -18,7 +18,7 @@ export function toToolProject(p: Record<string, unknown>) {
  */
 export function registerListProjects(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_projects',
+    'rova_list_projects',
     {
       title: 'List projects',
       description:
