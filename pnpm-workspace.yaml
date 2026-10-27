@@ -18,7 +18,7 @@ overrides:
   # collections, fixed 4.6.6): identity 8.5.0 exact-deps zod 4.6.5, so the tree carries it
   # transitively until identity 8.5.1 ships (release PR #304). FLOORED, not removed — drop this
   # entry in the identity ^8.5.1 bump PR.
-  "zod@>=4 <4.6.6": "4.6.6"
+  "zod@>=4 <4.6.6": "4.6.7"
   # FULL OSV SWEEP (rova#793): the advisories below ride transitive chains the same way —
   # a parent pins an exact or stale copy, so range updates never reach them. With identity
   # 8.5.1 (zod 4.6.6) and platform-mail 0.1.7 (nodemailer 10.1.7) the zod and nodemailer
