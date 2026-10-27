@@ -28,7 +28,7 @@ overrides:
   #    and is gated by platform-mail's suite (no code here imports msal directly)
   #  - GHSA-27r3-jxmh-p828 (7.5): body-parser 2.4.0, via the express chain
   #  - GHSA-333x/-w74x/-wjr9/-xhq7: fast-uri 3.1.9 (3.x) / 4.2.3 (4.x)
-  "@azure/identity>@azure/msal-node": "7.1.0"
+  "@azure/identity>@azure/msal-node": "7.1.1"
   "body-parser@>=2.3.0 <2.4.0": "2.4.0"
   # plain pins: the range-selector form silently failed to apply to the ajv chain
   "fast-uri": "3.1.9"
