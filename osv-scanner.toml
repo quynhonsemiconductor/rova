@@ -14,3 +14,16 @@ version to pin or override to. DEV-ONLY: the sole path is eslint-plugin-boundari
 micromatch 4.0.8 -> braces, run by `pnpm lint` over glob patterns committed in eslint.config; \
 nothing reaches it at runtime or in the image, and the attacker-supplied pattern precondition does \
 not exist. Re-triage by ignoreUntil: drop this entry when braces or micromatch ship a fix."""
+
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+ignoreUntil = 2026-11-27
+reason = """\
+deepmerge 4.2.0-4.3.1 (CVE-2026-93753, prototype poisoning in mergeObject(), LOW). NO patched \
+version exists: 4.3.1 is npm's latest release and OSV records last_affected 4.3.1 with no fixed \
+event (upstream issue TehShrike/deepmerge#273 open). Reached via fork-ts-checker-webpack-plugin \
+(dev) and nestjs-zod (runtime); both merge FIRST-PARTY option objects, never attacker-supplied \
+source objects, which the finding requires. Downgrading below 4.2.0 to escape the range would \
+pull a 2020 release outside the ranges the consumers declare, for a LOW-severity finding with no \
+exploitable path here. Revisit by the expiry: drop this entry if upstream ships a fixed release \
+or the advisory is withdrawn. Same entry as opshub#507 (identical chains)."""
