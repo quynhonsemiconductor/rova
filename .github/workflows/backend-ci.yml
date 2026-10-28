@@ -1,6 +1,7 @@
 # =============================================================================
 # CI — fast quality gates on every PR and push to main
-# Gate: lint → typecheck → unit tests → e2e tests → docker build → openapi diff
+# Gate: quality, tests, docker build and the openapi diff run in PARALLEL;
+# `Backend CI required` gates on every one of them.
 # Security scans live in the Security · Scan workflow — independently runnable.
 # =============================================================================
 name: Backend · CI
@@ -482,12 +483,18 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────
   # 4. Docker build validation (BuildKit cache, no push)
-  #    Runs after tests to avoid wasting compute on broken code.
+  #    PARALLEL with the test jobs, not after them: `Backend CI required` gates
+  #    on this job too, so a broken image still blocks the PR — it just stops
+  #    paying the build as serialization on top of the suites.
+  #    NOT on a push to main: GHCR · Publish builds and scans the same images
+  #    there (and writes the layer cache this job reads); building them twice
+  #    per merge was pure cost.
   # ─────────────────────────────────────────────────────────────────────────
   build:
     name: Docker build
     runs-on: ubuntu-latest
-    needs: [quality, test]
+    needs: [changes]
+    if: ${{ needs.changes.outputs.run == 'true' && github.event_name != 'push' }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -514,8 +521,13 @@ jobs:
           push: false
           load: true            # the image Trivy scans below; a second build in the security workflow is gone
           tags: rova-api:scan
-          cache-from: type=gha,scope=api
-          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=api' || '' }}
+          # Two scopes to read: the legacy `api` one this job used to write from
+          # main, and the `rova-api-amd64` one GHCR · Publish writes on every
+          # merge (this job no longer runs on push, so THAT is where the cache
+          # comes from now). An empty `cache-to` is "do not export".
+          cache-from: |
+            type=gha,scope=api
+            type=gha,scope=rova-api-amd64
           # BuildKit secret consumed by the deps/prod-deps stages to auth
           # pnpm against GitHub Packages for @quynhonsemiconductor/* (never baked into a layer).
           secrets: |
@@ -534,8 +546,9 @@ jobs:
           context: .
           target: migrator
           push: false
-          cache-from: type=gha,scope=migrator
-          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=migrator' || '' }}
+          cache-from: |
+            type=gha,scope=migrator
+            type=gha,scope=rova-migrator-amd64
           secrets: |
             node_auth_token=${{ secrets.GITHUB_TOKEN }}
 
@@ -545,8 +558,9 @@ jobs:
           context: .
           target: worker
           push: false
-          cache-from: type=gha,scope=worker
-          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=worker' || '' }}
+          cache-from: |
+            type=gha,scope=worker
+            type=gha,scope=rova-worker-amd64
           secrets: |
             node_auth_token=${{ secrets.GITHUB_TOKEN }}
 
@@ -713,10 +727,19 @@ jobs:
       #  * otherwise: only `changes` itself must be `success` (the rest are skipped by design). If `changes` FAILED its output is
       #    empty, this branch runs, and the gate fails: it cannot turn "could not decide" into a pass.
       - name: Every job must have succeeded
-        if: ${{ needs.changes.outputs.run == 'true' }}
+        if: ${{ needs.changes.outputs.run == 'true' && github.event_name != 'push' }}
         uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@2a85ef7bb3c793edbc9b424ba2abeaed8080aab6 # v1.24.3
         with:
           results: ${{ join(needs.*.result, ',') }}
+
+      # On a PUSH to main the Docker build job is skipped BY DESIGN (GHCR · Publish
+      # builds and scans the images there); the explicit list mirrors `needs` minus
+      # `build`. Every other job stays strict.
+      - name: "Every job but the Docker build must have succeeded (push: GHCR publish is the image build)"
+        if: ${{ needs.changes.outputs.run == 'true' && github.event_name == 'push' }}
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@2a85ef7bb3c793edbc9b424ba2abeaed8080aab6 # v1.24.3
+        with:
+          results: ${{ needs.changes.result }},${{ needs.quality.result }},${{ needs.test.result }},${{ needs.migrations.result }},${{ needs.openapi.result }}
 
       - name: Nothing here to test (every changed file is ignorable)
         if: ${{ needs.changes.outputs.run != 'true' }}
