@@ -3,8 +3,7 @@
  * The in-app User Guide (US-119, `pages/guide`) holds together: both editions agree, the table of
  * contents names only ids a chapter renders, every link lands somewhere, every screenshot exists.
  *
- * The static guide had `user-guide.integrity.test.ts` for the same job over HTML. Here the chapters
- * are RENDERED, through a real router, and every claim is made against what a reader gets — the
+ * The chapters are RENDERED, through a real router, and every claim is made against what a reader gets — the
  * `href` a link resolves to, the `id`s on the page, the `src` an image asks for — so a chapter that
  * types `to="02-truy-cap"` for `02-truy-cap-pham-vi` fails here rather than in front of a reader.
  */
@@ -29,13 +28,6 @@ import { GuideContext } from '@/pages/guide/ui/guide-context'
 import { GUIDE_ASSETS_ROOT } from '@/pages/guide/ui/guide-shot'
 
 const ASSETS_DIR = join(import.meta.dirname, '../../public/guide-assets')
-
-/**
- * Chapters the app does not render yet; the standalone guide still serves them. This list may only
- * SHRINK — each port removes its slug — and the last port empties it, at which point every screenshot
- * in `public/guide-assets` must also be in use.
- */
-const NOT_YET_PORTED: readonly string[] = []
 
 interface Rendered {
   ids: Set<string>
@@ -114,10 +106,10 @@ describe('in-app User Guide integrity', () => {
   })
 
   it.each(GUIDE_LANGS)(
-    'ships a %s chapter for every TOC entry except those not yet ported',
+    'ships a %s chapter file for every TOC entry, and none outside it',
     (lang) => {
       const toc = chaptersOf(lang).map((c) => c.slug)
-      expect(slugsWithContent(lang)).toEqual(toc.filter((slug) => !NOT_YET_PORTED.includes(slug)))
+      expect(slugsWithContent(lang)).toEqual(toc)
       const files = Object.keys(CHAPTER_MODULES)
         .filter((path) => path.startsWith(`../content/${lang}/`))
         .map((path) => path.slice(`../content/${lang}/`.length, -'.tsx'.length))
@@ -158,14 +150,15 @@ describe('in-app User Guide integrity', () => {
         const target = chaptersOf(lang).find((c) => c.slug === link.chapter)
         expect(target, `${where}: no such chapter`).toBeDefined()
         if (!link.hash) continue
-        // A ported chapter is checked against what it renders; one not ported yet, against its TOC.
-        const known = rendered.get(key(lang, link.chapter))?.ids ?? new Set(tocIds(target!))
-        expect(known.has(link.hash), `${where}: no such section`).toBe(true)
+        expect(
+          rendered.get(key(lang, link.chapter))?.ids.has(link.hash),
+          `${where}: no such section`,
+        ).toBe(true)
       }
     }
   })
 
-  it('shows only screenshots that exist under the gated assets path', () => {
+  it('shows only screenshots that exist under the gated assets path, and all of them', () => {
     const used = new Set<string>()
     for (const [page, { images }] of rendered) {
       for (const src of images) {
@@ -175,10 +168,8 @@ describe('in-app User Guide integrity', () => {
         used.add(file)
       }
     }
-    if (NOT_YET_PORTED.length === 0) {
-      const unused = readdirSync(ASSETS_DIR).filter((file) => !used.has(file))
-      expect(unused, 'screenshots no chapter shows').toEqual([])
-    }
+    const unused = readdirSync(ASSETS_DIR).filter((file) => !used.has(file))
+    expect(unused, 'screenshots no chapter shows').toEqual([])
   })
 
   it('reaches no external origin', () => {

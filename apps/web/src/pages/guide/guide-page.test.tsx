@@ -4,9 +4,6 @@
  * Through a real router with the app's route ids (`/auth/user-guide/$lang/$chapter`), so the claims
  * are about the URL the reader ends up on and the links they can follow, not about a mocked `Link`.
  */
-/// <reference types="node" />
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import {
@@ -19,7 +16,6 @@ import {
 } from '@tanstack/react-router'
 
 import '@/shared/i18n/i18n'
-import { GUIDE_CHAPTERS } from './model/chapters'
 import { chaptersOf } from './model/toc'
 import { GuidePage } from './guide-page'
 import { GuideLink } from './ui/guide-link'
@@ -167,19 +163,4 @@ describe('GuidePage', () => {
       `/user-guide/en/${next.slug}#${next.anchor}`,
     )
   })
-
-  // Only while some chapter is still served by the standalone guide; see the integrity test.
-  const missing = chaptersOf('en').find((c) => !GUIDE_CHAPTERS.en[c.slug])
-  it.skipIf(!missing)(
-    'says so, and links the same section in the standalone guide, for a chapter not ported yet',
-    async () => {
-      await renderGuide(`/user-guide/en/${missing!.slug}#somewhere`)
-      expect(await screen.findByText('This chapter is not in the app yet')).toBeInTheDocument()
-      const link = screen.getByRole('link', { name: 'Open it in the standalone guide' })
-      expect(link).toHaveAttribute('href', `/guide/en/${missing!.slug}.html#somewhere`)
-      // …and that page is really there to fall back to.
-      const file = link.getAttribute('href')!.split('#')[0]!
-      expect(existsSync(join(import.meta.dirname, '../../../public', file))).toBe(true)
-    },
-  )
 })

@@ -17,8 +17,7 @@ const dependencyRules = FSD_LAYERS.map((layer, index) => ({
 }))
 
 export default defineConfig([
-  // `public/guide` is the BA's static User Guide (US-119), shipped as authored — not app code.
-  globalIgnores(['dist', 'coverage', 'src/shared/api/generated/**', 'public/guide/**']),
+  globalIgnores(['dist', 'coverage', 'src/shared/api/generated/**']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

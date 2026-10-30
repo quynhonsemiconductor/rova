@@ -1,0 +1,14 @@
+# Cloudflare Pages static redirects (read from the root of what it publishes; public/ is copied
+# into dist/ verbatim). Matched top to bottom, first match wins, and they run before the SPA
+# fallback and without invoking a Function.
+#
+# The standalone User Guide (US-119) lived at /guide/ (Vietnamese) and /guide/en/ (English) until
+# it moved into the app at /user-guide/<lang>/<chapter>. Old bookmarks and shared links land on the
+# same chapter in the same edition: the chapter slugs are the old file names, the app strips a
+# trailing `.html` and maps `index` to the start chapter, and the browser keeps the #section across
+# the redirect. Pinned by src/test/user-guide-redirects.test.ts.
+/guide/assets/*  /guide-assets/:splat  301
+/guide/en        /user-guide/en         301
+/guide/en/*      /user-guide/en/:splat  301
+/guide           /user-guide/vi         301
+/guide/*         /user-guide/vi/:splat  301
