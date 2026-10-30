@@ -5,7 +5,7 @@ type ChapterModule = { default: ComponentType }
 
 /**
  * Every chapter file, one lazy chunk each. Discovered rather than listed, so a new chapter needs no
- * registration here — only a TOC entry, and `user-guide-spa.integrity.test.tsx` fails until the two agree.
+ * registration here — only a TOC entry, and `user-guide.integrity.test.tsx` fails until the two agree.
  * One chunk per chapter per edition keeps the shell and the reader's first chapter small: the guide is
  * ~1 MB of prose across both editions.
  */
