@@ -2,6 +2,12 @@
 
 > Status: Approved for implementation · Date: 2026-10-07 · Story: [US-119](https://rova.qnsc.vn/item/US-119)
 > Source content: BA site `Mini_Rally_pj/09_User_Guide` (v1.0, VI + EN, 13 chapters).
+>
+> **Superseded (2026-10-30).** The static guide under `public/guide` and its per-file session gate
+> described below were replaced by the in-app `/user-guide` route (`apps/web/src/pages/guide`), opened
+> by Help in the same tab, with only the guide's own files gated under `/guide-assets/`. This plan is
+> kept as the record of the original design; the current one is `CLAUDE.md`, "The User Guide is a page
+> of the app, and only its own files are gated".
 
 ## Problem statement
 

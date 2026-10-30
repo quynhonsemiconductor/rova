@@ -2,36 +2,35 @@ import { type Page, test } from '@playwright/test'
 import { expect, loginAndSelectProject, settle } from './helpers'
 
 /**
- * US-119 — the official bilingual User Guide, opened from the top bar's Help icon.
+ * US-119 — the bilingual User Guide, a page of the app at `/user-guide/<lang>/<chapter>#<section>`.
  *
- * One journey for the surface, walking AC1 → AC4 in a single session, per the repo's per-surface rule.
+ * One journey for the surface, per the repo's per-surface rule: Help → guide in the same tab →
+ * language → chapter via the contents → next chapter → back to English → deep link to a section.
  *
- * What this CANNOT cover, and where it is covered instead: the Vite dev server serves `public/guide`
- * as plain files, so neither the session gate (`functions/guide/_middleware.ts`) nor Cloudflare's
- * extensionless URLs exist here. Those are pinned by `functions/_lib/guide-gate.spec.ts` and
- * `src/test/user-guide.script.test.ts` respectively.
+ * What this CANNOT cover, and where it is covered instead: the Vite dev server serves
+ * `public/guide-assets` as plain files and does not apply `public/_redirects`, so neither the session
+ * gate in front of the guide's files nor the redirects from old `/guide/…` links exist here. Those are
+ * pinned by `functions/_lib/guide-gate.spec.ts` and `src/test/user-guide-redirects.test.ts`; that the
+ * build puts the guide's text behind the gate is `src/vite-guide-chunks.test.ts`.
  */
 
-// Pin the browser language: the Help icon chooses the guide edition from it (AC1 + decision 3).
+// Pin the browser language: `/user-guide` picks the edition from it.
 test.use({ locale: 'en-US' })
 
-async function expectNoBrokenAssets(guide: Page, expectedImages: number) {
-  // AC4 — every screenshot decoded, and the guide's own stylesheet applied. The count is pinned so a
-  // page with no screenshots (the index) cannot pass the decode check vacuously.
-  await guide.waitForLoadState('load')
-  const images = await guide.$$eval('img', (imgs) =>
-    imgs.map((img) => ({ src: img.src, ok: img.complete && img.naturalWidth > 0 })),
-  )
-  expect(images).toHaveLength(expectedImages)
-  expect(images.filter((img) => !img.ok).map((img) => img.src)).toEqual([])
-  const styled = await guide.evaluate(() =>
-    [...document.styleSheets].some((s) => s.href?.includes('styles.css') && s.cssRules.length > 0),
-  )
-  expect(styled).toBe(true)
+/** Every screenshot on the chapter decoded. The count is pinned so "no images" cannot pass vacuously. */
+async function expectScreenshots(page: Page, count: number) {
+  const images = page.locator('img[src^="/guide-assets/"]')
+  await expect(images).toHaveCount(count)
+  for (const img of await images.all()) {
+    await img.scrollIntoViewIfNeeded()
+    await expect
+      .poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0))
+      .toBe(true)
+  }
 }
 
 test.describe('US-119 User Guide', () => {
-  test('opens from the Help icon, switches language and navigates chapters', async ({
+  test('opens from Help in the same tab, switches language and moves between chapters', async ({
     page,
     context,
   }) => {
@@ -39,42 +38,48 @@ test.describe('US-119 User Guide', () => {
     await page.goto('/backlog')
     await settle(page)
 
-    // AC1 — the Help icon opens the guide in a NEW tab.
-    const [guide] = await Promise.all([
-      context.waitForEvent('page'),
-      page.getByRole('link', { name: 'Open User Guide (opens in a new tab)' }).click(),
-    ])
-    await guide.waitForLoadState('domcontentloaded')
-    await expect(guide).toHaveURL(/\/guide\/en\/index\.html/)
+    // Help opens the guide IN PLACE (BA, 2026-10-30), in the browser's edition, on the start chapter.
+    const pagesBefore = context.pages().length
+    await page.getByRole('link', { name: 'Open User Guide' }).click()
+    await expect(page).toHaveURL(/\/user-guide\/en\/00-bat-dau$/)
+    expect(context.pages()).toHaveLength(pagesBefore)
+    await expect(page.getByText('Version 1.0', { exact: true })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: 'Work in the right scope from the start' }),
+    ).toBeVisible()
 
-    // AC4 — the official version in the header, with assets intact.
-    await expect(guide.locator('.brand-version')).toHaveText('Version 1.0')
-    await expectNoBrokenAssets(guide, 0) // the index has no screenshots: this pins the stylesheet
+    // Language: the same chapter in the Vietnamese edition, chrome included.
+    await page.getByRole('combobox', { name: 'Select language' }).selectOption('vi')
+    await expect(page).toHaveURL(/\/user-guide\/vi\/00-bat-dau$/)
+    await expect(page.getByText('Phiên bản 1.0', { exact: true })).toBeVisible()
 
-    // AC2 — switch to Vietnamese: the counterpart page loads.
-    await guide.locator('#guide-language').selectOption('vi')
-    await guide.waitForURL(/\/guide\/index\.html/)
-    await expect(guide.locator('html')).toHaveAttribute('lang', 'vi')
-    await expect(guide.locator('.brand-version')).toHaveText('Phiên bản 1.0')
+    // The contents move to a chapter and mark it current; its three screenshots load.
+    const contents = page.getByRole('navigation', { name: 'Mục lục hướng dẫn' })
+    await contents.getByRole('link', { name: /^03\s*Backlog & công việc/ }).click()
+    await expect(page).toHaveURL(/\/user-guide\/vi\/03-backlog-cong-viec#chapter-03$/)
+    await expect(contents.getByRole('link', { name: /^03\s*Backlog & công việc/ })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    await expect(page.getByRole('navigation', { name: 'Đường dẫn' })).toContainText(
+      '03. Backlog & công việc',
+    )
+    await expectScreenshots(page, 3)
 
-    // AC3 — the left menu moves to a chapter and highlights it.
-    await guide.locator('.nav-item[href^="03-backlog-cong-viec.html"]').click()
-    await guide.waitForURL(/\/guide\/03-backlog-cong-viec\.html/)
-    await expect(guide.locator('.nav-item.active')).toHaveAttribute('href', '#chapter-03')
-    await expect(guide.locator('.breadcrumb strong')).toHaveText(/^03\. /)
-    await expectNoBrokenAssets(guide, 3) // chapter 03 carries three production screenshots
+    // "Next" moves on in reading order.
+    await page
+      .getByRole('navigation', { name: 'Điều hướng giữa các phần' })
+      .getByRole('link', { name: /Phần sau/ })
+      .click()
+    await expect(page).toHaveURL(/\/user-guide\/vi\/04-testing#chapter-04$/)
 
-    // AC3 — the "next" control moves on, and the highlight follows.
-    await guide.locator('.chapter-nav-link.next').click()
-    await guide.waitForURL(/\/guide\/04-testing\.html/)
-    await expect(guide.locator('.nav-item.active')).toHaveAttribute('href', '#chapter-04')
+    // Back to English keeps the chapter.
+    await page.getByRole('combobox', { name: 'Chọn ngôn ngữ' }).selectOption('en')
+    await expect(page).toHaveURL(/\/user-guide\/en\/04-testing/)
+    await expect(page.getByRole('navigation', { name: 'Path' })).toContainText('04. Testing')
 
-    // AC2 — and back to English on a chapter keeps the chapter.
-    await guide.locator('#guide-language').selectOption('en')
-    await guide.waitForURL(/\/guide\/en\/04-testing\.html/)
-    await expect(guide.locator('html')).toHaveAttribute('lang', /^en/)
-
-    // AC1 — the Rova tab never moved.
-    await expect(page).toHaveURL(/\/backlog$/)
+    // A shared link to a section lands on that section.
+    await page.goto('/user-guide/en/05-lap-ke-hoach#trang-thai-iteration')
+    await expect(page.locator('#trang-thai-iteration')).toBeInViewport()
   })
 })

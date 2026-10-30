@@ -1104,40 +1104,49 @@ Plan: [`docs/PLAN-phase7-story-carryover.md`](docs/PLAN-phase7-story-carryover.m
 7. **The Export button lives in each report's own controls**, not the Reports `PageHeader` the plan
    named: the CSV must carry that report's live scope (Iteration, window, Direction).
 
-## The User Guide is static, gated, and extensionless on Pages
+## The User Guide is a page of the app, and only its own files are gated
 
-US-119. The BA's bilingual guide lives in `apps/web/public/guide` (VI at the root, EN under `en/`), so
-Vite copies it into `dist/` and Pages serves it at `/guide/` on the SPA origin. The Help icon in the
-top bar is a plain `<a target="_blank">` to it (`widgets/app-shell/help-link.tsx`), edition chosen
-from the FIRST browser language (`model/guide-url.ts`).
+US-119. The BA's bilingual guide is the `/user-guide/<lang>/<chapter>#<section>` route
+(`apps/web/src/pages/guide`), `vi` | `en`, behind `requireAuth` like every other page. The Help icon in the
+top bar is a router `<Link to="/user-guide">` in the SAME tab — the BA confirmed it on 2026-10-30,
+reversing US-119 AC1's new-tab rule — and `/user-guide` picks the edition from the FIRST browser language
+(`model/guide-url.ts`).
 
-- **Static files on Pages are public unless a Function stands in front of them.** The guide carries
-  production screenshots, so `functions/guide/_middleware.ts` runs `_lib/guide-gate.ts` for `/guide/*`
-  ONLY — path-scoped like the `/v1` proxy, so the SPA's own assets never pass through user code. A
-  present `__Host-rova_session` cookie is not trusted: it is checked against `GET /v1/bff/me` (sent
-  through `proxyToApi`, so the gate needs `EDGE_CLIENT_IP_SECRET` as well as `API_ORIGIN`), and
-  anything but 200/401/403 (including a timeout) is a 503 — fail closed. The cost is one `/bff/me`
-  call per guide REQUEST, i.e. ~15 per page view (page + CSS + JS + screenshots).
-- **Sign-in comes back to the guide with no SPA code.** The gate 302s to `/login?returnTo=/guide/…`
-  (built from the request's own path, collapsing to `/guide/` otherwise — not an open redirect); the
-  login page forwards `returnTo`, and `BffController.callback` 302s to it server-side after
-  `isSafeReturnTo`. The dev-login form ignores `returnTo`, so locally you land on `/`.
-- **Pages strips `.html`** (`/guide/01-lam-quen.html` → `/guide/01-lam-quen`). `guide.js` identified
-  the page by the raw last path segment, so on Pages it `location.replace`d itself in a loop and the
-  menu never highlighted. Every page comparison there goes through `pageName`/`pageKey` now. None of
-  it reproduces under `file://` or Vite, which is why `src/test/user-guide.script.test.ts` runs the
-  script against the extensionless URLs.
-- **BA edits arrive as PRs to `public/guide`, which is now the source of truth** — it has diverged
-  from the BA's `Mini_Rally_pj/09_User_Guide` copy by the `guide.js` fix. Prettier and ESLint ignore
-  the folder on purpose; `src/test/user-guide.integrity.test.ts` guards it instead (links and
-  screenshots resolve, VI/EN parity, `Version 1.0` header, no external origin, no inline
-  script/style — which is what lets the gate's CSP drop `unsafe-inline`). Bump `guide.js?v=` in every
-  page when the script changes.
-- **Never put a `.md` (or anything but web assets) under `public/`** — it is published verbatim. The
-  BA's `WRITING_BRIEF.md` is internal and is deliberately not copied; the integrity test fails if it is.
-- **Locally the guide is UNGATED** — Vite does not run Pages Functions. Exercise the gate with
-  `pnpm build:web` then `wrangler pages dev apps/web/dist` with `API_ORIGIN` and
-  `EDGE_CLIENT_IP_SECRET` set.
+- **It used to be static HTML under `public/guide`, and that is why it moved.** Pages served it through a
+  path-scoped Function that called `GET /v1/bff/me` for EVERY file — page, CSS, `guide.js`, each
+  screenshot — about 15 API calls per page view. Now a chapter is static `.tsx`, one lazy chunk per
+  chapter per edition, and a page view costs one session check per GUIDE file it loads — the chapter's
+  chunk and its screenshots — and none for the page, the styles or the rest of the app.
+- **The guide's TEXT is gated too, by where the build writes it.** Pages serves every built file to anyone,
+  so `chunkFileName` (`vite.config.ts`) writes any chunk holding a chapter or the TOC under
+  `/guide-assets/js/`, and `functions/guide-assets/_middleware.ts` runs `_lib/guide-gate.ts` for
+  `/guide-assets/*` only (screenshots live there too). Guide text reaching the ENTRY chunk fails the
+  build: signed-out visitors load the entry to reach `/login`, so gating it would lock them out. Gated
+  files are `private, no-cache`: revalidated on every use, so nothing is readable from the disk cache
+  after sign-out. A refused request redirects to `/login?returnTo=/user-guide` — a
+  constant, because the refused URL is a script or an image, never a page.
+- **Screenshots are never imported into the bundle** — Vite would publish them under the public `/assets/`.
+  `GuideShot` references `/guide-assets/<name>.png` by URL.
+- **Developers own the chapter files** (agreed with the BA, 2026-10-30). A chapter is semantic HTML inside
+  the layout parts of `ui/parts/` — each part stands in for one class of the old `styles.css` and styles
+  its children with Tailwind descendant variants over the app tokens. One TOC per edition
+  (`model/toc.{vi,en}.ts`) drives the sidebar, search, pager and links; slugs and section ids are shared
+  by both editions, which is what lets the language switch keep the reader's place.
+- **`src/test/user-guide.integrity.test.tsx` renders every chapter** through a real router and pins: both
+  editions share chapters and ids, every TOC id is rendered, every link resolves (by `href`), every
+  screenshot exists and is used, nothing reaches an external origin. Add a chapter by adding its TOC
+  entry AND its file in both editions; the test fails until all four agree.
+- **Two declared exceptions.** `pages/guide/content/**` is excluded from the FE ratchet's hardcoded-copy
+  counter ONLY (a bilingual document, not UI copy awaiting `t()`), and `react-refresh/only-export-components`
+  is off for `ui/parts/**` (it cannot see `part()`-made components). Guide chrome uses the `guide` i18n
+  namespace, the one namespace with a `vi` resource, read with `lng` set to the edition. The long-form
+  type scale is `text-doc-*`, registered with `tailwind-merge` like `text-ui-*`.
+- **Old `/guide/…` links still work** via `public/_redirects` (static, no Function): `/guide/` → `vi`,
+  `/guide/en/` → `en`, same chapter (the app drops `.html` and maps `index` to the start chapter), and
+  the browser keeps the `#section`. Pinned by `src/test/user-guide-redirects.test.ts`.
+- **Locally nothing is gated and nothing redirects** — Vite neither runs Pages Functions nor reads
+  `_redirects`. Exercise both with `pnpm build:web` then `wrangler pages dev apps/web/dist` with
+  `API_ORIGIN` and `EDGE_CLIENT_IP_SECRET` set.
 
 ## Observability
 
