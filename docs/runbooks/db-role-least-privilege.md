@@ -68,6 +68,14 @@ Migration `0068_app_role_least_privilege.sql` has already created the roles and
 their grants. It created them **NOLOGIN**, so nothing uses them yet and applying
 it changed no running behaviour. This runbook is the part that does.
 
+> **On-prem (CNPG) the roles are the PLATFORM's, not the migration's.** CNPG
+> creates `rova_app`, `rova_worker` and `rova_migrator` as managed roles (see
+> `gitops`), and `rova_migrator` deliberately has **no** CREATEROLE. 0068 therefore
+> no longer creates roles — it only `GRANT`s, and `0137_runtime_role_grants.sql`
+> re-states the full runtime grant set plus the default privileges for future
+> tables. The names above are the pre-0128 ones; `0128` renamed them in place.
+> The rebuild-from-zero gate is the `Fresh DB rebuild` CI job (`db/fresh-db/`).
+
 | Role | Rights | Used by |
 |---|---|---|
 | `rally_app` | `SELECT, INSERT, UPDATE, DELETE` on the nine app schemas. No DDL, no ownership. | api |
