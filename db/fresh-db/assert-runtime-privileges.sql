@@ -142,27 +142,44 @@ CREATE TABLE work.fresh_db_privilege_probe (id int);
 INSERT INTO work.fresh_db_privilege_probe VALUES (1);
 RESET ROLE;
 
+-- One privilege per check, for the same reason section 1 says so: the comma-list
+-- form answers "holds ANY of these" and would pass with one privilege missing.
 DO $$
 DECLARE
+  table_privileges CONSTANT text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
   r text;
+  p text;
   creator text := (SELECT role::text FROM assert_creator);
 BEGIN
   FOREACH r IN ARRAY ARRAY['rova_app', 'rova_worker'] LOOP
-    IF NOT has_table_privilege(r, 'work.fresh_db_privilege_probe', 'SELECT,INSERT,UPDATE,DELETE') THEN
-      RAISE EXCEPTION
-        '% has no privileges on work.fresh_db_privilege_probe, a table created after the migrations: '
-        'ALTER DEFAULT PRIVILEGES is missing or was set for the wrong grantor (creator = %)',
-        r, creator;
-    END IF;
+    FOREACH p IN ARRAY table_privileges LOOP
+      IF NOT has_table_privilege(r, 'work.fresh_db_privilege_probe', p) THEN
+        RAISE EXCEPTION
+          '% lacks % on work.fresh_db_privilege_probe, a table created after the migrations: '
+          'ALTER DEFAULT PRIVILEGES is missing or was set for the wrong grantor (creator = %)',
+          r, p, creator;
+      END IF;
+    END LOOP;
   END LOOP;
 END $$;
 
+-- …and each role exercises all four for real, so the checks above cannot be the
+-- only thing standing between a partial default privilege and a pass.
+\echo '  both runtime roles can read and write the table created after the migrations'
 SET ROLE rova_app;
 SELECT count(*) AS rows_visible FROM work.fresh_db_privilege_probe;
 INSERT INTO work.fresh_db_privilege_probe VALUES (2);
 DELETE FROM work.fresh_db_privilege_probe WHERE id = 2;
 INSERT INTO work.fresh_db_privilege_probe VALUES (2);
 UPDATE work.fresh_db_privilege_probe SET id = 3 WHERE id = 2;
+RESET ROLE;
+
+SET ROLE rova_worker;
+SELECT count(*) AS rows_visible FROM work.fresh_db_privilege_probe;
+INSERT INTO work.fresh_db_privilege_probe VALUES (4);
+DELETE FROM work.fresh_db_privilege_probe WHERE id = 4;
+INSERT INTO work.fresh_db_privilege_probe VALUES (4);
+UPDATE work.fresh_db_privilege_probe SET id = 5 WHERE id = 4;
 RESET ROLE;
 
 SET ROLE :"creator";

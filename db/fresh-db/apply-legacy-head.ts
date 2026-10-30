@@ -77,6 +77,26 @@ async function run(): Promise<void> {
   const folder = mkdtempSync(path.join(tmpdir(), 'rova-legacy-head-'));
   const pool = new Pool({ connectionString: url, max: 1 });
   try {
+    // Re-running is a no-op once the legacy head is in place: re-applying
+    // legacy-0068.sql would RE-CREATE `rally_*` on a database 0128 has already
+    // renamed them on, which is the opposite of the state this script produces.
+    // Two statements rather than one: a brand-new database has no bookkeeping
+    // table yet, which is the normal first run — referencing it in FROM would
+    // error however the row is filtered.
+    const present = await pool.query<{ present: boolean }>(
+      `select to_regclass('drizzle.__drizzle_migrations') is not null as present`,
+    );
+    const done = present.rows[0]?.present
+      ? await pool.query(
+          'select 1 from drizzle.__drizzle_migrations where created_at = $1 limit 1',
+          [at0068.when],
+        )
+      : { rowCount: 0 };
+    if ((done.rowCount ?? 0) > 0) {
+      log.info(`Already at the legacy head (0068 recorded at when=${at0068.when}). Nothing to do.`);
+      return;
+    }
+
     mkdirSync(path.join(folder, 'meta'), { recursive: true });
     for (const entry of head) {
       copyFileSync(
@@ -99,8 +119,16 @@ async function run(): Promise<void> {
     log.info('Applying legacy-0068.sql (creates rally_app / rally_worker / rally_migrate)…');
     await pool.query(legacySql);
 
+    // Re-runnable: a retried step re-applies legacy-0068.sql (it is idempotent by
+    // construction), but a SECOND row at this `created_at` would be stray state
+    // for `db/migrate.ts`'s stranded-migration reasoning to explain — 0068's slot
+    // must hold exactly one row.
     await pool.query(
-      'insert into drizzle.__drizzle_migrations ("hash", "created_at") values ($1, $2)',
+      `insert into drizzle.__drizzle_migrations ("hash", "created_at")
+       select $1, $2
+        where not exists (
+          select 1 from drizzle.__drizzle_migrations where created_at = $2
+        )`,
       [hash, at0068.when],
     );
     log.info(

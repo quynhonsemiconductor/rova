@@ -25,10 +25,16 @@
 -- the on-prem case, and it never touches `rally_*`.
 --
 -- Idempotent: safe to re-run, and safe on a database where the roles already
--- exist. Editing a migration that has already run is safe with Drizzle: the
--- migrator compares only the journal's `when` against `__drizzle_migrations`
--- (`drizzle-orm` 0.45.4, pg-core/dialect.js:57-68), never the recorded hash, so
--- this file does not re-run where it has.
+-- exist.
+--
+-- EDITED IN PLACE on 2026-10-30, deliberately. Drizzle compares only the
+-- journal's `when` against `__drizzle_migrations` (`drizzle-orm` 0.45.4,
+-- pg-core/dialect.js:57-68) and never the recorded hash, so this file does not
+-- re-run where it already has; the only trace is migrate.ts's hash-mismatch
+-- warning, which it documents as "the file was edited after it ran (harmless)".
+-- An environment that ran the old 0068 keeps its grants (0128 renamed them in
+-- place) and a fresh one gets the rova_* grants here; 0137 re-states the full
+-- set, so both converge on the same end state rather than on this entry.
 -- ============================================================================
 
 DO $$
@@ -62,7 +68,7 @@ BEGIN
   IF cardinality(present_roles) = 0 THEN
     RAISE EXCEPTION
       'Migration 0068 found none of the runtime roles % and the connecting role % cannot create them. '
-      'They are provisioned by the platform (CNPG managed roles on-prem, db/runbooks/db-role-least-privilege.md on AWS).',
+      'They are provisioned by the platform (CNPG managed roles on-prem, docs/runbooks/db-role-least-privilege.md on AWS).',
       runtime_roles, current_user;
   END IF;
 

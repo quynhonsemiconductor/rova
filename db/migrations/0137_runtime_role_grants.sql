@@ -11,8 +11,11 @@
 --
 -- This migration re-states the whole runtime grant set, idempotently, so the
 -- end state does not depend on which of 0068/0128 ran first or whether they
--- created the roles themselves. The set is the same one the data-move runbook's
--- `post-restore-grants.sql` applies after a restore.
+-- created the roles themselves: USAGE on each app schema, SELECT/INSERT/UPDATE/
+-- DELETE on its tables, USAGE/SELECT on its sequences, and the same two
+-- privileges as DEFAULT PRIVILEGES for tables and sequences created later. The
+-- on-prem data-move runbook applies that identical set after a restore, so a
+-- restored database and a rebuilt one cannot diverge.
 --
 -- Default privileges are set FOR the role that grants them — the role running
 -- this migration, which on-prem is `rova_migrator` (the owner, and so the
@@ -46,7 +49,7 @@ BEGIN
   IF cardinality(present_roles) = 0 THEN
     RAISE EXCEPTION
       'Migration 0137 found none of the runtime roles %. They are provisioned by the platform '
-      '(CNPG managed roles on-prem; db/runbooks/db-role-least-privilege.md on AWS).',
+      '(CNPG managed roles on-prem; docs/runbooks/db-role-least-privilege.md on AWS).',
       runtime_roles;
   END IF;
 
