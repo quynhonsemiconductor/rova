@@ -223,11 +223,14 @@ export default defineConfig({
       // regression to chase.
       // RE-MEASURED 2026-10-19 (identity v8 cutover, #718 CI): branches 82.05 — the identity-8 auth code
       // brought well-covered branches in, so the 79 floor fell 3.05 behind and the ratchet failed. Raised to 82.
+      // RE-MEASURED 2026-10-30 (US-118 Carryover retest, #829 CI): stmts 88.21, branch 82.48, funcs
+      // 86.3, lines 88.92 — main sat at 87.99 statements, and the PR's new specs tipped the 85 floor
+      // 3.21 behind. Raised `statements` to 88; the other three are still within 3 points.
       thresholds: {
         lines: 86,
         functions: 84,
         branches: 82,
-        statements: 85,
+        statements: 88,
       },
     },
   },
