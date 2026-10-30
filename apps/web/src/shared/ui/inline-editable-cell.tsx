@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
+import { isNewTabClick } from '@/shared/lib/new-tab-click'
 import { cn } from '@/shared/lib/utils'
+import { isInAppPath } from './record-link'
 
 interface InlineEditableCellProps {
   value: string
@@ -21,6 +23,13 @@ interface InlineEditableCellProps {
    * via className/inputStyle (e.g. right-aligned mono for numeric columns).
    */
   fullCell?: boolean
+  /**
+   * The record's detail URL (an in-app path), for a Name cell whose row IS a record (US-120 AC1).
+   * Ctrl/Cmd/Shift+click and middle-click open it in a new tab and do NOT enter edit; a plain click
+   * still edits. The cell stays a text control rather than an `<a>`, because its primary action is
+   * editing — the ID cell beside it is the link. A URL that is not an in-app path is ignored.
+   */
+  newTabHref?: string
 }
 
 /** Baked full-cell edit-input look — mirrors the other cell editors: subtle
@@ -58,6 +67,7 @@ export function InlineEditableCell({
   ariaLabel,
   title,
   fullCell = false,
+  newTabHref,
 }: InlineEditableCellProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
@@ -96,8 +106,36 @@ export function InlineEditableCell({
     )
   }
 
-  const triggerProps =
-    trigger === 'dblclick' ? { onDoubleClick: startEdit } : { onClick: startEdit }
+  const tabHref = newTabHref && isInAppPath(newTabHref) ? newTabHref : undefined
+
+  /** True when the gesture was "open elsewhere" and has been handled — the caller must not edit. */
+  function openedInNewTab(e: MouseEvent) {
+    if (!tabHref || !isNewTabClick(e)) return false
+    e.preventDefault()
+    e.stopPropagation()
+    window.open(tabHref, '_blank', 'noopener')
+    return true
+  }
+
+  const triggerProps = {
+    onClick: (e: MouseEvent) => {
+      if (openedInNewTab(e)) return
+      if (trigger === 'click') startEdit()
+    },
+    ...(trigger === 'dblclick' ? { onDoubleClick: startEdit } : {}),
+    // Middle-click fires `auxclick`, not `click`. Its `mousedown` is prevented too, or Windows
+    // starts autoscroll and swallows the gesture.
+    ...(tabHref
+      ? {
+          onAuxClick: (e: MouseEvent) => {
+            if (e.button === 1) openedInNewTab(e)
+          },
+          onMouseDown: (e: MouseEvent) => {
+            if (e.button === 1) e.preventDefault()
+          },
+        }
+      : {}),
+  }
 
   // Editable cells get the shared hover affordance (outline box + text caret,
   // no layout shift); read-only cells render plain. `fullCell` adds the
