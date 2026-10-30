@@ -95,6 +95,14 @@
   --report-planned: #d98324; /* Burnup: planned scope */
   --report-preliminary: #8b6fd1; /* Burnup: top-down Preliminary estimate */
   --report-grid: #dfe5ec;
+
+  /* User Guide screenshot markers. The numbered pins drawn ON `02-top-navigation-annotated.png`, so
+     the legend beside it must use the same four colours; they are image colours, not theme colours,
+     and are deliberately not redefined for dark mode. */
+  --guide-marker-1: #16a34a;
+  --guide-marker-2: #dc2626;
+  --guide-marker-3: #7c3aed;
+  --guide-marker-4: #db2777;
   --warning: #d97706;
   --warning-bg: #fef5e4;
   --warning-border: #f0d9a5;
@@ -288,6 +296,10 @@
   --color-warning-border: var(--warning-border);
   --color-info: var(--info);
   --color-info-bg: var(--info-bg);
+  --color-guide-marker-1: var(--guide-marker-1);
+  --color-guide-marker-2: var(--guide-marker-2);
+  --color-guide-marker-3: var(--guide-marker-3);
+  --color-guide-marker-4: var(--guide-marker-4);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-border-subtle: var(--border-subtle);
