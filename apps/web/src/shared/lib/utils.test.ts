@@ -11,6 +11,16 @@ describe('cn (class name merge)', () => {
     expect(cn('a', false, null, undefined, '', 'b')).toBe('a b')
   })
 
+  it('keeps a text colour beside a custom font size, from either scale', () => {
+    expect(cn('text-ui-sm', 'text-primary')).toBe('text-ui-sm text-primary')
+    expect(cn('text-doc-title', 'text-foreground')).toBe('text-doc-title text-foreground')
+    expect(cn('[&_h2]:text-doc-h2', '[&_h2]:text-foreground')).toBe(
+      '[&_h2]:text-doc-h2 [&_h2]:text-foreground',
+    )
+    // Two sizes still conflict: the later one wins.
+    expect(cn('text-doc-body', 'text-doc-lead')).toBe('text-doc-lead')
+  })
+
   it('applies conditional object syntax', () => {
     expect(cn('base', { active: true, hidden: false })).toBe('base active')
   })

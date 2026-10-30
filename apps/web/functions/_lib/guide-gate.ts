@@ -1,9 +1,12 @@
 /**
- * Session gate for the static User Guide (US-119), served by Cloudflare Pages at `/guide/*`.
+ * Session gate for the static User Guide (US-119), served by Cloudflare Pages at `/guide/*`, and for
+ * the in-app guide's screenshots at `/guide-assets/*`.
  *
- * The guide is plain files under `apps/web/public/guide`, so Pages would serve every page and every
- * production screenshot to anyone with the URL. This gate runs in front of them (wired by the
- * path-scoped `functions/guide/_middleware.ts`, so the SPA's own assets never pass through user code)
+ * Both are plain files — the static guide under `apps/web/public/guide`, the in-app guide's screenshots
+ * under `apps/web/public/guide-assets` — so Pages would serve every page and every production
+ * screenshot to anyone with the URL. This gate runs in front of them (wired by the path-scoped
+ * `functions/guide/_middleware.ts` and `functions/guide-assets/_middleware.ts`, so the SPA's own
+ * assets never pass through user code)
  * and admits only a reader the API itself recognises as signed in.
  *
  * The decision is the API's, never ours: the cookie's PRESENCE only saves a round trip for a reader
@@ -21,6 +24,17 @@ import { proxyToApi, type ProxyEnv } from './proxy'
 
 export const SESSION_COOKIE = '__Host-rova_session'
 const GUIDE_ROOT = '/guide/'
+/**
+ * The in-app guide's screenshots (`src/pages/guide/ui/guide-shot.tsx`), gated by
+ * `functions/guide-assets/_middleware.ts`. The in-app guide's TEXT ships in the SPA's own chunks and
+ * never reaches this gate; only these images do.
+ */
+export const GUIDE_ASSETS_ROOT = '/guide-assets/'
+/**
+ * Where a refused guide-asset request sends the reader back to after signing in: the SPA's guide
+ * route. Pinned to the router by `src/test/user-guide-gate-paths.test.ts`.
+ */
+export const IN_APP_GUIDE = '/user-guide'
 const SESSION_CHECK_TIMEOUT_MS = 5_000
 
 /**
@@ -32,8 +46,11 @@ export const GUIDE_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'content-security-policy':
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
     "frame-ancestors 'none'; base-uri 'self'; form-action 'none'",
-  // `private`: a shared cache must never hand a gated page to the next reader. `no-cache`: the
+  // `private`: a shared cache must never hand a gated file to the next reader. `no-cache`: the
   // browser revalidates, which re-runs this gate, so a signed-out reader cannot read from history.
+  // Screenshots included: a max-age would leave production screenshots readable from the disk cache
+  // after sign-out, and — their names carry no content hash — stale after a deploy. A revalidation
+  // costs one session check and, unchanged, a 304 rather than the file.
   'cache-control': 'private, no-cache',
   'x-frame-options': 'DENY',
   'x-content-type-options': 'nosniff',
@@ -51,16 +68,22 @@ export function hasSessionCookie(request: Request): boolean {
 }
 
 /**
- * `/login?returnTo=<path>` on the SAME origin as the request. `returnTo` is taken only from the
- * request's own pathname + search, and anything that is not a `/guide/` path collapses to the guide
- * root — so the value can never name another site (`//evil.example`) and the gate is not an open
- * redirect, whatever URL it is handed.
+ * `/login?returnTo=<path>` on the SAME origin as the request. A static guide page comes back to
+ * itself; an in-app guide file (a screenshot) comes back to `/user-guide`, the page that asked for
+ * it; anything else collapses to the static guide root. `returnTo` is only ever the request's own
+ * `/guide/` path or a constant, so it can never name another site (`//evil.example`) and the gate is
+ * not an open redirect, whatever URL it is handed.
  */
 export function loginRedirect(request: Request): Response {
   const url = new URL(request.url)
   const candidate = url.pathname + url.search
-  const returnTo =
-    candidate.startsWith(GUIDE_ROOT) && !candidate.startsWith('//') ? candidate : GUIDE_ROOT
+  let returnTo = GUIDE_ROOT
+  if (candidate.startsWith(GUIDE_ASSETS_ROOT)) {
+    // A screenshot is never the page the reader opened; the in-app guide is.
+    returnTo = IN_APP_GUIDE
+  } else if (candidate.startsWith(GUIDE_ROOT) && !candidate.startsWith('//')) {
+    returnTo = candidate
+  }
   const login = new URL('/login', url.origin)
   login.searchParams.set('returnTo', returnTo)
   return new Response(null, {
@@ -126,6 +149,21 @@ export async function guardGuide(
   await session.body?.cancel()
   return withGuideHeaders(await next(), setCookiesOf(session))
 }
+
+/** A Pages middleware's context, as far as the gate uses it. */
+export interface GuideMiddlewareContext {
+  request: Request
+  env: ProxyEnv
+  next: () => Promise<Response>
+}
+
+/**
+ * The `onRequest` of every gated folder's `_middleware.ts`, which only re-exports it: Pages scopes a
+ * middleware by its folder, so each gated path needs its own file, and this keeps that file to one
+ * line instead of a copy of the wiring.
+ */
+export const guideMiddleware = (context: GuideMiddlewareContext): Promise<Response> =>
+  guardGuide(context.request, context.env, context.next)
 
 /**
  * Every Set-Cookie on the session check, one string each. Falls back to iterating the headers when
