@@ -34,18 +34,61 @@ export interface StrandedReport {
   mismatched: string[];
   /** Matched by hash under a different timestamp: ran, recorded under an older `when`. Informational. */
   recordedUnderOtherTimestamp: string[];
+  /**
+   * A file that was edited after it ran, with the pair of hashes known in advance (see
+   * {@link EDITED_AFTER_APPLY}). Reported once, at info, instead of joining `mismatched` forever.
+   */
+  knownEdits: string[];
 }
+
+/**
+ * Migrations whose file was rewritten AFTER they had already run somewhere, with both hashes named here.
+ *
+ * This is the exception list the mismatch report stays meaningful by having. `mismatched` is a real signal —
+ * "this slot may belong to another file and this one never ran" — and a permanent known-benign entry in it
+ * teaches every reader to dismiss the whole warning. So the exception is explicit, narrow, and carries both
+ * sides of the pair: the hash the database recorded (what the old text hashed to) and the hash of the file
+ * now on disk. Any OTHER recorded hash still reports.
+ *
+ * 0068 (2026-10-30, #832): ran `CREATE ROLE rally_app` unconditionally, which aborts the first migration on a
+ * fresh CNPG database where the migrator owns the database and holds no CREATEROLE. It was rewritten to grant
+ * only (creating roles only when the connecting role may), so every database that ran the old text now records
+ * a hash the file no longer has. Drizzle never re-runs it — it compares `created_at` alone — and 0137 re-states
+ * the grant set for both paths, so nothing diverges. Measured against the old file (`git show 176bb66:…`).
+ */
+export const EDITED_AFTER_APPLY: ReadonlyMap<
+  string,
+  { readonly recordedHash: string; readonly fileHash: string }
+> = new Map([
+  [
+    '0068_app_role_least_privilege',
+    {
+      recordedHash: '6667689c82a32d79f15059920ab2d5ec27cbcdb2b0f5ae5393399291f6451d02',
+      fileHash: '40d4ab29101cca8657604edea6be39ee8894f3bbfdc8c46d0dcec197fecfc2c8',
+    },
+  ],
+]);
 
 export function strandedMigrations(
   entries: readonly JournalEntry[],
   recorded: readonly RecordedMigration[],
   /** The sha256 of the entry's file, or undefined when the file does not exist. */
   hashOf: (tag: string) => string | undefined,
+  /** Defaults to {@link EDITED_AFTER_APPLY}; a parameter so the rule can be tested without the real pair. */
+  editedAfterApply: ReadonlyMap<
+    string,
+    { readonly recordedHash: string; readonly fileHash: string }
+  > = EDITED_AFTER_APPLY,
 ): StrandedReport {
   const hashByWhen = new Map(recorded.map((r) => [String(r.created_at), r.hash]));
   const recordedHashes = new Set(recorded.map((r) => r.hash));
 
-  const report: StrandedReport = { missing: [], mismatched: [], recordedUnderOtherTimestamp: [] };
+  const report: StrandedReport = {
+    missing: [],
+    mismatched: [],
+    recordedUnderOtherTimestamp: [],
+    knownEdits: [],
+  };
   for (const entry of entries) {
     const hash = hashOf(entry.tag);
     if (hash === undefined) continue;
@@ -60,6 +103,14 @@ export function strandedMigrations(
       if (atWhen === undefined) report.recordedUnderOtherTimestamp.push(label);
       continue;
     }
+
+    // A documented rewrite: the database recorded the pre-edit text, the file hashes to the post-edit text.
+    const known = editedAfterApply.get(entry.tag);
+    if (known && atWhen === known.recordedHash && hash === known.fileHash) {
+      report.knownEdits.push(label);
+      continue;
+    }
+
     if (atWhen === undefined) report.missing.push(label);
     else report.mismatched.push(label);
   }
