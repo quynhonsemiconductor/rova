@@ -64,3 +64,20 @@ export function iterationsInScope<T extends { teamId: string | null }>(
   if (!teamId) return iterations
   return iterations.filter((iteration) => iteration.teamId === null || iteration.teamId === teamId)
 }
+
+/**
+ * The iterations the Carryover report can serve for a selected Team: that Team's OWN, without the
+ * shared ones {@link iterationsInScope} adds.
+ *
+ * Carryover uses strict team equality (R7) — a team-less Iteration only ever holds team-less events,
+ * which a Team scope withholds — so a shared sprint here could only answer 0/0. The server's trend
+ * lists the same population (`listScopedIterations`), so the picker and the trend cannot disagree
+ * (US-118 AC5, BA retest TR-110).
+ */
+export function iterationsOwnedByTeam<T extends { teamId: string | null }>(
+  iterations: readonly T[],
+  teamId: string | undefined,
+): readonly T[] {
+  if (!teamId) return iterations
+  return iterations.filter((iteration) => iteration.teamId === teamId)
+}
