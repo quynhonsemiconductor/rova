@@ -42,7 +42,13 @@ function isDateOnly(iso: string): boolean {
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
-      'font-size': [{ text: ['ui-2xs', 'ui-xs', 'ui-sm', 'ui-md', 'ui-lg', 'ui-xl'] }],
+      'font-size': [
+        { text: ['ui-2xs', 'ui-xs', 'ui-sm', 'ui-md', 'ui-lg', 'ui-xl'] },
+        // The User Guide's long-form reading scale (`--text-doc-*`), for the same reason.
+        {
+          text: ['doc-sm', 'doc-body', 'doc-lead', 'doc-h3', 'doc-h2', 'doc-title', 'doc-display'],
+        },
+      ],
     },
   },
 })

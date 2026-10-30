@@ -1,0 +1,24 @@
+{
+  "title": "Rova User Guide",
+  "version": "Version 1.0",
+  "language": "Select language",
+  "languages": {
+    "vi": "Vietnamese",
+    "en": "English"
+  },
+  "contents": "Guide contents",
+  "search": "Search this guide",
+  "openMenu": "Open guide menu",
+  "closeMenu": "Close menu",
+  "toggleSections": "Open items in {{title}}",
+  "breadcrumb": "Path",
+  "pager": "Navigate between sections",
+  "previous": "Previous",
+  "next": "Next",
+  "backToTop": "Back to top ↑",
+  "unavailable": {
+    "title": "This chapter is not in the app yet",
+    "description": "It is still being moved from the standalone guide.",
+    "action": "Back to Get started"
+  }
+}

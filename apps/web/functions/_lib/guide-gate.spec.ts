@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { EDGE_IP_HEADER, EDGE_SIG_HEADER } from '@quynhonsemiconductor/platform-http/edge'
-import { GUIDE_SECURITY_HEADERS, guardGuide, hasSessionCookie, loginRedirect } from './guide-gate'
+import {
+  GUIDE_ASSET_CACHE_CONTROL,
+  GUIDE_SECURITY_HEADERS,
+  guardGuide,
+  hasSessionCookie,
+  loginRedirect,
+} from './guide-gate'
 import type { ProxyEnv } from './proxy'
 
 const API_ORIGIN = 'https://rova-api-dev.qnsc.vn'
@@ -99,6 +105,34 @@ describe('guardGuide', () => {
     for (const [name, value] of Object.entries(GUIDE_SECURITY_HEADERS)) {
       expect(res.headers.get(name)).toBe(value)
     }
+  })
+
+  it('caches an in-app guide screenshot privately, and still revalidates a guide page', async () => {
+    const shot = await guardGuide(
+      guideRequest('/guide-assets/03-backlog-production.png'),
+      ENV,
+      page,
+      {
+        fetchImpl: apiAnswering(200),
+      },
+    )
+    expect(shot.status).toBe(200)
+    expect(shot.headers.get('cache-control')).toBe(GUIDE_ASSET_CACHE_CONTROL)
+    expect(GUIDE_ASSET_CACHE_CONTROL).toMatch(/^private,/)
+
+    const html = await guardGuide(guideRequest(), ENV, page, { fetchImpl: apiAnswering(200) })
+    expect(html.headers.get('cache-control')).toBe('private, no-cache')
+  })
+
+  it('refuses a screenshot to a reader with no session, without calling the API', async () => {
+    const fetchImpl = apiAnswering(200)
+    const next = vi.fn(page)
+    const res = await guardGuide(guideRequest('/guide-assets/x.png', null), ENV, next, {
+      fetchImpl,
+    })
+    expect(res.status).toBe(302)
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(next).not.toHaveBeenCalled()
   })
 
   it('passes every Set-Cookie from the session check through individually', async () => {

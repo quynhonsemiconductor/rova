@@ -1,5 +1,6 @@
 /**
- * Session gate for the static User Guide (US-119), served by Cloudflare Pages at `/guide/*`.
+ * Session gate for the static User Guide (US-119), served by Cloudflare Pages at `/guide/*`, and for
+ * the in-app guide's screenshots at `/guide-assets/*`.
  *
  * The guide is plain files under `apps/web/public/guide`, so Pages would serve every page and every
  * production screenshot to anyone with the URL. This gate runs in front of them (wired by the
@@ -21,7 +22,21 @@ import { proxyToApi, type ProxyEnv } from './proxy'
 
 export const SESSION_COOKIE = '__Host-rova_session'
 const GUIDE_ROOT = '/guide/'
+/**
+ * The in-app guide's screenshots (`src/pages/guide/ui/guide-shot.tsx`), gated by
+ * `functions/guide-assets/_middleware.ts`. The in-app guide's TEXT ships in the SPA's own chunks and
+ * never reaches this gate; only these images do.
+ */
+export const GUIDE_ASSETS_ROOT = '/guide-assets/'
 const SESSION_CHECK_TIMEOUT_MS = 5_000
+
+/**
+ * A screenshot is cached privately for an hour, unlike a guide page. Every guide page view used to cost
+ * one session check per file; a screenshot that revalidated on every view would keep a share of that
+ * cost for an image that does not change between deploys. `private` still keeps it out of any shared
+ * cache, so the gate is skipped only for the browser that already passed it.
+ */
+export const GUIDE_ASSET_CACHE_CONTROL = 'private, max-age=3600'
 
 /**
  * Applied to every guide response the gate lets through. The guide has no inline script or style and
@@ -83,10 +98,17 @@ function sessionCheckRequest(request: Request): Request {
   return new Request(new URL('/v1/bff/me', request.url), { method: 'GET', headers })
 }
 
-function withGuideHeaders(response: Response, setCookies: readonly string[]): Response {
+function withGuideHeaders(
+  request: Request,
+  response: Response,
+  setCookies: readonly string[],
+): Response {
   // A response from `next()` can carry immutable headers; copy it before writing.
   const out = new Response(response.body, response)
   for (const [name, value] of Object.entries(GUIDE_SECURITY_HEADERS)) out.headers.set(name, value)
+  if (new URL(request.url).pathname.startsWith(GUIDE_ASSETS_ROOT)) {
+    out.headers.set('cache-control', GUIDE_ASSET_CACHE_CONTROL)
+  }
   // Appended one at a time: joining Set-Cookie values corrupts them (see `buildClientResponse`).
   for (const cookie of setCookies) out.headers.append('set-cookie', cookie)
   return out
@@ -124,7 +146,7 @@ export async function guardGuide(
 
   // The body is not needed; release it so the runtime can reuse the connection.
   await session.body?.cancel()
-  return withGuideHeaders(await next(), setCookiesOf(session))
+  return withGuideHeaders(request, await next(), setCookiesOf(session))
 }
 
 /**

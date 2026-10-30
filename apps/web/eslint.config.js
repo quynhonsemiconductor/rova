@@ -72,6 +72,15 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
+  // The User Guide's layout parts are components made by the `part()` factory
+  // (`export const Callout = part(…)`), which the rule cannot recognise as components.
+  // The cost is a full reload instead of a hot swap when a part file is edited.
+  {
+    files: ['src/pages/guide/ui/parts/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
   // Grid pages must consume the shared DataTableFrame (via @/shared/ui/table),
   // never re-assemble grid chrome from the low-level DataTableHeader directly.
   // Keeps every grid's header/scroll/footer identical (audit §5.2 / §8.2).
