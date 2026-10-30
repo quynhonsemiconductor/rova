@@ -31,23 +31,32 @@ CREATE TEMP TABLE assert_creator AS
 DROP TABLE IF EXISTS work.fresh_db_privilege_probe;
 DROP SEQUENCE IF EXISTS work.fresh_db_privilege_probe_seq;
 
--- ── 0. The app schemas, from the DATABASE ────────────────────────────────────
+-- ── 0. The app schemas, from the DATABASE, once ─────────────────────────────
 -- Derived, not listed: the same nine names are written in 0068 and 0137, and a
 -- fourth copy here is a fourth place to forget. The migrator owns every schema it
--- creates, so ownership identifies them on both paths, with the two namespaces it
+-- creates, so ownership identifies them on both paths, with the namespaces it
 -- owns but that are not application schemas excluded — plus `pg_*`, which includes
 -- the temp schema this very script uses.
-DO $$
-DECLARE
-  app_schemas text[];
-BEGIN
-  SELECT coalesce(array_agg(n.nspname ORDER BY n.nspname), '{}')
-    INTO app_schemas
+--
+-- Computed ONCE into a temp table and read by every check below. A copy of this
+-- query per check would also copy the empty case, in which `nspname = ANY(NULL)`
+-- matches nothing and an exhaustive check passes vacuously; here the empty case
+-- fails, and there is nothing to re-derive.
+DROP TABLE IF EXISTS assert_schemas;
+CREATE TEMP TABLE assert_schemas AS
+  SELECT n.nspname AS schema_name
     FROM pg_namespace n
    WHERE n.nspowner = (SELECT role_oid FROM assert_creator)
      AND n.nspname NOT IN ('public', 'drizzle', 'information_schema')
      AND n.nspname NOT LIKE 'pg\_%';
-  IF cardinality(app_schemas) = 0 THEN
+
+DO $$
+DECLARE
+  app_schemas text[];
+BEGIN
+  SELECT array_agg(schema_name ORDER BY schema_name) INTO app_schemas FROM assert_schemas;
+  -- `IS NULL` first: array_agg over nothing is NULL, and `cardinality(NULL) = 0` is NULL, not true.
+  IF app_schemas IS NULL OR cardinality(app_schemas) = 0 THEN
     RAISE EXCEPTION
       'no application schema is owned by %: the migrations did not run as this role, or created nothing',
       (SELECT role FROM assert_creator);
@@ -75,11 +84,10 @@ DECLARE
   missing text[];
   held text[];
 BEGIN
-  SELECT array_agg(n.nspname) INTO app_schemas
-    FROM pg_namespace n
-   WHERE n.nspowner = (SELECT role_oid FROM assert_creator)
-     AND n.nspname NOT IN ('public', 'drizzle', 'information_schema')
-     AND n.nspname NOT LIKE 'pg\_%';
+  SELECT array_agg(schema_name) INTO app_schemas FROM assert_schemas;
+  IF app_schemas IS NULL THEN
+    RAISE EXCEPTION 'the app-schema derivation is empty (see section 0) — refusing to pass vacuously';
+  END IF;
 
   FOREACH r IN ARRAY ARRAY['rova_app', 'rova_worker'] LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
@@ -259,11 +267,10 @@ DECLARE
   schemas_present int;
   defaults_present int;
 BEGIN
-  SELECT array_agg(n.nspname) INTO app_schemas
-    FROM pg_namespace n
-   WHERE n.nspowner = (SELECT role_oid FROM assert_creator)
-     AND n.nspname NOT IN ('public', 'drizzle', 'information_schema')
-     AND n.nspname NOT LIKE 'pg\_%';
+  SELECT array_agg(schema_name) INTO app_schemas FROM assert_schemas;
+  IF app_schemas IS NULL THEN
+    RAISE EXCEPTION 'the app-schema derivation is empty (see section 0) — refusing to pass vacuously';
+  END IF;
   schemas_present := cardinality(app_schemas);
   SELECT count(*) INTO defaults_present
     FROM pg_default_acl
