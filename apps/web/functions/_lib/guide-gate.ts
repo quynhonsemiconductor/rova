@@ -150,6 +150,21 @@ export async function guardGuide(
   return withGuideHeaders(await next(), setCookiesOf(session))
 }
 
+/** A Pages middleware's context, as far as the gate uses it. */
+export interface GuideMiddlewareContext {
+  request: Request
+  env: ProxyEnv
+  next: () => Promise<Response>
+}
+
+/**
+ * The `onRequest` of every gated folder's `_middleware.ts`, which only re-exports it: Pages scopes a
+ * middleware by its folder, so each gated path needs its own file, and this keeps that file to one
+ * line instead of a copy of the wiring.
+ */
+export const guideMiddleware = (context: GuideMiddlewareContext): Promise<Response> =>
+  guardGuide(context.request, context.env, context.next)
+
 /**
  * Every Set-Cookie on the session check, one string each. Falls back to iterating the headers when
  * `getSetCookie` is missing — `?? []` there would drop a refreshed session cookie silently, which is

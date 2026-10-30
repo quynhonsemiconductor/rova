@@ -18,7 +18,7 @@ export const CHAPTER_MODULES = import.meta.glob<ChapterModule>('../content/*/*.t
  */
 type ChapterComponents = Readonly<Partial<Record<string, LazyExoticComponent<ComponentType>>>>
 
-function chaptersOf(lang: GuideLang): ChapterComponents {
+function lazyChaptersOf(lang: GuideLang): ChapterComponents {
   const dir = `../content/${lang}/`
   return Object.fromEntries(
     Object.entries(CHAPTER_MODULES)
@@ -28,6 +28,6 @@ function chaptersOf(lang: GuideLang): ChapterComponents {
 }
 
 export const GUIDE_CHAPTERS: Readonly<Record<GuideLang, ChapterComponents>> = {
-  vi: chaptersOf('vi'),
-  en: chaptersOf('en'),
+  vi: lazyChaptersOf('vi'),
+  en: lazyChaptersOf('en'),
 }

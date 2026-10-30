@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { EDGE_IP_HEADER, EDGE_SIG_HEADER } from '@quynhonsemiconductor/platform-http/edge'
-import { GUIDE_SECURITY_HEADERS, guardGuide, hasSessionCookie, loginRedirect } from './guide-gate'
+import {
+  GUIDE_SECURITY_HEADERS,
+  guardGuide,
+  guideMiddleware,
+  hasSessionCookie,
+  loginRedirect,
+} from './guide-gate'
 import type { ProxyEnv } from './proxy'
 
 const API_ORIGIN = 'https://rova-api-dev.qnsc.vn'
@@ -37,6 +43,16 @@ describe('hasSessionCookie', () => {
     expect(hasSessionCookie(guideRequest('/guide/', 'x__Host-rova_session=abc'))).toBe(false)
     expect(hasSessionCookie(guideRequest('/guide/', '__Host-rova_csrf=abc'))).toBe(false)
   })
+})
+
+describe('gated folders', () => {
+  it.each(['../guide/_middleware', '../guide-assets/_middleware'])(
+    '%s runs the gate itself, not a copy of its wiring',
+    async (path) => {
+      const { onRequest } = (await import(path)) as { onRequest: unknown }
+      expect(onRequest).toBe(guideMiddleware)
+    },
+  )
 })
 
 describe('loginRedirect', () => {

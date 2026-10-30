@@ -56,9 +56,12 @@ export function useActiveSection(
     const measure = () => {
       frame = 0
       const line = pane.getBoundingClientRect().top + READING_LINE_PX
+      // One walk of the pane per frame: `measure` runs on every scrolled frame.
+      const byId = new Map<string, HTMLElement>()
+      for (const el of pane.querySelectorAll<HTMLElement>('[id]')) byId.set(el.id, el)
       let current: string | undefined = ids[0]
       for (const id of ids) {
-        const el = findInPane(pane, id)
+        const el = byId.get(id)
         if (el && el.getBoundingClientRect().top <= line) current = id
       }
       // Same section as last frame: keep the same state object, so React skips the re-render.

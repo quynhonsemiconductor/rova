@@ -270,9 +270,7 @@ export default function Chapter() {
               <td>
                 <strong>Admin</strong>
               </td>
-              <td>
-                Một Project · <b>All Teams</b>
-              </td>
+              <td>Một Project · All Teams</td>
               <td>
                 Quản lý hoạt động delivery trong Project được cấp; không tự quản trị cấu trúc
                 Workspace.

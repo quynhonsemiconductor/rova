@@ -109,20 +109,24 @@ function GuideReader({
                 <ScrollToHash pane={pane} chapter={chapter.slug} hash={hash} />
               </Suspense>
             ) : (
-              <EmptyState
-                icon={<BookOpen size={22} className="text-border-strong" />}
-                title={t('unavailable.title')}
-                description={t('unavailable.description')}
-                action={
-                  // Until every chapter is ported, the standalone guide still serves this one.
-                  <a
-                    href={staticGuideUrl(lang, chapter.slug, hash)}
-                    className="text-ui-sm text-primary-light hover:underline"
-                  >
-                    {t('unavailable.action')}
-                  </a>
-                }
-              />
+              <>
+                {/* No section to land on: scroll to the top, as a chapter with no hash does. */}
+                <ScrollToHash pane={pane} chapter={chapter.slug} hash="" />
+                <EmptyState
+                  icon={<BookOpen size={22} className="text-border-strong" />}
+                  title={t('unavailable.title')}
+                  description={t('unavailable.description')}
+                  action={
+                    // Until every chapter is ported, the standalone guide still serves this one.
+                    <a
+                      href={staticGuideUrl(lang, chapter.slug, hash)}
+                      className="text-ui-sm text-primary-light hover:underline"
+                    >
+                      {t('unavailable.action')}
+                    </a>
+                  }
+                />
+              </>
             )}
             <ChapterPager lang={lang} chapter={chapter} />
             <GuideFooter lang={lang} chapter={chapter} pane={pane} />

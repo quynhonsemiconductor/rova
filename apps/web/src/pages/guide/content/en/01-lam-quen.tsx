@@ -205,7 +205,7 @@ export default function Chapter() {
             <h3>Iteration</h3>
             <p>
               Short working time for Team to perform a US/DE group. Work Items that have not yet
-              entered Iteration are considered <strong>Unscheduled</strong> and is in the Backlog.
+              entered Iteration are considered <strong>Unscheduled</strong> and stay in the Backlog.
             </p>
             <PlanningQuestion>
               <span>Used to answer</span>

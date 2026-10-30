@@ -28,10 +28,11 @@ describe('User Guide routes', () => {
     vi.spyOn(navigator, 'languages', 'get').mockReturnValue(languages)
     const beforeLoad = router.routesById['/auth/user-guide/{-$lang}'].options.beforeLoad as (ctx: {
       params: { lang?: string }
+      location: { hash: string }
     }) => void
     let thrown: unknown
     try {
-      beforeLoad({ params })
+      beforeLoad({ params, location: { hash: '' } })
     } catch (error) {
       thrown = error
     }
@@ -39,6 +40,23 @@ describe('User Guide routes', () => {
       to: '/user-guide/$lang/$chapter',
       params: { lang, chapter: '00-bat-dau' },
       replace: true,
+    })
+  })
+
+  it("keeps the URL's section through the start redirect", () => {
+    const beforeLoad = router.routesById['/auth/user-guide/{-$lang}'].options.beforeLoad as (ctx: {
+      params: { lang?: string }
+      location: { hash: string }
+    }) => void
+    let thrown: unknown
+    try {
+      beforeLoad({ params: { lang: 'vi' }, location: { hash: 'chon-lo-trinh' } })
+    } catch (error) {
+      thrown = error
+    }
+    expect((thrown as { options?: unknown })?.options).toMatchObject({
+      params: { lang: 'vi', chapter: '00-bat-dau' },
+      hash: 'chon-lo-trinh',
     })
   })
 

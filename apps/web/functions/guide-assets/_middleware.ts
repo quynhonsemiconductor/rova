@@ -6,14 +6,4 @@
  * screenshots show production data, so they are the part still gated. Same decision, same env
  * (`API_ORIGIN`, `EDGE_CLIENT_IP_SECRET`): `_lib/guide-gate.ts`.
  */
-import { guardGuide } from '../_lib/guide-gate'
-import type { ProxyEnv } from '../_lib/proxy'
-
-type PagesFunction = (context: {
-  request: Request
-  env: ProxyEnv
-  next: () => Promise<Response>
-}) => Promise<Response>
-
-export const onRequest: PagesFunction = (context) =>
-  guardGuide(context.request, context.env, context.next)
+export { guideMiddleware as onRequest } from '../_lib/guide-gate'

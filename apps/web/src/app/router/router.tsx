@@ -192,10 +192,12 @@ const settingsRoute = createRoute({
 const guideStartRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/user-guide/{-$lang}',
-  beforeLoad: ({ params }) => {
+  beforeLoad: ({ params, location }) => {
     throw redirect({
       to: '/user-guide/$lang/$chapter',
       params: { lang: params.lang ?? browserGuideLang(), chapter: START_CHAPTER },
+      // An old start-page bookmark (`/guide/index.html#chon-lo-trinh`) names a section of it.
+      hash: location.hash || undefined,
       replace: true,
     })
   },
