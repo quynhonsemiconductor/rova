@@ -270,11 +270,32 @@ export const PlanningQuestion = part(
 
 // ── Tables ────────────────────────────────────────────────────────────────────
 
+/** Column widths per table shape; the last column always takes the rest. */
+const TABLE_COLUMNS = {
+  /** Who / where / what: two fixed label columns. */
+  default: '[&_td:first-child]:w-44 [&_td:nth-child(2)]:w-48',
+  /** Field / required / how to fill: the middle column is a short Yes/No. */
+  fields: '[&_td:first-child]:w-44 [&_td:nth-child(2)]:w-28',
+  /** Metric / meaning. */
+  metrics: '[&_td:first-child]:w-[30%] [&_th:first-child]:w-[30%]',
+} as const
+
 /** A reference table (permissions, fields). `thead`/`tbody` are written by the chapter. */
-export function DocTable({ children }: { children: ReactNode }) {
+export function DocTable({
+  columns = 'default',
+  children,
+}: {
+  columns?: keyof typeof TABLE_COLUMNS
+  children: ReactNode
+}) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-ui-sm [&_td]:border-t [&_td]:border-border-subtle [&_td]:px-3 [&_td]:py-4 [&_td]:align-top [&_td]:text-ui-lg [&_td]:leading-relaxed [&_td]:text-muted-foreground [&_td:first-child]:w-44 [&_td:first-child]:text-primary [&_td:nth-child(2)]:w-48 [&_th]:border-b [&_th]:border-border-strong [&_th]:p-3 [&_th]:text-left [&_th]:text-ui-xs [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:uppercase">
+    <div className={cn('overflow-x-auto', columns === 'fields' && 'mt-4')}>
+      <table
+        className={cn(
+          'w-full border-collapse text-ui-sm [&_td]:border-t [&_td]:border-border-subtle [&_td]:px-3 [&_td]:py-4 [&_td]:align-top [&_td]:text-ui-lg [&_td]:leading-relaxed [&_td]:text-muted-foreground [&_td:first-child]:text-primary [&_th]:border-b [&_th]:border-border-strong [&_th]:p-3 [&_th]:text-left [&_th]:text-ui-xs [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:uppercase',
+          TABLE_COLUMNS[columns],
+        )}
+      >
         {children}
       </table>
     </div>
