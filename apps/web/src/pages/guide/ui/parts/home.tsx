@@ -145,9 +145,10 @@ export function PathCard({ keywords, children }: PathCardProps) {
  * The path cards, narrowed by the sidebar search exactly as the static guide narrowed them, with its
  * "nothing matches" line when the search leaves none.
  *
- * Each `PathCard` filters itself, so the grid never reads its children's props (which would break the
- * moment a card is wrapped). Whether any card is left is the DOM's answer: the "nothing matches" line
- * shows only after a grid with no elements left in it (`div:empty + p`).
+ * Each `PathCard` filters itself, so the grid never reads its children's props. Whether any card is
+ * left is the DOM's answer: the "nothing matches" line shows only after a grid with nothing left in it
+ * (`div:empty + p`). So the children must be `PathCard`s themselves: a card inside a wrapper element
+ * leaves the wrapper behind when it hides, and the grid is then never empty.
  */
 export function PathGrid({ empty, children }: { empty: ReactNode; children: ReactNode }) {
   return (

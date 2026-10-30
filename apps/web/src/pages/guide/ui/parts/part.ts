@@ -1,15 +1,6 @@
 import { createElement, type ComponentPropsWithoutRef, type ElementType } from 'react'
 import { cn } from '@/shared/lib/utils'
 
-type PartProps<T extends ElementType> = ComponentPropsWithoutRef<T> & {
-  /**
-   * Render on another HTML tag, where the BA's guide put the same block on one (e.g. a scenario flow
-   * written as a `<ul>` rather than an `<ol>`). A tag name only, never a component, so the props
-   * written for the default tag still make sense on it.
-   */
-  as?: keyof HTMLElementTagNameMap
-}
-
 /**
  * One styled block of the guide's layout, standing in for one class of the static guide's
  * `styles.css`.
@@ -22,8 +13,8 @@ type PartProps<T extends ElementType> = ComponentPropsWithoutRef<T> & {
  * lets the BA's HTML convert into it mechanically.
  */
 export function part<T extends ElementType>(tag: T, className: string, displayName: string) {
-  function Part({ as, className: extra, ...rest }: PartProps<T>) {
-    return createElement(as ?? tag, { className: cn(className, extra), ...rest })
+  function Part({ className: extra, ...rest }: ComponentPropsWithoutRef<T>) {
+    return createElement(tag, { className: cn(className, extra), ...rest })
   }
   Part.displayName = displayName
   return Part

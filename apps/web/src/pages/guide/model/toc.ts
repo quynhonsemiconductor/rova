@@ -78,12 +78,15 @@ export function canonicalChapterSlug(raw: string): string {
 
 /** Lower-case and strip Vietnamese diacritics, so `lam quen` finds `Làm quen`. */
 export function foldForSearch(text: string): string {
-  return text
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'D')
-    .toLowerCase()
+  return (
+    text
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      // `đ`/`Đ` have no NFD decomposition, so the diacritic strip above leaves them: map them here.
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .toLowerCase()
+  )
 }
 
 export function matchesQuery(query: string, ...texts: string[]): boolean {

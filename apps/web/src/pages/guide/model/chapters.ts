@@ -1,5 +1,5 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react'
-import { GUIDE_LANGS, type GuideLang } from './guide-url'
+import type { GuideLang } from './guide-url'
 
 type ChapterModule = { default: ComponentType }
 
@@ -16,18 +16,18 @@ export const CHAPTER_MODULES = import.meta.glob<ChapterModule>('../content/*/*.t
  * render would hand React a new component type every time, and it would remount the chapter on each
  * render. `lazy` loads nothing until the component is first rendered.
  */
-export const GUIDE_CHAPTERS: Readonly<
-  Record<GuideLang, Readonly<Partial<Record<string, LazyExoticComponent<ComponentType>>>>>
-> = Object.fromEntries(
-  GUIDE_LANGS.map((lang) => [
-    lang,
-    Object.fromEntries(
-      Object.entries(CHAPTER_MODULES)
-        .filter(([path]) => path.startsWith(`../content/${lang}/`))
-        .map(([path, load]) => [
-          path.slice(`../content/${lang}/`.length, -'.tsx'.length),
-          lazy(load),
-        ]),
-    ),
-  ]),
-) as Record<GuideLang, Partial<Record<string, LazyExoticComponent<ComponentType>>>>
+type ChapterComponents = Readonly<Partial<Record<string, LazyExoticComponent<ComponentType>>>>
+
+function chaptersOf(lang: GuideLang): ChapterComponents {
+  const dir = `../content/${lang}/`
+  return Object.fromEntries(
+    Object.entries(CHAPTER_MODULES)
+      .filter(([path]) => path.startsWith(dir))
+      .map(([path, load]) => [path.slice(dir.length, -'.tsx'.length), lazy(load)]),
+  )
+}
+
+export const GUIDE_CHAPTERS: Readonly<Record<GuideLang, ChapterComponents>> = {
+  vi: chaptersOf('vi'),
+  en: chaptersOf('en'),
+}

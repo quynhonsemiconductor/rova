@@ -252,7 +252,7 @@ export default function Chapter() {
             <tr>
               <th>Quyền</th>
               <th>Phạm vi</th>
-              <th>Miêu tả</th>
+              <th>Mô tả</th>
             </tr>
           </thead>
           <tbody>

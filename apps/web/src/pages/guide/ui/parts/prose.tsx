@@ -136,9 +136,15 @@ export const CheckUnderstanding = part(
 
 // ── Type marks ────────────────────────────────────────────────────────────────
 
-// From the entity, so a renamed type fails to compile here instead of rendering the fallback mark.
+// From the entity, so a renamed work-item or portfolio type fails to compile here instead of
+// rendering the fallback mark.
 type MarkType = WorkItemType | PortfolioItemType
-type TimeboxType = 'iteration' | 'release' | 'milestone'
+/**
+ * The timebox marks the guide draws. The entity's timebox config is keyed by plain `string`, so a
+ * rename there cannot fail to compile here; `prose.test.tsx` pins each of these to a real entry.
+ */
+export const PLANNING_MARKS = ['iteration', 'release', 'milestone'] as const
+type TimeboxType = (typeof PLANNING_MARKS)[number]
 
 /**
  * A work-item type mark. The app's own `TypeBadge`, not the static guide's lettered chip, so a

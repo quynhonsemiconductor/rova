@@ -1,6 +1,17 @@
 import { useEffect, useState, type RefObject } from 'react'
 
 /**
+ * The element with `id` inside `pane`, or null. Scoped to the reading pane so an element elsewhere in
+ * the app that happens to share an id cannot be scrolled to or highlighted; matched by `el.id` rather
+ * than a CSS selector, because the id can come from the URL's hash.
+ */
+function findInPane(pane: HTMLElement | null, id: string): HTMLElement | null {
+  if (!pane || !id) return null
+  for (const el of pane.querySelectorAll<HTMLElement>('[id]')) if (el.id === id) return el
+  return null
+}
+
+/**
  * Land on the URL's section once the chapter has rendered, or at the top for a chapter with none.
  *
  * Chapters are lazy, so at navigation time the target id does not exist yet and the router cannot
@@ -13,7 +24,7 @@ export function useScrollToHash(
   hash: string,
 ) {
   useEffect(() => {
-    const target = hash ? document.getElementById(hash) : null
+    const target = findInPane(container.current, hash)
     if (target) target.scrollIntoView({ block: 'start' })
     else container.current?.scrollTo({ top: 0 })
   }, [container, chapter, hash])
@@ -47,7 +58,7 @@ export function useActiveSection(
       const line = pane.getBoundingClientRect().top + READING_LINE_PX
       let current: string | undefined = ids[0]
       for (const id of ids) {
-        const el = document.getElementById(id)
+        const el = findInPane(pane, id)
         if (el && el.getBoundingClientRect().top <= line) current = id
       }
       // Same section as last frame: keep the same state object, so React skips the re-render.

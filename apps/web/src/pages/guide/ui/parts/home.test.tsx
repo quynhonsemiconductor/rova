@@ -9,10 +9,7 @@ function renderGrid(query: string) {
     <GuideContext.Provider value={{ lang: 'en', chapter: '00-bat-dau', query }}>
       <PathGrid empty="Nothing matches">
         <PathCard keywords="backlog work items">Backlog card</PathCard>
-        {/* A wrapped card still filters itself: the grid reads no child's props. */}
-        <div className="contents">
-          <PathCard keywords="reports metrics">Reports card</PathCard>
-        </div>
+        <PathCard keywords="reports metrics">Reports card</PathCard>
       </PathGrid>
     </GuideContext.Provider>,
   )
@@ -22,7 +19,7 @@ function renderGrid(query: string) {
 const grid = (container: HTMLElement) => container.querySelector('p')!.previousElementSibling!
 
 describe('PathGrid', () => {
-  it('shows the cards the search matches, wrapped or not, and leaves the grid non-empty', () => {
+  it('shows the cards the search matches, and leaves the grid non-empty', () => {
     const { container } = renderGrid('reports')
     expect(screen.queryByText('Backlog card')).not.toBeInTheDocument()
     expect(screen.getByText('Reports card')).toBeInTheDocument()

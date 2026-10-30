@@ -62,6 +62,27 @@ describe('GuidePage', () => {
     )
   })
 
+  it('looks the section up in the reading pane, not in the whole document', async () => {
+    // An element elsewhere in the app with the same id must not be what the guide scrolls to.
+    const decoy = document.body.appendChild(document.createElement('div'))
+    decoy.id = 'doi-tuong-ke-hoach'
+    try {
+      await renderGuide('/user-guide/vi/01-lam-quen#doi-tuong-ke-hoach')
+      // The decoy comes first in the document, so a document-wide lookup would find it and never the
+      // section. (The router's own hash scroll is document-wide and may also touch the decoy; that
+      // moves the window, which this page does not scroll — the reading pane is what moves.)
+      await waitFor(() =>
+        expect(
+          (scrollIntoView.mock.contexts as HTMLElement[]).some(
+            (el) => el.tagName === 'SECTION' && el.id === 'doi-tuong-ke-hoach' && el !== decoy,
+          ),
+        ).toBe(true),
+      )
+    } finally {
+      decoy.remove()
+    }
+  })
+
   it("rewrites the static guide's spelling of a chapter to its in-app URL", async () => {
     const router = await renderGuide('/user-guide/en/01-lam-quen.html#chapter-01')
     await waitFor(() => expect(location(router)).toBe('/user-guide/en/01-lam-quen#chapter-01'))
