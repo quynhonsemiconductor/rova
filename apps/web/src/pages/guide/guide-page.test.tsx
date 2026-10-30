@@ -126,10 +126,14 @@ describe('GuidePage', () => {
   // Only while some chapter is still served by the standalone guide; see the integrity test.
   const missing = chaptersOf('en').find((c) => !GUIDE_CHAPTERS.en[c.slug])
   it.skipIf(!missing)(
-    'says so, rather than rendering nothing, for a chapter not ported yet',
+    'says so, and links the same section in the standalone guide, for a chapter not ported yet',
     async () => {
-      await renderGuide(`/user-guide/en/${missing!.slug}`)
+      await renderGuide(`/user-guide/en/${missing!.slug}#somewhere`)
       expect(await screen.findByText('This chapter is not in the app yet')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Open it in the standalone guide' })).toHaveAttribute(
+        'href',
+        `/guide/en/${missing!.slug}.html#somewhere`,
+      )
     },
   )
 })

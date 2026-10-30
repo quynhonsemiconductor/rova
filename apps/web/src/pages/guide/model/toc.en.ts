@@ -305,7 +305,7 @@ export const TOC_EN: readonly GuideGroup[] = [
             id: 'giao-task',
             number: '06.3',
             title: 'Assign Task',
-            keywords: 'giao task owner dev owner team member no entry',
+            keywords: 'assign task owner dev owner team member no entry',
           },
           {
             id: 'cap-nhat-task-state',

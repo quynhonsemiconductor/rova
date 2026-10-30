@@ -1,5 +1,5 @@
 import { Suspense, useMemo, useRef, useState, type RefObject } from 'react'
-import { Link, Navigate, useParams, useRouterState } from '@tanstack/react-router'
+import { Navigate, useParams, useRouterState } from '@tanstack/react-router'
 import { BookOpen, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/shared/lib/utils'
@@ -114,13 +114,13 @@ function GuideReader({
                 title={t('unavailable.title')}
                 description={t('unavailable.description')}
                 action={
-                  <Link
-                    to="/user-guide/$lang/$chapter"
-                    params={{ lang, chapter: START_CHAPTER }}
+                  // Until every chapter is ported, the standalone guide still serves this one.
+                  <a
+                    href={staticGuideUrl(lang, chapter.slug, hash)}
                     className="text-ui-sm text-primary-light hover:underline"
                   >
                     {t('unavailable.action')}
-                  </Link>
+                  </a>
                 }
               />
             )}
@@ -131,6 +131,12 @@ function GuideReader({
       </div>
     </GuideContext.Provider>
   )
+}
+
+/** The same chapter and section in the standalone guide, `public/guide` (VI at the root, EN under `en/`). */
+function staticGuideUrl(lang: GuideLang, slug: string, hash: string): string {
+  const page = slug === START_CHAPTER ? 'index.html' : `${slug}.html`
+  return `/guide/${lang === 'en' ? 'en/' : ''}${page}${hash ? `#${hash}` : ''}`
 }
 
 /** Rendered inside the chapter's `Suspense`, so it runs once the chapter is on screen. */

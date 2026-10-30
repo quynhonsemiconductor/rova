@@ -1,6 +1,6 @@
 /*
- * English edition, chapter 00-bat-dau. Converted from the BA's static guide
- * (`public/guide/en/index.html`); this file is the source of truth now.
+ * English edition, chapter 00-bat-dau (US-119). Converted from the BA's static page
+ * `public/guide/en/index.html`.
  */
 import { GuideLink } from '../../ui/guide-link'
 import {
@@ -109,7 +109,7 @@ export default function Chapter() {
             <StepBadge>1</StepBadge>
             <h3>Check the selected scope</h3>
             <p>
-              Look at the upper left corner and confirm it is correct{' '}
+              Look at the upper left corner and confirm it shows the correct{' '}
               <strong>Workspace · Project · Team</strong>. The Work Items you can see and the
               available Owners depend on this scope.
             </p>
@@ -225,7 +225,7 @@ export default function Chapter() {
             </PathCopy>
           </PathCard>
           <PathCard keywords="workspace admin admin user permissions project team support">
-            <PathIcon tone="amber">05</PathIcon>
+            <PathIcon tone="amber">04</PathIcon>
             <PathCopy>
               <Audience>I ADMINISTER ROVA</Audience>
               <h3>User management and working structure</h3>
@@ -275,14 +275,14 @@ export default function Chapter() {
             </div>
           </li>
           <li>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Result</strong>
               <p>How to know if the operation was successful.</p>
             </div>
           </li>
           <li>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Other scenarios</strong>
               <p>Common branches and how to handle them.</p>

@@ -186,27 +186,16 @@ const settingsRoute = createRoute({
 })
 
 // The User Guide (US-119). No permission: like Settings it is self-scoped reading, open to every
-// signed-in reader. `/user-guide` and `/user-guide/<lang>` only pick the edition and the start chapter;
-// the page itself settles any other URL (a static-guide spelling, an unknown chapter).
-const guideRootRoute = createRoute({
+// signed-in reader. `/user-guide` and `/user-guide/<lang>` only open the start chapter, in the edition
+// named or else the browser's; the page itself settles any other URL (a static-guide spelling, an
+// unknown chapter or edition).
+const guideStartRoute = createRoute({
   getParentRoute: () => authRoute,
-  path: '/user-guide',
-  beforeLoad: () => {
-    throw redirect({
-      to: '/user-guide/$lang/$chapter',
-      params: { lang: browserGuideLang(), chapter: START_CHAPTER },
-      replace: true,
-    })
-  },
-})
-
-const guideLangRoute = createRoute({
-  getParentRoute: () => authRoute,
-  path: '/user-guide/$lang',
+  path: '/user-guide/{-$lang}',
   beforeLoad: ({ params }) => {
     throw redirect({
       to: '/user-guide/$lang/$chapter',
-      params: { lang: params.lang, chapter: START_CHAPTER },
+      params: { lang: params.lang ?? browserGuideLang(), chapter: START_CHAPTER },
       replace: true,
     })
   },
@@ -557,8 +546,7 @@ const routeTree = rootRoute.addChildren([
     projectsRoute,
     projectDetailRoute,
     settingsRoute,
-    guideRootRoute,
-    guideLangRoute,
+    guideStartRoute,
     guideChapterRoute,
     notificationsRoute,
     acceptInvitationRoute,

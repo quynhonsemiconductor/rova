@@ -1,12 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { EDGE_IP_HEADER, EDGE_SIG_HEADER } from '@quynhonsemiconductor/platform-http/edge'
-import {
-  GUIDE_ASSET_CACHE_CONTROL,
-  GUIDE_SECURITY_HEADERS,
-  guardGuide,
-  hasSessionCookie,
-  loginRedirect,
-} from './guide-gate'
+import { GUIDE_SECURITY_HEADERS, guardGuide, hasSessionCookie, loginRedirect } from './guide-gate'
 import type { ProxyEnv } from './proxy'
 
 const API_ORIGIN = 'https://rova-api-dev.qnsc.vn'
@@ -107,21 +101,18 @@ describe('guardGuide', () => {
     }
   })
 
-  it('caches an in-app guide screenshot privately, and still revalidates a guide page', async () => {
+  it('checks the session for an in-app guide screenshot and makes the browser revalidate it', async () => {
+    // No max-age: a cached screenshot would outlive sign-out, and go stale after a deploy.
+    const fetchImpl = apiAnswering(200)
     const shot = await guardGuide(
       guideRequest('/guide-assets/03-backlog-production.png'),
       ENV,
       page,
-      {
-        fetchImpl: apiAnswering(200),
-      },
+      { fetchImpl },
     )
+    expect(fetchImpl).toHaveBeenCalledOnce()
     expect(shot.status).toBe(200)
-    expect(shot.headers.get('cache-control')).toBe(GUIDE_ASSET_CACHE_CONTROL)
-    expect(GUIDE_ASSET_CACHE_CONTROL).toMatch(/^private,/)
-
-    const html = await guardGuide(guideRequest(), ENV, page, { fetchImpl: apiAnswering(200) })
-    expect(html.headers.get('cache-control')).toBe('private, no-cache')
+    expect(shot.headers.get('cache-control')).toBe('private, no-cache')
   })
 
   it('refuses a screenshot to a reader with no session, without calling the API', async () => {

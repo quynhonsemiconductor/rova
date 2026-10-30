@@ -31,14 +31,6 @@ export const GUIDE_ASSETS_ROOT = '/guide-assets/'
 const SESSION_CHECK_TIMEOUT_MS = 5_000
 
 /**
- * A screenshot is cached privately for an hour, unlike a guide page. Every guide page view used to cost
- * one session check per file; a screenshot that revalidated on every view would keep a share of that
- * cost for an image that does not change between deploys. `private` still keeps it out of any shared
- * cache, so the gate is skipped only for the browser that already passed it.
- */
-export const GUIDE_ASSET_CACHE_CONTROL = 'private, max-age=3600'
-
-/**
  * Applied to every guide response the gate lets through. The guide has no inline script or style and
  * no external origin (pinned by `src/test/user-guide.integrity.test.ts`), which is what lets this CSP
  * be this strict — tighter than the SPA's own meta-tag policy.
@@ -47,8 +39,11 @@ export const GUIDE_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'content-security-policy':
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
     "frame-ancestors 'none'; base-uri 'self'; form-action 'none'",
-  // `private`: a shared cache must never hand a gated page to the next reader. `no-cache`: the
+  // `private`: a shared cache must never hand a gated file to the next reader. `no-cache`: the
   // browser revalidates, which re-runs this gate, so a signed-out reader cannot read from history.
+  // Screenshots included: a max-age would leave production screenshots readable from the disk cache
+  // after sign-out, and — their names carry no content hash — stale after a deploy. A revalidation
+  // costs one session check and, unchanged, a 304 rather than the file.
   'cache-control': 'private, no-cache',
   'x-frame-options': 'DENY',
   'x-content-type-options': 'nosniff',
@@ -98,17 +93,10 @@ function sessionCheckRequest(request: Request): Request {
   return new Request(new URL('/v1/bff/me', request.url), { method: 'GET', headers })
 }
 
-function withGuideHeaders(
-  request: Request,
-  response: Response,
-  setCookies: readonly string[],
-): Response {
+function withGuideHeaders(response: Response, setCookies: readonly string[]): Response {
   // A response from `next()` can carry immutable headers; copy it before writing.
   const out = new Response(response.body, response)
   for (const [name, value] of Object.entries(GUIDE_SECURITY_HEADERS)) out.headers.set(name, value)
-  if (new URL(request.url).pathname.startsWith(GUIDE_ASSETS_ROOT)) {
-    out.headers.set('cache-control', GUIDE_ASSET_CACHE_CONTROL)
-  }
   // Appended one at a time: joining Set-Cookie values corrupts them (see `buildClientResponse`).
   for (const cookie of setCookies) out.headers.append('set-cookie', cookie)
   return out
@@ -146,7 +134,7 @@ export async function guardGuide(
 
   // The body is not needed; release it so the runtime can reuse the connection.
   await session.body?.cancel()
-  return withGuideHeaders(request, await next(), setCookiesOf(session))
+  return withGuideHeaders(await next(), setCookiesOf(session))
 }
 
 /**

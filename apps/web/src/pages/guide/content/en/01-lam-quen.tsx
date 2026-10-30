@@ -1,6 +1,6 @@
 /*
- * English edition, chapter 01-lam-quen. Converted from the BA's static guide
- * (`public/guide/en/01-lam-quen.html`); this file is the source of truth now.
+ * English edition, chapter 01-lam-quen (US-119). Converted from the BA's static page
+ * `public/guide/en/01-lam-quen.html`.
  */
 import {
   Callout,
@@ -104,9 +104,8 @@ export default function Chapter() {
         <Callout>
           <strong>Scope and permissions are two different things</strong>
           <p>
-            Select a Project or Team that does not automatically grant additional permissions. If
-            you don't see the expected data, check both the selected scope and the permissions
-            granted.
+            Selecting a Project or Team does not automatically grant additional permissions. If you
+            don't see the expected data, check both the selected scope and the permissions granted.
           </p>
         </Callout>
       </Section>
@@ -184,7 +183,7 @@ export default function Chapter() {
           </article>
           <article>
             <strong>Do not use Epic instead of Project</strong>
-            <p>Project is a scope containing data. Epic is the target audience within a Project.</p>
+            <p>Project is a scope containing data. Epic is a goal object inside a Project.</p>
           </article>
           <article>
             <strong>US and DE are two peer types</strong>

@@ -18,7 +18,7 @@
   "backToTop": "Back to top ↑",
   "unavailable": {
     "title": "This chapter is not in the app yet",
-    "description": "It is still being moved from the standalone guide.",
-    "action": "Back to Get started"
+    "description": "It is still being moved here from the standalone guide, which has it.",
+    "action": "Open it in the standalone guide"
   }
 }

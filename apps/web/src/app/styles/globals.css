@@ -357,8 +357,9 @@
    The `text-ui-*` scale tops out at 15px because it sizes CONTROLS. The User Guide is prose a reader
    reads top to bottom, at the sizes the BA's guide was written for (`pages/guide`). A separate,
    namespaced scale rather than raw `text-lg`/`text-2xl`, so the guide neither borrows a control size
-   for a heading nor adds to the raw-font-size ratchet. Line heights are the guide's own 1.7 body /
-   1.35 heading rhythm.
+   for a heading nor adds to the raw-font-size ratchet. Line heights follow the guide's own rhythm —
+   about 1.7 for body and lead, 1.35 for h2/h3 — and tighten to about 1.1 on title and display, where
+   1.35 leading would gape.
 ──────────────────────────────────────────────────────────────────────────────── */
 @theme {
   --text-doc-sm: 0.857143rem; /* 12px — captions, labels */

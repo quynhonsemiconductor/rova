@@ -1,6 +1,6 @@
 /*
- * Vietnamese edition, chapter 01-lam-quen. Converted from the BA's static guide
- * (`public/guide/01-lam-quen.html`); this file is the source of truth now.
+ * Vietnamese edition, chapter 01-lam-quen (US-119). Converted from the BA's static page
+ * `public/guide/01-lam-quen.html`.
  */
 import {
   Callout,

@@ -1,6 +1,6 @@
 /*
- * Vietnamese edition, chapter 00-bat-dau. Converted from the BA's static guide
- * (`public/guide/index.html`); this file is the source of truth now.
+ * Vietnamese edition, chapter 00-bat-dau (US-119). Converted from the BA's static page
+ * `public/guide/index.html`.
  */
 import { GuideLink } from '../../ui/guide-link'
 import {
@@ -226,7 +226,7 @@ export default function Chapter() {
             </PathCopy>
           </PathCard>
           <PathCard keywords="workspace admin quản trị user quyền project team hỗ trợ">
-            <PathIcon tone="amber">05</PathIcon>
+            <PathIcon tone="amber">04</PathIcon>
             <PathCopy>
               <Audience>TÔI QUẢN TRỊ HỆ THỐNG</Audience>
               <h3>Quản lý người dùng và cấu trúc làm việc</h3>
@@ -276,14 +276,14 @@ export default function Chapter() {
             </div>
           </li>
           <li>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Kết quả</strong>
               <p>Cách biết thao tác đã thành công.</p>
             </div>
           </li>
           <li>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Trường hợp khác</strong>
               <p>Nhánh thường gặp và cách xử lý.</p>
