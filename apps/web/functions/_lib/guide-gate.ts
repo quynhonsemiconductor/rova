@@ -2,9 +2,11 @@
  * Session gate for the static User Guide (US-119), served by Cloudflare Pages at `/guide/*`, and for
  * the in-app guide's screenshots at `/guide-assets/*`.
  *
- * The guide is plain files under `apps/web/public/guide`, so Pages would serve every page and every
- * production screenshot to anyone with the URL. This gate runs in front of them (wired by the
- * path-scoped `functions/guide/_middleware.ts`, so the SPA's own assets never pass through user code)
+ * Both are plain files — the static guide under `apps/web/public/guide`, the in-app guide's screenshots
+ * under `apps/web/public/guide-assets` — so Pages would serve every page and every production
+ * screenshot to anyone with the URL. This gate runs in front of them (wired by the path-scoped
+ * `functions/guide/_middleware.ts` and `functions/guide-assets/_middleware.ts`, so the SPA's own
+ * assets never pass through user code)
  * and admits only a reader the API itself recognises as signed in.
  *
  * The decision is the API's, never ours: the cookie's PRESENCE only saves a round trip for a reader

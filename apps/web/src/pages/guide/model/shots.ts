@@ -5,7 +5,7 @@
  * page does not shift under the reader — and a link to a section below a screenshot still lands on
  * that section, since `useScrollToHash` scrolls before the images have loaded. Keyed by file name in
  * `public/guide-assets/` (without `.png`), so an unknown name is a compile error rather than a broken
- * image. `user-guide.integrity` tests pin each size to the file's own header.
+ * image. `ui/guide-shot.test.tsx` pins each size to the file's own header.
  */
 export const GUIDE_SHOTS = {
   '02-context-selector-production': { width: 305, height: 198 },

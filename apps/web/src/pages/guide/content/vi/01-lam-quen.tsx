@@ -262,15 +262,17 @@ export default function Chapter() {
               </td>
               <td>Toàn Workspace</td>
               <td>
-                Quản lý người dùng, Project, Team và quyền truy cập. Team membership chỉ quyết định
-                việc tham gia vận hành và khả năng được chọn làm Owner trong Team.
+                Quản lý người dùng, Project, Team và quyền truy cập. Việc là thành viên Team chỉ
+                quyết định việc tham gia vận hành và khả năng được chọn làm Owner trong Team.
               </td>
             </tr>
             <tr>
               <td>
                 <strong>Admin</strong>
               </td>
-              <td>Một Project · All Teams</td>
+              <td>
+                Một Project · <b>All Teams</b>
+              </td>
               <td>
                 Quản lý hoạt động delivery trong Project được cấp; không tự quản trị cấu trúc
                 Workspace.
@@ -302,7 +304,7 @@ export default function Chapter() {
           <strong>Ví dụ về Workspace Admin và Owner</strong>
           <p>
             Workspace Admin vẫn có thể tạo US/DE nhờ quyền Workspace. Tuy nhiên, tên của họ chỉ được
-            chọn làm Owner khi họ là member hợp lệ của Team đang chọn.
+            chọn làm Owner khi họ là thành viên hợp lệ của Team đang chọn.
           </p>
         </Callout>
       </Section>
