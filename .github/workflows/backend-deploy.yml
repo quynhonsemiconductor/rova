@@ -326,6 +326,8 @@ jobs:
       # unmetered on public repositories — so it trades nothing for $14/month. Prefer this
       # over `none`, which would keep the saving and lose the cache.
       cache_backend: gha
+      # The develop ECS environment is destroyed (AWS exit); main still builds and pushes the images that prod promotes on a tag.
+      deploy_develop: false
     # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
 
   # ───────────────────────────────────────────────────────────────────────────
@@ -347,7 +349,8 @@ jobs:
   # a marker nobody's on-call rotation depends on being able to trust.
   annotate-deploy:
     needs: [deploy]
-    if: always() && needs.deploy.result == 'success'
+    # Tags only: on main the reusable skips the develop deploy (deploy_develop: false) but the caller job still reports success.
+    if: always() && needs.deploy.result == 'success' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: read

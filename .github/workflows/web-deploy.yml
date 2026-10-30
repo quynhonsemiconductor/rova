@@ -203,8 +203,9 @@ jobs:
 
   deploy:
     needs: [wait-for-infra, wait-for-ci, wait-for-backend]
-    # `wait-for-backend` is skipped on a push to main; a skipped need must not skip the deploy.
-    if: ${{ !cancelled() && !failure() }}
+    # `wait-for-backend` is skipped on a push to main, and a skipped need must not skip the deploy. Tags only: the develop Pages
+    # project is destroyed (AWS exit), and prod is the only target left.
+    if: ${{ !cancelled() && !failure() && github.ref_type == 'tag' }}
     # Must match the UNION of every inner job's own permissions in the reusable
     # web-deploy.yml, not just its top-level default (contents: read) — GitHub
     # validates a reusable call's whole permission chain at trigger time, and
