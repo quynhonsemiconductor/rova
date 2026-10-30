@@ -27,6 +27,32 @@ const devOriginsPlugin: Plugin = {
   transformIndexHtml: (html) => devOrigins(html),
 }
 
+/**
+ * Modules that carry the User Guide's TEXT: its chapters and its table of contents.
+ *
+ * Every other built file is public — Pages serves `/assets/*` to anyone — and the guide is for
+ * signed-in readers only. So any chunk holding one of these is written under `/guide-assets/js/`
+ * instead, which `functions/guide-assets/_middleware.ts` puts behind the same session check as the
+ * guide's screenshots. Only these chunks pay for the check; the rest of the app stays on the fast path.
+ */
+const GUIDE_TEXT = /[\\/]src[\\/]pages[\\/]guide[\\/](?:content[\\/]|model[\\/]toc)/
+
+export const GUIDE_CHUNK_DIR = 'guide-assets/js'
+
+export function chunkFileName(chunk: {
+  name: string
+  isEntry: boolean
+  moduleIds: readonly string[]
+}) {
+  if (!chunk.moduleIds.some((id) => GUIDE_TEXT.test(id))) return 'assets/[name]-[hash].js'
+  // The entry is what a signed-OUT visitor loads to reach the login page. Gating it would lock them
+  // out of signing in, so guide text reaching the entry is a build error, not a quiet public leak.
+  if (chunk.isEntry) {
+    throw new Error(`User Guide text was bundled into the entry chunk "${chunk.name}"`)
+  }
+  return `${GUIDE_CHUNK_DIR}/[name]-[hash].js`
+}
+
 // Security headers plugin for dev server
 // (Production deployments should configure these at the CDN/reverse-proxy layer)
 const securityHeadersPlugin: Plugin = {
@@ -85,6 +111,7 @@ export default defineConfig(({ mode, command }) => ({
     // Chunk splitting — vendor libs separately for better cache efficiency
     rollupOptions: {
       output: {
+        chunkFileNames: chunkFileName,
         manualChunks(id: string) {
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
             return 'vendor-react'
