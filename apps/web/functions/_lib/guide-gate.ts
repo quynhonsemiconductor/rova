@@ -25,9 +25,9 @@ import { proxyToApi, type ProxyEnv } from './proxy'
 export const SESSION_COOKIE = '__Host-rova_session'
 const GUIDE_ROOT = '/guide/'
 /**
- * The in-app guide's screenshots (`src/pages/guide/ui/guide-shot.tsx`), gated by
- * `functions/guide-assets/_middleware.ts`. The in-app guide's TEXT ships in the SPA's own chunks and
- * never reaches this gate; only these images do.
+ * The in-app guide's gated files, behind `functions/guide-assets/_middleware.ts`: its screenshots
+ * (`src/pages/guide/ui/guide-shot.tsx`) and, under `js/`, the build chunks that carry its text
+ * (`chunkFileName` in `vite.config.ts`). The rest of the SPA never reaches this gate.
  */
 export const GUIDE_ASSETS_ROOT = '/guide-assets/'
 /**
@@ -48,9 +48,9 @@ export const GUIDE_SECURITY_HEADERS: Readonly<Record<string, string>> = {
     "frame-ancestors 'none'; base-uri 'self'; form-action 'none'",
   // `private`: a shared cache must never hand a gated file to the next reader. `no-cache`: the
   // browser revalidates, which re-runs this gate, so a signed-out reader cannot read from history.
-  // Screenshots included: a max-age would leave production screenshots readable from the disk cache
-  // after sign-out, and — their names carry no content hash — stale after a deploy. A revalidation
-  // costs one session check and, unchanged, a 304 rather than the file.
+  // Screenshots and text chunks included: a max-age would leave the guide readable from the disk
+  // cache after sign-out, and screenshots — their names carry no content hash — stale after a deploy.
+  // A revalidation costs one session check and, unchanged, a 304 rather than the file.
   'cache-control': 'private, no-cache',
   'x-frame-options': 'DENY',
   'x-content-type-options': 'nosniff',

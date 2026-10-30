@@ -19,8 +19,9 @@ import { GuideSidebar } from './ui/guide-sidebar'
  *
  * It replaces the standalone HTML guide under `public/guide`, which Pages served through a session
  * gate that asked the API about the reader on every file — page, stylesheet, script and screenshot
- * alike. Here the reader is already signed in (the route sits under `authRoute`), the text ships in
- * this page's chunks, and only the screenshots still pass the gate (see `ui/guide-shot.tsx`).
+ * alike. Here the reader is already signed in (the route sits under `authRoute`), and only the files
+ * that are the guide — the chunks carrying its text and its screenshots — pass that gate, under
+ * `/guide-assets/` (see `chunkFileName` in `vite.config.ts`).
  *
  * This component only settles the URL — an unknown edition, a static-guide spelling of a chapter
  * (`01-lam-quen.html`, `index`) or an unknown chapter is replaced by its canonical URL — and hands a
