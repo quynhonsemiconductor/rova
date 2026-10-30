@@ -70,9 +70,12 @@ END $$;
 -- for a role that can only INSERT — which is exactly the broken state this gate
 -- exists to catch. (It was written that way first and passed against a table
 -- whose SELECT had just been revoked.)
+-- `app_schemas` is read, not re-derived and not re-checked: section 0 raises and
+-- ON_ERROR_STOP halts the script before any check below runs, so a second empty
+-- test here could never fire.
 DO $$
 DECLARE
-  app_schemas text[];
+  app_schemas text[] := (SELECT array_agg(schema_name) FROM assert_schemas);
   table_privileges CONSTANT text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
   sequence_privileges CONSTANT text[] := ARRAY['USAGE', 'SELECT'];
   -- Granted by OWNERSHIP, never by the runtime roles' grant set. Their presence
@@ -84,10 +87,6 @@ DECLARE
   missing text[];
   held text[];
 BEGIN
-  SELECT array_agg(schema_name) INTO app_schemas FROM assert_schemas;
-  IF app_schemas IS NULL THEN
-    RAISE EXCEPTION 'the app-schema derivation is empty (see section 0) — refusing to pass vacuously';
-  END IF;
 
   FOREACH r IN ARRAY ARRAY['rova_app', 'rova_worker'] LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
@@ -262,15 +261,11 @@ RESET ROLE;
 -- ── 5. Default privileges are recorded for the role that creates objects ─────
 DO $$
 DECLARE
-  app_schemas text[];
+  app_schemas text[] := (SELECT array_agg(schema_name) FROM assert_schemas);
   creator regrole := (SELECT role FROM assert_creator);
   schemas_present int;
   defaults_present int;
 BEGIN
-  SELECT array_agg(schema_name) INTO app_schemas FROM assert_schemas;
-  IF app_schemas IS NULL THEN
-    RAISE EXCEPTION 'the app-schema derivation is empty (see section 0) — refusing to pass vacuously';
-  END IF;
   schemas_present := cardinality(app_schemas);
   SELECT count(*) INTO defaults_present
     FROM pg_default_acl
