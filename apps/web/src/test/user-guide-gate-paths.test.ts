@@ -9,19 +9,26 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { router } from '@/app/router/router'
 import { GUIDE_ASSETS_ROOT } from '@/pages/guide/ui/guide-shot'
 
 const WEB = join(import.meta.dirname, '../..')
 
-/** The gate's constant, read from source: the Functions build is not importable from the SPA. */
-function gateRoot(): string | undefined {
+/** A constant of the gate, read from source: the Functions build is not importable from the SPA. */
+function gateConstant(name: string): string | undefined {
   const source = readFileSync(join(WEB, 'functions/_lib/guide-gate.ts'), 'utf8')
-  return /export const GUIDE_ASSETS_ROOT = '([^']+)'/.exec(source)?.[1]
+  return new RegExp(`export const ${name} = '([^']+)'`).exec(source)?.[1]
 }
 
 describe('User Guide gated path', () => {
   it('is the same path in the SPA and in the gate', () => {
-    expect(gateRoot()).toBe(GUIDE_ASSETS_ROOT)
+    expect(gateConstant('GUIDE_ASSETS_ROOT')).toBe(GUIDE_ASSETS_ROOT)
+  })
+
+  it('sends a refused reader back to a path the router opens the guide on', () => {
+    const path = gateConstant('IN_APP_GUIDE')
+    expect(path).toBeDefined()
+    expect(router.matchRoutes(path!, {}).at(-1)?.routeId).toBe('/auth/user-guide/{-$lang}')
   })
 
   it('has a Pages middleware in the folder that serves that path', () => {

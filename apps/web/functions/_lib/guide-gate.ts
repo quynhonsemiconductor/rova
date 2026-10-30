@@ -28,8 +28,11 @@ const GUIDE_ROOT = '/guide/'
  * never reaches this gate; only these images do.
  */
 export const GUIDE_ASSETS_ROOT = '/guide-assets/'
-/** Where a refused guide-asset request sends the reader back to after signing in. */
-const IN_APP_GUIDE = '/user-guide'
+/**
+ * Where a refused guide-asset request sends the reader back to after signing in: the SPA's guide
+ * route. Pinned to the router by `src/test/user-guide-gate-paths.test.ts`.
+ */
+export const IN_APP_GUIDE = '/user-guide'
 const SESSION_CHECK_TIMEOUT_MS = 5_000
 
 /**
@@ -72,12 +75,13 @@ export function hasSessionCookie(request: Request): boolean {
 export function loginRedirect(request: Request): Response {
   const url = new URL(request.url)
   const candidate = url.pathname + url.search
-  const returnTo = candidate.startsWith(GUIDE_ASSETS_ROOT)
-    ? // A screenshot is never the page the reader opened; the in-app guide is.
-      IN_APP_GUIDE
-    : candidate.startsWith(GUIDE_ROOT) && !candidate.startsWith('//')
-      ? candidate
-      : GUIDE_ROOT
+  let returnTo = GUIDE_ROOT
+  if (candidate.startsWith(GUIDE_ASSETS_ROOT)) {
+    // A screenshot is never the page the reader opened; the in-app guide is.
+    returnTo = IN_APP_GUIDE
+  } else if (candidate.startsWith(GUIDE_ROOT) && !candidate.startsWith('//')) {
+    returnTo = candidate
+  }
   const login = new URL('/login', url.origin)
   login.searchParams.set('returnTo', returnTo)
   return new Response(null, {

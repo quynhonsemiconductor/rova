@@ -1,4 +1,4 @@
-import { Children, isValidElement, type ReactElement, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { buttonVariants } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/utils'
 import { matchesQuery } from '../../model/toc'
@@ -130,7 +130,10 @@ interface PathCardProps {
   children: ReactNode
 }
 
-export function PathCard({ children }: PathCardProps) {
+/** A learning path. Hides itself when the sidebar search does not match its `keywords`. */
+export function PathCard({ keywords, children }: PathCardProps) {
+  const { query } = useGuide()
+  if (!matchesQuery(query, keywords)) return null
   return (
     <article className="grid min-h-60 grid-cols-[3.25rem_1fr] gap-4 rounded-xl border border-border-subtle bg-card p-6 transition hover:-translate-y-0.5 hover:shadow-md motion-reduce:transition-none max-sm:grid-cols-1">
       {children}
@@ -141,22 +144,18 @@ export function PathCard({ children }: PathCardProps) {
 /**
  * The path cards, narrowed by the sidebar search exactly as the static guide narrowed them, with its
  * "nothing matches" line when the search leaves none.
+ *
+ * Each `PathCard` filters itself, so the grid never reads its children's props (which would break the
+ * moment a card is wrapped). Whether any card is left is the DOM's answer: the "nothing matches" line
+ * shows only after a grid with no elements left in it (`div:empty + p`).
  */
 export function PathGrid({ empty, children }: { empty: ReactNode; children: ReactNode }) {
-  const { query } = useGuide()
-  const cards = Children.toArray(children).filter(
-    (child): child is ReactElement<PathCardProps> =>
-      isValidElement(child) && child.type === PathCard,
-  )
-  const visible = cards.filter((card) => matchesQuery(query, card.props.keywords))
   return (
     <>
-      <div className="grid grid-cols-2 gap-4 max-md:grid-cols-1">{visible}</div>
-      {visible.length === 0 && (
-        <p className="rounded-xl border border-dashed border-border-strong bg-card p-7 text-center text-ui-md text-muted-foreground">
-          {empty}
-        </p>
-      )}
+      <div className="grid grid-cols-2 gap-4 max-md:grid-cols-1">{children}</div>
+      <p className="hidden rounded-xl border border-dashed border-border-strong bg-card p-7 text-center text-ui-md text-muted-foreground [div:empty+&]:block">
+        {empty}
+      </p>
     </>
   )
 }

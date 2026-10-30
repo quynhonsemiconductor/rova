@@ -50,7 +50,10 @@ export function useActiveSection(
         const el = document.getElementById(id)
         if (el && el.getBoundingClientRect().top <= line) current = id
       }
-      setMeasured({ key, active: current })
+      // Same section as last frame: keep the same state object, so React skips the re-render.
+      setMeasured((previous) =>
+        previous?.key === key && previous.active === current ? previous : { key, active: current },
+      )
     }
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(measure)

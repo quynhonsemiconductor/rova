@@ -20,5 +20,6 @@
     "title": "Phần này chưa có trong ứng dụng",
     "description": "Nội dung đang được chuyển từ bản hướng dẫn độc lập, nơi vẫn có phần này.",
     "action": "Mở trong bản hướng dẫn độc lập"
-  }
+  },
+  "shotUnavailable": "Không tải được ảnh minh họa. Nếu phiên đăng nhập đã hết hạn, hãy đăng nhập lại rồi tải lại trang."
 }

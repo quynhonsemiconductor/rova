@@ -20,5 +20,6 @@
     "title": "This chapter is not in the app yet",
     "description": "It is still being moved here from the standalone guide, which has it.",
     "action": "Open it in the standalone guide"
-  }
+  },
+  "shotUnavailable": "This screenshot could not be loaded. If your session has ended, sign in again and reload the page."
 }
