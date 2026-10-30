@@ -312,13 +312,23 @@ export class ReportingService {
     const selected = await this.requireIteration(actor, args, scope);
     const direction = args.direction ?? 'all';
 
-    const participating = await this.repo.findTimeboxSiblings(
-      workspaceId,
-      args.projectId,
-      selected.timeboxGroupId,
-      scope,
-      selected.id,
-    );
+    /**
+     * The selected Iteration ALONE, never its fused timebox (BA retest of US-118, TR-110/111).
+     * AC3 counts events targeting / sourced from "the Iteration", and the trend beside the KPIs is
+     * per Iteration — so a fused set made the KPIs disagree with the selected Iteration's own bar.
+     * It also pulled in a sibling with DIFFERENT dates: `timebox_group_id` is computed once at
+     * create and survives a date edit, so IT-7 showed IT-12's events. The siblings query still runs
+     * because it is the scope check — a selected Team's view of another Team's sprint is empty.
+     */
+    const participating = (
+      await this.repo.findTimeboxSiblings(
+        workspaceId,
+        args.projectId,
+        selected.timeboxGroupId,
+        scope,
+        selected.id,
+      )
+    ).filter((iteration) => iteration.id === selected.id);
     const iterationIds = participating.map((i) => i.id);
 
     const [events, scopedIterations, scheduledStoryIds] = await Promise.all([

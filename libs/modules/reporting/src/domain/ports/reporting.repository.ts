@@ -176,7 +176,10 @@ export interface IReportingRepository {
     /** Bound to events whose source OR target is in this set (the badge paths). Omit for all. */
     touchingIterationIds?: string[],
   ): Promise<StoredCarryoverEvent[]>;
-  /** Every Iteration of the project inside the scope's timeboxes, ordered start date then id. */
+  /**
+   * Every Iteration of the project OWNED by the scope's Team(s) — no shared team-less ones under a
+   * Team scope (Carryover's strict team equality, R7) — ordered start date then id.
+   */
   listScopedIterations(
     workspaceId: string,
     projectId: string,

@@ -638,6 +638,18 @@ describe('Story Target End Date + Carryover (Phase 7 CO)', () => {
     ).map((r) => r.id);
     expect(all.rows.some((r) => manualIds.includes(r.transitionId))).toBe(false);
     expect(all.trend.map((t) => t.iterationId)).toContain(it_.B);
+
+    // A selected Team's trend lists that Team's OWN Iterations only (US-118 AC5, BA retest TR-110):
+    // the team-less SHARED sprint can never hold this Team's Carryover (strict equality, R7).
+    const alpha = await reporting.getCarryover(actor, {
+      projectId: NXP,
+      teamId: TEAM_ALPHA_ID,
+      iterationId: it_.B,
+    });
+    const alphaTrend = alpha.trend.map((t) => t.iterationId);
+    expect(alphaTrend).toEqual(expect.arrayContaining([it_.A, it_.B, it_.O, it_.C]));
+    expect(alphaTrend).not.toContain(it_.SHARED);
+    expect(all.trend.map((t) => t.iterationId)).toContain(it_.SHARED);
   });
 
   // ── Task 11 — export authz + parity ─────────────────────────────────────────
