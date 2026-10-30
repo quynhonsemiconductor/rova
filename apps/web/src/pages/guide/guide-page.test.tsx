@@ -4,6 +4,9 @@
  * Through a real router with the app's route ids (`/auth/user-guide/$lang/$chapter`), so the claims
  * are about the URL the reader ends up on and the links they can follow, not about a mocked `Link`.
  */
+/// <reference types="node" />
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import {
@@ -19,6 +22,7 @@ import '@/shared/i18n/i18n'
 import { GUIDE_CHAPTERS } from './model/chapters'
 import { chaptersOf } from './model/toc'
 import { GuidePage } from './guide-page'
+import { GuideLink } from './ui/guide-link'
 
 async function renderGuide(path: string) {
   const rootRoute = createRootRoute({ component: Outlet })
@@ -102,6 +106,26 @@ describe('GuidePage', () => {
     expect(within(contents).queryByRole('link', { name: /Làm quen/ })).not.toBeInTheDocument()
   })
 
+  it('keeps a chapter folded as the reader left it when a click on its toggle came during search', async () => {
+    await renderGuide('/user-guide/en/01-lam-quen')
+    const contents = await screen.findByRole('navigation', { name: 'Guide contents' })
+    const toggle = within(contents).getByRole('button', { name: /Open items in Getting familiar/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true') // the chapter on screen starts open
+
+    fireEvent.change(within(contents).getByRole('searchbox'), { target: { value: 'scope' } })
+    fireEvent.click(toggle) // search holds it open: this click must not be remembered
+    fireEvent.change(within(contents).getByRole('searchbox'), { target: { value: '' } })
+
+    expect(
+      within(contents).getByRole('button', { name: /Open items in Getting familiar/ }),
+    ).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('refuses to render a guide link outside the guide, rather than linking somewhere wrong', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(() => render(<GuideLink hash="x">x</GuideLink>)).toThrow(/GuideContext/)
+  })
+
   it("filters the start page's path cards with the same search", async () => {
     await renderGuide('/user-guide/en/00-bat-dau')
     const contents = await screen.findByRole('navigation', { name: 'Guide contents' })
@@ -130,10 +154,11 @@ describe('GuidePage', () => {
     async () => {
       await renderGuide(`/user-guide/en/${missing!.slug}#somewhere`)
       expect(await screen.findByText('This chapter is not in the app yet')).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: 'Open it in the standalone guide' })).toHaveAttribute(
-        'href',
-        `/guide/en/${missing!.slug}.html#somewhere`,
-      )
+      const link = screen.getByRole('link', { name: 'Open it in the standalone guide' })
+      expect(link).toHaveAttribute('href', `/guide/en/${missing!.slug}.html#somewhere`)
+      // …and that page is really there to fall back to.
+      const file = link.getAttribute('href')!.split('#')[0]!
+      expect(existsSync(join(import.meta.dirname, '../../../public', file))).toBe(true)
     },
   )
 })

@@ -147,7 +147,11 @@ function ChapterRow({
             aria-label={toggleLabel}
             aria-expanded={open}
             aria-controls={submenuId}
-            onClick={() => setToggled(!open)}
+            // While a search holds every chapter open the toggle can show nothing, so it records
+            // nothing either: a click that looked like a no-op must not refold the chapter later.
+            onClick={() => {
+              if (!forceOpen) setToggled(!open)
+            }}
             className={cn(
               'h-auto w-8 self-stretch',
               current && 'bg-primary-lighter text-primary-light',

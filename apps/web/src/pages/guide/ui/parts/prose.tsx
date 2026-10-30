@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Info, TriangleAlert } from 'lucide-react'
+import type { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { cn } from '@/shared/lib/utils'
 import { ProseContext, useProse } from '../guide-context'
@@ -135,7 +136,8 @@ export const CheckUnderstanding = part(
 
 // ── Type marks ────────────────────────────────────────────────────────────────
 
-type MarkType = 'epic' | 'feature' | 'story' | 'defect' | 'task'
+// From the entity, so a renamed type fails to compile here instead of rendering the fallback mark.
+type MarkType = WorkItemType | PortfolioItemType
 type TimeboxType = 'iteration' | 'release' | 'milestone'
 
 /**

@@ -9,14 +9,17 @@ export interface GuideContextValue {
   query: string
 }
 
-export const GuideContext = createContext<GuideContextValue>({
-  lang: 'en',
-  chapter: '',
-  query: '',
-})
+export const GuideContext = createContext<GuideContextValue | null>(null)
 
+/**
+ * The guide state, which only `GuidePage` provides. Throws outside it rather than inventing a
+ * default: an empty `chapter` would quietly send a hash-only link to the start chapter.
+ */
 export function useGuide(): GuideContextValue {
-  return useContext(GuideContext)
+  const value = useContext(GuideContext)
+  if (!value)
+    throw new Error('useGuide() must be used inside the User Guide (GuideContext.Provider).')
+  return value
 }
 
 /**

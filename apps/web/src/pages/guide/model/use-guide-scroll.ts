@@ -31,8 +31,12 @@ export function useActiveSection(
   container: RefObject<HTMLElement | null>,
   ids: readonly string[],
 ): string | undefined {
-  const [active, setActive] = useState<string | undefined>(ids[0])
+  // Section ids are DOM ids, which cannot contain spaces, so the join is an exact key for `ids`.
   const key = ids.join(' ')
+  // Measured per `key`: another chapter's ids read as "nothing measured yet" (its first section)
+  // on the render that switches chapter, instead of the previous chapter's section for a frame.
+  const [measured, setMeasured] = useState<{ key: string; active: string | undefined }>()
+  const active = measured?.key === key ? measured.active : ids[0]
 
   useEffect(() => {
     const pane = container.current
@@ -46,7 +50,7 @@ export function useActiveSection(
         const el = document.getElementById(id)
         if (el && el.getBoundingClientRect().top <= line) current = id
       }
-      setActive(current)
+      setMeasured({ key, active: current })
     }
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(measure)

@@ -2,8 +2,12 @@ import { createElement, type ComponentPropsWithoutRef, type ElementType } from '
 import { cn } from '@/shared/lib/utils'
 
 type PartProps<T extends ElementType> = ComponentPropsWithoutRef<T> & {
-  /** Render as another element, for the few places the guide uses one block on a different tag. */
-  as?: ElementType
+  /**
+   * Render on another HTML tag, where the BA's guide put the same block on one (e.g. a scenario flow
+   * written as a `<ul>` rather than an `<ol>`). A tag name only, never a component, so the props
+   * written for the default tag still make sense on it.
+   */
+  as?: keyof HTMLElementTagNameMap
 }
 
 /**

@@ -54,6 +54,11 @@ describe('loginRedirect', () => {
       expect(returnToOf(loginRedirect(new Request(`${SPA}${path}`)))).toBe('/guide/')
     }
   })
+
+  it('sends a refused screenshot request back to the in-app guide, not to the file', () => {
+    const res = loginRedirect(guideRequest('/guide-assets/03-backlog-production.png'))
+    expect(returnToOf(res)).toBe('/user-guide')
+  })
 })
 
 describe('guardGuide', () => {

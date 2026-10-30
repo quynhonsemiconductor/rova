@@ -37,7 +37,7 @@ export default function Chapter() {
     <>
       <ChapterIntro id="chapter-01">
         <div>
-          <ChapterEyebrow>PART 01 · GETTING FAMILIARIZED</ChapterEyebrow>
+          <ChapterEyebrow>PART 01 · GETTING FAMILIAR</ChapterEyebrow>
           <h2>Understand the structure before starting work</h2>
           <Lead>
             Rova organizes data in three coverage classes:{' '}

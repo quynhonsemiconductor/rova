@@ -28,6 +28,8 @@ const GUIDE_ROOT = '/guide/'
  * never reaches this gate; only these images do.
  */
 export const GUIDE_ASSETS_ROOT = '/guide-assets/'
+/** Where a refused guide-asset request sends the reader back to after signing in. */
+const IN_APP_GUIDE = '/user-guide'
 const SESSION_CHECK_TIMEOUT_MS = 5_000
 
 /**
@@ -61,16 +63,21 @@ export function hasSessionCookie(request: Request): boolean {
 }
 
 /**
- * `/login?returnTo=<path>` on the SAME origin as the request. `returnTo` is taken only from the
- * request's own pathname + search, and anything that is not a `/guide/` path collapses to the guide
- * root — so the value can never name another site (`//evil.example`) and the gate is not an open
- * redirect, whatever URL it is handed.
+ * `/login?returnTo=<path>` on the SAME origin as the request. A static guide page comes back to
+ * itself; an in-app guide file (a screenshot) comes back to `/user-guide`, the page that asked for
+ * it; anything else collapses to the static guide root. `returnTo` is only ever the request's own
+ * `/guide/` path or a constant, so it can never name another site (`//evil.example`) and the gate is
+ * not an open redirect, whatever URL it is handed.
  */
 export function loginRedirect(request: Request): Response {
   const url = new URL(request.url)
   const candidate = url.pathname + url.search
-  const returnTo =
-    candidate.startsWith(GUIDE_ROOT) && !candidate.startsWith('//') ? candidate : GUIDE_ROOT
+  const returnTo = candidate.startsWith(GUIDE_ASSETS_ROOT)
+    ? // A screenshot is never the page the reader opened; the in-app guide is.
+      IN_APP_GUIDE
+    : candidate.startsWith(GUIDE_ROOT) && !candidate.startsWith('//')
+      ? candidate
+      : GUIDE_ROOT
   const login = new URL('/login', url.origin)
   login.searchParams.set('returnTo', returnTo)
   return new Response(null, {

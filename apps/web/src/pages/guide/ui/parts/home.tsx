@@ -144,7 +144,10 @@ export function PathCard({ children }: PathCardProps) {
  */
 export function PathGrid({ empty, children }: { empty: ReactNode; children: ReactNode }) {
   const { query } = useGuide()
-  const cards = Children.toArray(children).filter(isValidElement) as ReactElement<PathCardProps>[]
+  const cards = Children.toArray(children).filter(
+    (child): child is ReactElement<PathCardProps> =>
+      isValidElement(child) && child.type === PathCard,
+  )
   const visible = cards.filter((card) => matchesQuery(query, card.props.keywords))
   return (
     <>

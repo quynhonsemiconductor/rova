@@ -155,7 +155,7 @@ export default function Chapter() {
               <ul>
                 <li>
                   <GuideLink to="01-lam-quen" hash="chapter-01">
-                    01. Get acquainted with Rova <span>Read now</span>
+                    01. Getting familiar with Rova <span>Read now</span>
                   </GuideLink>
                 </li>
                 <li>

@@ -42,7 +42,7 @@ export const TOC_EN: readonly GuideGroup[] = [
         slug: '01-lam-quen',
         anchor: 'chapter-01',
         number: '01',
-        title: 'Introduction',
+        title: 'Getting familiar',
         subtitle: 'Workspace, Project, Team',
         keywords:
           'familiarize yourself with the concept of workspace project team epic feature user story defect task iteration release milestone owner rights',
