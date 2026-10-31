@@ -1,0 +1,59 @@
+// ── Workers Static Assets: the on-prem SPA (ONPREM-PLAN §8.2) ────────────────
+//
+// After the AWS exit the SPA is served by a Cloudflare Worker whose static assets
+// ARE the Vite bundle (`dist/`). One hostname per app per env: the Worker owns
+// `<host>/*` and the API paths (`/api/*`, `/v1/*`, `/readyz`) are routes WITHOUT
+// a script, so Cloudflare passes them straight to the Tunnel and the API. There
+// is no proxy Function and no API origin in the bundle — the SPA calls its own
+// origin.
+//
+// ROUTES ARE NOT DECLARED HERE, deliberately. `infra` `live/edge/onprem.tf` owns
+// them (`cloudflare_workers_route.spa`, script name `<product>-<env>-web`), and
+// the deploy token has no route/DNS permission (`cf-ci-web` is Workers Scripts:
+// edit only). A route in this file would race Terraform and, on a token without
+// Zone permission, fail the deploy. For the same reason `workers_dev` and
+// `preview_urls` are false: the script's only address is the hostname Terraform
+// routes to it, never `*.workers.dev`.
+//
+// Two environments, two scripts — `--env dev` deploys `rova-dev-web`, `--env
+// prod` deploys `rova-prod-web`. The top-level name is never deployed: every
+// deploy passes `--env`. `workers_dev`/`preview_urls` are repeated inside each
+// environment because Wrangler does NOT inherit them from the top level.
+//
+// Until the prod move (ONPREM-PLAN M-11) prod keeps publishing to Pages; its
+// environment here exists so the move is a workflow change, not a config change.
+
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rova-web",
+  "compatibility_date": "2026-06-01",
+
+  "assets": {
+    "directory": "./dist",
+
+    // Unknown paths serve `index.html`: every SPA route (`/backlog`,
+    // `/item/US-17`, …) is a client-side route with no file behind it.
+    "not_found_handling": "single-page-application",
+
+    // `/guide/01-lam-quen` serves `guide/01-lam-quen.html`. Pinned because the
+    // User Guide's own script identifies pages by an extensionless URL (the BA
+    // edits assume Pages' behaviour, which Workers reproduces here by default).
+    "html_handling": "auto-trailing-slash"
+  },
+
+  "workers_dev": false,
+  "preview_urls": false,
+
+  "env": {
+    "dev": {
+      "name": "rova-dev-web",
+      "workers_dev": false,
+      "preview_urls": false
+    },
+    "prod": {
+      "name": "rova-prod-web",
+      "workers_dev": false,
+      "preview_urls": false
+    }
+  }
+}
