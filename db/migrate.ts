@@ -101,7 +101,7 @@ async function assertNoStrandedMigrations(folder: string): Promise<void> {
   const recorded = await db.execute<{ created_at: string; hash: string }>(
     sql`select created_at, hash from drizzle.__drizzle_migrations`,
   );
-  const { missing, mismatched, recordedUnderOtherTimestamp } = strandedMigrations(
+  const { missing, mismatched, recordedUnderOtherTimestamp, knownEdits } = strandedMigrations(
     journal.entries,
     recorded.rows,
     (tag) => {
@@ -110,6 +110,14 @@ async function assertNoStrandedMigrations(folder: string): Promise<void> {
       return createHash('sha256').update(fs.readFileSync(file, 'utf8')).digest('hex');
     },
   );
+  if (knownEdits.length > 0) {
+    // A rewrite that is on the allow-list (db/stranded-migrations.ts), with both hashes named there. Said at info
+    // and separately from `mismatched`, so the mismatch warning keeps meaning "look at this database".
+    log.info(
+      `ℹ️   ${knownEdits.length} migration(s) were edited after they ran, as documented: ` +
+        `${knownEdits.join(', ')}.`,
+    );
+  }
   if (recordedUnderOtherTimestamp.length > 0) {
     // Not a problem: the file ran, under the `when` it had then. Said once, at info, so the next reader knows why a
     // journal entry has no row at its own timestamp.

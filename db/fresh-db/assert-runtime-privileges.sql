@@ -23,11 +23,46 @@
 -- psql does not substitute :variables inside a dollar-quoted DO block, so the
 -- creator is handed to those blocks through a temp table.
 DROP TABLE IF EXISTS assert_creator;
-CREATE TEMP TABLE assert_creator AS SELECT :'creator'::regrole AS role;
+CREATE TEMP TABLE assert_creator AS
+  SELECT :'creator'::regrole AS role, :'creator'::regrole::oid AS role_oid;
 
 -- A previous run that aborted before its cleanup leaves this behind, and the
 -- exhaustive check below would then fail on a table the run itself created.
 DROP TABLE IF EXISTS work.fresh_db_privilege_probe;
+DROP SEQUENCE IF EXISTS work.fresh_db_privilege_probe_seq;
+
+-- ── 0. The app schemas, from the DATABASE, once ─────────────────────────────
+-- Derived, not listed: the same nine names are written in 0068 and 0137, and a
+-- fourth copy here is a fourth place to forget. The migrator owns every schema it
+-- creates, so ownership identifies them on both paths, with the namespaces it
+-- owns but that are not application schemas excluded — plus `pg_*`, which includes
+-- the temp schema this very script uses.
+--
+-- Computed ONCE into a temp table and read by every check below. A copy of this
+-- query per check would also copy the empty case, in which `nspname = ANY(NULL)`
+-- matches nothing and an exhaustive check passes vacuously; here the empty case
+-- fails, and there is nothing to re-derive.
+DROP TABLE IF EXISTS assert_schemas;
+CREATE TEMP TABLE assert_schemas AS
+  SELECT n.nspname AS schema_name
+    FROM pg_namespace n
+   WHERE n.nspowner = (SELECT role_oid FROM assert_creator)
+     AND n.nspname NOT IN ('public', 'drizzle', 'information_schema')
+     AND n.nspname NOT LIKE 'pg\_%';
+
+DO $$
+DECLARE
+  app_schemas text[];
+BEGIN
+  SELECT array_agg(schema_name ORDER BY schema_name) INTO app_schemas FROM assert_schemas;
+  -- `IS NULL` first: array_agg over nothing is NULL, and `cardinality(NULL) = 0` is NULL, not true.
+  IF app_schemas IS NULL OR cardinality(app_schemas) = 0 THEN
+    RAISE EXCEPTION
+      'no application schema is owned by %: the migrations did not run as this role, or created nothing',
+      (SELECT role FROM assert_creator);
+  END IF;
+  RAISE NOTICE '  app schemas (owned by %): %', (SELECT role FROM assert_creator), app_schemas;
+END $$;
 
 -- ── 1. The grant set is COMPLETE: every table and sequence, not a sample ─────
 -- One privilege per check, never a comma list: has_table_privilege's multi-word
@@ -35,18 +70,24 @@ DROP TABLE IF EXISTS work.fresh_db_privilege_probe;
 -- for a role that can only INSERT — which is exactly the broken state this gate
 -- exists to catch. (It was written that way first and passed against a table
 -- whose SELECT had just been revoked.)
+-- `app_schemas` is read, not re-derived and not re-checked: section 0 raises and
+-- ON_ERROR_STOP halts the script before any check below runs, so a second empty
+-- test here could never fire.
 DO $$
 DECLARE
-  app_schemas CONSTANT text[] := ARRAY[
-    'identity', 'workspace', 'access', 'work', 'messaging',
-    'notifications', 'audit', 'storage', 'scm'
-  ];
+  app_schemas text[] := (SELECT array_agg(schema_name) FROM assert_schemas);
   table_privileges CONSTANT text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
   sequence_privileges CONSTANT text[] := ARRAY['USAGE', 'SELECT'];
+  -- Granted by OWNERSHIP, never by the runtime roles' grant set. Their presence
+  -- would mean the split is decorative: TRUNCATE empties a table, and REFERENCES
+  -- lets a role create foreign keys that hold other tables hostage.
+  forbidden_table_privileges CONSTANT text[] := ARRAY['TRUNCATE', 'REFERENCES', 'TRIGGER'];
   r text;
   p text;
   missing text[];
+  held text[];
 BEGIN
+
   FOREACH r IN ARRAY ARRAY['rova_app', 'rova_worker'] LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
       RAISE EXCEPTION 'runtime role % does not exist after all migrations ran', r;
@@ -78,6 +119,20 @@ BEGIN
          AND NOT has_sequence_privilege(r, sq.seqrelid, p);
       IF cardinality(missing) > 0 THEN
         RAISE EXCEPTION '% lacks % on % sequence(s): %', r, p, cardinality(missing), missing;
+      END IF;
+    END LOOP;
+
+    FOREACH p IN ARRAY forbidden_table_privileges LOOP
+      SELECT coalesce(array_agg(format('%I.%I', n.nspname, c.relname)), '{}')
+        INTO held
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = ANY(app_schemas)
+         AND c.relkind IN ('r', 'p')
+         AND has_table_privilege(r, c.oid, p);
+      IF cardinality(held) > 0 THEN
+        RAISE EXCEPTION
+          '% holds % on % table(s) — a runtime role must not: %', r, p, cardinality(held), held;
       END IF;
     END LOOP;
   END LOOP;
@@ -132,21 +187,26 @@ BEGIN
 END $$;
 RESET ROLE;
 
--- ── 4. Default privileges: a table created AFTER the migrations is reachable ─
+-- ── 4. Default privileges: objects created AFTER the migrations are reachable ─
 -- Created by `creator` with no GRANT of its own, so this passes only if 0137's
 -- ALTER DEFAULT PRIVILEGES is in place for the grantor.
-\echo '  a table created now by the migrator is reachable by the runtime roles'
+\echo '  a table AND a sequence created now by the migrator are reachable by the runtime roles'
 SET ROLE :"creator";
 DROP TABLE IF EXISTS work.fresh_db_privilege_probe;
+DROP SEQUENCE IF EXISTS work.fresh_db_privilege_probe_seq;
 CREATE TABLE work.fresh_db_privilege_probe (id int);
+CREATE SEQUENCE work.fresh_db_privilege_probe_seq;
 INSERT INTO work.fresh_db_privilege_probe VALUES (1);
 RESET ROLE;
 
 -- One privilege per check, for the same reason section 1 says so: the comma-list
 -- form answers "holds ANY of these" and would pass with one privilege missing.
+-- Both object kinds, because 0137 grants four privileges on TABLES and two on
+-- SEQUENCES, and a narrowed default privilege for either must fail here.
 DO $$
 DECLARE
   table_privileges CONSTANT text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
+  sequence_privileges CONSTANT text[] := ARRAY['USAGE', 'SELECT'];
   r text;
   p text;
   creator text := (SELECT role::text FROM assert_creator);
@@ -160,6 +220,15 @@ BEGIN
           r, p, creator;
       END IF;
     END LOOP;
+
+    FOREACH p IN ARRAY sequence_privileges LOOP
+      IF NOT has_sequence_privilege(r, 'work.fresh_db_privilege_probe_seq', p) THEN
+        RAISE EXCEPTION
+          '% lacks % on work.fresh_db_privilege_probe_seq, a sequence created after the migrations: '
+          'ALTER DEFAULT PRIVILEGES is missing or was set for the wrong grantor (creator = %)',
+          r, p, creator;
+      END IF;
+    END LOOP;
   END LOOP;
 END $$;
 
@@ -168,6 +237,7 @@ END $$;
 \echo '  both runtime roles can read and write the table created after the migrations'
 SET ROLE rova_app;
 SELECT count(*) AS rows_visible FROM work.fresh_db_privilege_probe;
+SELECT nextval('work.fresh_db_privilege_probe_seq') IS NOT NULL AS sequence_usable;
 INSERT INTO work.fresh_db_privilege_probe VALUES (2);
 DELETE FROM work.fresh_db_privilege_probe WHERE id = 2;
 INSERT INTO work.fresh_db_privilege_probe VALUES (2);
@@ -176,6 +246,7 @@ RESET ROLE;
 
 SET ROLE rova_worker;
 SELECT count(*) AS rows_visible FROM work.fresh_db_privilege_probe;
+SELECT nextval('work.fresh_db_privilege_probe_seq') IS NOT NULL AS sequence_usable;
 INSERT INTO work.fresh_db_privilege_probe VALUES (4);
 DELETE FROM work.fresh_db_privilege_probe WHERE id = 4;
 INSERT INTO work.fresh_db_privilege_probe VALUES (4);
@@ -184,21 +255,18 @@ RESET ROLE;
 
 SET ROLE :"creator";
 DROP TABLE work.fresh_db_privilege_probe;
+DROP SEQUENCE work.fresh_db_privilege_probe_seq;
 RESET ROLE;
 
 -- ── 5. Default privileges are recorded for the role that creates objects ─────
 DO $$
 DECLARE
-  app_schemas CONSTANT text[] := ARRAY[
-    'identity', 'workspace', 'access', 'work', 'messaging',
-    'notifications', 'audit', 'storage', 'scm'
-  ];
+  app_schemas text[] := (SELECT array_agg(schema_name) FROM assert_schemas);
   creator regrole := (SELECT role FROM assert_creator);
   schemas_present int;
   defaults_present int;
 BEGIN
-  SELECT count(*) INTO schemas_present
-    FROM pg_namespace WHERE nspname = ANY(app_schemas);
+  schemas_present := cardinality(app_schemas);
   SELECT count(*) INTO defaults_present
     FROM pg_default_acl
    WHERE defaclrole = creator
