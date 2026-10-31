@@ -12,6 +12,9 @@ node_modules
 dist
 dist-ssr
 
+# Local state written by `wrangler dev` / `wrangler deploy` (Workers Static Assets).
+.wrangler/
+
 # Environment — never commit secrets
 .env*
 !.env.example
