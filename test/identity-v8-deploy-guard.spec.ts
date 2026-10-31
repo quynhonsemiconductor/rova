@@ -33,12 +33,23 @@ describe('the identity 8 prod-tag guard', () => {
     expect(variables).toContain('variable "identity_v8_backfill_on_deploy"');
   });
 
-  it('the backfill-on-deploy flag is not set anywhere live', () => {
+  it('the backfill-on-deploy flag is only ever true alongside the cutover secret flags', () => {
     // The develop half of this guard died with the stack: the aws-exit destroy (E1)
     // strips infra/live/develop to its provider blocks, so there is nothing left to
     // carry the flags. Prod is the guard's remaining anchor. See
     // product-docs/platform/runbooks/aws-exit-teardown.md.
-    expect(read('infra/live/prod/main.tf')).not.toContain('identity_v8_backfill_on_deploy');
+    //
+    // The flag used to be asserted ABSENT, because no change had set it yet. The
+    // cutover change (the window) sets all three, and the change after it sets the
+    // backfill back to false while the secret flags stay true. So the invariant is
+    // the coupling, not the absence: a committed backfill without the secrets it
+    // needs would fail every deploy that follows.
+    const prod = read('infra/live/prod/main.tf');
+    const isTrue = (name: string) => new RegExp(`^\\s*${name}\\s*=\\s*true\\s*$`, 'm').test(prod);
+    if (isTrue('identity_v8_backfill_on_deploy')) {
+      expect(isTrue('better_auth_secret_set'), 'better_auth_secret_set').toBe(true);
+      expect(isTrue('edge_client_ip_secret_set'), 'edge_client_ip_secret_set').toBe(true);
+    }
   });
 
   it("the web deploy of a tag waits for that tag's backend deploy, for longer than the infra gate", () => {
