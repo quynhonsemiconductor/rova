@@ -146,22 +146,22 @@ importers:
         version: 1.43.0
       '@quynhonsemiconductor/identity':
         specifier: ^8.5.1
-        version: 8.5.1(c092e5eb629373f233a22dcbde06b22d)
+        version: 8.5.1(c5d1dce3b8b13166fa65e79fec8d3693)
       '@quynhonsemiconductor/observability':
         specifier: ^0.6.2
-        version: 0.6.3(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.10.0)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.10.0))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.10.0)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/semantic-conventions@1.43.0)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2))(pino@10.4.0)
+        version: 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
       '@quynhonsemiconductor/platform-cache':
         specifier: ^3.3.1
         version: 3.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(ioredis@5.11.1(supports-color@10.2.2))
       '@quynhonsemiconductor/platform-http':
         specifier: ^5.0.0
-        version: 5.0.1(42aa729222b0178b3cca00f8ea159a9c)
+        version: 5.0.1(1f156e90ac0a9c94e6d7e2b4c2a7d0e0)
       '@quynhonsemiconductor/platform-mail':
         specifier: ^0.1.7
-        version: 0.1.7(3d18a6094af718b0c7ad8ff4be3f90bc)
+        version: 0.1.7(f061af39cb53cabeb82bb6d9f62d9f30)
       '@quynhonsemiconductor/platform-runtime':
         specifier: ^0.3.1
-        version: 0.3.3(2946844463d8f05bbeec0de9bbc6b43b)
+        version: 0.3.3(777db771c39b23fb39ba22b06c933784)
       cockatiel:
         specifier: ^4.0.0
         version: 4.0.0
@@ -178,8 +178,8 @@ importers:
         specifier: ^6.2.3
         version: 6.2.13
       nestjs-pino:
-        specifier: ^4.6.1
-        version: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
+        specifier: ^5.3.1
+        version: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
       nestjs-zod:
         specifier: ^5.4.0
         version: 5.5.0(patch_hash=fa2029e87bb600a0b7fa6b0faffefe8cc8c9b2733343113ad1b02d171af1915b)(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/swagger@11.4.7(@fastify/static@10.1.7)(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.6.6)
@@ -315,7 +315,7 @@ importers:
         version: 5.9.2(@standard-schema/spec@1.1.0)(ajv@8.20.0)(react-hook-form@7.90.0(@types/react@19.3.0)(react@19.3.1))(zod@4.6.6)
       '@quynhonsemiconductor/platform-http':
         specifier: ^5.0.0
-        version: 5.0.1(42aa729222b0178b3cca00f8ea159a9c)
+        version: 5.0.1(1f156e90ac0a9c94e6d7e2b4c2a7d0e0)
       '@tanstack/react-query':
         specifier: ^5.101.0
         version: 5.104.5(@types/react@19.3.0)(react@19.3.1)
@@ -6812,13 +6812,14 @@ packages:
   neo-async@2.6.2:
     resolution: {integrity: sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw==}
 
-  nestjs-pino@4.6.1:
-    resolution: {integrity: sha512-nuARXa0xpdJ1lY2+fgycIQr6H3g0VgqAWNK3xMYjOFcj2DoPETNXj0lV3Y86nRuI7BUfQp5PGiVoZvT4dTWbpQ==}
-    engines: {node: '>= 14'}
+  nestjs-pino@5.3.1:
+    resolution: {integrity: sha512-tL3fFSY38Wuv3VS4dCo+zlHVt1xU7+RSXnlgenyTvfy74GLBLgisqvG+76983ilf2C2uFkPe68qUapXCYnoSoA==}
+    engines: {node: '>=22.12.0'}
     peerDependencies:
-      '@nestjs/common': ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0
-      pino: ^7.5.0 || ^8.0.0 || ^9.0.0 || ^10.0.0
-      pino-http: ^6.4.0 || ^7.0.0 || ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0
+      '@nestjs/common': ^11.0.8 || ^12.0.2
+      '@nestjs/core': ^11.0.8 || ^12.0.2
+      pino: ^10.0.0
+      pino-http: ^11.0.0
       rxjs: ^7.1.0
 
   nestjs-zod@5.5.0:
@@ -11060,15 +11061,15 @@ snapshots:
 
   '@protobufjs/utf8@1.1.2': {}
 
-  '@quynhonsemiconductor/identity@8.5.1(c092e5eb629373f233a22dcbde06b22d)':
+  '@quynhonsemiconductor/identity@8.5.1(c5d1dce3b8b13166fa65e79fec8d3693)':
     dependencies:
       '@better-auth/core': 1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5)
       '@better-auth/drizzle-adapter': 1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))
       '@better-auth/sso': 1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(@opentelemetry/api@1.10.0)(better-call@1.4.0(zod@4.6.6))(jose@6.2.4)(kysely@0.29.7)(nanostores@1.5.5))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-auth@1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1))(better-call@1.4.0(zod@4.6.6))
       '@node-rs/argon2': 2.2.2
       '@quynhonsemiconductor/platform-cache': 3.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(ioredis@5.11.1(supports-color@10.2.2))
-      '@quynhonsemiconductor/platform-db': 0.1.2(c045edfea4e7eddcd84311b54012d06c)
-      '@quynhonsemiconductor/platform-http': 5.0.1(42aa729222b0178b3cca00f8ea159a9c)
+      '@quynhonsemiconductor/platform-db': 0.1.2(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a))(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)
+      '@quynhonsemiconductor/platform-http': 5.0.1(1f156e90ac0a9c94e6d7e2b4c2a7d0e0)
       better-auth: 1.7.7(@opentelemetry/api@1.10.0)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)
       drizzle-orm: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
       jose: 6.2.4
@@ -11078,7 +11079,7 @@ snapshots:
     optionalDependencies:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
       '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@quynhonsemiconductor/observability': 0.6.3(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.10.0)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.10.0))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.10.0)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/semantic-conventions@1.43.0)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2))(pino@10.4.0)
+      '@quynhonsemiconductor/observability': 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
       fastify: 5.12.7
       ioredis: 5.11.1(supports-color@10.2.2)
     transitivePeerDependencies:
@@ -11092,7 +11093,7 @@ snapshots:
       - nanostores
       - prisma
 
-  '@quynhonsemiconductor/observability@0.6.3(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.10.0)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.10.0))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.10.0)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/semantic-conventions@1.43.0)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2))(pino@10.4.0)':
+  '@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)':
     dependencies:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
       '@opentelemetry/api': 1.10.0
@@ -11104,7 +11105,7 @@ snapshots:
       '@opentelemetry/sdk-node': 0.223.0(@opentelemetry/api@1.10.0)(supports-color@10.2.2)
       '@opentelemetry/sdk-trace-base': 2.12.0(@opentelemetry/api@1.10.0)
       '@opentelemetry/semantic-conventions': 1.43.0
-      nestjs-pino: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
+      nestjs-pino: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
       pino: 10.4.0
 
   '@quynhonsemiconductor/platform-cache@3.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(ioredis@5.11.1(supports-color@10.2.2))':
@@ -11112,31 +11113,31 @@ snapshots:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
       ioredis: 5.11.1(supports-color@10.2.2)
 
-  '@quynhonsemiconductor/platform-db@0.1.2(c045edfea4e7eddcd84311b54012d06c)':
+  '@quynhonsemiconductor/platform-db@0.1.2(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a))(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)':
     dependencies:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
-      '@quynhonsemiconductor/observability': 0.6.3(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.10.0)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.10.0))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.10.0)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/semantic-conventions@1.43.0)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2))(pino@10.4.0)
+      '@quynhonsemiconductor/observability': 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
       drizzle-orm: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
       pg: 8.23.1
 
-  '@quynhonsemiconductor/platform-http@5.0.1(42aa729222b0178b3cca00f8ea159a9c)':
+  '@quynhonsemiconductor/platform-http@5.0.1(1f156e90ac0a9c94e6d7e2b4c2a7d0e0)':
     dependencies:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
       '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/swagger': 11.4.7(@fastify/static@10.1.7)(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)
-      '@quynhonsemiconductor/observability': 0.6.3(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.10.0)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.10.0))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.10.0)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/semantic-conventions@1.43.0)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2))(pino@10.4.0)
+      '@quynhonsemiconductor/observability': 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
       '@quynhonsemiconductor/platform-cache': 3.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(ioredis@5.11.1(supports-color@10.2.2))
       fastify: 5.12.7
       ioredis: 5.11.1(supports-color@10.2.2)
       nestjs-zod: 5.5.0(patch_hash=fa2029e87bb600a0b7fa6b0faffefe8cc8c9b2733343113ad1b02d171af1915b)(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/swagger@11.4.7(@fastify/static@10.1.7)(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.6.6)
       zod: 4.6.6
 
-  '@quynhonsemiconductor/platform-jobs@0.1.2(a1bb73434756d7f0fdcc11296bb9ed3a)':
+  '@quynhonsemiconductor/platform-jobs@0.1.2(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.10.0)(@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a))(@quynhonsemiconductor/platform-db@0.1.2(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a))(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1))(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)':
     dependencies:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
       '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@quynhonsemiconductor/observability': 0.6.3(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.10.0)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.10.0))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.10.0)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/semantic-conventions@1.43.0)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2))(pino@10.4.0)
-      '@quynhonsemiconductor/platform-db': 0.1.2(c045edfea4e7eddcd84311b54012d06c)
+      '@quynhonsemiconductor/observability': 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
+      '@quynhonsemiconductor/platform-db': 0.1.2(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a))(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)
       drizzle-orm: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
       pg: 8.23.1
       pg-boss: 12.37.0(@opentelemetry/api@1.10.0)
@@ -11145,29 +11146,29 @@ snapshots:
       - pg-native
     optional: true
 
-  '@quynhonsemiconductor/platform-mail@0.1.7(3d18a6094af718b0c7ad8ff4be3f90bc)':
+  '@quynhonsemiconductor/platform-mail@0.1.7(f061af39cb53cabeb82bb6d9f62d9f30)':
     dependencies:
-      '@quynhonsemiconductor/observability': 0.6.3(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.10.0)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.10.0))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.10.0)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/semantic-conventions@1.43.0)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2))(pino@10.4.0)
+      '@quynhonsemiconductor/observability': 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
     optionalDependencies:
       '@azure/identity': 4.14.0(supports-color@10.2.2)
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
       '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@quynhonsemiconductor/platform-jobs': 0.1.2(a1bb73434756d7f0fdcc11296bb9ed3a)
+      '@quynhonsemiconductor/platform-jobs': 0.1.2(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.10.0)(@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a))(@quynhonsemiconductor/platform-db@0.1.2(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a))(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1))(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)
       nodemailer: 10.2.1
 
-  '@quynhonsemiconductor/platform-runtime@0.3.3(2946844463d8f05bbeec0de9bbc6b43b)':
+  '@quynhonsemiconductor/platform-runtime@0.3.3(777db771c39b23fb39ba22b06c933784)':
     dependencies:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
       '@nestjs/config': 4.0.4(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(rxjs@7.8.2)
       '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@quynhonsemiconductor/observability': 0.6.3(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/auto-instrumentations-node@0.81.2(@opentelemetry/api@1.10.0)(@opentelemetry/core@2.12.0(@opentelemetry/api@1.10.0))(supports-color@10.2.2))(@opentelemetry/exporter-metrics-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/exporter-trace-otlp-http@0.223.0(@opentelemetry/api@1.10.0))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/sdk-node@0.223.0(@opentelemetry/api@1.10.0)(supports-color@10.2.2))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.10.0))(@opentelemetry/semantic-conventions@1.43.0)(nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2))(pino@10.4.0)
+      '@quynhonsemiconductor/observability': 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
       '@quynhonsemiconductor/platform-cache': 3.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(ioredis@5.11.1(supports-color@10.2.2))
       zod: 4.6.6
     optionalDependencies:
       '@nestjs/platform-fastify': 11.2.7(@fastify/static@10.1.7)(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))
-      '@quynhonsemiconductor/platform-db': 0.1.2(c045edfea4e7eddcd84311b54012d06c)
+      '@quynhonsemiconductor/platform-db': 0.1.2(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a))(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)
       fastify: 5.12.7
-      nestjs-pino: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
+      nestjs-pino: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
       pino: 10.4.0
 
   '@radix-ui/number@1.1.3': {}
@@ -14921,9 +14922,10 @@ snapshots:
 
   neo-async@2.6.2: {}
 
-  nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2):
+  nestjs-pino@5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2):
     dependencies:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
+      '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
       pino: 10.4.0
       pino-http: 11.0.0
       rxjs: 7.8.2
