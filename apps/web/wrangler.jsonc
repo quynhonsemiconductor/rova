@@ -27,8 +27,10 @@
 // the US-119 gate that admits only signed-in readers to the User Guide — is a
 // PAGES Function and does not run on Workers Static Assets, so a Worker-served
 // `/guide/*` would be public. The route is Terraform-gated on the cutover, so
-// nothing is exposed until then; before DNS flips, `live/edge` needs either an
-// Access policy on `/guide/*` or a Worker entry script that enforces the gate.
+// nothing is exposed until then; the gate moves to a Cloudflare Access
+// application on `<host>/guide/*` (Entra login, the dev hosts' policy), owned by
+// the `live/edge` Access app in the SA cutover PR. The DNS flip happens only
+// with that in place.
 
 {
   "$schema": "node_modules/wrangler/config-schema.json",
