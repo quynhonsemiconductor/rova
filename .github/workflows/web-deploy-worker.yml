@@ -183,10 +183,14 @@ jobs:
     needs: [target, wait-for-ci]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The GitHub Environment carries CLOUDFLARE_API_TOKEN (owner-set: Workers
-    # Scripts: edit on the QNSC account, no DNS, no routes, no Pages). `production`
-    # also carries the required reviewer, which is what turns the dispatch into a
-    # human-gated ship once the variable above is flipped.
+    # The GitHub Environment carries CLOUDFLARE_WORKERS_API_TOKEN (owner-set:
+    # Workers Scripts: edit on the QNSC account, no DNS, no routes, no Pages).
+    # DELIBERATELY NOT `CLOUDFLARE_API_TOKEN`: that name is an ORG secret holding
+    # the Pages deploy token, and `secrets.*` falls through to it whenever the
+    # environment has none of its own — so this job would have deployed with the
+    # Pages credential and said nothing. A name of its own fails closed (empty)
+    # instead. `production` also carries the required reviewer, which is what
+    # turns the dispatch into a human-gated ship once the variable above is flipped.
     environment: ${{ needs.target.outputs.environment }}
     permissions:
       contents: read
@@ -202,6 +206,20 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Require the Workers token for this environment
+        # Fail here, naming the secret and the environment, rather than inside
+        # wrangler's own error — an empty `secrets.*` is the one failure mode
+        # that looks like a Cloudflare problem.
+        env:
+          CLOUDFLARE_WORKERS_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+          TARGET_ENV: ${{ needs.target.outputs.environment }}
+        run: |
+          set -euo pipefail
+          [ -n "${CLOUDFLARE_WORKERS_API_TOKEN}" ] || {
+            echo "::error::secrets.CLOUDFLARE_WORKERS_API_TOKEN is not set in the '${TARGET_ENV}' environment. Create it there (Workers Scripts: edit on the QNSC account) before deploying."
+            exit 1
+          }
+
       - name: Build the SPA for the same-origin edge
         env:
           # Relative API base. An absolute origin baked in here would send the
@@ -215,7 +233,8 @@ jobs:
         # the script (`rova-dev-web` / `rova-prod-web`); never omit it — the
         # top-level name in the config is not a deploy target.
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+          WRANGLER_ENV: ${{ needs.target.outputs.wrangler_env }}
         run: >-
           pnpm --filter rova-web exec wrangler deploy
-          --env ${{ needs.target.outputs.wrangler_env }}
+          --env "$WRANGLER_ENV"
