@@ -348,26 +348,40 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     const list = await rpc(fastify, 'tools/list');
     const tools = list.json<ToolListResponse>().result!.tools!;
     expect(tools.map((t) => t.name).sort()).toEqual([
-      'get_project',
-      'get_work_item',
-      'get_work_item_by_key',
-      'iteration_burndown',
-      'iteration_options',
-      'iteration_status',
-      'list_backlog',
-      'list_comments',
-      'list_iterations',
-      'list_milestones',
-      'list_project_members',
-      'list_projects',
-      'list_releases',
-      'my_work',
-      'search_work_items',
-      'team_capacity',
-      'unread_notifications',
-      'velocity',
-      'whoami',
-      'work_item_activity',
+      'rova_carryover_report',
+      'rova_get_milestone',
+      'rova_get_portfolio_item',
+      'rova_get_project',
+      'rova_get_release',
+      'rova_get_test_case_by_key',
+      'rova_get_work_item',
+      'rova_get_work_item_by_key',
+      'rova_iteration_burndown',
+      'rova_iteration_options',
+      'rova_iteration_status',
+      'rova_list_backlog',
+      'rova_list_comments',
+      'rova_list_iterations',
+      'rova_list_milestones',
+      'rova_list_notifications',
+      'rova_list_portfolio_items',
+      'rova_list_project_members',
+      'rova_list_projects',
+      'rova_list_releases',
+      'rova_list_teams',
+      'rova_list_test_cases',
+      'rova_my_work',
+      'rova_project_health',
+      'rova_quality_defects',
+      'rova_release_tracking',
+      'rova_search_work_items',
+      'rova_team_capacity',
+      'rova_team_status',
+      'rova_unread_notifications',
+      'rova_velocity',
+      'rova_whoami',
+      'rova_work_item_activity',
+      'rova_work_item_code_changes',
     ]);
     for (const t of tools) expect(t.annotations?.readOnlyHint).toBe(true);
   });
@@ -398,7 +412,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     });
     expect(direct.statusCode).toBe(200);
     const rest = direct.json();
-    const { statusCode, body } = await callTool(fastify, 'list_projects', { limit: 5 });
+    const { statusCode, body } = await callTool(fastify, 'rova_list_projects', { limit: 5 });
     expect(statusCode).toBe(200);
     const out = JSON.parse(body.result!.content![0].text);
     expect(out.projects).toEqual([
@@ -420,7 +434,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       verify: async () => ({ userId: VICTIM, workspaceId: RESTRICTED }),
     };
     const onRestricted = await boot(restrictedVerifier);
-    const { body } = await callTool(onRestricted, 'list_projects', {});
+    const { body } = await callTool(onRestricted, 'rova_list_projects', {});
     expect(body.result!.isError).toBe(true);
     const relayed = JSON.parse(body.result!.content![0].text);
     expect(relayed.statusCode).toBe(403);
@@ -434,7 +448,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
   it('an external request cannot forge the in-process principal: tools act as the VERIFIED person', async () => {
     const fastify = await boot();
     // the request carries no principal headers at all; the verifier alone decides who acts
-    const { body } = await callTool(fastify, 'list_projects', {}, ATTACKER_TOKEN);
+    const { body } = await callTool(fastify, 'rova_list_projects', {}, ATTACKER_TOKEN);
     const out = JSON.parse(body.result!.content![0].text);
     // the fixture names each row after the principal the guard pipeline delivered
     expect(JSON.stringify(out)).not.toContain(VICTIM);
@@ -530,7 +544,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     await initialize(fastify);
     const list = await rpc(fastify, 'tools/list');
     const tools = list.json().result!.tools!;
-    expect(tools.length).toBe(20);
+    expect(tools.length).toBe(34);
     for (const tool of tools) {
       expect(
         JSON.stringify(tool.inputSchema).match(/workspace/i),
@@ -553,36 +567,44 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     args: Record<string, unknown>;
     notFoundArg: Record<string, unknown>;
   }> = [
-    { name: 'list_projects', args: {}, notFoundArg: {} },
-    { name: 'get_project', args: { projectId: KNOWN_ID }, notFoundArg: { projectId: UNKNOWN_ID } },
+    { name: 'rova_list_projects', args: {}, notFoundArg: {} },
     {
-      name: 'list_project_members',
+      name: 'rova_get_project',
       args: { projectId: KNOWN_ID },
       notFoundArg: { projectId: UNKNOWN_ID },
     },
     {
-      name: 'list_comments',
+      name: 'rova_list_project_members',
+      args: { projectId: KNOWN_ID },
+      notFoundArg: { projectId: UNKNOWN_ID },
+    },
+    {
+      name: 'rova_list_comments',
       args: { workItemId: KNOWN_ITEM },
       notFoundArg: { workItemId: UNKNOWN_ITEM },
     },
     {
-      name: 'get_work_item_by_key',
+      name: 'rova_get_work_item_by_key',
       args: { itemKey: 'OBSE-42' },
       notFoundArg: { itemKey: 'MISSING-1' },
     },
-    { name: 'list_backlog', args: { projectId: KNOWN_ID }, notFoundArg: { projectId: UNKNOWN_ID } },
     {
-      name: 'work_item_activity',
+      name: 'rova_list_backlog',
+      args: { projectId: KNOWN_ID },
+      notFoundArg: { projectId: UNKNOWN_ID },
+    },
+    {
+      name: 'rova_work_item_activity',
       args: { workItemId: KNOWN_ITEM },
       notFoundArg: { workItemId: UNKNOWN_ITEM },
     },
     {
-      name: 'iteration_status',
+      name: 'rova_iteration_status',
       args: { iterationId: KNOWN_ITERATION },
       notFoundArg: { iterationId: UNKNOWN_ITERATION },
     },
     {
-      name: 'iteration_options',
+      name: 'rova_iteration_options',
       args: { projectId: KNOWN_ID },
       notFoundArg: { projectId: UNKNOWN_ID },
     },
@@ -624,7 +646,9 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       // list_comments is resource-tier too but resolves the item like activity — its 403
       // case above already covers the denial shape; the SelfScoped my_work 200s empty.
       const NOT_FOUND_CASES = ERROR_MATRIX.filter((c) =>
-        ['get_work_item_by_key', 'work_item_activity', 'iteration_status'].includes(c.name),
+        ['rova_get_work_item_by_key', 'rova_work_item_activity', 'rova_iteration_status'].includes(
+          c.name,
+        ),
       );
       expect(NOT_FOUND_CASES.length).toBe(3);
       for (const { name, notFoundArg } of NOT_FOUND_CASES) {
@@ -633,8 +657,8 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
 
       // unknown-id -> 403 (no existence leak) for the routes PolicyGuard guards before lookup
       for (const [name, args] of [
-        ['get_project', { projectId: UNKNOWN_ID }],
-        ['list_project_members', { projectId: UNKNOWN_ID }],
+        ['rova_get_project', { projectId: UNKNOWN_ID }],
+        ['rova_list_project_members', { projectId: UNKNOWN_ID }],
       ] as const) {
         await expectErrorRelay(verifier, name, args, 403);
       }

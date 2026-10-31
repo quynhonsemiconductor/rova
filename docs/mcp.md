@@ -27,10 +27,22 @@ Claude Code is the only supported client.
 
 ## Available tools
 
-Read-only today: projects, work items (search / by-key / backlog / activity / comments),
-iterations (list / options / status), releases, milestones, burndown / velocity / team-capacity
-reports, and the caller's own identity and unread count. Every tool returns exactly what the
-same person sees in the web app — a tool call can never widen your access.
+Every tool name carries the `rova_` prefix: the MCP portal fronts all apps, and tool names must
+be unique across them (owner decision, 2026-10-26).
+
+Read-only today (34 tools): `rova_whoami`, projects (`rova_list_projects`, `rova_get_project`,
+`rova_list_project_members`, `rova_project_health`), work items (`rova_search_work_items`,
+`rova_get_work_item`, `rova_get_work_item_by_key`, `rova_my_work`, `rova_list_backlog`,
+`rova_work_item_activity`, `rova_list_comments`, `rova_work_item_code_changes`),
+iterations (`rova_list_iterations`, `rova_iteration_options`, `rova_iteration_status`),
+releases and milestones (`rova_list_releases`, `rova_get_release`, `rova_list_milestones`,
+`rova_get_milestone`), reports (`rova_iteration_burndown`, `rova_velocity`,
+`rova_team_capacity`, `rova_carryover_report`, `rova_release_tracking`), quality and teams
+(`rova_list_test_cases`, `rova_get_test_case_by_key`, `rova_quality_defects`,
+`rova_team_status`, `rova_list_teams`), portfolio (`rova_list_portfolio_items`,
+`rova_get_portfolio_item`), and the caller's own data (`rova_unread_notifications`,
+`rova_list_notifications`). Every tool returns exactly what the same person sees in the web
+app — a tool call can never widen your access.
 
 ## Environment flag
 

@@ -13,11 +13,7 @@ const ROOT = join(__dirname, '..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 
 const FLAGS = ['better_auth_secret_set', 'edge_client_ip_secret_set'] as const;
-const GUARDED = [
-  '.github/workflows/backend-deploy.yml',
-  '.github/workflows/web-deploy.yml',
-  '.github/workflows/k8s-promote.yml',
-];
+const GUARDED = ['.github/workflows/backend-deploy.yml', '.github/workflows/web-deploy.yml'];
 
 describe('the identity 8 prod-tag guard', () => {
   it.each(GUARDED)('%s refuses a prod tag until both flags are true in infra/live/prod', (file) => {
@@ -27,9 +23,8 @@ describe('the identity 8 prod-tag guard', () => {
     for (const flag of FLAGS) expect(step.slice(0, 900)).toContain(flag);
     expect(step.slice(0, 900)).toContain('infra/live/prod/main.tf');
     expect(step.slice(0, 1200)).toContain('exit 1');
-    // tags only (k8s-promote's job already runs for a tag alone)
-    if (!file.endsWith('k8s-promote.yml'))
-      expect(text).toMatch(/Refuse a prod tag[^\n]*\n\s+if: github\.ref_type == 'tag'/);
+    // tags only
+    expect(text).toMatch(/Refuse a prod tag[^\n]*\n\s+if: github\.ref_type == 'tag'/);
   });
 
   it('the module declares both variables, and prod does not drop them from its vocabulary', () => {

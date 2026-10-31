@@ -3,12 +3,12 @@ import { z } from 'zod';
 import { listResult, pageArgs, type ToolContext } from './rest';
 
 /**
- * `list_iterations` — the iterations of one project the person can read
+ * `rova_list_iterations` — the iterations of one project the person can read
  * (GET /v1/iterations, `timebox:view` from the `projectId` query).
  */
 export function registerListIterations(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'list_iterations',
+    'rova_list_iterations',
     {
       title: 'List iterations',
       description: 'The iterations of one project you can read. Paginated.',

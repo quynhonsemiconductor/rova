@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { result, type ToolContext } from './rest';
 
 /**
- * `team_capacity` — the Team Capacity report of one project (GET /v1/reports/team-capacity,
+ * `rova_team_capacity` — the Team Capacity report of one project (GET /v1/reports/team-capacity,
  * `report:view` from the `projectId` query): a read-only projection of Team Status hours,
  * bounded by the team roster — relayed as-is.
  */
 export function registerTeamCapacity(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'team_capacity',
+    'rova_team_capacity',
     {
       title: 'Team capacity',
       description:

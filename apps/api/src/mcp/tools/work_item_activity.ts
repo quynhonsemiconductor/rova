@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { denied, result, type ToolContext } from './rest';
 
 /**
- * `work_item_activity` — the revision history of one work item
+ * `rova_work_item_activity` — the revision history of one work item
  * (GET /v1/work-items/:id/activity, `work_item:view` on the item). The REST route pages by
  * page/pageSize (no cursor); the tool caps the page and relays the total.
  */
@@ -11,7 +11,7 @@ const MAX_PAGE_SIZE = 25;
 
 export function registerWorkItemActivity(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'work_item_activity',
+    'rova_work_item_activity',
     {
       title: 'Work item activity',
       description: 'The revision history of one work item you can read, newest page first.',

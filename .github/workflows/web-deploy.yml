@@ -127,7 +127,7 @@ jobs:
         if: steps.touched.outputs.infra == 'true'
         # Shared with backend-deploy and three other repos — see `quynhonsemiconductor/ci`.
         # A rate limit is retried there rather than reported as a failed upstream run.
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           workflow: infra-apply.yml
           label: Infrastructure · Apply
@@ -160,7 +160,7 @@ jobs:
       actions: read
     steps:
       - name: Wait for Web · CI on this commit
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           workflow: web-ci.yml
           branch: main
@@ -192,7 +192,7 @@ jobs:
       actions: read
     steps:
       - name: Wait for Backend · Deploy of this tag
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           workflow: backend-deploy.yml
           branch: ${{ github.ref_name }}
@@ -203,8 +203,9 @@ jobs:
 
   deploy:
     needs: [wait-for-infra, wait-for-ci, wait-for-backend]
-    # `wait-for-backend` is skipped on a push to main; a skipped need must not skip the deploy.
-    if: ${{ !cancelled() && !failure() }}
+    # `wait-for-backend` is skipped on a push to main, and a skipped need must not skip the deploy. Tags only: the develop Pages
+    # project is destroyed (AWS exit), and prod is the only target left.
+    if: ${{ !cancelled() && !failure() && github.ref_type == 'tag' }}
     # Must match the UNION of every inner job's own permissions in the reusable
     # web-deploy.yml, not just its top-level default (contents: read) — GitHub
     # validates a reusable call's whole permission chain at trigger time, and
@@ -214,12 +215,11 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: quynhonsemiconductor/ci/.github/workflows/web-deploy.yml@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+    uses: quynhonsemiconductor/ci/.github/workflows/web-deploy.yml@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
     with:
       product: rova
       # Must equal `packageManager` in package.json: pnpm/action-setup refuses to run when the two differ
       # ("Multiple versions of pnpm specified"). The reusable's default is 10.33.2.
-      pnpm_version: '11.28.5'
       # Monorepo: run wrangler from the web package dir so it discovers the
       # file-based Pages Functions (apps/web/functions/**) and bundles the
       # /v1/* BFF reverse-proxy. web_dist_path is relative to working_directory.
@@ -228,4 +228,3 @@ jobs:
     # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
     secrets:
       CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

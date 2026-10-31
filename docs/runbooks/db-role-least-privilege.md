@@ -4,7 +4,7 @@
 
 | | develop | production |
 |---|---|---|
-| roles exist (migration 0068) | yes | yes |
+| roles exist (0068 on AWS; CNPG managed roles on-prem) | yes | yes |
 | 1. passwords in Secrets Manager | yes (2026-07-28) | yes (2026-07-28) |
 | 2. `db_role_passwords_set` | yes | yes |
 | 2. cutover task run | yes (2026-07-29) | **yes (2026-07-29)** |
@@ -64,9 +64,22 @@ role, which owns every table in the database. Two consequences:
    `0005` never enforced anything, recorded as the audit's top finding in
    `docs/superpowers/specs/2026-07-09-drop-multi-tenant-merge-into-workspace-design.md`.
 
-Migration `0068_app_role_least_privilege.sql` has already created the roles and
-their grants. It created them **NOLOGIN**, so nothing uses them yet and applying
-it changed no running behaviour. This runbook is the part that does.
+On AWS, migration `0068_app_role_least_privilege.sql` created the roles and
+their grants, **NOLOGIN**, so nothing used them and applying it changed no
+running behaviour. This runbook is the part that switched the workloads over.
+
+> **On-prem (CNPG) the roles are the PLATFORM's, not the migration's.** CNPG
+> creates `rova_app`, `rova_worker` and `rova_migrator` as managed roles (see
+> `gitops`), and `rova_migrator` deliberately has **no** CREATEROLE. Since #832
+> (2026-10-30) 0068 no longer relies on creating anything: it `GRANT`s to the
+> roles that exist, and `CREATE ROLE` survives only as a guard for databases with
+> no CNPG in front of them — CI and a developer's own Postgres, which migrate as a
+> superuser — where it runs **only if the connecting role holds CREATEROLE**
+> (`rolsuper` or `rolcreaterole`). `0137_runtime_role_grants.sql` re-states the
+> full runtime grant set plus the default privileges for future tables, so a
+> platform-created database and an AWS-created one end up identical. The names in
+> the table below are the pre-0128 ones; `0128` renamed them in place.
+> The rebuild-from-zero gate is the `Fresh DB rebuild` CI job (`db/fresh-db/`).
 
 | Role | Rights | Used by |
 |---|---|---|
@@ -208,7 +221,7 @@ lines, one per role:
 The script does the verification the old manual SQL asked for, and fails the task
 rather than printing a warning:
 
-- the role exists (else migration 0068 never ran here);
+- the role exists (else the platform has not provisioned it and nothing has granted it anything);
 - `rolcanlogin` is true afterwards;
 - `rolsuper`, `rolbypassrls`, `rolcreatedb`, `rolcreaterole`, `rolreplication` are
   all false — `rolbypassrls` especially, since a role that bypasses RLS is worse
@@ -240,7 +253,7 @@ deploy means a failure cannot be attributed to either.
 
 Watch for `permission denied for …` in CloudWatch. CI runs the whole e2e suite as
 `rally_app` (see below), so a gap here is unlikely — but if one appears it means
-migration 0068's `app_schemas` array missed a schema. Grant it and move on; that
+the `app_schemas` list in 0068/0137 missed a schema. Grant it and move on; that
 is not a reason to revert the whole change.
 
 ### 4. Transfer ownership to `rally_migrate` (optional, do later)

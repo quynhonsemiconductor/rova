@@ -64,7 +64,6 @@ env:
   # Measured here too before bumping: statements 84.50 / branches 77.48 / functions 83.22 /
   # lines 88.32 against floors of 60, so the web suite has ample headroom on 24.
   NODE_VERSION: '24'
-  PNPM_VERSION: '11.28.5'
 
 jobs:
   # Does this pull request change anything this workflow tests? A change that touches only files the matching DEPLOY workflow ignores
@@ -100,7 +99,7 @@ jobs:
         # queue's files and could return false — the queue entry must always run it. The
         # skipped step leaves the output empty and the gate's `!= 'false'` branch runs it.
         if: github.event_name == 'pull_request'
-        uses: quynhonsemiconductor/ci/actions/changed-paths@dcdd8dc937aa9d199a4e75e0e187eb52ca520836 # v1.23.1
+        uses: quynhonsemiconductor/ci/actions/changed-paths@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           ignore: |
             **/*.md
@@ -116,7 +115,7 @@ jobs:
             **/*.test.ts
             **/*.test.tsx
       - id: paths
-        uses: quynhonsemiconductor/ci/actions/changed-paths@1fcb7f019a6c5482d30b2ece6caa416965c32bbe # ci#245 force-run; bump to the release tag on merge
+        uses: quynhonsemiconductor/ci/actions/changed-paths@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0 # ci#245 force-run; bump to the release tag on merge
         with:
           ignore: |
             **/*.md
@@ -154,10 +153,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Lint
         run: pnpm --filter rova-web lint
@@ -206,10 +204,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Detect unit tests
         id: detect
@@ -327,10 +324,9 @@ jobs:
       - name: Trust the workspace
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Migrate + seed database
         run: pnpm db:migrate
@@ -419,10 +415,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Build
         run: pnpm --filter rova-web build
@@ -466,10 +461,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: cp .env.example .env
         run: |
@@ -590,7 +584,7 @@ jobs:
       #    empty, this branch runs, and the gate fails: it cannot turn "could not decide" into a pass.
       - name: Every job must have succeeded
         if: ${{ needs.changes.outputs.run == 'true' && needs.changes.outputs.quickstart != 'false' }}
-        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           results: ${{ join(needs.*.result, ',') }}
 
@@ -600,19 +594,19 @@ jobs:
       # when the quickstart was skipped.
       - name: Everything but the quickstart must have succeeded
         if: ${{ needs.changes.outputs.run == 'true' && needs.changes.outputs.quickstart == 'false' }}
-        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           results: ${{ needs.changes.result }},${{ needs.quality.result }},${{ needs.test.result }},${{ needs.e2e.result }},${{ needs.build.result }}
 
       - name: The quickstart was skipped by its path filter (and only by that)
         if: ${{ needs.changes.outputs.run == 'true' && needs.changes.outputs.quickstart == 'false' }}
-        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           results: ${{ needs.quickstart.result }}
           allow-skipped: true
 
       - name: Nothing here to test (every changed file is ignorable)
         if: ${{ needs.changes.outputs.run != 'true' }}
-        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           results: ${{ needs.changes.result }}

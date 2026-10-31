@@ -1,6 +1,7 @@
 # =============================================================================
 # CI — fast quality gates on every PR and push to main
-# Gate: lint → typecheck → unit tests → e2e tests → docker build → openapi diff
+# Gate: quality, tests, docker build and the openapi diff run in PARALLEL;
+# `Backend CI required` gates on every one of them.
 # Security scans live in the Security · Scan workflow — independently runnable.
 # =============================================================================
 name: Backend · CI
@@ -74,7 +75,6 @@ env:
   # warning — but it does mean a change that drops real coverage by a point turns Tests red
   # rather than drifting. Raise the floors with coverage, never the reverse.
   NODE_VERSION: '24'
-  PNPM_VERSION: '11.28.5'
 
 jobs:
   # Does this pull request change anything this workflow tests? A change that touches only files the matching DEPLOY workflow ignores
@@ -92,7 +92,7 @@ jobs:
       run: ${{ steps.paths.outputs.run }}
     steps:
       - id: paths
-        uses: quynhonsemiconductor/ci/actions/changed-paths@dcdd8dc937aa9d199a4e75e0e187eb52ca520836 # v1.23.1
+        uses: quynhonsemiconductor/ci/actions/changed-paths@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           ignore: |
             **/*.md
@@ -122,15 +122,26 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       # pnpm only WARNS about an unmet peer. platform-runtime 0.2.0 needs platform-cache >=3.2.0; the product resolved 3.1.x, everything else
       # passed, and every ExclusiveJob-guarded job failed in develop. This turns that warning into a failure (for our own packages only).
       - name: Peer dependencies of @quynhonsemiconductor/*
         run: node scripts/check-qnsc-peers.mjs
+
+      # The "better-auth>peer": \"-\" overrides in pnpm-workspace.yaml keep Better Auth's optional peers
+      # (drizzle-kit, vitest, react, solid-js ...) out of the runtime image. A difference after a Better
+      # Auth bump means a new or removed peer: update the override list (and the snippet in identity's
+      # README), then re-run `pnpm install`.
+      - name: better-auth override list matches the installed better-auth
+        run: node scripts/check-better-auth-overrides.mjs
+
+      # The tree-level half of the same guard, running the exact commands the image's prod-deps stage
+      # runs: no dropped Better Auth peer in `pnpm ls --prod` on the committed lockfile.
+      - name: Production tree holds no dev tooling
+        run: ./scripts/check-prod-tree.sh
 
       - name: Lint
         run: pnpm lint
@@ -174,10 +185,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Generate a self-signed CA, a rogue CA, and a server certificate (SAN localhost)
         run: |
@@ -268,10 +278,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Run migrations
         run: pnpm db:migrate
@@ -447,10 +456,9 @@ jobs:
             echo "No backward-incompatible DDL detected."
           fi
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       # Baseline: check out main's ENTIRE db/ tree (migrations, seed AND the
       # Drizzle schema) and run it end-to-end, so the DB mirrors a real deployed
@@ -474,13 +482,137 @@ jobs:
         run: pnpm db:migrate
 
   # ─────────────────────────────────────────────────────────────────────────
-  # 4. Docker build validation (BuildKit cache, no push)
-  #    Runs after tests to avoid wasting compute on broken code.
+  # 4. Fresh DB rebuild — the on-prem gate
+  #
+  #    `test` migrates a fresh database as a SUPERUSER, so it can never tell that
+  #    0068 needed CREATEROLE (it created `rally_*`), or that a database whose
+  #    roles the platform created received no grants at all (0128 skips itself
+  #    when `rova_*` already exist). On CNPG the migrator is `rova_migrator`,
+  #    which OWNS the database and deliberately has NO CREATEROLE, and the roles
+  #    exist before the first migration. That is what this job reproduces.
+  #
+  #    Two scenarios, two clusters (roles are cluster-wide, so they must not
+  #    share one):
+  #      fresh  — CNPG shape: roles pre-created, no objects, no CREATEROLE. Every
+  #               migration must apply, and the runtime roles must end up able to
+  #               read/write everything, unable to run DDL, and covered by the
+  #               default privileges for tables created later.
+  #      legacy — the shape every pre-0128 environment had: `rally_*` roles and
+  #               0068's grants already applied, migrator with CREATEROLE. The
+  #               rest of the journal must apply without a break and leave the
+  #               grants on `rova_*` (proven by the same assertions, plus the
+  #               absence of any `rally_*` role).
+  #
+  #    Both halves assert with `db/fresh-db/assert-runtime-privileges.sql`; the
+  #    scripts are plain SQL so a local run against any Postgres 18 is the same
+  #    code path (see the header of each file).
+  # ─────────────────────────────────────────────────────────────────────────
+  fresh-db:
+    name: Fresh DB rebuild
+    needs: [changes]
+    if: ${{ needs.changes.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PGPASSWORD: postgres
+
+    services:
+      postgres:
+        image: postgres:18.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      postgres-legacy:
+        image: postgres:18.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          persist-credentials: false
+
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # ── Scenario 1: rebuild from zero, CNPG shape ─────────────────────────
+      - name: Provision the platform's roles and a fresh database (the CNPG shape)
+        run: psql -h localhost -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 -f db/fresh-db/cnpg-roles.sql
+
+      - name: Migrate the fresh database as rova_migrator, which holds no CREATEROLE
+        run: pnpm db:migrate
+        env:
+          DATABASE_MIGRATION_URL: postgresql://rova_migrator:rova_migrator@localhost:5432/rova_fresh?sslmode=disable
+          # The seed runs on the APP connection in every deployed environment.
+          DATABASE_URL: postgresql://rova_app:rova_app@localhost:5432/rova_fresh?sslmode=disable
+
+      - name: Assert the runtime roles can read and write, and cannot run DDL
+        run: |
+          psql -h localhost -p 5432 -U postgres -d rova_fresh -v ON_ERROR_STOP=1 \
+            -v creator=rova_migrator -f db/fresh-db/assert-runtime-privileges.sql
+
+      # ── Scenario 2: the upgrade path, from a database that still has rally_* ─
+      - name: Create the legacy database (owned by the master, as RDS was)
+        run: psql -h localhost -p 5433 -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rova_legacy'
+
+      - name: Apply the journal up to the historical 0068, which created the rally_* roles
+        run: pnpm exec tsx db/fresh-db/apply-legacy-head.ts
+        env:
+          DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5433/rova_legacy?sslmode=disable
+
+      - name: Apply the rest of the journal on the legacy database
+        run: pnpm db:migrate
+        env:
+          DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5433/rova_legacy?sslmode=disable
+          DATABASE_URL: postgresql://rova_app:rova_app@localhost:5433/rova_legacy?sslmode=disable
+
+      - name: Assert the grants ended up on rova_app / rova_worker
+        run: |
+          psql -h localhost -p 5433 -U postgres -d rova_legacy -v ON_ERROR_STOP=1 \
+            -v creator=postgres -f db/fresh-db/assert-runtime-privileges.sql
+
+      # 0128 renames the legacy roles IN PLACE, so a surviving rally_* role means
+      # the rename silently did not happen and something still points at the old
+      # name. The assertions above cannot see this: they read the rova_* grants.
+      - name: The legacy rally_* roles were renamed, not duplicated
+        run: |
+          left=$(psql -h localhost -p 5433 -U postgres -d rova_legacy -At -c \
+            "select count(*) from pg_roles where rolname like 'rally\\_%'")
+          echo "rally_* roles left: $left"
+          test "$left" = "0"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 5. Docker build validation (BuildKit cache, no push)
+  #    PARALLEL with the test jobs, not after them: `Backend CI required` gates
+  #    on this job too, so a broken image still blocks the PR — it just stops
+  #    paying the build as serialization on top of the suites.
+  #    NOT on a push to main: GHCR · Publish builds and scans the same images
+  #    there (and writes the layer cache this job reads); building them twice
+  #    per merge was pure cost.
   # ─────────────────────────────────────────────────────────────────────────
   build:
     name: Docker build
     runs-on: ubuntu-latest
-    needs: [quality, test]
+    needs: [changes]
+    if: ${{ needs.changes.outputs.run == 'true' && github.event_name != 'push' }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -507,8 +639,13 @@ jobs:
           push: false
           load: true            # the image Trivy scans below; a second build in the security workflow is gone
           tags: rova-api:scan
-          cache-from: type=gha,scope=api
-          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=api' || '' }}
+          # Two scopes to read: the legacy `api` one this job used to write from
+          # main, and the `rova-api-amd64` one GHCR · Publish writes on every
+          # merge (this job no longer runs on push, so THAT is where the cache
+          # comes from now). An empty `cache-to` is "do not export".
+          cache-from: |
+            type=gha,scope=api
+            type=gha,scope=rova-api-amd64
           # BuildKit secret consumed by the deps/prod-deps stages to auth
           # pnpm against GitHub Packages for @quynhonsemiconductor/* (never baked into a layer).
           secrets: |
@@ -517,7 +654,7 @@ jobs:
       # CRITICAL blocks this job, hence `Backend CI required`; HIGH is reported. This used to be its own job in the security
       # workflow that rebuilt the same image from scratch.
       - name: Container CVE scan (Trivy)
-        uses: quynhonsemiconductor/ci/actions/scan-image@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/scan-image@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           image-ref: rova-api:scan
 
@@ -527,8 +664,9 @@ jobs:
           context: .
           target: migrator
           push: false
-          cache-from: type=gha,scope=migrator
-          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=migrator' || '' }}
+          cache-from: |
+            type=gha,scope=migrator
+            type=gha,scope=rova-migrator-amd64
           secrets: |
             node_auth_token=${{ secrets.GITHUB_TOKEN }}
 
@@ -538,8 +676,9 @@ jobs:
           context: .
           target: worker
           push: false
-          cache-from: type=gha,scope=worker
-          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=worker' || '' }}
+          cache-from: |
+            type=gha,scope=worker
+            type=gha,scope=rova-worker-amd64
           secrets: |
             node_auth_token=${{ secrets.GITHUB_TOKEN }}
 
@@ -578,10 +717,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Run migrations
         run: pnpm db:migrate
@@ -632,7 +770,7 @@ jobs:
       # that must still be checked. Web CI builds and runs the same API, so it has the same spec.
 
       - name: Upload OpenAPI spec artifact
-        uses: quynhonsemiconductor/ci/actions/publish-openapi-spec@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/publish-openapi-spec@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           spec-path: openapi.json
           artifact-name: openapi-spec-${{ github.sha }}
@@ -649,13 +787,13 @@ jobs:
       # commit. See its README in quynhonsemiconductor/ci.
       - name: Fetch the base spec
         if: github.event_name == 'pull_request'
-        uses: quynhonsemiconductor/ci/actions/fetch-openapi-base-spec@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/fetch-openapi-base-spec@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           workflow: backend-ci.yml
 
       - name: Breaking change check
         if: github.event_name == 'pull_request'
-        uses: quynhonsemiconductor/ci/actions/validate-openapi-contract@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/validate-openapi-contract@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           current-spec-path: openapi.json
           base-spec-path: base-spec/openapi.json
@@ -698,7 +836,7 @@ jobs:
   ci-required:
     name: Backend CI required
     if: always()
-    needs: [changes, quality, test, migrations, build, openapi]
+    needs: [changes, quality, test, migrations, fresh-db, build, openapi]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -707,13 +845,22 @@ jobs:
       #  * otherwise: only `changes` itself must be `success` (the rest are skipped by design). If `changes` FAILED its output is
       #    empty, this branch runs, and the gate fails: it cannot turn "could not decide" into a pass.
       - name: Every job must have succeeded
-        if: ${{ needs.changes.outputs.run == 'true' }}
-        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        if: ${{ needs.changes.outputs.run == 'true' && github.event_name != 'push' }}
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           results: ${{ join(needs.*.result, ',') }}
 
+      # On a PUSH to main the Docker build job is skipped BY DESIGN (GHCR · Publish
+      # builds and scans the images there); the explicit list mirrors `needs` minus
+      # `build`. Every other job stays strict.
+      - name: "Every job but the Docker build must have succeeded (push: GHCR publish is the image build)"
+        if: ${{ needs.changes.outputs.run == 'true' && github.event_name == 'push' }}
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
+        with:
+          results: ${{ needs.changes.result }},${{ needs.quality.result }},${{ needs.test.result }},${{ needs.migrations.result }},${{ needs.fresh-db.result }},${{ needs.openapi.result }}
+
       - name: Nothing here to test (every changed file is ignorable)
         if: ${{ needs.changes.outputs.run != 'true' }}
-        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/assert-jobs-succeeded@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           results: ${{ needs.changes.result }}

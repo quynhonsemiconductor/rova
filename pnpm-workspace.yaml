@@ -18,7 +18,7 @@ overrides:
   # collections, fixed 4.6.6): identity 8.5.0 exact-deps zod 4.6.5, so the tree carries it
   # transitively until identity 8.5.1 ships (release PR #304). FLOORED, not removed — drop this
   # entry in the identity ^8.5.1 bump PR.
-  "zod@>=4 <4.6.6": "4.6.6"
+  "zod@>=4 <4.6.6": "4.6.7"
   # FULL OSV SWEEP (rova#793): the advisories below ride transitive chains the same way —
   # a parent pins an exact or stale copy, so range updates never reach them. With identity
   # 8.5.1 (zod 4.6.6) and platform-mail 0.1.7 (nodemailer 10.1.7) the zod and nodemailer
@@ -28,7 +28,7 @@ overrides:
   #    and is gated by platform-mail's suite (no code here imports msal directly)
   #  - GHSA-27r3-jxmh-p828 (7.5): body-parser 2.4.0, via the express chain
   #  - GHSA-333x/-w74x/-wjr9/-xhq7: fast-uri 3.1.9 (3.x) / 4.2.3 (4.x)
-  "@azure/identity>@azure/msal-node": "7.1.0"
+  "@azure/identity>@azure/msal-node": "7.1.1"
   "body-parser@>=2.3.0 <2.4.0": "2.4.0"
   # plain pins: the range-selector form silently failed to apply to the ajv chain
   "fast-uri": "3.1.9"
@@ -228,6 +228,36 @@ overrides:
   # in 1.2.2. DEV / BUILD-ONLY: postcss, vite, tailwind, jsdom and coverage all read source maps
   # this repo generates. Every consumer declares `^1.x`; kept in 1.x.
   "source-map-js@<1.2.2": ">=1.2.2 <2.0.0"
+
+  # Keep Better Auth's optional peers out of the production tree, declaratively (replaces
+  # .pnpmfile.cjs, whose pnpmfileChecksum broke every Renovate lockfile regen; see "Keeping Better
+  # Auth's optional peers out of the runtime image" in identity's README). better-auth declares 18
+  # OPTIONAL peers (its CLI `drizzle-kit`, its test helpers `vitest`, its React/Solid clients, the
+  # databases it can run on ...); pnpm resolves an optional peer against whatever the importing
+  # project has installed, and `pnpm install --prod` follows the resulting optionalDependencies —
+  # the runtime image gains vitest, vite and esbuild. The old .pnpmfile.cjs stripped only the four
+  # peers installed when it was written (solid-js already slipped through into the web tree); this
+  # drops every optional peer — all 16 — so a newly installed devDependency cannot reopen the leak.
+  # drizzle-orm and pg stay: identity uses them. scripts/check-better-auth-overrides.mjs compares
+  # this list against better-auth's installed peerDependenciesMeta and fails on any Better Auth
+  # peer change. pnpm 11 honours these; pnpm 10.33.2 keeps the peers out of the --prod tree too,
+  # though it still records the peer declarations in the lockfile manifest copy (checked 2026-10-26).
+  "better-auth>@lynx-js/react": "-"
+  "better-auth>@prisma/client": "-"
+  "better-auth>@sveltejs/kit": "-"
+  "better-auth>@tanstack/react-start": "-"
+  "better-auth>@tanstack/solid-start": "-"
+  "better-auth>drizzle-kit": "-"
+  "better-auth>mongodb": "-"
+  "better-auth>mysql2": "-"
+  "better-auth>next": "-"
+  "better-auth>prisma": "-"
+  "better-auth>react": "-"
+  "better-auth>react-dom": "-"
+  "better-auth>solid-js": "-"
+  "better-auth>svelte": "-"
+  "better-auth>vitest": "-"
+  "better-auth>vue": "-"
   # GHSA-qqmp-wf37-98f9 (CVSS 5.8, the DB username on every query span as `db.user`) is NOT pinned
   # here: the eight instrumentation-* packages are fixed by moving @opentelemetry/
   # auto-instrumentations-node to ^0.79.0 together with the 0.221 experimental line (package.json),
@@ -244,6 +274,12 @@ overrides:
   # they are not a new trust decision.
 allowBuilds:
   '@scarf/scarf': true
+  # wrangler's tree pulls miniflare's sharp; its postinstall downloads the prebuilt
+  # libvips binary (allowed — mirror of opshub#495: pnpm 11 aborts the whole install
+  # while the decision is unrecorded, which re-broke Web · Deploy on the pnpm 11.28.8
+  # bump). workerd stays `false` below: its postinstall only verifies a binary that
+  # `pages deploy` never runs.
+  sharp: true
   '@swc/core': true
   argon2: true
   cpu-features: true
@@ -260,6 +296,7 @@ allowBuilds:
   workerd: false
 onlyBuiltDependencies:
   - '@scarf/scarf'
+  - sharp
   - '@swc/core'
   - argon2
   - cpu-features

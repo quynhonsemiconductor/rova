@@ -3,7 +3,7 @@
   "version": "0.7.18",
   "private": true,
   "license": "UNLICENSED",
-  "packageManager": "pnpm@11.28.5",
+  "packageManager": "pnpm@11.28.8",
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=9.0.0"

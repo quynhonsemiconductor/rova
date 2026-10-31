@@ -3,12 +3,12 @@ import { z } from 'zod';
 import { denied, result, type ToolContext } from './rest';
 
 /**
- * `get_project` — one project by id, if the person can read it
+ * `rova_get_project` — one project by id, if the person can read it
  * (GET /v1/projects/:id, `project:view` on the project).
  */
 export function registerGetProject(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
-    'get_project',
+    'rova_get_project',
     {
       title: 'Get project',
       description: 'One project by id, exactly what its detail page shows you.',

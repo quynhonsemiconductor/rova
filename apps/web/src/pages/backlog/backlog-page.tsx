@@ -47,6 +47,8 @@ import { useProjectMemberOptions } from '@/features/teams/api'
 import { useAssignableIterations, useIterationOptions } from '@/features/iterations/api'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { defaultRecordHref } from '@/entities/work-item/model/record-href'
+import { RecordOpener } from '@/shared/ui/record-link'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import {
@@ -667,7 +669,7 @@ function BacklogRow({
       {/* Rank — a real column now, so it resizes/reorders/hides with the rest. */}
       <RankCell rowNum={rowNum} style={colStyles.rank} />
 
-      {/* ID — type glyph + key link (shared cell; the only nav affordance) */}
+      {/* ID — type glyph + key link (shared cell; Name opens a new tab on Ctrl/middle-click too) */}
       <div className="shrink-0 overflow-hidden px-2" style={colStyles.id} onClick={stop}>
         <IdCell type={item.type} itemKey={item.itemKey} onOpen={onOpen} />
       </div>
@@ -687,6 +689,7 @@ function BacklogRow({
             canEdit
             fullCell
             onCommit={commitTitle}
+            newTabHref={defaultRecordHref(item.type, item.itemKey)}
             className="break-words whitespace-normal text-foreground"
             style={{ cursor: 'text', fontSize: 12 }}
             inputStyle={{ fontSize: 12 }}
@@ -694,14 +697,16 @@ function BacklogRow({
             title={item.title}
           />
         ) : (
-          <span
-            className="block break-words whitespace-normal text-foreground"
-            style={{ cursor: 'pointer', fontSize: 12 }}
-            onClick={onOpen}
+          // Read-only: the Name opens the record, so it is a real link — Ctrl/middle-click open a
+          // new tab natively (US-120 AC1) and a plain click keeps the in-app open.
+          <RecordOpener
+            href={defaultRecordHref(item.type, item.itemKey)}
+            onOpen={onOpen}
             title={item.title}
+            className="block break-words whitespace-normal text-foreground"
           >
-            {item.title}
-          </span>
+            <span style={{ fontSize: 12 }}>{item.title}</span>
+          </RecordOpener>
         )}
       </div>
 

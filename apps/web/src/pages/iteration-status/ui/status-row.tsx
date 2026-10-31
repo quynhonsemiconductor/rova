@@ -30,6 +30,7 @@ import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { FeatureCell } from '@/entities/work-item/ui/feature-cell'
 import { SCHEDULE_STATE_STEPS, SIMPLIFIED_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { defaultRecordHref } from '@/entities/work-item/model/record-href'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
@@ -262,7 +263,8 @@ export function StatusRow({
         </div>
 
         {/*
-         * Name — click to edit inline (Rally parity); use the ID link to open.
+         * Name — click to edit inline (Rally parity); use the ID link to open. Ctrl/Cmd+click and
+         * middle-click open the record in a new tab instead of editing (US-120 AC1).
          *
          * NO `overflow-hidden` here, deliberately, and it is the difference between a row that fits
          * its content and one that clips it. `TableRow` sets a `min-h` FLOOR and `items-center`, so
@@ -288,6 +290,7 @@ export function StatusRow({
             canEdit={canEdit}
             fullCell
             onCommit={commitTitle}
+            newTabHref={defaultRecordHref(item.type, item.itemKey)}
             ariaLabel="Name"
             title={item.title}
             className="break-words whitespace-normal text-foreground"
@@ -733,6 +736,7 @@ function ChildTaskRow({
           canEdit={canEdit}
           fullCell
           onCommit={commitTaskTitle}
+          newTabHref={defaultRecordHref(task.type, task.itemKey)}
           ariaLabel="Name"
           title={task.title}
           className="break-words whitespace-normal text-foreground"

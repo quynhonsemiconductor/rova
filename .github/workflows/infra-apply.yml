@@ -170,7 +170,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rova-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
@@ -208,7 +208,7 @@ jobs:
       # (piped, never written out): byte for byte the plan the next step applies. See
       # docs/runbooks/infra-destructive-guard.md.
       - name: destructive-guard (tfplan)
-        uses: quynhonsemiconductor/ci/actions/destructive-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/destructive-guard@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           working-directory: infra/live/_shared
           plan-file: tfplan
@@ -237,7 +237,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rova-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
@@ -296,7 +296,7 @@ jobs:
       # docs/runbooks/infra-destructive-guard.md.
       - name: destructive-guard (tfplan-pass1)
         if: steps.pass1.outputs.planned == 'true'
-        uses: quynhonsemiconductor/ci/actions/destructive-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/destructive-guard@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           working-directory: infra/live/develop
           plan-file: tfplan-pass1
@@ -327,7 +327,7 @@ jobs:
       # (piped, never written out): byte for byte the plan the next step applies. See
       # docs/runbooks/infra-destructive-guard.md.
       - name: destructive-guard (tfplan)
-        uses: quynhonsemiconductor/ci/actions/destructive-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/destructive-guard@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           working-directory: infra/live/develop
           plan-file: tfplan
@@ -404,7 +404,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+      - uses: quynhonsemiconductor/ci/actions/setup-tofu-aws@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rova-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
@@ -463,7 +463,7 @@ jobs:
       # judges exactly what the next step applies.
       - name: plan-guard (tfplan-pass1)
         if: steps.pass1.outputs.planned == 'true'
-        uses: quynhonsemiconductor/ci/actions/plan-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/plan-guard@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           plan-file: tfplan-pass1
           working-directory: infra/live/prod
@@ -476,7 +476,7 @@ jobs:
       # docs/runbooks/infra-destructive-guard.md.
       - name: destructive-guard (tfplan-pass1)
         if: steps.pass1.outputs.planned == 'true'
-        uses: quynhonsemiconductor/ci/actions/destructive-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/destructive-guard@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           working-directory: infra/live/prod
           plan-file: tfplan-pass1
@@ -506,7 +506,7 @@ jobs:
       # group unless the stack's .allow-data-destroy names that address with a reason. It reads the saved plan, so it
       # judges exactly what the next step applies.
       - name: plan-guard (tfplan)
-        uses: quynhonsemiconductor/ci/actions/plan-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/plan-guard@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           plan-file: tfplan
           working-directory: infra/live/prod
@@ -518,7 +518,7 @@ jobs:
       # (piped, never written out): byte for byte the plan the next step applies. See
       # docs/runbooks/infra-destructive-guard.md.
       - name: destructive-guard (tfplan)
-        uses: quynhonsemiconductor/ci/actions/destructive-guard@691668f7a1bd4f4a3416f9224ae7ff7ebe831a3a # v1.23.0
+        uses: quynhonsemiconductor/ci/actions/destructive-guard@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:
           working-directory: infra/live/prod
           plan-file: tfplan
