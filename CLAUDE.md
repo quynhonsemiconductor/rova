@@ -1120,8 +1120,11 @@ reversing US-119 AC1's new-tab rule — and `/user-guide` picks the edition from
 - **The guide's TEXT is gated too, by where the build writes it.** Pages serves every built file to anyone,
   so `chunkFileName` (`vite.config.ts`) writes any chunk holding a chapter or the TOC under
   `/guide-assets/js/`, and `functions/guide-assets/_middleware.ts` runs `_lib/guide-gate.ts` for
-  `/guide-assets/*` only (screenshots live there too). Guide text reaching the ENTRY chunk fails the
-  build: signed-out visitors load the entry to reach `/login`, so gating it would lock them out. Gated
+  `/guide-assets/*` only (screenshots live there too). Guide text reaching the ENTRY chunk, or any
+  chunk the entry imports statically, fails the build: signed-out visitors load those to reach
+  `/login`, so gating them would lock them out. That check is `assertEntryIsPublic`, a
+  `generateBundle` hook over the finished bundle, NOT `chunkFileName` — Vite always sets
+  `entryFileNames`, so `chunkFileNames` never sees an entry, and a guard there cannot fire. Gated
   files are `private, no-cache`: revalidated on every use, so nothing is readable from the disk cache
   after sign-out. A refused request redirects to `/login?returnTo=/user-guide` — a
   constant, because the refused URL is a script or an image, never a page.
