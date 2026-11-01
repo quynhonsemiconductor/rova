@@ -1,102 +1,173 @@
-# rova production release night: the checklist
+# rova production: the on-prem move night
 
-Owner-facing. Two nights, in this order, each with its own go/no-go. The detailed procedure for each
-lives in its own runbook; this file is the ORDER, the NAMES and the gates, so the window does not
-depend on anyone re-reading three documents at 22:00.
+Owner-facing. ONE night (owner decision 2026-11-01, fast track): rova prod leaves AWS and **identity 8
+ships directly on-prem in the same move**. There is no separate AWS identity night, so anything in the
+old checklists that wrote to AWS (Secrets Manager, Pages env, ECS flags, the release tag) does not run.
 
-Decided 2026-10-30: **identity 8 ships on AWS production first, on its own night**, so the on-prem move
-night changes only the infrastructure. Mail moves to Microsoft Graph after that (with the on-prem move,
-where the certificate comes from Key Vault), and the SES removals trail it.
+Order, names and gates only; the credentialed procedures stay in their runbooks:
 
-- Night 1 — identity 8 (this file, section 1). Deep reference: `docs/runbooks/identity-v8-cutover.md`,
-  "Production".
-- Night 2 — the on-prem cutover, with Graph mail inside it. Deep references: the data-move runbook and
-  `docs/runbooks/mail-graph.md`, section 9.
+- data: `sa-notes/onprem/rova-prod-data-move/RUNBOOK.md` (dump, restore, verify, rollback)
+- identity: `docs/runbooks/identity-v8-cutover.md`, "Production" — **only the Entra and backfill parts
+  still apply** (section 2 below)
+- mail: `docs/runbooks/mail-graph.md`, section 9
+- gates: `sa-notes/onprem/rova-prod-fast-track-2026-11-01.md` (G1-min, monitoring-min, rehearsal, rollback)
 
-Nothing here is a command to copy: the owner script `scripts/owner/identity-v8-cutover.sh prod` performs
-the credentialed steps one at a time, asking before each write.
+## 0. Prerequisites (all must be true at T-0)
 
-## 0. Before either night
+| #   | Gate                                                                                                                         | Owner  |
+| --- | ---------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 0.1 | `pg-rova` up in `data-prod`; nightly CNPG backup to R2 `qnsc-backups`; **one real restore test passed** (G1-min)             | D      |
+| 0.2 | Uptime alert on `https://rova.qnsc.vn/readyz` + CrashLoop alert for rova-prod → Teams (monitoring-min)                       | G      |
+| 0.3 | Rehearsal passed: AWS prod dump → restore into `pg-rova` → migrations → app boots → smoke (fast-track)                       | SA     |
+| 0.4 | `live/edge` cutover PR for `rova.qnsc.vn` reviewed, NOT merged: it adds the host **and its Access bypasses** — see 0.7       | F      |
+| 0.5 | `kv-qnsc-prod` holds every secret in section 1.3 (the provisioning script, names only)                                       | owner  |
+| 0.6 | The prod image is published to GHCR and its `sha-<commit>` is recorded in the move log (section 1)                           | C / SA |
+| 0.7 | **Access bypasses on the prod host**: `/readyz` and `/v1/scm/webhook/*` — today `live/edge` hard-codes the DEV host for both | F      |
+| 0.8 | RDS final manual snapshot taken and id recorded; AWS stack left as-is (rollback target, 72 h soak)                           | owner  |
+| 0.9 | CI paused for the window: **no release tag is cut while it is open** (a tag deploys ECS prod)                                | SA     |
 
-| #   | Gate                                                                                    | Why                                                                    |
-| --- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| 0.1 | The previous night's smoke tests passed and no release tag was cut in between           | one change per night; a tag in between re-runs the on-deploy preflight |
-| 0.2 | A manual RDS snapshot of `rova-prod` exists, id recorded where the session log keeps it | the only data restore point                                            |
-| 0.3 | CI is paused for the window: no release tag is merged while the window is open          | a tag deploys to ECS and runs the migrator                             |
-| 0.4 | The release-please PR is reviewed and waiting for the owner's "go release"              | the tag is the deploy                                                  |
+0.7 is easy to miss and breaks two things silently: GitHub webhooks get an Access login page instead of
+a 200, and the Synthetic check on `/readyz` fails. `live/edge/onprem.tf` today builds the bypass list
+from `rova-dev.qnsc.vn/v1/scm/webhook/*` and the dev hosts only (`onprem.tf:23-34`).
 
-## 1. Night 1 — identity 8 on AWS production
+## 1. Which image goes live, and whether a release is needed
 
-### Secrets and environment the owner writes (names only)
+**No release tag.** On-prem takes the immutable `sha-<commit>` image that `GHCR · Publish` builds on
+every merge to `main` (`.github/workflows/ghcr-publish.yml:1-20`: `ghcr.io/quynhonsemiconductor/rova-{api,worker,migrator}:sha-<commit>`,
+amd64). The AWS deploy path is not involved: `backend-deploy.yml` only runs on tags, so **cutting
+rova#622 (0.8.0) during the window would deploy ECS prod and run the AWS migrator against RDS** — do
+not merge it until after the soak, when it is only a version bump. The web half of #622 is not needed
+either; the SPA reaches prod through the Worker (section 1.2).
 
-| Where                                      | Name                                                                                             | Notes                                                                                |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| AWS Secrets Manager, `rova/production/app` | `better-auth-secret`                                                                             | 32+ random bytes, written once; the API cannot start without it                      |
-| AWS Secrets Manager, `rova/production/app` | `edge-client-ip-secret`                                                                          | one value, shared with the Pages secret below                                        |
-| Cloudflare Pages project `rova-prod-web`   | `EDGE_CLIENT_IP_SECRET`                                                                          | the same value; the Pages Function answers 500 for every `/v1/*` without it          |
-| `infra/live/prod/main.tf`                  | `better_auth_secret_set`, `edge_client_ip_secret_set`, `identity_v8_backfill_on_deploy`          | all three `true` in the cutover change (rova#735), merged and applied BEFORE the tag |
-| Entra sign-in app "Rova Prod"              | redirect URI `https://rova.qnsc.vn/api/auth/callback/microsoft`, optional claims `email` + `upn` | the script sets these                                                                |
+1.1 **Pick the commit**: `main`'s head after the last PR whose images you intend to run, recorded as
+`sha-<12>` in the move log. That image already contains identity 8 (#718, #729, #719's backfill
+wiring), Graph mail (#715, #758, #803), the placeholder guard (rova#727) and the Worker deploy
+(rova#834). Confirm the run: `gh run list -w ghcr-publish.yml --limit 1`.
 
-### Order
+1.2 **SPA**: prod is served by the Worker `rova-prod-web`, not Pages. It is deployed only when the
+repository variable `WEB_WORKER_PROD_ENABLED` is `true` and `workflow_dispatch` targets `production`
+(`.github/workflows/web-deploy-worker.yml:16-17,57`), and the `production` environment must hold
+`CLOUDFLARE_WORKERS_API_TOKEN`. One dispatch before the window proves the path; the edge route is
+Terraform's.
 
-1. `bash scripts/owner/identity-v8-cutover.sh prod` — retention check, `better-auth-secret`, the redirect
-   URI and claims, the edge secret, then the manual snapshot. It stops on a failure and nothing is live yet.
-2. Merge rova#735 (the three flags). The owner runs the prod `Infrastructure · Apply` and reviews the plan:
-   the API task gains the two secrets, the migrator task gains `IDENTITY_V8_BACKFILL=commit`, nothing else.
-3. Announce the downtime (Teams).
-4. **"Go release"** — the SA merges the release-please PR; the tag runs the migrator (backfill committed,
-   a RAISE stops the deploy and the v7 tasks keep serving), then rolls the API; the web deploy waits for it.
-5. Verify, in this order: `/readyz` green; sign in from a private window (a new `__Host-rova.session_token`
-   cookie); `/api/auth/callback/microsoft` accepted; the API and worker logs carry the v8 tables and no
-   `relation ... does not exist`; a guest invitation still works.
-6. The change after the night sets `identity_v8_backfill_on_deploy` back to `false` and applies. While it
-   is `true`, every later deploy re-runs the preflight against live data.
+1.3 **`kv-qnsc-prod` secret names** (per-value, dev shape): `rova-prod-cookie-secret`,
+`rova-prod-csrf-secret`, `rova-prod-better-auth-secret` (API only), `rova-prod-platform-admin-emails`
+(API only — the API refuses to boot without it, `apps/api/src/bootstrap/platform-admin-emails.ts:14`),
+`rova-prod-entra-client-secret`, `rova-prod-storage-access-key-id`, `rova-prod-storage-secret-access-key`,
+`rova-prod-db-app`, `rova-prod-db-worker`, `rova-prod-db-migrator`, `rova-prod-graph-cert`. Fresh
+values, not copies. Env names in gitops `values/rova/prod.yaml`: `REDIS_URL` plain `redis://`, no
+`SES_*`, `SQS_*`, `AWS_*` or CloudWatch value.
 
-### Smoke tests (Night 1)
+## 2. identity 8 on-prem: what the AWS script did that still applies
 
-- Sign in, sign out, sign in again; the session survives a reload.
-- Create and edit a work item; the activity log names the v8 user row.
-- Trigger one notification email (assignment) — it goes out through SES, unchanged on this night.
-- `/readyz` reports database and cache green.
-- A v7 rollback image is not needed to pass; see Rollback.
+`scripts/owner/identity-v8-cutover.sh prod` assumes AWS (Secrets Manager read/write at
+`rova/production/app`, a Pages secret, ECS task definitions). On-prem:
 
-### Rollback (Night 1)
+**Still applies (do it by hand / with the Entra blade; the script's own steps 2 and 4):**
 
-- **Before the tag is cut:** do nothing on the app. Revert the flags if you abort (`identity_v8_backfill_on_deploy`
-  first) and apply.
-- **After the tag, API unhealthy:** the circuit breaker rolls the API back to the previous task
-  definition by itself; the v7 code does not read the v8 tables, so the data made so far is inert. Fix
-  forward with a corrective tag.
-- **Do not delete the new tables or run a down migration.** The cutover is additive by construction;
-  undoing it is a separate decision with its own snapshot.
-- The snapshot from step 1 is the data restore point if the migrator itself is at fault.
+- Entra sign-in app "Rova Prod": redirect URI **`https://rova.qnsc.vn/api/auth/callback/microsoft`**
+  (the v8 path; keep the old `/v1/bff/callback` until day 7) and optional claims, ID token: **`email`
+  and `upn`**. Without them staff sign-in is refused after the cutover
+  (`identity-v8-cutover.md`, "Production", step 2).
+- The **backfill committed by the migrator**: `IDENTITY_V8_BACKFILL=commit` on the migration job
+  (`db/identity-v8/on-deploy.ts:8`), against the restored database, AFTER the migrations and BEFORE
+  the API rolls. On AWS this was Terraform `identity_v8_backfill_on_deploy`; on-prem it is the
+  gitops value on the migrate job. Remove it after the night: while set, every migrate re-runs the
+  preflight against live data.
 
-## 2. Night 2 — the on-prem move (summary; the data-move runbook owns the detail)
+**AWS-only, skip:** the `better-auth-secret` and `edge-client-ip-secret` Secrets Manager writes, the
+`EDGE_CLIENT_IP_SECRET` Pages secret (no Pages, no Function on-prem — the real visitor IP reaches the
+API through the Tunnel), the tag/`go release` step, and the task-definition assertions. The secrets
+still exist, as Key Vault values (1.3).
 
-Graph mail rides here because the certificate comes from Key Vault, not Secrets Manager:
+**Do NOT set `edge-client-ip-secret`/`EDGE_CLIENT_IP_SECRET` anywhere on-prem.** The Pages Function is
+what needed it; the tunneled API sees the real address.
 
-| Where                          | Name                                                                                                                                                                        |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Azure Key Vault `kv-qnsc-prod` | `rova-prod-graph-cert` (combined PEM: private key + certificate)                                                                                                            |
-| Entra "Rova Prod Service" app  | certificate credential (`infra/live/identity/mail.tf`, applied), admin consent for `User.Invite.All`                                                                        |
-| Exchange                       | `Application Mail.Send`, scope `noreply-rova`, assigned to the **Service** app; the sign-in app's assignment removed after the proof                                        |
-| gitops `values/rova/prod.yaml` | `EMAIL_PROVIDER=graph`, `MAIL_GRAPH_SENDER`, `MAIL_GRAPH_CLIENT_ID`, the cert secret mounted to the worker only, `AZURE_CLIENT_CERTIFICATE_PATH`, `REDIS_URL` as `redis://` |
-| rova release                   | the image that rejects unreplaced placeholders (rova#727)                                                                                                                   |
+## 3. Migrations on the restored database
 
-The other prod Key Vault values follow the dev shape (`values/rova/dev.secrets.yaml`), generated fresh
-rather than copied: `rova-prod-cookie-secret`, `rova-prod-csrf-secret`, `rova-prod-entra-client-secret`,
-`rova-prod-better-auth-secret` (API only), `rova-prod-platform-admin-emails` (API only — required at boot
-when `NODE_ENV=production`, `apps/api/src/bootstrap/platform-admin-emails.ts:14`), the R2 access key pair,
-and the DB role passwords plus the CNPG CA. `REDIS_URL` is plain `redis://` on the in-cluster Valkey;
-there is no ElastiCache TLS on-prem. No `SES_*`, `SQS_*` or CloudWatch value is set on this host.
+AWS prod's head is **before 0131**; current `main` is **0137** (`db/migrations`, journal verified by
+`Migration upgrade path` in `Backend CI`). The restored database therefore gets 0131→0137 plus the v8
+backfill. Watch:
 
-The SES removals (rova#730, then infra#188) follow only after one real invitation from
-`noreply-rova@qnsc.vn` has been delivered from the new host, and after every product is off SES.
+- **0132** runs `work.backfill_lifecycle_dates()` and **RAISEs above 2,000,000 `work.activity_logs`
+  rows** (`db/migrations/0132_story_lifecycle_dates.sql:70-71`). Count before the night.
+- **0134** adds `report:export` to every workspace's admin role rows — an UPDATE over `access.system_roles`.
+- **0136** creates the v8 tables (additive); **0137** re-states the runtime grants and default
+  privileges for `rova_app`/`rova_worker`, deriving the schema list from ownership. On CNPG the
+  migrator is `rova_migrator`, which owns the database and has **no CREATEROLE** — the fresh-database
+  shape is proven by the `Fresh DB rebuild` job (`db/fresh-db/`, rova#832/#833), and the upgrade shape
+  (old head → current) by `Migration upgrade path`. Both are required checks on `main`.
+- The restored dump carries the OLD 0068 hash; `db/migrate.ts` reports it as the known post-apply edit
+  (rova#833's allow-list) and continues. That line is expected; anything else in that report is not.
 
-## 3. What must never happen in a window
+Run the migrator as its own step (the chart's migrate hook or a one-off Job on the migrator image)
+with `DATABASE_URL` for `rova_migrator`, BEFORE the API is scaled from 0. A failure leaves the API at
+0, which is the correct stop.
 
-- A release tag cut while another night's change is half-applied.
-- A secret written to a file, a shell history, a log or chat; values go in through stdin only.
-- `identity_v8_backfill_on_deploy = true` committed without `better_auth_secret_set = true` in the same
-  file — `test/identity-v8-deploy-guard.spec.ts` fails the PR on exactly that.
-- A DNS or edge apply merged in the same commit as an application change; each is its own reviewed apply.
+## 4. Graph mail
+
+Must exist before the worker starts with `EMAIL_PROVIDER=graph`:
+
+| What                             | Detail                                                                                                                                              |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Entra "Rova Prod Service" app    | certificate-only registration, adopted by `infra/live/identity/mail.tf` (`rova_prod`), consent for `User.Invite.All`                                |
+| Key Vault `rova-prod-graph-cert` | one combined PEM (key + certificate), mounted into the **worker only**, `AZURE_CLIENT_CERTIFICATE_PATH`                                             |
+| Exchange                         | `Application Mail.Send`, scope `noreply-rova`, assigned to the **Service** app; the sign-in app's assignment removed after the first delivered mail |
+| gitops `values/rova/prod.yaml`   | `EMAIL_PROVIDER=graph`, `MAIL_GRAPH_SENDER=noreply-rova@qnsc.vn`, `MAIL_GRAPH_CLIENT_ID`                                                            |
+
+**If mail is not ready, the safe fallback is the worker at 0, not a fake provider.** Invitations and
+notifications are written to the outbox in the creating transaction; with no worker they stay
+pending, and they send when it starts with Graph configured. Do **not** start the worker with
+`EMAIL_PROVIDER=dev` to "unblock" the API: the dev provider logs instead of sending and marks the row
+sent, so those invitations are lost and must be re-sent by hand (`workspace.resendInvitation`). The
+worker is the only component that needs mail; the API, sign-in and attachments do not.
+
+A worker that starts with Graph half-configured fails at boot rather than queueing (env schema for
+`graph`, and rova#727 refuses unreplaced placeholders), so the failure is loud.
+
+## 5. The night, in order
+
+1. Announce the downtime (Teams). Freeze: API and worker at 0; no release tag.
+2. RDS final snapshot (0.8). Record the id.
+3. Dump → restore → verify: the data-move runbook (steps 4-7), `./verify.sh` must say
+   `RESULT: source and target match` before anything writes.
+4. Migrate: the migrator image with `IDENTITY_V8_BACKFILL=commit` (section 3). Then remove the flag
+   from the values for later deploys.
+5. Start API, then worker, from the pinned `sha-<commit>` (section 1), secrets from `kv-qnsc-prod`.
+6. Merge the `live/edge` cutover PR (F). DNS flips; Access app on the prod host is live.
+7. **Smoke** (below). Any failure: rollback, section 6.
+8. Soak 72 h with the AWS stack untouched, then decommission (RUNBOOK "Decommission").
+
+### Smoke tests
+
+- **Sign-in**: `https://rova.qnsc.vn` → Entra → back on `/`, `__Host-rova.session_token` present;
+  sign out and in again.
+- **Workspace load**: a project list and one work item; activity shows the v8 user.
+- **Attachments**: upload a file and download it (R2 through `STORAGE_ENDPOINT`, presigned URL),
+  and one inline image.
+- **Guest invite**: invite an external address; the mail arrives from `noreply-rova@qnsc.vn`
+  (section 4). If this is the gate that fails, stop before step 6's DNS flip if you can.
+- **SCM webhook**: `curl -s -o /dev/null -w '%{http_code}' -X POST https://rova.qnsc.vn/v1/scm/webhook/<provider>`
+  → a 4xx from the API (bad signature), **never** a 302 to `cloudflareaccess.com` (0.7).
+- **`/readyz`**: 200, database and cache green; the uptime alert sees it.
+- **UTC**: a new row's `created_at` is from the DB clock; a fresh log line's `time` is UTC.
+
+## 6. Rollback
+
+- **Before the DNS flip (step 6)**: nothing user-visible happened. Stop the on-prem API/worker, leave
+  `pg-rova` for the next try, and the AWS stack is still there.
+- **After the flip, before the soak ends**: revert the `live/edge` cutover PR (the AWS stack and RDS
+  were never modified — the on-prem database is a copy). Rova comes back on AWS at the old head.
+- **After the soak**: fix forward on-prem; the on-prem restore path is CNPG PITR from R2 or the
+  verified dump, never AWS.
+- The on-prem database may be ahead of AWS in schema (0131-0137, v8 backfill). A reverse dump does not
+  load cleanly into the old image; treat post-GO loss as accepted (owner policy: fix forward).
+
+## 7. What must never happen in the window
+
+- A **release tag** while the window is open — it deploys ECS prod and runs the AWS migrator.
+- A secret in a file, a shell history, a log or chat; values go in through stdin only.
+- Migrations run after the API has started writing (the migrator owns the schema; API first would race
+  the `report:export` grant and the v8 tables).
+- The cutover merged in the same commit as an application change; each is its own reviewed apply.
+- The worker started before its Graph credential exists (section 4).
