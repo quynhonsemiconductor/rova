@@ -142,6 +142,26 @@ describe('GuidePage', () => {
     ).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('forgets a fold once the reader has left the chapter, and points only at a list that is there', async () => {
+    const router = await renderGuide('/user-guide/en/01-lam-quen')
+    const toggle = async () =>
+      within(await screen.findByRole('navigation', { name: 'Guide contents' })).getByRole(
+        'button',
+        { name: /Open items in Getting familiar/ },
+      )
+    expect(await toggle()).toHaveAttribute('aria-controls', 'guide-sections-01-lam-quen')
+
+    fireEvent.click(await toggle())
+    expect(await toggle()).toHaveAttribute('aria-expanded', 'false')
+    expect(await toggle()).not.toHaveAttribute('aria-controls')
+
+    router.history.push('/user-guide/en/00-bat-dau')
+    await waitFor(() => expect(location(router)).toBe('/user-guide/en/00-bat-dau'))
+    router.history.push('/user-guide/en/01-lam-quen')
+    // Back on the chapter: it unfolds as any chapter followed into does.
+    await waitFor(async () => expect(await toggle()).toHaveAttribute('aria-expanded', 'true'))
+  })
+
   it('refuses to render a guide link outside the guide, rather than linking somewhere wrong', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(() => render(<GuideLink hash="x">x</GuideLink>)).toThrow(/GuideContext/)

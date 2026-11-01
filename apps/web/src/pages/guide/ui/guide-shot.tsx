@@ -31,7 +31,9 @@ interface GuideShotProps {
 export function GuideShot({ name, alt, caption, narrow = false, className }: GuideShotProps) {
   const { lang } = useGuide()
   const { t } = useTranslation('guide', { lng: lang })
-  const [failed, setFailed] = useState(false)
+  // Which file failed, not just "failed": a reused instance handed another screenshot tries it.
+  const [failedName, setFailedName] = useState<GuideShotName>()
+  const failed = failedName === name
   const { width, height } = GUIDE_SHOTS[name]
 
   return (
@@ -43,13 +45,13 @@ export function GuideShot({ name, alt, caption, narrow = false, className }: Gui
       )}
     >
       {failed ? (
-        <div
-          role="img"
-          aria-label={alt}
-          className="flex items-center gap-3 bg-surface-subtle px-4 py-6 text-ui-md text-muted-foreground"
-        >
+        // Plain text, not `role="img"`: that role makes its children presentational, so a screen
+        // reader would hear the alt and never the sentence this fallback exists to say.
+        <div className="flex items-center gap-3 bg-surface-subtle px-4 py-6 text-ui-md text-muted-foreground">
           <ImageOff size={20} aria-hidden="true" className="shrink-0" />
-          {t('shotUnavailable')}
+          <p>
+            {t('shotUnavailable')} <span className="sr-only">{alt}</span>
+          </p>
         </div>
       ) : (
         <img
@@ -58,7 +60,7 @@ export function GuideShot({ name, alt, caption, narrow = false, className }: Gui
           width={width}
           height={height}
           loading="lazy"
-          onError={() => setFailed(true)}
+          onError={() => setFailedName(name)}
           className="block h-auto w-full"
         />
       )}

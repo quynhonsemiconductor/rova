@@ -44,9 +44,29 @@ describe('GuideShot', () => {
   it('says why, instead of a broken image, when the gate refuses the file', () => {
     renderShot('03-backlog-production')
     fireEvent.error(screen.getByRole('img', { name: 'Backlog screen' }))
-    // Still announced by its description, and the caption stays.
-    expect(screen.getByRole('img', { name: 'Backlog screen' }).tagName).toBe('DIV')
-    expect(screen.getByText(/could not be loaded.*sign in again/)).toBeInTheDocument()
+    // No `img` role left to swallow the sentence: a screen reader reads it, then which screenshot.
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByText(/could not be loaded.*sign in again/)).toHaveTextContent(
+      /sign in again.*Backlog screen/,
+    )
     expect(screen.getByText('The Backlog')).toBeInTheDocument()
+  })
+
+  it('tries the next screenshot when a failed one is handed another', () => {
+    const { rerender } = renderShot('03-backlog-production')
+    fireEvent.error(screen.getByRole('img', { name: 'Backlog screen' }))
+    rerender(
+      <GuideContext.Provider value={{ lang: 'en', chapter: '02-truy-cap-pham-vi', query: '' }}>
+        <GuideShot
+          name="02-context-selector-production"
+          alt="Backlog screen"
+          caption="The Backlog"
+        />
+      </GuideContext.Provider>,
+    )
+    expect(screen.getByRole('img', { name: 'Backlog screen' })).toHaveAttribute(
+      'src',
+      '/guide-assets/02-context-selector-production.png',
+    )
   })
 })

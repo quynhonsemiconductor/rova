@@ -44,7 +44,8 @@ const twMerge = extendTailwindMerge({
     classGroups: {
       'font-size': [
         { text: ['ui-2xs', 'ui-xs', 'ui-sm', 'ui-md', 'ui-lg', 'ui-xl'] },
-        // The User Guide's long-form reading scale (`--text-doc-*`), for the same reason.
+        // The User Guide's long-form reading scale (`--text-doc-*`): without it `text-doc-sm`
+        // and a colour would conflict the same way. Kept in step with globals.css by utils.test.ts.
         {
           text: ['doc-sm', 'doc-body', 'doc-lead', 'doc-h3', 'doc-h2', 'doc-title', 'doc-display'],
         },

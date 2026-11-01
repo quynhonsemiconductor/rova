@@ -10,7 +10,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { bootstrapAuth } from '@/shared/api/auth-bootstrap'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
-import { START_CHAPTER, browserGuideLang } from '@/pages/guide/model/guide-url'
+import { START_CHAPTER, browserGuideLang, isGuideLang } from '@/pages/guide/model/guide-url'
 
 // ── Extend staticData for breadcrumb support (SHELL-FR-007) ──────────────────
 declare module '@tanstack/react-router' {
@@ -188,14 +188,18 @@ const settingsRoute = createRoute({
 // The User Guide (US-119). No permission: like Settings it is self-scoped reading, open to every
 // signed-in reader. `/user-guide` and `/user-guide/<lang>` only open the start chapter, in the edition
 // named or else the browser's; the page itself settles any other URL (a static-guide spelling, an
-// unknown chapter or edition).
+// unknown chapter, or an unknown edition with a chapter).
 const guideStartRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/user-guide/{-$lang}',
   beforeLoad: ({ params, location }) => {
     throw redirect({
       to: '/user-guide/$lang/$chapter',
-      params: { lang: params.lang ?? browserGuideLang(), chapter: START_CHAPTER },
+      // An unknown edition is settled here rather than by the page, to save the reader a second hop.
+      params: {
+        lang: isGuideLang(params.lang) ? params.lang : browserGuideLang(),
+        chapter: START_CHAPTER,
+      },
       // An old start-page bookmark (`/guide/index.html#chon-lo-trinh`) names a section of it.
       hash: location.hash || undefined,
       replace: true,

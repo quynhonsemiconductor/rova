@@ -24,6 +24,8 @@ describe('User Guide routes', () => {
     [{}, ['en-US'], 'en'],
     [{ lang: 'vi' }, ['en-US'], 'vi'],
     [{ lang: 'en' }, ['vi'], 'en'],
+    // Not an edition: settled here, so the page does not have to redirect a second time.
+    [{ lang: '01-lam-quen' }, ['en-US'], 'en'],
   ])('sends %j (browser %j) to the %s start chapter', (params, languages, lang) => {
     vi.spyOn(navigator, 'languages', 'get').mockReturnValue(languages)
     const beforeLoad = router.routesById['/auth/user-guide/{-$lang}'].options.beforeLoad as (ctx: {

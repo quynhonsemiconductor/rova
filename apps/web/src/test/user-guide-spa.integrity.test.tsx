@@ -23,7 +23,7 @@ import {
 
 import '@/shared/i18n/i18n'
 import { CHAPTER_MODULES } from '@/pages/guide/model/chapters'
-import { GUIDE_LANGS, type GuideLang } from '@/pages/guide/model/guide-url'
+import { GUIDE_LANGS, START_CHAPTER, type GuideLang } from '@/pages/guide/model/guide-url'
 import { GUIDE_TOC, chaptersOf, type GuideChapter } from '@/pages/guide/model/toc'
 import { GuideContext } from '@/pages/guide/ui/guide-context'
 import { GUIDE_ASSETS_ROOT } from '@/pages/guide/ui/guide-shot'
@@ -123,6 +123,12 @@ describe('in-app User Guide integrity', () => {
     const shape = (lang: GuideLang) =>
       GUIDE_TOC[lang].map((group) => group.chapters.map((c) => [c.slug, ...tocIds(c)]))
     expect(shape('en')).toEqual(shape('vi'))
+  })
+
+  it.each(GUIDE_LANGS)('has the start chapter, written, in the %s edition', (lang) => {
+    // Every unknown URL is sent there: without it, that redirect would point at itself forever.
+    expect(chaptersOf(lang).map((c) => c.slug)).toContain(START_CHAPTER)
+    expect(slugsWithContent(lang)).toContain(START_CHAPTER)
   })
 
   it.each(GUIDE_LANGS)(

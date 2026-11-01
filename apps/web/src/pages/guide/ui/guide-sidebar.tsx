@@ -106,9 +106,15 @@ function ChapterRow({
   toggleLabel: string
   onNavigate?: () => void
 }) {
-  // `undefined` = the reader has not touched the toggle: open exactly when this is the chapter on
-  // screen, so following a link into another chapter unfolds that one.
+  // `undefined` = not toggled since this row last became (or stopped being) the chapter on screen:
+  // open exactly when it is that chapter. Following a link into or out of it forgets the toggle, so
+  // the chapter the reader goes to unfolds and the one they leave folds.
   const [toggled, setToggled] = useState<boolean>()
+  const [toggledWhileCurrent, setToggledWhileCurrent] = useState(current)
+  if (toggledWhileCurrent !== current) {
+    setToggledWhileCurrent(current)
+    setToggled(undefined)
+  }
   const open = forceOpen || (toggled ?? current)
   const submenuId = `guide-sections-${chapter.slug}`
 
@@ -146,7 +152,8 @@ function ChapterRow({
           <IconButton
             aria-label={toggleLabel}
             aria-expanded={open}
-            aria-controls={submenuId}
+            // The list exists only while open; a reference to an absent id would dangle.
+            aria-controls={open ? submenuId : undefined}
             // While a search holds every chapter open the toggle can show nothing, so it records
             // nothing either: a click that looked like a no-op must not refold the chapter later.
             onClick={() => {
