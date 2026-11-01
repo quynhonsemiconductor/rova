@@ -39,18 +39,57 @@ const GUIDE_TEXT = /[\\/]src[\\/]pages[\\/]guide[\\/](?:content[\\/]|model[\\/]t
 
 export const GUIDE_CHUNK_DIR = 'guide-assets/js'
 
-export function chunkFileName(chunk: {
-  name: string
-  isEntry: boolean
-  moduleIds: readonly string[]
-}) {
-  if (!chunk.moduleIds.some((id) => GUIDE_TEXT.test(id))) return 'assets/[name]-[hash].js'
-  // The entry is what a signed-OUT visitor loads to reach the login page. Gating it would lock them
-  // out of signing in, so guide text reaching the entry is a build error, not a quiet public leak.
-  if (chunk.isEntry) {
-    throw new Error(`User Guide text was bundled into the entry chunk "${chunk.name}"`)
+const holdsGuideText = (moduleIds: readonly string[]) => moduleIds.some((id) => GUIDE_TEXT.test(id))
+
+/** `chunkFileNames`: names every chunk but an entry, which `entryFileNames` names. */
+export function chunkFileName(chunk: { moduleIds: readonly string[] }) {
+  return holdsGuideText(chunk.moduleIds)
+    ? `${GUIDE_CHUNK_DIR}/[name]-[hash].js`
+    : 'assets/[name]-[hash].js'
+}
+
+/** A built file as `generateBundle` sees it, as far as `assertEntryIsPublic` reads it. */
+interface BuiltFile {
+  type: 'chunk' | 'asset'
+  fileName: string
+  isEntry?: boolean
+  imports?: readonly string[]
+  moduleIds?: readonly string[]
+}
+
+/**
+ * Fails the build when guide text is part of what EVERY visitor loads: an entry, or a chunk an entry
+ * imports statically. A signed-out visitor loads exactly that to reach the login page, so it can be
+ * neither gated (they could not sign in) nor carry the guide (it would be public).
+ *
+ * Checked on the finished bundle, not in `chunkFileName`: an entry never passes through
+ * `chunkFileNames` (Vite always sets `entryFileNames`), and a shared chunk is gated correctly by it
+ * while still being loaded by the entry, which no per-chunk naming rule can see.
+ */
+export function assertEntryIsPublic(bundle: Readonly<Record<string, BuiltFile>>) {
+  for (const entry of Object.values(bundle)) {
+    if (entry.type !== 'chunk' || !entry.isEntry) continue
+    const seen = new Set<string>()
+    const queue = [entry.fileName]
+    while (queue.length) {
+      const file = bundle[queue.pop()!]
+      if (!file || file.type !== 'chunk' || seen.has(file.fileName)) continue
+      seen.add(file.fileName)
+      if (file.fileName.startsWith(`${GUIDE_CHUNK_DIR}/`) || holdsGuideText(file.moduleIds ?? [])) {
+        throw new Error(
+          `User Guide text reaches the entry "${entry.fileName}" through "${file.fileName}". ` +
+            'Every visitor loads it, signed in or not: import guide content lazily (`import()`).',
+        )
+      }
+      queue.push(...(file.imports ?? []))
+    }
   }
-  return `${GUIDE_CHUNK_DIR}/[name]-[hash].js`
+}
+
+const guideChunkGuard: Plugin = {
+  name: 'guide-chunk-guard',
+  apply: 'build',
+  generateBundle: (_options, bundle) => assertEntryIsPublic(bundle),
 }
 
 // Security headers plugin for dev server
@@ -71,7 +110,7 @@ const securityHeadersPlugin: Plugin = {
 
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => ({
-  plugins: [react(), tailwindcss(), securityHeadersPlugin, devOriginsPlugin],
+  plugins: [react(), tailwindcss(), securityHeadersPlugin, devOriginsPlugin, guideChunkGuard],
   // The repo-root `.env` serves the SPA too, BUT ONLY FOR THE DEV SERVER (`vite`, mode `development`): Vite exposes only
   // `VITE_`-prefixed variables to the browser, so the API's secrets in that file never reach it, and `cp .env.example
   // .env` is the whole setup (VITE_DEV_LOGIN lives there). A `vite build` (any mode) and the unit tests keep the default
