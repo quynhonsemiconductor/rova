@@ -1,6 +1,6 @@
 {
   "name": "rova",
-  "version": "0.7.18",
+  "version": "0.8.0",
   "private": true,
   "license": "UNLICENSED",
   "packageManager": "pnpm@11.28.8",
