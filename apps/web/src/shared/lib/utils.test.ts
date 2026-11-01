@@ -1,3 +1,6 @@
+/// <reference types="node" />
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setFormatPrefs } from './format-prefs'
 import { addIsoDays, cn, relativeTime, todayIsoDate, DEFAULT_TIMEBOX_DAYS } from './utils'
@@ -9,6 +12,28 @@ describe('cn (class name merge)', () => {
 
   it('drops falsy values', () => {
     expect(cn('a', false, null, undefined, '', 'b')).toBe('a b')
+  })
+
+  it('keeps a text colour beside a custom font size, from either scale', () => {
+    expect(cn('text-ui-sm', 'text-primary')).toBe('text-ui-sm text-primary')
+    expect(cn('text-doc-title', 'text-foreground')).toBe('text-doc-title text-foreground')
+    expect(cn('[&_h2]:text-doc-h2', '[&_h2]:text-foreground')).toBe(
+      '[&_h2]:text-doc-h2 [&_h2]:text-foreground',
+    )
+    // Two sizes still conflict: the later one wins.
+    expect(cn('text-doc-body', 'text-doc-lead')).toBe('text-doc-lead')
+  })
+
+  it('knows every doc size globals.css declares, so none of them can drop a colour', () => {
+    // The merge list is hand-copied; a token added to the CSS alone would fail here, not on screen.
+    const css = readFileSync(join(import.meta.dirname, '../../app/styles/globals.css'), 'utf8')
+    const sizes = [...css.matchAll(/--text-doc-([a-z0-9]+):/g)].map(([, name]) => name)
+    expect(sizes.length).toBeGreaterThan(0)
+    for (const size of sizes) {
+      expect(cn(`text-doc-${size}`, 'text-muted-foreground'), size).toBe(
+        `text-doc-${size} text-muted-foreground`,
+      )
+    }
   })
 
   it('applies conditional object syntax', () => {

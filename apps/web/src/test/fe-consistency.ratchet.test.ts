@@ -133,7 +133,16 @@ describe('FE consistency ratchets (only ever decrease)', () => {
     // Proxy for un-internationalised copy: capitalized text nodes rendered
     // directly in JSX (`>Delete release<`). Wire it through `t()` (P4). Only
     // ever decreases toward 0 as pages adopt i18n.
-    const { total, byFile } = countMatches(inConsumerLayers, />[A-Z][A-Za-z][A-Za-z ,.'!?/&-]*</g)
+    //
+    // `pages/guide/content` is excluded, and ONLY from this counter: it is the User Guide's prose
+    // (US-119) — a document whose editions are files (`vi/`, `en/`), not UI copy awaiting `t()`.
+    // Routing a book through translation keys would buy nothing and cost the BA the ability to edit
+    // a chapter as a chapter. The guide's chrome (`pages/guide/ui`, the page) is still counted, and
+    // every other ratchet here still covers the content files.
+    const { total, byFile } = countMatches(
+      (rel) => inConsumerLayers(rel) && !rel.startsWith('pages/guide/content/'),
+      />[A-Z][A-Za-z][A-Za-z ,.'!?/&-]*</g,
+    )
     assertRatchet('hardcoded JSX copy count', total, MAX_HARDCODED_TEXT, byFile)
   })
 

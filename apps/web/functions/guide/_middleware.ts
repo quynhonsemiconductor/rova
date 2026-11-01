@@ -6,14 +6,4 @@
  * The decision itself lives in `_lib/guide-gate.ts`. Needs the same `API_ORIGIN` and
  * `EDGE_CLIENT_IP_SECRET` as the `/v1/*` proxy.
  */
-import { guardGuide } from '../_lib/guide-gate'
-import type { ProxyEnv } from '../_lib/proxy'
-
-type PagesFunction = (context: {
-  request: Request
-  env: ProxyEnv
-  next: () => Promise<Response>
-}) => Promise<Response>
-
-export const onRequest: PagesFunction = (context) =>
-  guardGuide(context.request, context.env, context.next)
+export { guideMiddleware as onRequest } from '../_lib/guide-gate'

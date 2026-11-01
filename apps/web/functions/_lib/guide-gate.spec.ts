@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { EDGE_IP_HEADER, EDGE_SIG_HEADER } from '@quynhonsemiconductor/platform-http/edge'
-import { GUIDE_SECURITY_HEADERS, guardGuide, hasSessionCookie, loginRedirect } from './guide-gate'
+import {
+  GUIDE_SECURITY_HEADERS,
+  guardGuide,
+  guideMiddleware,
+  hasSessionCookie,
+  loginRedirect,
+} from './guide-gate'
 import type { ProxyEnv } from './proxy'
 
 const API_ORIGIN = 'https://rova-api-dev.qnsc.vn'
@@ -39,6 +45,16 @@ describe('hasSessionCookie', () => {
   })
 })
 
+describe('gated folders', () => {
+  it.each(['../guide/_middleware', '../guide-assets/_middleware'])(
+    '%s runs the gate itself, not a copy of its wiring',
+    async (path) => {
+      const { onRequest } = (await import(path)) as { onRequest: unknown }
+      expect(onRequest).toBe(guideMiddleware)
+    },
+  )
+})
+
 describe('loginRedirect', () => {
   it('sends the reader to the same-origin login with the guide path to come back to', () => {
     const res = loginRedirect(guideRequest('/guide/en/05-lap-ke-hoach?x=1'))
@@ -53,6 +69,11 @@ describe('loginRedirect', () => {
     for (const path of ['//evil.example/guide/', '/login', '/', '/guidebook']) {
       expect(returnToOf(loginRedirect(new Request(`${SPA}${path}`)))).toBe('/guide/')
     }
+  })
+
+  it('sends a refused screenshot request back to the in-app guide, not to the file', () => {
+    const res = loginRedirect(guideRequest('/guide-assets/03-backlog-production.png'))
+    expect(returnToOf(res)).toBe('/user-guide')
   })
 })
 
@@ -99,6 +120,31 @@ describe('guardGuide', () => {
     for (const [name, value] of Object.entries(GUIDE_SECURITY_HEADERS)) {
       expect(res.headers.get(name)).toBe(value)
     }
+  })
+
+  it('checks the session for an in-app guide screenshot and makes the browser revalidate it', async () => {
+    // No max-age: a cached screenshot would outlive sign-out, and go stale after a deploy.
+    const fetchImpl = apiAnswering(200)
+    const shot = await guardGuide(
+      guideRequest('/guide-assets/03-backlog-production.png'),
+      ENV,
+      page,
+      { fetchImpl },
+    )
+    expect(fetchImpl).toHaveBeenCalledOnce()
+    expect(shot.status).toBe(200)
+    expect(shot.headers.get('cache-control')).toBe('private, no-cache')
+  })
+
+  it('refuses a screenshot to a reader with no session, without calling the API', async () => {
+    const fetchImpl = apiAnswering(200)
+    const next = vi.fn(page)
+    const res = await guardGuide(guideRequest('/guide-assets/x.png', null), ENV, next, {
+      fetchImpl,
+    })
+    expect(res.status).toBe(302)
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(next).not.toHaveBeenCalled()
   })
 
   it('passes every Set-Cookie from the session check through individually', async () => {

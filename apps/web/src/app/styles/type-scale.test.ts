@@ -61,6 +61,27 @@ describe('text-ui-* type scale', () => {
   })
 })
 
+/** Every `--text-doc-<name>` size and line height, with its px comment — the User Guide's scale. */
+const DOC_SCALE = [
+  ...css.matchAll(/--text-doc-([a-z0-9]+(?:--line-height)?):\s*([\d.]+)rem;\s*\/\* ([\d.]+)px/g),
+].map(([, name, rem, px]) => ({ name, rem: Number(rem), px: Number(px) }))
+
+describe('text-doc-* type scale', () => {
+  it('declares a size and a line height for each of its seven steps', () => {
+    const sizes = DOC_SCALE.filter((s) => !s.name.endsWith('--line-height')).map((s) => s.name)
+    expect(sizes).toEqual(['sm', 'body', 'lead', 'h3', 'h2', 'title', 'display'])
+    expect(DOC_SCALE).toHaveLength(sizes.length * 2)
+  })
+
+  it.each(DOC_SCALE)(
+    '--text-doc-$name resolves to the $px px its comment claims',
+    ({ rem, px }) => {
+      // Same reading as the ui scale: against the real 87.5% root, never trusting the comment alone.
+      expect(Math.abs(rem * ROOT_PX - px)).toBeLessThan(0.5)
+    },
+  )
+})
+
 /**
  * WCAG 2.5.8 Target Size (Minimum, AA) — the floor is defined once in `target-size.ts`; these cases
  * prove the definition and that every control the audit measured under it now carries it.

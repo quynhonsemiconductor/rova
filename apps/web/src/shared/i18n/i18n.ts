@@ -23,6 +23,8 @@ import errors from './locales/en/errors.json'
 import testCases from './locales/en/test-cases.json'
 import splitStory from './locales/en/split-story.json'
 import carryover from './locales/en/carryover.json'
+import guide from './locales/en/guide.json'
+import guideVi from './locales/vi/guide.json'
 
 export const defaultNS = 'common'
 
@@ -57,6 +59,14 @@ i18n.use(initReactI18next).init({
       'split-story': splitStory,
       // Phase 7 Story Target End Date + Carryover.
       carryover,
+      // User Guide chrome (sidebar, pager, header). The guide's own text lives in `pages/guide/content`.
+      guide,
+    },
+    // The app is English-only, but the User Guide has a Vietnamese edition, and its chrome must speak
+    // the edition's language: `pages/guide` asks for this namespace with `lng` set to the edition.
+    // Only this one namespace exists in `vi`; nothing else in the app can resolve to it.
+    vi: {
+      guide: guideVi,
     },
   },
   interpolation: { escapeValue: false },
