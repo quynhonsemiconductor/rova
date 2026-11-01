@@ -107,6 +107,20 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     expect(keys).toEqual(['STRICT:ip:203.0.113.7']);
   });
 
+  it('does NOT fall back to x-forwarded-for when cf-connecting-ip is absent (platform-http 5.0.2)', async () => {
+    // Until 5.0.2 the header chain's FIRST entry was the fallback, so any caller without
+    // cf-connecting-ip could name its own address — and so pick its own bucket. Now the socket
+    // (cloudflared's address here) is the honest answer.
+    await guard.canActivate(
+      context(
+        request({ headers: { 'x-forwarded-for': '1.2.3.4', 'x-real-ip': '5.6.7.8' } }),
+        'STRICT',
+      ),
+    );
+    expect(keys).toEqual([`STRICT:ip:${TUNNEL}`]);
+    expect(keys.join()).not.toContain('1.2.3.4');
+  });
+
   it('with EDGE_CLIENT_IP_SECRET set, takes the VERIFIED signed address over cf-connecting-ip', async () => {
     // Behind a Pages Function cf-connecting-ip is a Cloudflare address shared by every visitor.
     process.env['EDGE_CLIENT_IP_SECRET'] = SECRET;
