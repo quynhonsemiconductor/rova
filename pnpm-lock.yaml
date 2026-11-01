@@ -7,7 +7,7 @@ settings:
 overrides:
   fastify: 5.12.7
   zod@>=4 <4.6.6: 4.6.7
-  '@azure/identity>@azure/msal-node': 7.1.1
+  '@azure/identity>@azure/msal-node': 7.1.2
   body-parser@>=2.3.0 <2.4.0: 2.4.0
   fast-uri: 3.1.9
   undici: 7.30.1
@@ -694,8 +694,12 @@ packages:
     resolution: {integrity: sha512-tz3GvMrR9V/plb2lDdW8qaO8CPpfZevdExBKjltzzbAtyhK0eB2UIvji1aU+gkyHj3fxQ2ie+LNHyMXdmo8wOg==}
     engines: {node: '>=0.8.0'}
 
-  '@azure/msal-node@7.1.1':
-    resolution: {integrity: sha512-zHXTJB38XVrsNaXrPBCMqEUjeyQysFfgmKtUHRDsEKTRjNIPckJ/w6fE5wBXrmJXBim1D3C7O7LOag0msPTrgw==}
+  '@azure/msal-common@16.15.0':
+    resolution: {integrity: sha512-lwdLb1B9Q5nEhPLVIKe78XH5wFMN15fCiDkY7ylPDSWZuWcD93G3jpJajrKhO3CQld8SLKz0sHiOi24mxdvtsg==}
+    engines: {node: '>=0.8.0'}
+
+  '@azure/msal-node@7.1.2':
+    resolution: {integrity: sha512-52hKQLGpEQzwNufIXG1SPVU+wQ3RIe7Rp2+g+VdAmZojCAZ6yCdGEffzQEQ6RnBZGBEs40nl14rWBmfJpCoHsg==}
     engines: {node: '>=20'}
 
   '@babel/code-frame@7.29.7':
@@ -2972,17 +2976,6 @@ packages:
       '@quynhonsemiconductor/observability': '>=0.2.0'
       '@quynhonsemiconductor/platform-jobs': '>=0.1.2'
       nodemailer: '>=6.9'
-    peerDependenciesMeta:
-      '@azure/identity':
-        optional: true
-      '@nestjs/common':
-        optional: true
-      '@nestjs/core':
-        optional: true
-      '@quynhonsemiconductor/platform-jobs':
-        optional: true
-      nodemailer:
-        optional: true
 
   '@quynhonsemiconductor/platform-runtime@0.3.3':
     resolution: {integrity: sha512-lciTJPmMszs0TRMGAOeDq2eTh76H9hAL+GfQr5Rp5U0lyLMF4GQNbOn0d56Yx2p7wQMXXjqqM11Z4LqfUtABKg==, tarball: https://npm.pkg.github.com/download/@quynhonsemiconductor/platform-runtime/0.3.3/bc7cd8b0f4d8fab0675784f145ac15382c5824e3}
@@ -2998,17 +2991,6 @@ packages:
       nestjs-pino: '>=4'
       pino: '>=9'
       zod: 4.6.7
-    peerDependenciesMeta:
-      '@nestjs/platform-fastify':
-        optional: true
-      '@quynhonsemiconductor/platform-db':
-        optional: true
-      fastify:
-        optional: true
-      nestjs-pino:
-        optional: true
-      pino:
-        optional: true
 
   '@radix-ui/number@1.1.3':
     resolution: {integrity: sha512-Road2bidD0uu/1BGDOWNdPI06g0lIRy6IF9GZcIrDK2KGItfor8IQwQa+yM2ERgHM1MmHxaxpTzk0/Jp42lNfA==}
@@ -3850,6 +3832,7 @@ packages:
   '@smithy/core@3.36.2':
     resolution: {integrity: sha512-oRw0rB9QSUiCZfEs23G5F4Af+b2rQt1lItIICWu5IejFNd+uPM8SWqiKLMpQ6bX1Q7slsLbjuoE2niErFtkVPQ==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.5.2':
     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}
@@ -8901,7 +8884,7 @@ snapshots:
       '@azure/core-util': 1.14.0(supports-color@10.2.2)
       '@azure/logger': 1.4.0(supports-color@10.2.2)
       '@azure/msal-browser': 5.26.0
-      '@azure/msal-node': 7.1.1
+      '@azure/msal-node': 7.1.2
       open: 11.0.4
       tslib: 2.8.1
     transitivePeerDependencies:
@@ -8920,9 +8903,11 @@ snapshots:
 
   '@azure/msal-common@16.14.3': {}
 
-  '@azure/msal-node@7.1.1':
+  '@azure/msal-common@16.15.0': {}
+
+  '@azure/msal-node@7.1.2':
     dependencies:
-      '@azure/msal-common': 16.14.3
+      '@azure/msal-common': 16.15.0
       jsonwebtoken: 9.0.3
 
   '@babel/code-frame@7.29.7':
@@ -11157,15 +11142,13 @@ snapshots:
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - pg-native
-    optional: true
 
   '@quynhonsemiconductor/platform-mail@0.1.7(f061af39cb53cabeb82bb6d9f62d9f30)':
     dependencies:
-      '@quynhonsemiconductor/observability': 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
-    optionalDependencies:
       '@azure/identity': 4.14.0(supports-color@10.2.2)
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
       '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@quynhonsemiconductor/observability': 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
       '@quynhonsemiconductor/platform-jobs': 0.1.2(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.10.0)(@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a))(@quynhonsemiconductor/platform-db@0.1.2(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a))(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1))(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)
       nodemailer: 10.2.1
 
@@ -11174,15 +11157,14 @@ snapshots:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
       '@nestjs/config': 4.0.4(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(rxjs@7.8.2)
       '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/platform-fastify': 11.2.7(@fastify/static@10.1.7)(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))
       '@quynhonsemiconductor/observability': 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
       '@quynhonsemiconductor/platform-cache': 3.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(ioredis@5.11.1(supports-color@10.2.2))
-      zod: 4.6.6
-    optionalDependencies:
-      '@nestjs/platform-fastify': 11.2.7(@fastify/static@10.1.7)(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))
       '@quynhonsemiconductor/platform-db': 0.1.2(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@quynhonsemiconductor/observability@0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a))(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)
       fastify: 5.12.7
       nestjs-pino: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
       pino: 10.4.0
+      zod: 4.6.6
 
   '@radix-ui/number@1.1.3': {}
 
@@ -13537,7 +13519,6 @@ snapshots:
   cron-parser@5.10.2:
     dependencies:
       luxon: 3.7.2
-    optional: true
 
   cron@4.4.0:
     dependencies:
@@ -14970,8 +14951,7 @@ snapshots:
 
   nodemailer@10.2.1: {}
 
-  non-error@0.1.0:
-    optional: true
+  non-error@0.1.0: {}
 
   normalize-url@8.1.1: {}
 
@@ -15124,7 +15104,6 @@ snapshots:
       serialize-error: 13.0.2
     transitivePeerDependencies:
       - pg-native
-    optional: true
 
   pg-cloudflare@1.4.1:
     optional: true
@@ -15654,7 +15633,6 @@ snapshots:
   rrule-temporal@2.2.8:
     dependencies:
       temporal-spec: 1.0.1
-    optional: true
 
   run-applescript@7.1.0: {}
 
@@ -15742,7 +15720,6 @@ snapshots:
     dependencies:
       non-error: 0.1.0
       type-fest: 5.10.0
-    optional: true
 
   seroval-plugins@1.6.12(seroval@1.6.12):
     dependencies:
@@ -16018,8 +15995,7 @@ snapshots:
 
   systeminformation@5.33.16: {}
 
-  tagged-tag@1.0.0:
-    optional: true
+  tagged-tag@1.0.0: {}
 
   tailwind-merge@3.7.0: {}
 
@@ -16036,8 +16012,7 @@ snapshots:
       - bare-abort-controller
       - react-native-b4a
 
-  temporal-spec@1.0.1:
-    optional: true
+  temporal-spec@1.0.1: {}
 
   terser-webpack-plugin@5.6.1(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.31)(uglify-js@3.19.3)(webpack@5.106.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.31)(uglify-js@3.19.3)):
     dependencies:
@@ -16157,7 +16132,6 @@ snapshots:
   type-fest@5.10.0:
     dependencies:
       tagged-tag: 1.0.0
-    optional: true
 
   type-is@2.1.0:
     dependencies:
