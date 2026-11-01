@@ -56,6 +56,16 @@ describe('the Workers Static Assets config', () => {
     }
   })
 
+  it('wires the US-119 guide gate as a Worker that runs only for /guide/*', () => {
+    // Workers Static Assets never run the Pages Function in apps/web/functions, so the gate that
+    // keeps the guide private is this entry. `run_worker_first` is what keeps every other path on
+    // the static fast path; `binding` is the handle the entry serves files through.
+    expect(config.main).toBe('src/shared/lib/guide-gate.worker.ts')
+    const assets = config.assets as Record<string, unknown>
+    expect(assets.binding).toBe('ASSETS')
+    expect(assets.run_worker_first).toEqual(['/guide/*'])
+  })
+
   it('serves the built SPA with client-side routing and extensionless guide pages', () => {
     const assets = config.assets as Record<string, unknown>
     expect(assets.directory).toBe('./dist')

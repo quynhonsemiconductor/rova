@@ -150,6 +150,9 @@ A worker that starts with Graph half-configured fails at boot rather than queuei
 - **SCM webhook**: `curl -s -o /dev/null -w '%{http_code}' -X POST https://rova.qnsc.vn/v1/scm/webhook/<provider>`
   → a 4xx from the API (bad signature), **never** a 302 to `cloudflareaccess.com` (0.7).
 - **`/readyz`**: 200, database and cache green; the uptime alert sees it.
+- **User Guide (US-119)**: signed out, `https://rova.qnsc.vn/guide/` redirects to
+  `/login?returnTo=/guide/`; signed in it loads, and `/guide/assets/*` follows the same rule. This is
+  the Worker gate (`apps/web/src/shared/lib/guide-gate.worker.ts`), not an Access policy.
 - **UTC**: a new row's `created_at` is from the DB clock; a fresh log line's `time` is UTC.
 
 ## 6. Rollback
