@@ -315,7 +315,7 @@ importers:
         version: 5.9.2(@standard-schema/spec@1.1.0)(ajv@8.20.0)(react-hook-form@7.90.0(@types/react@19.3.0)(react@19.3.1))(zod@4.6.6)
       '@quynhonsemiconductor/platform-http':
         specifier: ^5.0.0
-        version: 5.0.1(1f156e90ac0a9c94e6d7e2b4c2a7d0e0)
+        version: 5.0.2(1f156e90ac0a9c94e6d7e2b4c2a7d0e0)
       '@tanstack/react-query':
         specifier: ^5.101.0
         version: 5.104.5(@types/react@19.3.0)(react@19.3.1)
@@ -2926,19 +2926,6 @@ packages:
       drizzle-orm: '>=0.45 <1'
       pg: '>=8.11'
 
-  '@quynhonsemiconductor/platform-http@5.0.1':
-    resolution: {integrity: sha512-gazbE+osnRveZOsUmDSnHEHAEbmNpvumE9LqZIpd8qP0YKOsLYcs71wk99C8W5nJPVvDTLDGkYrZrAbqUt68JQ==, tarball: https://npm.pkg.github.com/download/@quynhonsemiconductor/platform-http/5.0.1/89a3ed29091d92a721a8e716fcc40de0b5c04122}
-    peerDependencies:
-      '@nestjs/common': '>=11'
-      '@nestjs/core': '>=11'
-      '@nestjs/swagger': '>=11'
-      '@quynhonsemiconductor/observability': '>=0.2.3'
-      '@quynhonsemiconductor/platform-cache': '>=2.0.0'
-      fastify: 5.12.7
-      ioredis: '>=5'
-      nestjs-zod: '>=5'
-      zod: 4.6.7
-
   '@quynhonsemiconductor/platform-http@5.0.2':
     resolution: {integrity: sha512-soqj/wwHDyMBskjHR7DquiHtBKF0rKTLxjoCCZ9IAxLhEI98tMXiYbXYBlu72fyhBmTH4xFX9krGFPXhMbeOYA==, tarball: https://npm.pkg.github.com/download/@quynhonsemiconductor/platform-http/5.0.2/bc59e23684a4ae9bd557afb16505a77a349e3b23}
     peerDependencies:
@@ -3850,6 +3837,7 @@ packages:
   '@smithy/core@3.36.2':
     resolution: {integrity: sha512-oRw0rB9QSUiCZfEs23G5F4Af+b2rQt1lItIICWu5IejFNd+uPM8SWqiKLMpQ6bX1Q7slsLbjuoE2niErFtkVPQ==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.5.2':
     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}
@@ -11120,18 +11108,6 @@ snapshots:
       '@quynhonsemiconductor/observability': 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
       drizzle-orm: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
       pg: 8.23.1
-
-  '@quynhonsemiconductor/platform-http@5.0.1(1f156e90ac0a9c94e6d7e2b4c2a7d0e0)':
-    dependencies:
-      '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
-      '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@nestjs/swagger': 11.4.7(@fastify/static@10.1.7)(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)
-      '@quynhonsemiconductor/observability': 0.6.3(e108424dc300b4d1c2bf57bab6fb2c1a)
-      '@quynhonsemiconductor/platform-cache': 3.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(ioredis@5.11.1(supports-color@10.2.2))
-      fastify: 5.12.7
-      ioredis: 5.11.1(supports-color@10.2.2)
-      nestjs-zod: 5.5.0(patch_hash=fa2029e87bb600a0b7fa6b0faffefe8cc8c9b2733343113ad1b02d171af1915b)(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/swagger@11.4.7(@fastify/static@10.1.7)(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.6.6)
-      zod: 4.6.6
 
   '@quynhonsemiconductor/platform-http@5.0.2(1f156e90ac0a9c94e6d7e2b4c2a7d0e0)':
     dependencies:
