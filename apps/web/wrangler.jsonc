@@ -23,22 +23,26 @@
 // Until the prod move (ONPREM-PLAN M-11) prod keeps publishing to Pages; its
 // environment here exists so the move is a workflow change, not a config change.
 //
-// KNOWN GAP, cutover prerequisite: `apps/web/functions/guide/_middleware.ts` —
-// the US-119 gate that admits only signed-in readers to the User Guide — is a
-// PAGES Function and does not run on Workers Static Assets, so a Worker-served
-// `/guide/*` would be public. The route is Terraform-gated on the cutover, so
-// nothing is exposed until then; the gate moves to a Cloudflare Access
-// application on `<host>/guide/*` (Entra login, the dev hosts' policy), owned by
-// the `live/edge` Access app in the SA cutover PR. The DNS flip happens only
-// with that in place.
+// US-119 USER GUIDE GATE: Workers Static Assets do not run the Pages Functions in
+// `apps/web/functions/`, so the gate that admits only signed-in readers moved into
+// `src/shared/lib/guide-gate.worker.ts`. That Worker runs for `/guide/*` ONLY
+// (`assets.run_worker_first`), and every other path — the SPA bundle and its assets —
+// goes straight to the static fast path without executing user code.
 
 {
   "$schema": "node_modules/wrangler/config-schema.json",
+  // The Worker entry: the US-119 User Guide gate. Every path it does not claim is served by
+  // the static-assets handler below.
+  "main": "src/shared/lib/guide-gate.worker.ts",
   "name": "rova-web",
   "compatibility_date": "2026-06-01",
 
   "assets": {
     "directory": "./dist",
+    // `env.ASSETS.fetch(request)` is how the entry serves a file once the gate admits it.
+    "binding": "ASSETS",
+    // ONLY the guide runs the Worker first; every other path stays on the static path.
+    "run_worker_first": ["/guide/*"],
 
     // Unknown paths serve `index.html`: every SPA route (`/backlog`,
     // `/item/US-17`, …) is a client-side route with no file behind it.
