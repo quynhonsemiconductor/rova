@@ -19,16 +19,18 @@ Order, names and gates only; the credentialed procedures stay in their runbooks:
 | 0.1 | `pg-rova` up in `data-prod`; nightly CNPG backup to R2 `qnsc-backups`; **one real restore test passed** (G1-min)             | D      |
 | 0.2 | Uptime alert on `https://rova.qnsc.vn/readyz` + CrashLoop alert for rova-prod → Teams (monitoring-min)                       | G      |
 | 0.3 | Rehearsal passed: AWS prod dump → restore into `pg-rova` → migrations → app boots → smoke (fast-track)                       | SA     |
-| 0.4 | `live/edge` cutover PR for `rova.qnsc.vn` reviewed, NOT merged: it adds the host **and its Access bypasses** — see 0.7       | F      |
+| 0.4 | `live/edge` cutover PR for `rova.qnsc.vn` reviewed, NOT merged: it adds the host — **no Access app on prod** (see 0.7)        | F      |
 | 0.5 | `kv-qnsc-prod` holds every secret in section 1.3 (the provisioning script, names only)                                       | owner  |
 | 0.6 | The prod image is published to GHCR and its `sha-<commit>` is recorded in the move log (section 1)                           | C / SA |
-| 0.7 | **Access bypasses on the prod host**: `/readyz` and `/v1/scm/webhook/*` — today `live/edge` hard-codes the DEV host for both | F      |
+| 0.7 | **No Access on the prod host** (only dev hosts have one): `/readyz` and `/v1/scm/webhook/*` reach the API with no bypass needed | F      |
 | 0.8 | RDS final manual snapshot taken and id recorded; AWS stack left as-is (rollback target, 72 h soak)                           | owner  |
 | 0.9 | CI paused for the window: **no release tag is cut while it is open** (a tag deploys ECS prod)                                | SA     |
 
-0.7 is easy to miss and breaks two things silently: GitHub webhooks get an Access login page instead of
-a 200, and the Synthetic check on `/readyz` fails. `live/edge/onprem.tf` today builds the bypass list
-from `rova-dev.qnsc.vn/v1/scm/webhook/*` and the dev hosts only (`onprem.tf:23-34`).
+0.7: prod is NOT behind Cloudflare Access (ONPREM-PLAN §8.2; infra#260 adds DNS + Workers routes only).
+The app authenticates; the edge adds the Free managed WAF and the zone rate limit on `/api/*`. So no bypass
+apps are needed for `/readyz` or the SCM webhook, and the User Guide gate on prod is the Worker
+(`guide-gate.worker.ts`) — it is the ONLY control there, not defence in depth. The smoke tests below
+prove all three.
 
 ## 1. Which image goes live, and whether a release is needed
 
@@ -134,7 +136,7 @@ A worker that starts with Graph half-configured fails at boot rather than queuei
 4. Migrate: the migrator image with `IDENTITY_V8_BACKFILL=commit` (section 3). Then remove the flag
    from the values for later deploys.
 5. Start API, then worker, from the pinned `sha-<commit>` (section 1), secrets from `kv-qnsc-prod`.
-6. Merge the `live/edge` cutover PR (F). DNS flips; Access app on the prod host is live.
+6. Merge the `live/edge` cutover PR (F). DNS flips to the `qnsc-apps` tunnel (no Access app on prod).
 7. **Smoke** (below). Any failure: rollback, section 6.
 8. Soak 72 h with the AWS stack untouched, then decommission (RUNBOOK "Decommission").
 
