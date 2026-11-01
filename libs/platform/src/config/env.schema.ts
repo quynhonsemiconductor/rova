@@ -378,8 +378,12 @@ export const EnvSchema = z
      * Whether a staff-domain address may create its own account at first sign-in (`true`) or only when it already has
      * a profile or a live invitation (`false`: invite-only, how every deployed environment runs). B2B guests are always
      * invite-only. Also read by the migrator's tenant bootstrap.
+     *
+     * DEFAULT false (changed 2026-11-01, pre-prod security review): the safe value must be the one an environment gets
+     * by omission. Every deployed environment already sets it explicitly; a new one that forgets the key is now
+     * invite-only rather than open to any address the tenant vouches for in `qnsc.vn`.
      */
-    SSO_JIT_ENABLED: booleanish(true),
+    SSO_JIT_ENABLED: booleanish(false),
     /**
      * Comma-separated SSO (Entra) emails auto-granted workspace_admin on first login.
      * Example: "alice@example.test,bob@example.test"
@@ -537,6 +541,52 @@ export const EnvSchema = z
         path: ['APP_BASE_URL'],
         message:
           'APP_BASE_URL must be https when NODE_ENV=production: it is the origin Entra redirects the browser to (/api/auth/callback/microsoft) and the origin of the session cookie.',
+      });
+    }
+    // Pre-prod security review (2026-11-01): switches that are useful locally and are a hole in production.
+    // Refused rather than warned, because each one is a single environment variable away from shipping and
+    // none of them has a legitimate production use here.
+    for (const key of [
+      'DISABLE_RATE_LIMIT',
+      'SWAGGER_ENABLED',
+      'LOG_HTTP_BODIES',
+      'LOG_DEV_EMAIL_CONTENT',
+    ] as const) {
+      if (env[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} cannot be true when NODE_ENV=production: it exists for local work and is a hole on a public host.`,
+        });
+      }
+    }
+    if (env.EMAIL_PROVIDER === 'dev') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_PROVIDER'],
+        message:
+          'EMAIL_PROVIDER=dev cannot be set when NODE_ENV=production: it logs messages instead of sending them, so every invitation would be marked sent and lost.',
+      });
+    }
+    // `CORS_ORIGINS` defaults to the dev server. A production task that keeps it (or a copied tfvars) would
+    // let a page on the operator's own machine read the API with a session cookie attached.
+    const localOrigins = env.CORS_ORIGINS.split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => {
+        try {
+          const host = new URL(origin).hostname;
+          return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+        } catch {
+          return false;
+        }
+      });
+    if (localOrigins.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['CORS_ORIGINS'],
+        message:
+          `CORS_ORIGINS must not contain a localhost origin when NODE_ENV=production (found ${localOrigins.join(', ')}): ` +
+          "it would let a page on the operator's machine read the API with the reader's cookie.",
       });
     }
   });

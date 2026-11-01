@@ -10,9 +10,13 @@
 # API through the edge (Pages Functions proxy today, no-Worker routes after the move) and
 # R2 presigned attachments.
 #
-# *.r2.cloudflarestorage.com is required for attachments: uploads go DIRECTLY from the
+# The ACCOUNT-SPECIFIC R2 host is required for attachments: uploads go DIRECTLY from the
 # browser via a presigned PUT, and downloads follow a 302 to a presigned GET, so both
-# connect-src and img-src need it. rova-assets{-dev}.qnsc.vn are the PUBLIC-asset origins
+# connect-src and img-src need it. The exact host, never `*.r2.cloudflarestorage.com`: the
+# wildcard would let any R2 account in the world be a connect-src/img-src target, and there is
+# exactly one account whose presigned URLs this app ever uses (the same value as the
+# `STORAGE_ENDPOINT` in gitops values, which is public: the account id is the host, the keys are
+# the secret). rova-assets{-dev}.qnsc.vn are the PUBLIC-asset origins
 # (avatars, workspace logos), img-src ONLY — a custom domain replaces the r2 host entirely,
 # so the wildcard does not cover it. They are named explicitly because a *.qnsc.vn wildcard
 # would let any future subdomain serve images into the app.
@@ -37,7 +41,7 @@
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://rova-assets-dev.qnsc.vn https://rova-assets.qnsc.vn; connect-src 'self' blob: https://*.r2.cloudflarestorage.com; worker-src blob:; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://login.microsoftonline.com;
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com https://rova-assets-dev.qnsc.vn https://rova-assets.qnsc.vn; connect-src 'self' blob: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com; worker-src blob:; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://login.microsoftonline.com;
   Cache-Control: no-cache
 
 # Content-hashed filenames: the bytes behind a given URL never change.
