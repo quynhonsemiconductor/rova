@@ -22,7 +22,10 @@ describe('EnvSchema — identity 8 sign-in', () => {
     if (!result.success) return;
     expect(Object.keys(result.data).filter((k) => /^(JWT_|BFF_)/.test(k))).toEqual([]);
     expect(result.data.SSO_ALLOWED_EMAIL_DOMAINS).toBe('qnsc.vn');
-    expect(result.data.SSO_JIT_ENABLED).toBe(true);
+    // Default flipped to false on 2026-11-01: omission means invite-only, not open JIT.
+    expect(result.data.SSO_JIT_ENABLED).toBe(false);
+    const explicit = EnvSchema.safeParse(env({ SSO_JIT_ENABLED: 'true' }));
+    expect(explicit.success && explicit.data.SSO_JIT_ENABLED).toBe(true);
   });
 
   it('accepts the identity secret only at 32 characters or more, and an empty value as unset', () => {
@@ -344,13 +347,82 @@ describe('EnvSchema — EMAIL_PROVIDER=smtp (Mailpit, development only)', () => 
   });
 });
 
+describe('EnvSchema — production hardening (pre-prod review 2026-11-01)', () => {
+  const prod = env({
+    NODE_ENV: 'production',
+    APP_BASE_URL: 'https://rova.example',
+    CORS_ORIGINS: 'https://rova.example',
+    EMAIL_PROVIDER: 'graph',
+    MAIL_GRAPH_SENDER: 'noreply-rova@qnsc.vn',
+    MAIL_GRAPH_CLIENT_ID: '33333333-3333-4333-8333-333333333333',
+  });
+
+  it('parses a clean production environment', () => {
+    expect(EnvSchema.safeParse(prod).success).toBe(true);
+  });
+
+  it.each([
+    ['DISABLE_RATE_LIMIT', 'true'],
+    ['SWAGGER_ENABLED', 'true'],
+    ['LOG_HTTP_BODIES', 'true'],
+    ['LOG_DEV_EMAIL_CONTENT', 'true'],
+  ])('refuses %s in production', (key, value) => {
+    const result = EnvSchema.safeParse({ ...prod, [key]: value });
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues.some((i) => i.path[0] === key)).toBe(true);
+  });
+
+  it('refuses EMAIL_PROVIDER=dev in production', () => {
+    const result = EnvSchema.safeParse({ ...prod, EMAIL_PROVIDER: 'dev' });
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues.some((i) => i.path[0] === 'EMAIL_PROVIDER')).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    'http://localhost:5173',
+    'https://localhost:5173',
+    'https://127.0.0.1:5173',
+    'https://[::1]:5173',
+    'https://rova.example,http://localhost:3000',
+  ])('refuses a localhost CORS origin in production: %s', (origins) => {
+    const result = EnvSchema.safeParse({ ...prod, CORS_ORIGINS: origins });
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues.some((i) => i.path[0] === 'CORS_ORIGINS')).toBe(
+      true,
+    );
+  });
+
+  it('still accepts non-localhost origins, and the guards do not fire outside production', () => {
+    expect(
+      EnvSchema.safeParse({ ...prod, CORS_ORIGINS: 'https://rova.example,https://admin.qnsc.vn' })
+        .success,
+    ).toBe(true);
+    expect(
+      EnvSchema.safeParse(
+        env({ DISABLE_RATE_LIMIT: 'true', LOG_HTTP_BODIES: 'true', EMAIL_PROVIDER: 'dev' }),
+      ).success,
+    ).toBe(true);
+  });
+});
+
 describe('EnvSchema — platform admin roster', () => {
   // The roster is NOT required at the schema level: the worker shares this schema and
   // never receives the bundle key (it is injected into the API only), so production
   // with an empty roster must still parse — the worker boots on it. Production also
   // requires an https APP_BASE_URL; satisfy the unrelated rules so these assertions
   // isolate the roster.
-  const prod = env({ NODE_ENV: 'production', APP_BASE_URL: 'https://rova.example' });
+  // Production must name its mail transport explicitly: the `dev` provider (the schema default) is
+  // refused there, since it logs instead of sending and would mark every invitation sent.
+  const prod = env({
+    NODE_ENV: 'production',
+    APP_BASE_URL: 'https://rova.example',
+    CORS_ORIGINS: 'https://rova.example',
+    EMAIL_PROVIDER: 'graph',
+    MAIL_GRAPH_SENDER: 'noreply-rova@qnsc.vn',
+    MAIL_GRAPH_CLIENT_ID: '33333333-3333-4333-8333-333333333333',
+  });
 
   it('parses a production environment without the roster — the worker boots on it', () => {
     expect(EnvSchema.safeParse(prod).success).toBe(true);
