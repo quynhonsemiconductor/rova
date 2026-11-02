@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { router } from '@/app/router/router'
 import { GUIDE_ASSETS_ROOT } from '@/pages/guide/ui/guide-shot'
+import { GUIDE_CHUNK_DIR } from '../../vite.config'
 
 const WEB = join(import.meta.dirname, '../..')
 
@@ -38,5 +39,9 @@ describe('User Guide gated path', () => {
 
   it('is served from public/, where the screenshots live', () => {
     expect(existsSync(join(WEB, 'public', GUIDE_ASSETS_ROOT))).toBe(true)
+  })
+
+  it('covers the folder the build writes the guide text into', () => {
+    expect(`/${GUIDE_CHUNK_DIR}/`.startsWith(GUIDE_ASSETS_ROOT)).toBe(true)
   })
 })
