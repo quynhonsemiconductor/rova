@@ -87,8 +87,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      # Pinned to the ci#275 branch head until it merges; re-pin to the merge SHA.
-      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@7e9becc4f969538123041cf53c6800f01f5af8d6  # ci#275 (branch head)
+      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@5afdeb84f1e64b2c13c5c1c6c91422e6606e369a  # ci#275
         with:
           product: rova
           env: prod
