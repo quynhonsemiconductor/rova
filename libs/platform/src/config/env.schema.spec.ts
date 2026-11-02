@@ -174,47 +174,6 @@ describe('EnvSchema — DATABASE_AUTH (removed)', () => {
   });
 });
 
-describe('EnvSchema — EDGE_CLIENT_IP_SECRET', () => {
-  const key = 'k'.repeat(32);
-
-  it('is optional: development and CI have no Pages Function in front', () => {
-    expect(EnvSchema.safeParse(env()).success).toBe(true);
-  });
-
-  it('accepts a 32-character key and a previous key', () => {
-    expect(
-      EnvSchema.safeParse(env({ EDGE_CLIENT_IP_SECRET: key, EDGE_CLIENT_IP_SECRET_PREVIOUS: key }))
-        .success,
-    ).toBe(true);
-  });
-
-  it('refuses a short key: it is a signing key, not a password', () => {
-    const result = EnvSchema.safeParse(env({ EDGE_CLIENT_IP_SECRET: 'too-short' }));
-    expect(result.success).toBe(false);
-  });
-
-  it('counts surrounding whitespace as nothing, as platform-http does at both ends', () => {
-    expect(
-      EnvSchema.safeParse(env({ EDGE_CLIENT_IP_SECRET: `  ${'k'.repeat(31)}  ` })).success,
-    ).toBe(false);
-    expect(EnvSchema.safeParse(env({ EDGE_CLIENT_IP_SECRET: `${key}\n` })).success).toBe(true);
-  });
-
-  it('treats an empty value as unset', () => {
-    expect(EnvSchema.safeParse(env({ EDGE_CLIENT_IP_SECRET: '' })).success).toBe(true);
-  });
-
-  it('refuses a previous key without a current one: a rotation half done', () => {
-    const result = EnvSchema.safeParse(env({ EDGE_CLIENT_IP_SECRET_PREVIOUS: key }));
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.map((i) => i.message).join(' ')).toContain(
-        'EDGE_CLIENT_IP_SECRET_PREVIOUS is set but EDGE_CLIENT_IP_SECRET is not',
-      );
-    }
-  });
-});
-
 describe('EnvSchema — EMAIL_PROVIDER=graph (Microsoft 365 mail)', () => {
   const SERVICE_APP = '33333333-3333-4333-8333-333333333333';
   const graph = {

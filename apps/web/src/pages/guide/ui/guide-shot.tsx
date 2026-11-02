@@ -5,7 +5,7 @@ import { cn } from '@/shared/lib/utils'
 import { GUIDE_SHOTS, type GuideShotName } from '../model/shots'
 import { useGuide } from './guide-context'
 
-/** Where the guide's screenshots are served. Gated by `functions/guide-assets/_middleware.ts`. */
+/** Where the guide's screenshots are served. Gated by the Worker (`src/shared/lib/guide-gate.worker.ts`). */
 export const GUIDE_ASSETS_ROOT = '/guide-assets/'
 
 interface GuideShotProps {

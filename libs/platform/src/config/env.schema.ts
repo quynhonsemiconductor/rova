@@ -4,11 +4,6 @@ import { z } from 'zod';
 const emptyToUndefined = <T extends z.ZodType>(schema: T) =>
   z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), schema);
 
-/** A signing key: at least 32 characters once trimmed (the length `platform-http` itself enforces). */
-const edgeSecret = z
-  .string()
-  .refine((v) => v.trim().length >= 32, 'must be at least 32 characters: it is a signing key');
-
 const booleanish = (defaultValue: boolean) =>
   z
     .string()
@@ -158,8 +153,6 @@ export const EnvSchema = z
     // https://<host>/api/v3. Defaults to github.com.
     GITHUB_API_BASE_URL: z.string().url().default('https://api.github.com'),
 
-    /** Region of the S3 client when STORAGE_ENDPOINT is unset (plain AWS S3). With STORAGE_ENDPOINT (R2, Garage) the client uses `auto`. */
-    AWS_REGION: z.string().default('ap-southeast-1'),
     /** PRIVATE bucket — every permission-gated upload. Served only via presigned GET. */
     S3_ATTACHMENTS_BUCKET: z.string().default('rova-attachments'),
 
@@ -177,10 +170,8 @@ export const EnvSchema = z
      */
     CDN_PUBLIC_ASSETS_BASE_URL: z.string().url().optional(),
 
-    // Object-storage backend selection (provider-neutral). All optional:
-    //  - unset          → AWS S3 via the default credential chain (ECS task role).
-    //  - STORAGE_ENDPOINT set → S3-compatible backend (Cloudflare R2, MinIO).
-    // R2 requires STORAGE_ENDPOINT + STORAGE_ACCESS_KEY_ID + STORAGE_SECRET_ACCESS_KEY
+    // Object storage: an S3-compatible backend (Cloudflare R2, Garage locally). StorageService refuses to
+    // start without STORAGE_ENDPOINT (no plain-AWS mode). R2 requires STORAGE_ENDPOINT + STORAGE_ACCESS_KEY_ID + STORAGE_SECRET_ACCESS_KEY
     // + STORAGE_FORCE_PATH_STYLE=true. Bucket names stay S3_ATTACHMENTS_BUCKET /
     // S3_PUBLIC_ASSETS_BUCKET; both buckets share the one endpoint.
     STORAGE_ENDPOINT: z.string().url().optional(),
@@ -300,17 +291,6 @@ export const EnvSchema = z
     ENTRA_CLIENT_ID: z.string().min(1),
     ENTRA_CLIENT_SECRET: z.string().min(1),
     /**
-     * The key the Cloudflare Pages Function signs the visitor's address with (`@quynhonsemiconductor/platform-http/edge`)
-     * and `clientIp()` verifies. Behind a Pages Function the API's `cf-connecting-ip` is a Cloudflare address shared
-     * by every visitor, so without a verifiable address one `AUTH_LOGIN` bucket (5 attempts per 15 minutes) would be
-     * the whole company's. The SAME value as the Pages project's secret of that name; at least 32 characters once
-     * trimmed. Optional so development and CI (no Pages Function in front) boot: `clientIp()` treats an absent key
-     * as "no signed address" and falls back to `cf-connecting-ip`.
-     */
-    EDGE_CLIENT_IP_SECRET: emptyToUndefined(edgeSecret.optional()),
-    /** The previous key, accepted for verification only while the Pages secret is being rotated. */
-    EDGE_CLIENT_IP_SECRET_PREVIOUS: emptyToUndefined(edgeSecret.optional()),
-    /**
      * Provision an invited external collaborator as a Microsoft Entra B2B GUEST.
      *
      * When true, `WorkspaceService.inviteMember` writes a `messaging.guest_invite_outbox` row in
@@ -376,15 +356,6 @@ export const EnvSchema = z
      * pairing below never ran for any deploy that used a database URL, which is every deploy we
      * have. A refinement block that grows more rules cannot early-return.
      */
-    // A previous key with no current one is a rotation half done: `clientIp()` refuses to start on it, so say so here.
-    if (env.EDGE_CLIENT_IP_SECRET_PREVIOUS && !env.EDGE_CLIENT_IP_SECRET) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['EDGE_CLIENT_IP_SECRET_PREVIOUS'],
-        message: 'EDGE_CLIENT_IP_SECRET_PREVIOUS is set but EDGE_CLIENT_IP_SECRET is not.',
-      });
-    }
-
     const credentialKeys = [
       'DATABASE_HOST',
       'DATABASE_PORT',

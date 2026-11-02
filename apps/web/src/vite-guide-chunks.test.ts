@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import viteConfig, { GUIDE_CHUNK_DIR, chunkFileName, guideChunkGuard } from '../vite.config'
 
 // The build writes every chunk carrying User Guide text under the session-gated `/guide-assets/js/`
-// (see `functions/guide-assets/_middleware.ts`); everything else stays public under `/assets/`.
+// (see `src/shared/lib/guide-gate.worker.ts`); everything else stays public under `/assets/`.
 const SRC = '/repo/apps/web/src'
 
 describe('chunkFileName', () => {

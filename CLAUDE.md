@@ -83,8 +83,8 @@ Four deployables from one repo, sharing `libs/` and `db/`:
   running worker is a competing consumer of the same outbox tables the BE e2e suite waits on.
 - **`apps/web`** — React 19 + Vite SPA in Feature-Sliced Design (`app / pages / widgets / features /
 entities / shared`). Its API client is GENERATED from `/api/docs-json` and COMMITTED. Browser auth is
-  an opaque session cookie (identity 8): the SPA holds no tokens and talks to `apps/web/functions/v1/[[path]].ts` and
-  `functions/api/auth/[[path]].ts` (Cloudflare Pages Functions) which proxy `/v1/*` and `/api/auth/*` to the API.
+  an opaque session cookie (identity 8): the SPA holds no tokens and talks to its own origin; the Cloudflare edge routes
+  `/v1/*` and `/api/auth/*` straight to the API through the tunnel (there is no proxy Function).
 - **`db/`** — Drizzle schema, hand-written migrations, seeds, and `permissions.catalog.ts`. It ships
   as its own migrator image, which is why the catalogue lives outside `libs/`.
 
@@ -1111,11 +1111,10 @@ Vite copies it into `dist/` and Pages serves it at `/guide/` on the SPA origin. 
 top bar is a plain `<a target="_blank">` to it (`widgets/app-shell/help-link.tsx`), edition chosen
 from the FIRST browser language (`model/guide-url.ts`).
 
-- **Static files on Pages are public unless a Function stands in front of them.** The guide carries
-  production screenshots, so `functions/guide/_middleware.ts` runs `_lib/guide-gate.ts` for `/guide/*`
-  ONLY — path-scoped like the `/v1` proxy, so the SPA's own assets never pass through user code. A
-  present `__Host-rova_session` cookie is not trusted: it is checked against `GET /v1/bff/me` (sent
-  through `proxyToApi`, so the gate needs `EDGE_CLIENT_IP_SECRET` as well as `API_ORIGIN`), and
+- **Static assets are public unless the Worker runs first.** The guide carries production screenshots,
+  so `src/shared/lib/guide-gate.worker.ts` runs for `/guide/*` and `/guide-assets/*` ONLY
+  (`assets.run_worker_first` in `wrangler.jsonc`), so the SPA's own assets never pass through user code. A
+  present `__Host-rova_session` cookie is not trusted: it is checked against `GET /v1/bff/me` on the same origin, and
   anything but 200/401/403 (including a timeout) is a 503 — fail closed. The cost is one `/bff/me`
   call per guide REQUEST, i.e. ~15 per page view (page + CSS + JS + screenshots).
 - **Sign-in comes back to the guide with no SPA code.** The gate 302s to `/login?returnTo=/guide/…`
@@ -1135,9 +1134,8 @@ from the FIRST browser language (`model/guide-url.ts`).
   page when the script changes.
 - **Never put a `.md` (or anything but web assets) under `public/`** — it is published verbatim. The
   BA's `WRITING_BRIEF.md` is internal and is deliberately not copied; the integrity test fails if it is.
-- **Locally the guide is UNGATED** — Vite does not run Pages Functions. Exercise the gate with
-  `pnpm build:web` then `wrangler pages dev apps/web/dist` with `API_ORIGIN` and
-  `EDGE_CLIENT_IP_SECRET` set.
+- **Locally the guide is UNGATED** — Vite does not run the Worker. Exercise the gate with
+  `pnpm build:web` then `wrangler dev` in `apps/web`; the gate itself is unit-tested in `src/test/guide-worker.test.ts`.
 
 ## Observability
 
@@ -1268,8 +1266,7 @@ either opens a hole or leaks API surface.
 ## Auth model (read before touching a guard)
 
 - **Browser sessions are identity 8 cookies, not bearer.** The SPA holds no tokens. It talks to
-  same-origin Cloudflare Pages Functions (`apps/web/functions/v1/[[path]].ts`, `functions/api/auth/[[path]].ts`)
-  that proxy to the API, and authentication rides an opaque `__Host-rova.session_token` cookie in production (`__Secure-` elsewhere; a database
+  its own origin (the edge routes `/v1/*` and `/api/auth/*` to the API), and authentication rides an opaque `__Host-rova.session_token` cookie in production (`__Secure-` elsewhere; a database
   row, cached in Valkey) issued by `@quynhonsemiconductor/identity` 8 (Better Auth, `staff` preset, Entra).
   identity's global `SessionGuard` authenticates; rova's route-level `SessionAuthGuard` (`@Auth()`) turns the
   session into `request.user`. The session's `contextId` IS the active workspace (kept honest against

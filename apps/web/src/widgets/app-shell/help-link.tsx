@@ -13,7 +13,7 @@ import { guideUrlFor } from './model/guide-url'
  * current Rova tab is never navigated (AC1). `noopener noreferrer` keeps the guide tab from reaching
  * back into this one through `window.opener`.
  *
- * The guide itself is gated server-side (`functions/_lib/guide-gate.ts`); this link is not a control.
+ * The guide itself is gated server-side (`src/shared/lib/guide-gate.worker.ts`); this link is not a control.
  */
 export function HelpLink() {
   const { t } = useTranslation('nav')
