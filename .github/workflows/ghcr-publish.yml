@@ -4,8 +4,8 @@
 # On every merge to main this builds each service image, PRE-PUSH scans it
 # (CRITICAL fixable vulns + ANY secret), and pushes
 # ghcr.io/quynhonsemiconductor/rova-<service> with the immutable sha-<commit>
-# tag. It runs ALONGSIDE backend-deploy.yml (ECS), which keeps pushing to ECR
-# until the AWS cutover; the reusable refuses any ref except refs/heads/main.
+# tag. It is the only image build; the reusable refuses any ref except
+# refs/heads/main.
 #
 # The reusable's `digests` output (JSON, service → sha256) is what the gitops
 # bump writes into tags.dev.yaml. Until that wiring lands, the run's step
@@ -22,8 +22,7 @@ name: GHCR · Publish
 on:
   push:
     branches: [main]
-    # Same develop-path filter as backend-deploy.yml, in lockstep: skip when a
-    # merge touches ONLY paths this product does not ship (docs and the web
+    # Skip when a merge touches ONLY paths this product does not ship (docs and the web
     # app). paths-ignore fires only if EVERY changed file matches — a shared
     # change still builds, so under-deploy is impossible.
     paths-ignore:

@@ -8,9 +8,8 @@
  * connection-string parser:
  *
  * - `DATABASE_SSL_CA` set  → the file is trusted as the only root and the
- *   certificate chain AND hostname are verified (verify-full). On AWS this is
- *   the RDS global bundle (baked into the image at
- *   /etc/ssl/rds-global-bundle.pem); on-prem it is the mounted CNPG `ca.crt`.
+ *   certificate chain AND hostname are verified (verify-full). On-prem it is the
+ *   mounted CNPG `ca.crt` (the platform chart exports it; the image bakes none).
  * - no CA, NODE_ENV=production → boot ERROR. Production never encrypts without
  *   verifying: a silent `rejectUnauthorized:false` fallback would turn any
  *   missed wiring into traffic a man-in-the-middle can read.
