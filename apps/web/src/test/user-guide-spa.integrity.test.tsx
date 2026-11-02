@@ -36,10 +36,6 @@ const ASSETS_DIR = join(import.meta.dirname, '../../public/guide-assets')
  * in `public/guide-assets` must also be in use.
  */
 const NOT_YET_PORTED: readonly string[] = [
-  '06-thuc-hien-cong-viec',
-  '07-loi-theo-doi-team',
-  '08-release-milestone',
-  '09-portfolio-capacity',
   '10-bao-cao',
   '11-quan-tri-workspace',
   '12-viet-backlog-item',
