@@ -1,13 +1,11 @@
 /**
- * Session gate for the static User Guide (US-119), served by Cloudflare Pages at `/guide/*`, and for
- * the in-app guide's screenshots at `/guide-assets/*`.
+ * Session gate for the User Guide's own files (US-119), served by Cloudflare Pages at `/guide-assets/*`:
+ * its production screenshots, and under `js/` the build chunks that carry its text.
  *
- * Both are plain files — the static guide under `apps/web/public/guide`, the in-app guide's screenshots
- * under `apps/web/public/guide-assets` — so Pages would serve every page and every production
- * screenshot to anyone with the URL. This gate runs in front of them (wired by the path-scoped
- * `functions/guide/_middleware.ts` and `functions/guide-assets/_middleware.ts`, so the SPA's own
- * assets never pass through user code)
- * and admits only a reader the API itself recognises as signed in.
+ * The guide is a page of the SPA (`/user-guide`, behind `requireAuth`), but Pages serves built files to
+ * anyone with the URL. So the files that ARE the guide are written under `/guide-assets/` and this gate
+ * runs in front of them (wired by the path-scoped `functions/guide-assets/_middleware.ts`, so the rest
+ * of the SPA never passes through user code), admitting only a reader the API recognises as signed in.
  *
  * The decision is the API's, never ours: the cookie's PRESENCE only saves a round trip for a reader
  * who obviously has no session. A present cookie is checked against `GET /v1/bff/me`, the same call
@@ -23,34 +21,32 @@
 import { proxyToApi, type ProxyEnv } from './proxy'
 
 export const SESSION_COOKIE = '__Host-rova_session'
-const GUIDE_ROOT = '/guide/'
+/**
+ * Where a refused reader lands after signing in: the SPA's guide route. Pinned to the router by
+ * `src/test/user-guide-gate-paths.test.ts`.
+ */
+export const IN_APP_GUIDE = '/user-guide'
 /**
  * The in-app guide's gated files, behind `functions/guide-assets/_middleware.ts`: its screenshots
  * (`src/pages/guide/ui/guide-shot.tsx`) and, under `js/`, the build chunks that carry its text
  * (`chunkFileName` in `vite.config.ts`). The rest of the SPA never reaches this gate.
  */
 export const GUIDE_ASSETS_ROOT = '/guide-assets/'
-/**
- * Where a refused guide-asset request sends the reader back to after signing in: the SPA's guide
- * route. Pinned to the router by `src/test/user-guide-gate-paths.test.ts`.
- */
-export const IN_APP_GUIDE = '/user-guide'
 const SESSION_CHECK_TIMEOUT_MS = 5_000
 
 /**
- * Applied to every guide response the gate lets through. The guide has no inline script or style and
- * no external origin (pinned by `src/test/user-guide.integrity.test.ts`), which is what lets this CSP
- * be this strict — tighter than the SPA's own meta-tag policy.
+ * Applied to every guide file the gate lets through. Set here rather than left to `public/_headers`,
+ * which Pages does not apply to a Function's response. The files are images and scripts, never a
+ * document, so the CSP admits nothing a document would need.
  */
 export const GUIDE_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'content-security-policy':
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
     "frame-ancestors 'none'; base-uri 'self'; form-action 'none'",
   // `private`: a shared cache must never hand a gated file to the next reader. `no-cache`: the
-  // browser revalidates, which re-runs this gate, so a signed-out reader cannot read from history.
-  // Screenshots and text chunks included: a max-age would leave the guide readable from the disk
-  // cache after sign-out, and screenshots — their names carry no content hash — stale after a deploy.
-  // A revalidation costs one session check and, unchanged, a 304 rather than the file.
+  // browser revalidates, which re-runs this gate, so the guide is not readable from the disk cache
+  // after sign-out, and a screenshot — its name carries no content hash — is never stale after a
+  // deploy. A revalidation costs one session check and, unchanged, a 304 rather than the file.
   'cache-control': 'private, no-cache',
   'x-frame-options': 'DENY',
   'x-content-type-options': 'nosniff',
@@ -68,24 +64,13 @@ export function hasSessionCookie(request: Request): boolean {
 }
 
 /**
- * `/login?returnTo=<path>` on the SAME origin as the request. A static guide page comes back to
- * itself; an in-app guide file (a screenshot) comes back to `/user-guide`, the page that asked for
- * it; anything else collapses to the static guide root. `returnTo` is only ever the request's own
- * `/guide/` path or a constant, so it can never name another site (`//evil.example`) and the gate is
- * not an open redirect, whatever URL it is handed.
+ * `/login?returnTo=/user-guide` on the SAME origin as the request. A refused request is a screenshot or
+ * a script the guide page asked for, never a page the reader opened, so it is not the place to return
+ * to — the guide is. The value is a constant, so the gate cannot be an open redirect.
  */
 export function loginRedirect(request: Request): Response {
-  const url = new URL(request.url)
-  const candidate = url.pathname + url.search
-  let returnTo = GUIDE_ROOT
-  if (candidate.startsWith(GUIDE_ASSETS_ROOT)) {
-    // A screenshot is never the page the reader opened; the in-app guide is.
-    returnTo = IN_APP_GUIDE
-  } else if (candidate.startsWith(GUIDE_ROOT) && !candidate.startsWith('//')) {
-    returnTo = candidate
-  }
-  const login = new URL('/login', url.origin)
-  login.searchParams.set('returnTo', returnTo)
+  const login = new URL('/login', new URL(request.url).origin)
+  login.searchParams.set('returnTo', IN_APP_GUIDE)
   return new Response(null, {
     status: 302,
     headers: { location: login.toString(), 'cache-control': 'no-store' },
