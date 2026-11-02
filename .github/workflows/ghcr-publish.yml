@@ -7,9 +7,9 @@
 # tag. It is the only image build; the reusable refuses any ref except
 # refs/heads/main.
 #
-# The reusable's `digests` output (JSON, service → sha256) is what the gitops
-# bump writes into tags.dev.yaml. Until that wiring lands, the run's step
-# summary records the digests.
+# The reusable's `digests` output (JSON, service → sha256) is what the
+# `bump-dev` job below writes into gitops values/rova/tags.dev.yaml (tag +
+# digest), so rova-dev follows main. Prod is promoted by release-promote.yml.
 #
 # ── ONE IMAGE PER DOCKERFILE STAGE ────────────────────────────────────────────
 # The reusable passes `build-target: <service>`, which the Dockerfile REQUIRES:
@@ -57,3 +57,39 @@ jobs:
       # this pnpm + Nest compile fails — see the reusable's build_runner note).
       platforms: linux/amd64
       build_runner: ubuntu-24.04
+
+  # rova-dev follows main: the bot opens a PR `bump/rova-dev-sha-<12>` that sets tag + digest in
+  # gitops values/rova/tags.dev.yaml and enables auto-merge (squash). gitops `bot-scope` lets a bot
+  # PR merge without a human only when it touches nothing but values/*/tags.dev.yaml. Prod never
+  # goes through here.
+  bump-dev:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    concurrency:
+      # Two bumps race on one file; serialise them (the action rebases on push).
+      group: gitops-bump-rova-dev
+      cancel-in-progress: false
+    steps:
+      # App token scoped to the gitops repo only: branch push + open PR + enable auto-merge.
+      - id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
+        with:
+          app-id: ${{ vars.QNSC_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.QNSC_AUTOMATION_PRIVATE_KEY }}
+          owner: quynhonsemiconductor
+          repositories: gitops
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@91c6d37495ece118b0a02f3f258e95b92e679683  # ci#277
+        with:
+          product: rova
+          env: dev
+          services: api worker migrator
+          tag: ${{ needs.publish.outputs.tag }}
+          digests: ${{ needs.publish.outputs.digests }}
+          mode: pull-request
+          auto-merge: 'true'
+          gitops-token: ${{ steps.app.outputs.token }}
