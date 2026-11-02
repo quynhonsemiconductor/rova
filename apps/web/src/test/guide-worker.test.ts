@@ -141,9 +141,15 @@ describe('the User Guide gate as a Worker', () => {
       ],
       // Same-origin `/v1/bff/me` on the static path (wrangler dev, a missing route) is the SPA's
       // index.html, 200. Seen in `wrangler dev`: before this case the gate served the file.
-      ['200 that is not JSON (text/html; charset=utf-8)', ofType('text/html; charset=utf-8')],
+      ['200 that is not JSON ("text/html; charset=utf-8")', ofType('text/html; charset=utf-8')],
       // Exactly `application/json`, deliberately: it is the only thing the API answers here.
-      ['200 that is not JSON (application/problem+json)', ofType('application/problem+json')],
+      ['200 that is not JSON ("application/problem+json")', ofType('application/problem+json')],
+      ['200 that is not JSON (no content-type)', async () => new Response(null, { status: 200 })],
+      // Quoted and cut to 60 characters: whatever answered cannot write a long line into the log.
+      [
+        `200 that is not JSON ("text/html; ${'x'.repeat(48)}…")`,
+        ofType(`text/html; ${'x'.repeat(100)}`),
+      ],
     ]
     try {
       for (const [reason, fetchImpl] of cases) {

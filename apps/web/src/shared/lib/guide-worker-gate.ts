@@ -20,7 +20,8 @@
  *
  * The two gates cannot share code (the Functions build is separate from the SPA's, and the session
  * check travels differently), so `src/test/user-guide-gate-paths.test.ts` pins their paths to each
- * other, to the SPA and to `wrangler.jsonc`.
+ * other, to the SPA and to `wrangler.jsonc`, and `functions/_lib/guide-gate-parity.spec.ts` feeds both
+ * the same API answers and requires the same response and log line from each.
  *
  * Guests pass: `/v1/bff/me` answers 200 for a guest session with `guest: true`, and the guide has no
  * role requirement.
@@ -106,17 +107,28 @@ function withGuideHeaders(response: Response, setCookies: readonly string[]): Re
  * is not the API's answer to this question, so it fails closed. Same rule as the Pages gate.
  */
 function isJson(response: Response): boolean {
-  return /^application\/json\s*(;|$)/i.test(contentType(response))
+  return /^application\/json\s*(;|$)/i.test(response.headers.get('content-type') ?? '')
 }
 
-function contentType(response: Response): string {
-  return response.headers.get('content-type') ?? 'none'
+const MAX_LOGGED_CONTENT_TYPE = 60
+
+/**
+ * The session check's Content-Type as the log shows it: quoted, so where it ends is unambiguous, and cut
+ * to 60 characters, so whatever answered cannot write a long line into our log. A missing header is
+ * `no content-type`, which no quoted value can be mistaken for. Same as the Pages gate.
+ */
+function loggedContentType(response: Response): string {
+  const type = response.headers.get('content-type')
+  if (type === null) return 'no content-type'
+  const max = MAX_LOGGED_CONTENT_TYPE
+  return JSON.stringify(type.length > max ? `${type.slice(0, max - 1)}…` : type)
 }
 
 /**
  * A 503 for the reader, and one line for the Worker's log saying which way the check failed — a
- * timeout, a network error, a status, a non-JSON answer. Never the cookie, a header or the path: the
- * reason alone says whether the API, the route or the network is at fault.
+ * timeout, a network error, a status, a non-JSON answer. Never the cookie or the path, and of the
+ * headers only the check's own Content-Type (`loggedContentType`), because that names what answered
+ * in the API's place. The line alone says whether the API, the route or the network is at fault.
  */
 function sessionCheckFailed(reason: string): Response {
   console.warn(`[guide-gate] session check failed: ${reason}; serving 503`)
@@ -178,7 +190,9 @@ export async function handleWorkerRequest(
   // A 200 counts only when it is the API's answer. The check is same-origin, so anything that puts
   // `/v1/*` back on the static path — `wrangler dev`, or a missing route — answers it with the SPA's
   // `index.html` (200, text/html), which must not read as "signed in".
-  if (!isJson(session)) return sessionCheckFailed(`200 that is not JSON (${contentType(session)})`)
+  if (!isJson(session)) {
+    return sessionCheckFailed(`200 that is not JSON (${loggedContentType(session)})`)
+  }
 
   // The body is not needed; release it so the runtime can reuse the connection.
   await session.body?.cancel()
