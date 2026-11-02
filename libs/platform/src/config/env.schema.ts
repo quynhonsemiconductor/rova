@@ -293,7 +293,7 @@ export const EnvSchema = z
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default('http://localhost:4318'),
     /** 0.0–1.0 fraction of root spans to sample. Defaults: 1.0 dev, 0.1 prod. */
     OTEL_SAMPLING_PROBABILITY: z.coerce.number().min(0).max(1).optional(),
-    /** Semver string injected into OTEL resource and Pino logs. */
+    /** The release (image tag), injected into the OTEL resource, Pino logs and the MCP server version. */
     SERVICE_VERSION: z.string().default('dev'),
     /**
      * Deployment identity for telemetry (`deployment.environment.name`) — NOT the
@@ -305,7 +305,8 @@ export const EnvSchema = z
      * every develop span, metric and log as `production` — indistinguishable from
      * real production — and silently applied the production sampling ratio there.
      *
-     * Infra sets this to `develop` / `production`. Left unset, `@quynhonsemiconductor/observability`
+     * The deployment sets this to `dev` / `prod` (on-prem) or `develop` / `production` (AWS era);
+     * observability treats `prod` and `production` alike. Left unset, `@quynhonsemiconductor/observability`
      * falls back to `NODE_ENV`, which is why this is optional rather than required.
      */
     DEPLOYMENT_ENV: z.string().optional(),
