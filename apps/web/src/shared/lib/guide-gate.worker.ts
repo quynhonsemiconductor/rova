@@ -3,7 +3,7 @@
  * `apps/web/functions/guide/_middleware.ts` for hosts served by Workers Static Assets.
  *
  * Workers Static Assets do not run Pages Functions, so `rova.qnsc.vn/guide/*` would be public there.
- * This Worker runs ONLY for `/guide/*` (`assets.run_worker_first` in `wrangler.jsonc`), so every other
+ * This Worker runs ONLY for `/guide/*` and `/guide-assets/*` (`assets.run_worker_first` in `wrangler.jsonc`), so every other
  * path — the SPA bundle, `/guide`'s screenshots' sibling assets — stays on the static fast path.
  *
  * The decision is the API's, never ours, exactly as in `functions/_lib/guide-gate.ts`: the cookie's
@@ -18,6 +18,8 @@
 
 export const SESSION_COOKIE = '__Host-rova_session'
 const GUIDE_ROOT = '/guide/'
+// The in-app guide's screenshots (production data). Gated exactly like the guide itself.
+const GUIDE_ASSETS_ROOT = '/guide-assets/'
 const SESSION_CHECK_TIMEOUT_MS = 5_000
 
 /**
@@ -73,7 +75,12 @@ function unavailable(): Response {
 }
 
 function isGuidePath(pathname: string): boolean {
-  return pathname === GUIDE_ROOT.slice(0, -1) || pathname.startsWith(GUIDE_ROOT)
+  return (
+    pathname === GUIDE_ROOT.slice(0, -1) ||
+    pathname.startsWith(GUIDE_ROOT) ||
+    pathname === GUIDE_ASSETS_ROOT.slice(0, -1) ||
+    pathname.startsWith(GUIDE_ASSETS_ROOT)
+  )
 }
 
 /** `GET /v1/bff/me` on this origin, carrying the reader's own headers (session cookie, visitor address). */
@@ -114,7 +121,7 @@ export interface GuideWorkerDeps {
 }
 
 /**
- * The whole Worker: `/guide/*` and `/guide` go through the gate, everything else straight to the static
+ * The whole Worker: `/guide`, `/guide/*` and `/guide-assets/*` go through the gate, everything else straight to the static
  * assets. Exported separately from the default export so the branches are unit-testable.
  */
 export async function handleWorkerRequest(
