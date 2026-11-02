@@ -1104,7 +1104,7 @@ Plan: [`docs/PLAN-phase7-story-carryover.md`](docs/PLAN-phase7-story-carryover.m
 7. **The Export button lives in each report's own controls**, not the Reports `PageHeader` the plan
    named: the CSV must carry that report's live scope (Iteration, window, Direction).
 
-## The User Guide is static, gated, and extensionless on Pages
+## The User Guide is static, gated, and extensionless
 
 US-119. The BA's bilingual guide lives in `apps/web/public/guide` (VI at the root, EN under `en/`), so
 Vite copies it into `dist/` and Pages serves it at `/guide/` on the SPA origin. The Help icon in the
@@ -1176,6 +1176,11 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
 
 ## Infrastructure invariants
 
+> **Retired 2026-11-02 (AWS exit).** `infra/`, `deploy/ecs/` and the ECS/RDS/ALB/SQS/Secrets Manager setup described
+> in this section are gone; rova runs on the on-prem k3s platform and is deployed through the gitops repository.
+> The text is kept as the record of why the code looks the way it does.
+
+
 - **`infra/live/{develop,prod}/main.tf` hold values, never resources.** The whole
   stack is `infra/modules/stack`, so the two environments cannot drift
   structurally — only in what they feed in. Adding a resource means editing the
@@ -1235,6 +1240,11 @@ cluster and replication group with same identifier` while a same-named cluster
   plan cannot show you this.
 
 ## Environment flags that look wrong and are not
+
+> **Retired 2026-11-02 (AWS exit).** `infra/`, `deploy/ecs/` and the ECS/RDS/ALB/SQS/Secrets Manager setup described
+> in this section are gone; rova runs on the on-prem k3s platform and is deployed through the gitops repository.
+> The text is kept as the record of why the code looks the way it does.
+
 
 Two settings in `infra/live/*` read like mistakes. Both are deliberate; changing
 either opens a hole or leaks API surface.

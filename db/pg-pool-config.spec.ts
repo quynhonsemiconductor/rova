@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveMigrationPoolConfig, resolvePoolConfig } from './pg-pool-config';
+import {
+  DEFAULT_MIGRATION_LOCK_TIMEOUT_MS,
+  DEFAULT_MIGRATION_STATEMENT_TIMEOUT_MS,
+  resolveMigrationPoolConfig,
+  resolveMigrationTimeouts,
+  resolvePoolConfig,
+} from './pg-pool-config';
 
 const CA = '-----BEGIN CERTIFICATE-----\\nTEST\\n-----END CERTIFICATE-----\\n';
 
@@ -100,7 +106,41 @@ describe('resolveMigrationPoolConfig', () => {
     expect(new URL(config.connectionString).pathname).toBe('/rova_migrate');
   });
 
-  it('otherwise resolves like the application', () => {
-    expect(resolveMigrationPoolConfig(PARTS)).toEqual(resolvePoolConfig(PARTS));
+  it('otherwise resolves like the application, plus the migration timeouts', () => {
+    expect(resolveMigrationPoolConfig(PARTS)).toEqual({
+      ...resolvePoolConfig(PARTS),
+      lock_timeout: 5_000,
+      statement_timeout: 600_000,
+    });
+  });
+
+  it('sets lock_timeout and statement_timeout on the DATABASE_MIGRATION_URL path too', () => {
+    const config = resolveMigrationPoolConfig({
+      DATABASE_MIGRATION_URL: 'postgresql://db.internal:5432/rova_migrate?sslmode=disable',
+    });
+    expect(config.lock_timeout).toBe(DEFAULT_MIGRATION_LOCK_TIMEOUT_MS);
+    expect(config.statement_timeout).toBe(DEFAULT_MIGRATION_STATEMENT_TIMEOUT_MS);
+  });
+
+  it('lets a one-off heavy migration raise the timeouts', () => {
+    expect(
+      resolveMigrationTimeouts({
+        MIGRATION_LOCK_TIMEOUT_MS: '15000',
+        MIGRATION_STATEMENT_TIMEOUT_MS: '1800000',
+      }),
+    ).toEqual({ lock_timeout: 15_000, statement_timeout: 1_800_000 });
+  });
+
+  it.each(['0', '-1', '5s', '1.5', ' 7'])('rejects a non-positive-integer override %j', (raw) => {
+    expect(() => resolveMigrationTimeouts({ MIGRATION_LOCK_TIMEOUT_MS: raw })).toThrow(
+      /MIGRATION_LOCK_TIMEOUT_MS/,
+    );
+    expect(() => resolveMigrationTimeouts({ MIGRATION_STATEMENT_TIMEOUT_MS: raw })).toThrow(
+      /MIGRATION_STATEMENT_TIMEOUT_MS/,
+    );
+  });
+
+  it('an empty override falls back to the default (an unset chart value renders as "")', () => {
+    expect(resolveMigrationTimeouts({ MIGRATION_LOCK_TIMEOUT_MS: '' }).lock_timeout).toBe(5_000);
   });
 });

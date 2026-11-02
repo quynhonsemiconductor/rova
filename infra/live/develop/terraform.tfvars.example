@@ -1,9 +1,0 @@
-# live/develop/terraform.tfvars.example
-# ─────────────────────────────────────────────────────────────────────────────
-# Copy to terraform.tfvars (git-ignored) and fill in your values.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Microsoft Entra (Azure AD) SSO — optional; leave empty ("") to disable SSO
-# Find in Azure Portal → App registrations → your app → Overview
-entra_tenant_id = ""
-entra_client_id = ""

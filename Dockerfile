@@ -20,8 +20,8 @@
 #   - api / worker / migrator stages: minimal runtime images
 # =============================================================================
 
-ARG NODE_VERSION=24
-ARG ALPINE_VERSION=3.22
+# The base image is a LITERAL in every FROM below (no ARG indirection) so Renovate's docker
+# manager sees it: Node and Alpine bumps arrive as one grouped PR. Change all FROM lines together.
 # pnpm is NOT pinned here: corepack reads `packageManager` from package.json (single source of
 # truth, bumped by Renovate); the build stages below COPY package.json before the first pnpm call.
 
@@ -35,7 +35,7 @@ ARG ALPINE_VERSION=3.22
 # placeholder line. The file never contains the token: pnpm expands it from the NODE_AUTH_TOKEN
 # environment variable, which exists only inside that RUN (read from the BuildKit secret).
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS deps
+FROM node:24-alpine3.22 AS deps
 RUN corepack enable
 
 WORKDIR /app
@@ -57,11 +57,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
 # Install production-only packages — this slim node_modules goes into the
 # final API and worker images.  Runs in parallel with the builder stage.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 AS rds-ca
-ADD https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /bundle.pem
-RUN chmod 0644 /bundle.pem
-
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS prod-deps
+FROM node:24-alpine3.22 AS prod-deps
 RUN corepack enable
 
 WORKDIR /app
@@ -83,7 +79,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
 # Compile the full NestJS monorepo.  Uses the ALL-deps node_modules so the
 # TypeScript compiler and NestJS CLI plugins are available.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS builder
+FROM node:24-alpine3.22 AS builder
 RUN corepack enable
 
 # pnpm 11 runs an implicit `install` before every script when node_modules does not match the workspace.
@@ -116,7 +112,7 @@ RUN pnpm build:migrator
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 4 │ api  (default production target)
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS api
+FROM node:24-alpine3.22 AS api
 
 # Upgrade all Alpine packages to latest security patches within the pinned
 # Alpine version, and remove the base image's global npm — it is unused at
@@ -132,15 +128,8 @@ RUN apk upgrade --no-cache \
 
 # Runtime tunables — override via docker run -e or Kubernetes env
 ENV NODE_ENV=production
-# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
-# default points at the baked file; a task definition may override it (on-prem:
-# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
-# CAs over time and a stale local copy would fail verification against new
-# instances instead of being silently wrong. Own stage so it is fetched once and
-# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
-# (nestjs/migrator) must read it.
-COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
-ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+# DATABASE_SSL_CA is NOT baked in: the platform chart mounts the CNPG ca.crt and exports it (the RDS bundle
+# was removed with the AWS exit, 2026-11-02). Production refuses to connect without it (db/pg-ssl.ts).
 
 ENV NODE_OPTIONS="--max-old-space-size=512"
 ENV PORT=3000
@@ -176,7 +165,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 5 │ worker
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS worker
+FROM node:24-alpine3.22 AS worker
 
 RUN apk upgrade --no-cache \
     && apk add --no-cache tini \
@@ -186,15 +175,8 @@ RUN apk upgrade --no-cache \
     && rm -rf /var/cache/apk/*
 
 ENV NODE_ENV=production
-# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
-# default points at the baked file; a task definition may override it (on-prem:
-# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
-# CAs over time and a stale local copy would fail verification against new
-# instances instead of being silently wrong. Own stage so it is fetched once and
-# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
-# (nestjs/migrator) must read it.
-COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
-ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+# DATABASE_SSL_CA is NOT baked in: the platform chart mounts the CNPG ca.crt and exports it (the RDS bundle
+# was removed with the AWS exit, 2026-11-02). Production refuses to connect without it (db/pg-ssl.ts).
 
 ENV NODE_OPTIONS="--max-old-space-size=256"
 
@@ -226,7 +208,7 @@ CMD ["node", "dist/apps/worker/apps/worker/src/main.js"]
 #     -e DATABASE_MIGRATION_URL="postgresql://..." \
 #     rally-migrator:latest
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS migrator
+FROM node:24-alpine3.22 AS migrator
 
 RUN apk upgrade --no-cache \
     && apk add --no-cache tini \
@@ -236,15 +218,8 @@ RUN apk upgrade --no-cache \
     && rm -rf /var/cache/apk/*
 
 ENV NODE_ENV=production
-# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
-# default points at the baked file; a task definition may override it (on-prem:
-# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
-# CAs over time and a stale local copy would fail verification against new
-# instances instead of being silently wrong. Own stage so it is fetched once and
-# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
-# (nestjs/migrator) must read it.
-COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
-ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+# DATABASE_SSL_CA is NOT baked in: the platform chart mounts the CNPG ca.crt and exports it (the RDS bundle
+# was removed with the AWS exit, 2026-11-02). Production refuses to connect without it (db/pg-ssl.ts).
 
 
 WORKDIR /app

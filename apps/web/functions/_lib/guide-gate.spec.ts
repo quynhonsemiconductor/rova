@@ -122,19 +122,17 @@ describe('guardGuide', () => {
     }
   })
 
-  it('checks the session for an in-app guide screenshot and makes the browser revalidate it', async () => {
-    // No max-age: a cached screenshot would outlive sign-out, and go stale after a deploy.
-    const fetchImpl = apiAnswering(200)
-    const shot = await guardGuide(
-      guideRequest('/guide-assets/03-backlog-production.png'),
-      ENV,
-      page,
-      { fetchImpl },
-    )
-    expect(fetchImpl).toHaveBeenCalledOnce()
-    expect(shot.status).toBe(200)
-    expect(shot.headers.get('cache-control')).toBe('private, no-cache')
-  })
+  it.each(['/guide-assets/03-backlog-production.png', '/guide-assets/js/01-lam-quen-Ab12Cd.js'])(
+    'checks the session for %s and makes the browser revalidate it',
+    async (path) => {
+      // No max-age: a cached file would outlive sign-out (and a screenshot go stale after a deploy).
+      const fetchImpl = apiAnswering(200)
+      const res = await guardGuide(guideRequest(path), ENV, page, { fetchImpl })
+      expect(fetchImpl).toHaveBeenCalledOnce()
+      expect(res.status).toBe(200)
+      expect(res.headers.get('cache-control')).toBe('private, no-cache')
+    },
+  )
 
   it('refuses a screenshot to a reader with no session, without calling the API', async () => {
     const fetchImpl = apiAnswering(200)

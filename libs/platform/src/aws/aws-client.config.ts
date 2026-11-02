@@ -1,7 +1,7 @@
 import type { AppConfigService } from '../config/app-config.service';
 
 /**
- * Base configuration shared by every AWS SDK v3 client (S3, SES, SQS, Secrets Manager).
+ * Base configuration shared by every AWS SDK v3 client (S3, Secrets Manager, ...).
  * Only the fields the SDK constructors accept in common — feature-specific
  * options (e.g. S3 `forcePathStyle`) stay with their own client.
  */

@@ -79,6 +79,23 @@ const DOCUMENT_MIME_TYPES = [
 /** Raster only — no SVG. Safe to render inline. */
 const RASTER_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const;
 
+/**
+ * iPhone photos (HEIC/HEIF). Accepted AS-IS, for the DOWNLOAD-ONLY attachment policies below, and kept
+ * out of the inline policies (avatar, logo): Chrome and Firefox cannot render HEIC, so an inline
+ * `<img>` would be broken, while a file that is always served with `Content-Disposition: attachment`
+ * (see `inlineDisposition`) opens in the reader's own Photos/Preview app. No server-side conversion:
+ * presigned uploads never pass the API, and decoding HEVC server-side would add a libheif native
+ * dependency (sharp's prebuilt libvips ships without HEVC decoding) and a parser for untrusted input.
+ */
+const HEIC_IMAGE_MIME_TYPES = ['image/heic', 'image/heif'] as const;
+
+/** Attachment surfaces: raster images (incl. iPhone HEIC/HEIF) and documents. Download-only. */
+const ATTACHMENT_MIME_TYPES = [
+  ...RASTER_IMAGE_MIME_TYPES,
+  ...HEIC_IMAGE_MIME_TYPES,
+  ...DOCUMENT_MIME_TYPES,
+] as const;
+
 const MB = 1024 * 1024;
 
 /**
@@ -93,7 +110,7 @@ const MB = 1024 * 1024;
  */
 export const ENTITY_ATTACHMENT_POLICY: UploadPolicy = {
   surface: 'work-item-attachment',
-  allowedMimeTypes: new Set([...RASTER_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]),
+  allowedMimeTypes: new Set(ATTACHMENT_MIME_TYPES),
   maxSizeBytes: 25 * MB,
   maxPerOwner: 25,
   visibility: 'private',
@@ -109,7 +126,7 @@ export const ENTITY_ATTACHMENT_POLICY: UploadPolicy = {
  */
 export const TEST_CASE_ATTACHMENT_POLICY: UploadPolicy = {
   surface: 'test-case-attachment',
-  allowedMimeTypes: new Set([...RASTER_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]),
+  allowedMimeTypes: new Set(ATTACHMENT_MIME_TYPES),
   maxSizeBytes: 25 * MB,
   maxPerOwner: 25,
   visibility: 'private',
@@ -123,7 +140,7 @@ export const TEST_CASE_ATTACHMENT_POLICY: UploadPolicy = {
  */
 export const TEST_RESULT_ATTACHMENT_POLICY: UploadPolicy = {
   surface: 'test-result-attachment',
-  allowedMimeTypes: new Set([...RASTER_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]),
+  allowedMimeTypes: new Set(ATTACHMENT_MIME_TYPES),
   maxSizeBytes: 25 * MB,
   maxPerOwner: 25,
   visibility: 'private',
@@ -132,7 +149,7 @@ export const TEST_RESULT_ATTACHMENT_POLICY: UploadPolicy = {
 
 export const COMMENT_ATTACHMENT_POLICY: UploadPolicy = {
   surface: 'comment-attachment',
-  allowedMimeTypes: new Set([...RASTER_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]),
+  allowedMimeTypes: new Set(ATTACHMENT_MIME_TYPES),
   maxSizeBytes: 25 * MB,
   maxPerOwner: 10,
   visibility: 'private',

@@ -35,19 +35,7 @@ const ASSETS_DIR = join(import.meta.dirname, '../../public/guide-assets')
  * SHRINK — each port removes its slug — and the last port empties it, at which point every screenshot
  * in `public/guide-assets` must also be in use.
  */
-const NOT_YET_PORTED = [
-  '02-truy-cap-pham-vi',
-  '03-backlog-cong-viec',
-  '04-testing',
-  '05-lap-ke-hoach',
-  '06-thuc-hien-cong-viec',
-  '07-loi-theo-doi-team',
-  '08-release-milestone',
-  '09-portfolio-capacity',
-  '10-bao-cao',
-  '11-quan-tri-workspace',
-  '12-viet-backlog-item',
-]
+const NOT_YET_PORTED: readonly string[] = []
 
 interface Rendered {
   ids: Set<string>

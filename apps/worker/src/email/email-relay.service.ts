@@ -146,8 +146,8 @@ export class EmailRelayService
       row.to,
       row.template as EmailTemplateName,
       row.vars as EmailTemplateVars[EmailTemplateName],
-      // row.idempotencyKey ?? row.id is a stable key across all retries for this outbox row — Resend
-      // deduplicates by this so a provider send that succeeded but whose finish failed will NOT produce a
+      // row.idempotencyKey ?? row.id is a stable key across all retries for this outbox row — the
+      // provider deduplicates by this so a provider send that succeeded but whose finish failed will NOT produce a
       // duplicate email.
       row.idempotencyKey ?? row.id,
     );

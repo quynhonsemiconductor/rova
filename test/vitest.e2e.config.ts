@@ -66,9 +66,9 @@ export default defineConfig({
       // and the secret that signs its cookies. Test-only values.
       IDENTITY_TEST_LOGIN: 'enabled',
       BETTER_AUTH_SECRET: 'e2e-better-auth-secret-at-least-32-chars!',
-      // Override .env's EMAIL_PROVIDER=ses: the email relay e2e coverage
+      // Override .env's EMAIL_PROVIDER=smtp: the email relay e2e coverage
       // exercises the real EmailRelayService/ResilienceService code path, but
-      // must not depend on SES actually being reachable — the
+      // must not depend on Mailpit actually being reachable — the
       // 'dev' provider logs instead of sending, keeping the suite hermetic.
       EMAIL_PROVIDER: 'dev',
     },

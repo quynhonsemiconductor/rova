@@ -1,0 +1,98 @@
+# =============================================================================
+# Release · Promote — a vX.Y.Z tag builds NOTHING and deploys NOTHING by itself.
+#
+# It takes the image GHCR · Publish already built from the tagged commit
+# (sha-<commit12>), adds the alias tag vX.Y.Z to the SAME digests (no rebuild),
+# and opens a gitops PR that sets values/rova/tags.prod.yaml to tag + digest.
+# A reviewed merge of that PR is the prod deploy (ArgoCD PreSync migrator, then
+# the Deployments roll). Rollback = revert that gitops PR.
+#
+# Fails, and opens no PR, if any of the three images is missing for the tagged
+# commit (publish did not run or failed for it).
+# =============================================================================
+name: Release · Promote
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-promote-rova
+  cancel-in-progress: false
+
+env:
+  GHCR_NAMESPACE: ghcr.io/quynhonsemiconductor
+  SERVICES: api worker migrator
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # Adds the alias tag vX.Y.Z to existing GHCR packages.
+      packages: write
+    steps:
+      - name: Validate the tag
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::not a release tag: $VERSION"; exit 1; }
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6  # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Resolve digests of the tagged commit and add the version tag
+        id: images
+        env:
+          VERSION: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          src="sha-${SHA::12}"
+          json='{}'
+          for svc in $SERVICES; do
+            repo="$GHCR_NAMESPACE/rova-$svc"
+            digest=$(docker buildx imagetools inspect "$repo:$src" --format '{{.Manifest.Digest}}' 2>/dev/null) \
+              || { echo "::error::$repo:$src does not exist. GHCR · Publish did not build this commit; fix that first."; exit 1; }
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::bad digest for $svc"; exit 1; }
+            json=$(jq -c --arg s "$svc" --arg d "$digest" '. + {($s): $d}' <<< "$json")
+          done
+          # Alias only after ALL three resolved, so a missing image never leaves a half-tagged release.
+          for svc in $SERVICES; do
+            repo="$GHCR_NAMESPACE/rova-$svc"
+            docker buildx imagetools create -t "$repo:$VERSION" "$repo@$(jq -r --arg s "$svc" '.[$s]' <<< "$json")"
+          done
+          echo "digests=$json" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Promote $VERSION (commit ${SHA::12})"
+            jq -r 'to_entries[] | "- \(.key): `\(.value)`"' <<< "$json"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # App token scoped to the gitops repo. It opens a PR (branch push + PR);
+      # it must NOT be able to bypass the review on main.
+      - id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
+        with:
+          app-id: ${{ vars.QNSC_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.QNSC_AUTOMATION_PRIVATE_KEY }}
+          owner: quynhonsemiconductor
+          repositories: gitops
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@5afdeb84f1e64b2c13c5c1c6c91422e6606e369a  # ci#275
+        with:
+          product: rova
+          env: prod
+          services: api worker migrator
+          tag: ${{ github.ref_name }}
+          digests: ${{ steps.images.outputs.digests }}
+          mode: pull-request
+          gitops-token: ${{ steps.app.outputs.token }}
