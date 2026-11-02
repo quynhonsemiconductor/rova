@@ -84,7 +84,7 @@ jobs:
           repositories: gitops
           permission-contents: write
           permission-pull-requests: write
-      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@4ee9a00a62fe99b05cb81906301840b03f42407d  # ci#277 (branch head: re-pin to the merge SHA)
+      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@91c6d37495ece118b0a02f3f258e95b92e679683  # ci#277
         with:
           product: rova
           env: dev
