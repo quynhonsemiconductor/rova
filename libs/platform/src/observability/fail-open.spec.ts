@@ -1,14 +1,12 @@
 /// <reference types="node" />
 import { describe, expect, it } from 'vitest';
 import { FAIL_OPEN_FIELD, failOpenLog } from '@quynhonsemiconductor/observability';
-import { terraformFilesFilteringOn } from '../../../../test/helpers/terraform-filters';
 
 /**
  * The log helper itself now lives in `@quynhonsemiconductor/observability`; what stays here is the
  * part only this repo can assert — that the field name the package emits is the one
- * this repo's Terraform actually filters on. The coupling is invisible from both
- * sides, so a package rename or an infra edit must fail a test rather than silently
- * disarm the alarm.
+ * the fail-open alert filters on, so a package rename fails a test rather than silently
+ * disarming the alert.
  */
 describe('failOpenLog', () => {
   it('tags the control that degraded', () => {
@@ -25,18 +23,8 @@ describe('failOpenLog', () => {
     });
   });
 
-  it('uses the field name the infra actually filters on', () => {
-    // Guards the rename: the alarm is worthless if the field drifts.
+  it('keeps the field name the fail-open alert filters on', () => {
+    // Guards the rename: the alert (in gitops) matches this exact log field.
     expect(FAIL_OPEN_FIELD).toBe('securityFailOpen');
-
-    // Searches the whole infra tree rather than naming a file — see the helper for why,
-    // and for why it walks the tree in Node instead of shelling out to `grep`.
-    const terraform = terraformFilesFilteringOn(FAIL_OPEN_FIELD);
-
-    expect(
-      terraform,
-      `No Terraform under infra/ filters on ${FAIL_OPEN_FIELD}; the fail-open alarm ` +
-        `is disarmed even though the app still emits the field.`,
-    ).not.toEqual([]);
   });
 });

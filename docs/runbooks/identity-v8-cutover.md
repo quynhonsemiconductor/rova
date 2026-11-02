@@ -1,5 +1,7 @@
 # identity v8: the cutover, and the way back
 
+> **Historical (2026-11-02).** Identity v8 shipped on the on-prem move night (2026-11-01, `docs/runbooks/prod-release-night.md`); the AWS steps below (Secrets Manager, Pages env, ECS flags, `infra/live/prod`) did not run and the AWS stacks no longer exist. Kept as the record of the data model and rollback SQL.
+
 rova signs people in with `@quynhonsemiconductor/identity` 8 (Better Auth, the `staff` preset, Microsoft Entra, B2B guests for vendors)
 instead of the v7 BFF session. This page is the operator's half: what to prepare, the order of the cutover on **develop** and then
 **production**, how to prove it worked, and how to undo it. The data half (the tables, the backfill) is

@@ -159,7 +159,6 @@ export default defineConfig({
         // NOTE for whoever comments in this array next: it is parsed by regex, so an apostrophe
         // re-pairs every quote after it and a closing square bracket truncates the whole list.
         // Both fail the ratchet with a diff full of fragments rather than a filename.
-        'apps/worker/src/email/bounce-feedback.service.ts',
         'apps/worker/src/identity/entra-guest-invite-relay.service.ts',
         'apps/worker/src/heartbeat/worker-heartbeat.service.ts',
         'libs/platform/src/context/request-context.ts',
@@ -226,8 +225,10 @@ export default defineConfig({
       // RE-MEASURED 2026-10-30 (US-118 Carryover retest, #829 CI): stmts 88.21, branch 82.48, funcs
       // 86.3, lines 88.92 — main sat at 87.99 statements, and the PR's new specs tipped the 85 floor
       // 3.21 behind. Raised `statements` to 88; the other three are still within 3 points.
+      // RE-MEASURED 2026-11-02 (#730, SES/Resend senders and their specs removed): lines 89.33, so the 86 floor
+      // fell 3.33 behind and the ratchet failed. Raised to 89.
       thresholds: {
-        lines: 86,
+        lines: 89,
         functions: 84,
         branches: 82,
         statements: 88,
