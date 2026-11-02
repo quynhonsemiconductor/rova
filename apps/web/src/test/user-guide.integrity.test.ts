@@ -1,7 +1,7 @@
 /**
  * US-119 — the static User Guide under `public/guide` ships as the BA authored it, so its structure is
  * guarded here instead of by a formatter or linter. Each assertion protects an acceptance criterion or
- * the security posture of `functions/_lib/guide-gate.ts`:
+ * the security posture of `src/shared/lib/guide-gate.worker.ts`:
  *
  * - every local link and image resolves (AC2 "local links load without error", AC4 "no broken assets");
  * - every Vietnamese page has an English counterpart and vice versa (AC2, the language switch maps by

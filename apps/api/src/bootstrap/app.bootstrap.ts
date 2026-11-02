@@ -10,7 +10,7 @@ import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { CSRF_HEADER, CSRF_SECRET_COOKIE, requiresCsrfProtection } from '@platform/http/csrf';
 import { enableHealth, registerRequestTiming } from '@quynhonsemiconductor/platform-runtime';
 import { SseConnections, registerSseShutdown } from '@modules/notifications';
-import { assertEdgeClientIpEnv, enableCorrelationId } from '@quynhonsemiconductor/platform-http';
+import { enableCorrelationId } from '@quynhonsemiconductor/platform-http';
 import { assertPlatformAdminEmailsEnv } from './platform-admin-emails';
 import { SESSION_COOKIE } from '@platform/auth';
 import { isSessionBody, redactSessionTokens } from '@platform/http/session-token-redaction';
@@ -34,10 +34,6 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
 
   const config = app.get(AppConfigService);
 
-  // `clientIp()` (rate limiter, access log, idempotency, session and sign-in ip) reads EDGE_CLIENT_IP_SECRET lazily,
-  // on the first request. A bad key is refused HERE, at boot, naming the variable, rather than surfacing as a
-  // quietly disabled feature on whichever request arrives first.
-  assertEdgeClientIpEnv();
   // The workspace-admin roster comes from the app bundle (platform-admin-emails key).
   // API-only: the worker never receives it and must boot without it, so the check
   // lives in this entrypoint, not in the shared env schema.

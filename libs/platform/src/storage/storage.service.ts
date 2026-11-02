@@ -64,10 +64,14 @@ export class StorageService {
     this.publicBucket = config.get('S3_PUBLIC_ASSETS_BUCKET') ?? null;
     this.cdnBaseUrl = config.get('CDN_PUBLIC_ASSETS_BASE_URL') ?? null;
 
-    // Provider-neutral client: no endpoint → AWS S3 (task-role credential chain);
-    // endpoint set → S3-compatible backend (Cloudflare R2, MinIO) with static
-    // credentials and path-style addressing. Same SDK, selected by config.
+    // S3-compatible backend (Cloudflare R2 on-prem, Garage locally) with static credentials and
+    // path-style addressing. There is no plain-AWS mode any more: the endpoint is required.
     const endpoint = config.get('STORAGE_ENDPOINT');
+    if (!endpoint) {
+      throw new Error(
+        'STORAGE_ENDPOINT is required (S3-compatible endpoint: Cloudflare R2, or Garage locally)',
+      );
+    }
     const accessKeyId = config.get('STORAGE_ACCESS_KEY_ID');
     const secretAccessKey = config.get('STORAGE_SECRET_ACCESS_KEY');
 
@@ -76,8 +80,9 @@ export class StorageService {
 
     const makeClient = (id?: string, secret?: string) =>
       new S3Client({
-        region: endpoint ? 'auto' : config.get('AWS_REGION'),
-        ...(endpoint ? { endpoint, forcePathStyle: config.get('STORAGE_FORCE_PATH_STYLE') } : {}),
+        region: 'auto',
+        endpoint,
+        forcePathStyle: config.get('STORAGE_FORCE_PATH_STYLE'),
         ...(id && secret ? { credentials: { accessKeyId: id, secretAccessKey: secret } } : {}),
         // SDK v3 defaults to auto-attaching a CRC32 checksum (x-amz-checksum-crc32 /
         // x-amz-sdk-checksum-algorithm) to PutObjectCommand, which bleeds into the
@@ -144,15 +149,10 @@ export class StorageService {
    * long-budget STORAGE preset rather than moved to STORAGE_INTERACTIVE, because
    * neither makes a network call: `getSignedUrl` is a local HMAC-SHA256 computation
    * over the canonical request, and the ~60s timeout it nominally sits under is
-   * unreachable. The one theoretical exception is credential resolution — an
-   * `S3Client` with no static credentials walks the provider chain, and in ECS that
-   * means one HTTP call to the container credentials endpoint on first use, cached
-   * thereafter. It does not apply to the deployed configuration: `STORAGE_ENDPOINT`
-   * is set to R2 with static `STORAGE_ACCESS_KEY_ID` / `STORAGE_SECRET_ACCESS_KEY`,
-   * so the chain is never walked. Changing these to the interactive budget would add
-   * a retry to a pure function and buy nothing; if the AWS-S3 code path (no endpoint,
-   * task-role credentials) is ever deployed, the FIRST presign of a process becomes a
-   * network call and this decision should be revisited then.
+   * unreachable. The one theoretical exception is credential resolution, and it
+   * does not apply: `STORAGE_ENDPOINT` is R2 with static `STORAGE_ACCESS_KEY_ID` /
+   * `STORAGE_SECRET_ACCESS_KEY`, so no credential provider chain is walked. Changing these to the
+   * interactive budget would add a retry to a pure function and buy nothing.
    */
   async presignPut(req: PresignPutRequest): Promise<PresignPutResult> {
     const uploadUrl = await this.resilience.execute(

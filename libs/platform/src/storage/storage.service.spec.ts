@@ -30,7 +30,6 @@ describe('StorageService — presigned PUT contract', () => {
           STORAGE_ACCESS_KEY_ID: 'AKIAEXAMPLE',
           STORAGE_SECRET_ACCESS_KEY: 'secretexample',
           STORAGE_FORCE_PATH_STYLE: true,
-          AWS_REGION: 'ap-southeast-1',
         }) as Record<string, unknown>
       )[k],
   } as unknown as AppConfigService;
@@ -120,7 +119,6 @@ describe('StorageService — public/private credential separation', () => {
     STORAGE_ACCESS_KEY_ID: 'PRIVATEKEYID',
     STORAGE_SECRET_ACCESS_KEY: 'privatesecret',
     STORAGE_FORCE_PATH_STYLE: true,
-    AWS_REGION: 'ap-southeast-1',
   };
 
   const make = (extra: Record<string, unknown> = {}) =>
@@ -130,6 +128,10 @@ describe('StorageService — public/private credential separation', () => {
       } as unknown as AppConfigService,
       resilience,
     );
+
+  it('refuses to start without STORAGE_ENDPOINT: there is no plain-AWS mode', () => {
+    expect(() => make({ STORAGE_ENDPOINT: undefined })).toThrow(/STORAGE_ENDPOINT is required/);
+  });
 
   /** Access key id out of the SigV4 credential scope on a presigned URL. */
   const keyIdOf = (url: string) =>
@@ -218,7 +220,6 @@ describe('StorageService — headObject resilience budget', () => {
           STORAGE_ACCESS_KEY_ID: 'AKIAEXAMPLE',
           STORAGE_SECRET_ACCESS_KEY: 'secretexample',
           STORAGE_FORCE_PATH_STYLE: true,
-          AWS_REGION: 'ap-southeast-1',
         }) as Record<string, unknown>
       )[k],
   } as unknown as AppConfigService;

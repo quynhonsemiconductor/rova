@@ -9,17 +9,15 @@
  * The THRESHOLDS are rova's own (RATE_LIMIT_TIERS) and are asserted unchanged here: adopting `clientIp()` moves
  * who is counted, never how many.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { requestContextStorage, type RequestContext } from '@quynhonsemiconductor/observability';
 import { KEYED_BY_ADDRESS } from '@quynhonsemiconductor/platform-http';
-import { signEdgeClientIp } from '@quynhonsemiconductor/platform-http/edge';
 import { RateLimitGuard } from './rate-limit.guard';
 import { RATE_LIMIT_METADATA_KEY, RATE_LIMIT_TIERS } from './rate-limit.constants';
 
 const TUNNEL = '172.16.0.9'; // cloudflared: what req.ip is for every visitor
-const SECRET = 'e'.repeat(48);
 
 interface Req {
   headers: Record<string, string | undefined>;
@@ -71,12 +69,6 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     const metrics = { recordFailOpen: vi.fn() };
     delete process.env['DISABLE_RATE_LIMIT'];
     guard = new RateLimitGuard(new Reflector(), cache as never, metrics as never);
-    delete process.env['EDGE_CLIENT_IP_SECRET'];
-    delete process.env['EDGE_CLIENT_IP_SECRET_PREVIOUS'];
-  });
-
-  afterEach(() => {
-    delete process.env['EDGE_CLIENT_IP_SECRET'];
   });
 
   it('gives two visitors behind the same tunnel address DIFFERENT buckets', async () => {
@@ -119,42 +111,6 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     );
     expect(keys).toEqual([`STRICT:ip:${TUNNEL}`]);
     expect(keys.join()).not.toContain('1.2.3.4');
-  });
-
-  it('with EDGE_CLIENT_IP_SECRET set, takes the VERIFIED signed address over cf-connecting-ip', async () => {
-    // Behind a Pages Function cf-connecting-ip is a Cloudflare address shared by every visitor.
-    process.env['EDGE_CLIENT_IP_SECRET'] = SECRET;
-    const signed = await signEdgeClientIp({
-      secret: SECRET,
-      ip: '203.0.113.99',
-      method: 'POST',
-      path: '/v1/bff/dev-login',
-    });
-
-    await guard.canActivate(
-      context(
-        request({ headers: { 'cf-connecting-ip': '104.28.0.1', ...signed } }), // 104.28.0.1: Cloudflare's own
-        'STRICT',
-      ),
-    );
-
-    expect(keys).toEqual(['STRICT:ip:203.0.113.99']);
-  });
-
-  it('ignores a signed address that does not verify (wrong key), falling back to cf-connecting-ip', async () => {
-    process.env['EDGE_CLIENT_IP_SECRET'] = SECRET;
-    const forged = await signEdgeClientIp({
-      secret: 'f'.repeat(48),
-      ip: '203.0.113.99',
-      method: 'POST',
-      path: '/v1/bff/dev-login',
-    });
-
-    await guard.canActivate(
-      context(request({ headers: { 'cf-connecting-ip': '198.51.100.20', ...forged } }), 'STRICT'),
-    );
-
-    expect(keys).toEqual(['STRICT:ip:198.51.100.20']);
   });
 
   const principalStore = (userId?: string): RequestContext => ({

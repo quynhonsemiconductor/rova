@@ -76,8 +76,7 @@ export class RateLimitGuard implements CanActivate {
 
     // The CLIENT's address, by `clientIp()` and never `req.ip`: behind the Cloudflare Tunnel `req.ip` is cloudflared's
     // own address, so every visitor shared ONE bucket (and AUTH_LOGIN's 5 attempts per 15 minutes were the whole
-    // company's). `clientIp()` returns the verified signed edge address when EDGE_CLIENT_IP_SECRET is set, else
-    // `cf-connecting-ip`, else the first X-Forwarded-For entry, else the socket. One answer per request, so the
+    // company's). `clientIp()` returns `cf-connecting-ip` (the tunnel passes the visitor's address), else the socket. One answer per request, so the
     // access log and idempotency agree with it.
     const ip = clientIp(req);
     const userId = currentUserId();

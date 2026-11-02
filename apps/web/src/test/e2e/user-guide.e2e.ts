@@ -7,8 +7,8 @@ import { expect, loginAndSelectProject, settle } from './helpers'
  * One journey for the surface, walking AC1 → AC4 in a single session, per the repo's per-surface rule.
  *
  * What this CANNOT cover, and where it is covered instead: the Vite dev server serves `public/guide`
- * as plain files, so neither the session gate (`functions/guide/_middleware.ts`) nor Cloudflare's
- * extensionless URLs exist here. Those are pinned by `functions/_lib/guide-gate.spec.ts` and
+ * as plain files, so neither the session gate (`src/shared/lib/guide-gate.worker.ts`) nor Cloudflare's
+ * extensionless URLs exist here. Those are pinned by `src/test/guide-worker.test.ts` and
  * `src/test/user-guide.script.test.ts` respectively.
  */
 

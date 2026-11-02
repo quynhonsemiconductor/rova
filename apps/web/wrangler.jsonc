@@ -20,11 +20,7 @@
 // deploy passes `--env`. `workers_dev`/`preview_urls` are repeated inside each
 // environment because Wrangler does NOT inherit them from the top level.
 //
-// Until the prod move (ONPREM-PLAN M-11) prod keeps publishing to Pages; its
-// environment here exists so the move is a workflow change, not a config change.
-//
-// US-119 USER GUIDE GATE: Workers Static Assets do not run the Pages Functions in
-// `apps/web/functions/`, so the gate that admits only signed-in readers moved into
+// US-119 USER GUIDE GATE: the gate that admits only signed-in readers is
 // `src/shared/lib/guide-gate.worker.ts`. That Worker runs for `/guide/*` and `/guide-assets/*` ONLY
 // (`assets.run_worker_first`), and every other path — the SPA bundle and its assets —
 // goes straight to the static fast path without executing user code.

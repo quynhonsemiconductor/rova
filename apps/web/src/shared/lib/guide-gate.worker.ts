@@ -1,14 +1,13 @@
 /**
- * The US-119 User Guide gate, as a WORKER entry (the on-prem edge), replacing the Pages Function
- * `apps/web/functions/guide/_middleware.ts` for hosts served by Workers Static Assets.
+ * The US-119 User Guide gate, as a WORKER entry (the on-prem edge).
  *
- * Workers Static Assets do not run Pages Functions, so `rova.qnsc.vn/guide/*` would be public there.
- * This Worker runs ONLY for `/guide/*` and `/guide-assets/*` (`assets.run_worker_first` in `wrangler.jsonc`), so every other
+ * Workers Static Assets serve every file publicly unless a Worker runs first, so `rova.qnsc.vn/guide/*`
+ * would be public without this gate. This Worker runs ONLY for `/guide/*` and `/guide-assets/*` (`assets.run_worker_first` in `wrangler.jsonc`), so every other
  * path — the SPA bundle, `/guide`'s screenshots' sibling assets — stays on the static fast path.
  *
- * The decision is the API's, never ours, exactly as in `functions/_lib/guide-gate.ts`: the cookie's
+ * The decision is the API's, never ours, the cookie's
  * PRESENCE only saves a round trip; a present cookie is checked against `GET /v1/bff/me` on the SAME
- * origin (no `API_ORIGIN`, no `EDGE_CLIENT_IP_SECRET`: the subrequest is same-host and cloudflared
+ * origin (the subrequest is same-host and cloudflared
  * forwards the reader's address). Fails CLOSED: any answer except 200 / 401 / 403 — a 5xx, a timeout,
  * a network error — serves 503 and never the content.
  *
@@ -19,7 +18,7 @@
 export const SESSION_COOKIE = '__Host-rova_session'
 const GUIDE_ROOT = '/guide/'
 // The in-app guide's screenshots (production data). Gated exactly like the guide itself.
-const GUIDE_ASSETS_ROOT = '/guide-assets/'
+export const GUIDE_ASSETS_ROOT = '/guide-assets/'
 const SESSION_CHECK_TIMEOUT_MS = 5_000
 
 /**

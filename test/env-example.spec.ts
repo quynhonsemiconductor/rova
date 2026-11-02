@@ -279,12 +279,9 @@ describe('.env.example holds no real secret and no foreign sender', () => {
     },
   );
 
-  it.each(['EDGE_CLIENT_IP_SECRET', 'EDGE_CLIENT_IP_SECRET_PREVIOUS', 'GITHUB_APP_PRIVATE_KEY'])(
-    '%s is not set: a developer supplies their own',
-    (key) => {
-      expect(env[key]).toBeUndefined();
-    },
-  );
+  it.each(['GITHUB_APP_PRIVATE_KEY'])('%s is not set: a developer supplies their own', (key) => {
+    expect(env[key]).toBeUndefined();
+  });
 
   it('no SES or Resend key remains anywhere (rova#717): graph is the only sending transport', () => {
     expect(env['RESEND_API_KEY']).toBeUndefined();
@@ -300,12 +297,9 @@ describe('.env.example holds no real secret and no foreign sender', () => {
     expect(read('.gitleaks.toml')).toContain(body.split('\n')[0]);
   });
 
-  it.each(['EDGE_CLIENT_IP_SECRET', 'EDGE_CLIENT_IP_SECRET_PREVIOUS', 'GITHUB_APP_PRIVATE_KEY'])(
-    '%s is not set: a developer supplies their own',
-    (key) => {
-      expect(env[key]).toBeUndefined();
-    },
-  );
+  it.each(['GITHUB_APP_PRIVATE_KEY'])('%s is not set: a developer supplies their own', (key) => {
+    expect(env[key]).toBeUndefined();
+  });
 
   it('no SES or Resend key remains anywhere (rova#717): graph is the only sending transport', () => {
     expect(env['EMAIL_PROVIDER']).toBe('smtp'); // local default: Mailpit
