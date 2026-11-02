@@ -18,7 +18,7 @@ import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { seed, seedSystemRoles, seedTenantBootstrap } from './seeds/seed';
-import { strandedMigrations } from './stranded-migrations';
+import { assertNoMissingMigrations, strandedMigrations } from './stranded-migrations';
 import { resolveDatabaseUrl } from './database-url';
 import { resolveMigrationPoolConfig } from './pg-pool-config';
 import { log } from './script-log';
@@ -72,12 +72,14 @@ const db = drizzle(pool);
  *     on a long-lived developer database, harmless in CI, which always starts empty), OR its slot is
  *     occupied by a DIFFERENT file and the real one was skipped, which is the incident above.
  *
- * WARNS, NEVER FAILS, and that is a deliberate retreat from the first version. Both signals above are
- * ambiguous from here, and a hard failure on either broke `pnpm db:migrate` on a real developer
- * database for five files whose objects plainly existed. A gate that cries wolf gets bypassed, and a
- * bypassed gate protects nothing — whereas a named file and a specific question ("do its objects
- * exist?") is exactly what the silent success failed to give anyone. Proving it properly means
- * diffing the live schema against the migrations, which is a different tool and a different change.
+ * `mismatched` WARNS, `missing` FAILS. The first version failed on both and broke `pnpm db:migrate` on a
+ * real developer database for five files whose objects plainly existed; that was before the hash
+ * fallback below (and the `knownEdits` allow-list) removed those false positives. What `missing` holds
+ * now is an entry found neither at its own `when` nor by its file's hash: it ran nowhere. A deploy that
+ * exits 0 with a schema change skipped is the failure this exists to stop, so the Job fails (the old
+ * pods keep serving) instead of logging a warning nobody reads. `mismatched` is still ambiguous from
+ * here (an edited file is harmless, a slot taken by another file is not), so it only warns; proving it
+ * properly means diffing the live schema against the migrations, which is a different tool.
  *
  * A MISSING ROW AT AN ENTRY'S `when` IS NOT YET "STRANDED": the entry's file may be recorded under an EARLIER
  * `when` (this is what a corrected journal timestamp looks like on a database that ran the file before the
@@ -88,7 +90,7 @@ const db = drizzle(pool);
  * row occupies a real one's slot, which is precisely the case that produced the incident and precisely
  * the one a count cannot see. Drizzle hashes the file's raw text.
  *
- * It REPORTS; it never repairs. Applying a stranded file out of order is a decision about a database
+ * It REPORTS (and fails on `missing`); it never repairs. Applying a stranded file out of order is a decision about a database
  * that may not be a developer's, and the safe recovery differs between a laptop (recreate it) and a
  * deployed environment (apply the one file, deliberately, having read it).
  */
@@ -135,15 +137,8 @@ async function assertNoStrandedMigrations(folder: string): Promise<void> {
         'creates actually exist before trusting this database.',
     );
   }
-  if (missing.length > 0) {
-    log.warn(
-      `⚠️   ${missing.length} migration(s) in the journal have NO recorded row at their own ` +
-        `timestamp: ${missing.join(', ')}. Drizzle applies only entries past the newest recorded ` +
-        '`when`, so a non-ascending or duplicated timestamp strands a file while the run still ' +
-        'reports success — check that the objects each one creates exist, and recreate the database ' +
-        'or apply the file by hand if they do not.',
-    );
-  }
+  // Throws: `run()` logs it and exits 1, before the seeds and the backfill.
+  assertNoMissingMigrations({ missing });
 }
 
 async function run() {
