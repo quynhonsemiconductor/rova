@@ -25,7 +25,7 @@
 //
 // US-119 USER GUIDE GATE: Workers Static Assets do not run the Pages Functions in
 // `apps/web/functions/`, so the gate that admits only signed-in readers moved into
-// `src/shared/lib/guide-gate.worker.ts`. That Worker runs for `/guide/*` ONLY
+// `src/shared/lib/guide-gate.worker.ts`. That Worker runs for `/guide/*` and `/guide-assets/*` ONLY
 // (`assets.run_worker_first`), and every other path — the SPA bundle and its assets —
 // goes straight to the static fast path without executing user code.
 
@@ -41,8 +41,8 @@
     "directory": "./dist",
     // `env.ASSETS.fetch(request)` is how the entry serves a file once the gate admits it.
     "binding": "ASSETS",
-    // ONLY the guide runs the Worker first; every other path stays on the static path.
-    "run_worker_first": ["/guide/*"],
+    // ONLY the guide and its screenshots (`/guide-assets/*`, production data) run the Worker first; every other path stays on the static path.
+    "run_worker_first": ["/guide/*", "/guide-assets/*"],
 
     // Unknown paths serve `index.html`: every SPA route (`/backlog`,
     // `/item/US-17`, …) is a client-side route with no file behind it.
