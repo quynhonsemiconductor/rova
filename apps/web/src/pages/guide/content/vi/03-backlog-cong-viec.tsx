@@ -465,7 +465,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Item vừa tạo không còn trong danh sách</strong>
               <p>

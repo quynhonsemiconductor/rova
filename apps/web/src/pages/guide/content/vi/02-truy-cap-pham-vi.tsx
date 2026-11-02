@@ -380,7 +380,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Trang còn hiển thị phạm vi cũ</strong>
               <p>
