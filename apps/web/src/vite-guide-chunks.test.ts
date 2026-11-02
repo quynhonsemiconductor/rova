@@ -3,9 +3,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { build, type Plugin, type Rolldown } from 'vite'
+import { build, type Rolldown } from 'vite'
 import { afterAll, describe, expect, it } from 'vitest'
-import { GUIDE_CHUNK_DIR, assertEntryIsPublic, chunkFileName } from '../vite.config'
+import viteConfig, { GUIDE_CHUNK_DIR, chunkFileName, guideChunkGuard } from '../vite.config'
 
 // The build writes every chunk carrying User Guide text under the session-gated `/guide-assets/js/`
 // (see `functions/guide-assets/_middleware.ts`); everything else stays public under `/assets/`.
@@ -38,6 +38,20 @@ describe('chunkFileName', () => {
  * the bundler's own call pattern (which file names an entry, which chunks an entry imports), not a
  * chunk object written by hand.
  */
+describe("the app's build", () => {
+  // The builds below take these two pieces by import; this pins that the app's own build uses them,
+  // so dropping either from `vite.config.ts` fails here rather than shipping guide text in public.
+  const app = viteConfig({ command: 'build', mode: 'production' })
+
+  it('runs the entry guard', () => {
+    expect(app.plugins).toContain(guideChunkGuard)
+  })
+
+  it('names chunks with chunkFileName', () => {
+    expect(app.build?.rollupOptions?.output).toMatchObject({ chunkFileNames: chunkFileName })
+  })
+})
+
 describe('a real build', () => {
   const roots: string[] = []
   afterAll(() => roots.forEach((root) => rmSync(root, { recursive: true, force: true })))
@@ -49,16 +63,12 @@ describe('a real build', () => {
       mkdirSync(join(root, file, '..'), { recursive: true })
       writeFileSync(join(root, file), text)
     }
-    const guard: Plugin = {
-      name: 'guide-chunk-guard',
-      generateBundle: (_options, bundle) => assertEntryIsPublic(bundle),
-    }
     const pages = Object.keys(files).filter((f) => f.endsWith('.html'))
     const output = (await build({
       root,
       configFile: false,
       logLevel: 'silent',
-      plugins: [guard],
+      plugins: [guideChunkGuard],
       build: {
         write: false,
         rollupOptions: {

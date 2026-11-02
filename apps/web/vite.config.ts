@@ -86,7 +86,7 @@ export function assertEntryIsPublic(bundle: Readonly<Record<string, BuiltFile>>)
   }
 }
 
-const guideChunkGuard: Plugin = {
+export const guideChunkGuard: Plugin = {
   name: 'guide-chunk-guard',
   apply: 'build',
   generateBundle: (_options, bundle) => assertEntryIsPublic(bundle),
