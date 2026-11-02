@@ -47,13 +47,13 @@ describe('data-store image pins', () => {
   it('PostgreSQL is the Debian image of one exact 18.x release (glibc collation, as on RDS)', () => {
     const pinned = composeImages.filter((image) => engines.postgres.test(image));
     expect(pinned).toHaveLength(1);
-    expect(pinned[0]).toMatch(/^postgres:18\.\d+$/);
+    expect(pinned[0]).toMatch(/^postgres:18\.\d+(@sha256:[0-9a-f]{64})?$/);
   });
 
   it('Valkey is one exact 8.1 alpine release', () => {
     const pinned = composeImages.filter((image) => engines.valkey.test(image));
     expect(pinned).toHaveLength(1);
-    expect(pinned[0]).toMatch(/^valkey\/valkey:8\.1\.\d+-alpine$/);
+    expect(pinned[0]).toMatch(/^valkey\/valkey:8\.1\.\d+-alpine(@sha256:[0-9a-f]{64})?$/);
   });
 
   it.each(Object.keys(engines) as (keyof typeof engines)[])(
