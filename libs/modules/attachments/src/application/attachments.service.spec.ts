@@ -4,7 +4,11 @@ import { PreconditionFailedException, NotFoundException, StorageService } from '
 import type { JwtPayload } from '@platform';
 import { AttachmentsService } from './attachments.service';
 import { FILE_REPOSITORY } from '../domain/ports/file.repository';
-import { ENTITY_ATTACHMENT_POLICY, USER_AVATAR_POLICY } from '../domain/attachment-policy';
+import {
+  ENTITY_ATTACHMENT_POLICY,
+  USER_AVATAR_POLICY,
+  WORKSPACE_LOGO_POLICY,
+} from '../domain/attachment-policy';
 import type { StoredFile } from '../domain/file.types';
 
 const WORKSPACE = '11111111-1111-1111-1111-111111111111';
@@ -95,6 +99,32 @@ describe('AttachmentsService', () => {
         PreconditionFailedException,
       );
       expect(fileRepo.create).not.toHaveBeenCalled();
+    });
+
+    it.each(['image/heic', 'image/heif'])(
+      'accepts %s (iPhone photos) on an attachment surface',
+      async (mimeType) => {
+        await expect(presign({ mimeType, filename: 'IMG_0001.HEIC' })).resolves.toBeDefined();
+        expect(fileRepo.create).toHaveBeenCalled();
+      },
+    );
+
+    it('does NOT accept HEIC on the inline surfaces: browsers cannot render it', async () => {
+      for (const policy of [USER_AVATAR_POLICY, WORKSPACE_LOGO_POLICY]) {
+        await expect(
+          service.presign(
+            actor,
+            policy,
+            {
+              filename: 'a.heic',
+              mimeType: 'image/heic',
+              sizeBytes: 100,
+              checksumSha256: CHECKSUM,
+            },
+            0,
+          ),
+        ).rejects.toThrow(PreconditionFailedException);
+      }
     });
 
     it('rejects SVG — it is active content and must never be storable', async () => {
