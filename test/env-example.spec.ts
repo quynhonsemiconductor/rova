@@ -279,19 +279,38 @@ describe('.env.example holds no real secret and no foreign sender', () => {
     },
   );
 
-  it.each([
-    'EDGE_CLIENT_IP_SECRET',
-    'EDGE_CLIENT_IP_SECRET_PREVIOUS',
-    'RESEND_API_KEY',
-    'GITHUB_APP_PRIVATE_KEY',
-  ])('%s is not set: a developer supplies their own', (key) => {
-    expect(env[key]).toBeUndefined();
+  it.each(['EDGE_CLIENT_IP_SECRET', 'EDGE_CLIENT_IP_SECRET_PREVIOUS', 'GITHUB_APP_PRIVATE_KEY'])(
+    '%s is not set: a developer supplies their own',
+    (key) => {
+      expect(env[key]).toBeUndefined();
+    },
+  );
+
+  it('no SES or Resend key remains anywhere (rova#717): graph is the only sending transport', () => {
+    expect(env['RESEND_API_KEY']).toBeUndefined();
+    expect(env['SES_BOUNCE_QUEUE_URL']).toBeUndefined();
   });
 
-  it('sends mail from a domain this organisation owns, and locally only to Mailpit on this machine', () => {
-    expect(env['EMAIL_PROVIDER']).toBe('smtp');
-    expect(env['MAIL_SMTP_HOST']).toBe('localhost');
-    expect(env['MAIL_FROM_EMAIL']).toMatch(/@qnsc\.vn$/);
+  it('the signing key is the public throwaway pair vitest.config.ts commits, and no other', () => {
+    const pem = Buffer.from(env['JWT_PRIVATE_KEY'] ?? '', 'base64')
+      .toString('utf8')
+      .trim();
+    const body = pem.split('\n').slice(1, -1).join('\n').replace(/\\n/g, '\n');
+    expect(read('vitest.config.ts').replace(/\\n/g, '\n')).toContain(body.split('\n')[0]);
+    expect(read('.gitleaks.toml')).toContain(body.split('\n')[0]);
+  });
+
+  it.each(['EDGE_CLIENT_IP_SECRET', 'EDGE_CLIENT_IP_SECRET_PREVIOUS', 'GITHUB_APP_PRIVATE_KEY'])(
+    '%s is not set: a developer supplies their own',
+    (key) => {
+      expect(env[key]).toBeUndefined();
+    },
+  );
+
+  it('no SES or Resend key remains anywhere (rova#717): graph is the only sending transport', () => {
+    expect(env['EMAIL_PROVIDER']).toBe('smtp'); // local default: Mailpit
+    expect(env['RESEND_API_KEY']).toBeUndefined();
+    expect(env['SES_BOUNCE_QUEUE_URL']).toBeUndefined();
   });
 });
 

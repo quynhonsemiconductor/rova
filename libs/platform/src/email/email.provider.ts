@@ -1,7 +1,7 @@
 /**
  * IEmailProvider — provider-agnostic transport interface.
  *
- * Swap AWS SES ↔ Brevo ↔ Resend ↔ SMTP by changing the registered provider
+ * Swap Microsoft Graph ↔ dev transport (or another mail API) by changing the registered provider
  * in PlatformModule without touching any business logic.
  */
 
@@ -34,13 +34,6 @@ export type EmailCategory = 'transactional' | 'notification' | 'marketing';
 
 export interface EmailPayload {
   to: string;
-  /** Formatted "Display Name <address@domain.com>" sender. `EmailService` resolves
-   *  this ONCE from MAIL_FROM_NAME + MAIL_FROM_EMAIL and always passes it explicitly;
-   *  a provider that receives this absent MUST throw rather than fall back to a
-   *  hard-coded or provider-level default (see resend.provider.ts / ses.provider.ts).
-   *  Optional only so a caller invoking a provider directly (tests, the dev transport)
-   *  is not forced to fabricate one. */
-  from?: string;
   /** Reply-To address. Defaults to MAIL_REPLY_TO config value. */
   replyTo?: string;
   subject: string;
@@ -62,10 +55,9 @@ export interface EmailPayload {
 
 /**
  * What a transport reports back on acceptance. `messageId` is the provider's own id for
- * the send — SES's `MessageId`, Resend's email id — and it is how the asynchronous
- * feedback loop matches a later bounce/complaint event to the row that sent it. NULL
- * means the provider has none to give (the dev transport), and a row sent without one
- * simply cannot be bounce-matched; that is honest, not an error.
+ * the send, when the transport reports one. NULL means the provider has none to give
+ * (the dev transport), and a row sent without one is simply not matchable later; that is
+ * honest, not an error.
  */
 export interface EmailSendResult {
   messageId: string | null;

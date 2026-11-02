@@ -13,7 +13,6 @@ import { CleanupCronService } from './cron/cleanup.cron';
 import { EmailRelayService } from './email/email-relay.service';
 import { WorkerHeartbeatService } from './heartbeat/worker-heartbeat.service';
 import { ApiTokensModule } from '@modules/api-tokens';
-import { BounceFeedbackService } from './email/bounce-feedback.service';
 import { NotificationRelayService } from './notifications/notification-relay.service';
 import { ScmWebhookRelayService } from './scm/scm-webhook-relay.service';
 import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
@@ -50,7 +49,6 @@ import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
     // Email outbox relay → IEmailProvider
     EmailRelayService,
     WorkerHeartbeatService,
-    BounceFeedbackService,
     // Notification outbox relay → in_app_notifications
     NotificationRelayService,
     // SCM webhook inbox relay → connections/changesets
