@@ -1147,9 +1147,17 @@ reversing US-119 AC1's new-tab rule — and `/user-guide` picks the edition from
 - **Old `/guide/…` links still work** via `public/_redirects` (static, no Function): `/guide/` → `vi`,
   `/guide/en/` → `en`, same chapter (the app drops `.html` and maps `index` to the start chapter), and
   the browser keeps the `#section`. Pinned by `src/test/user-guide-redirects.test.ts`.
+- **The on-prem host is Workers Static Assets, which runs no Pages Function**, so the same gate exists
+  twice: `src/shared/lib/guide-worker-gate.ts` behind the entry `guide-gate.worker.ts`, run first for
+  `/guide-assets/*` ONLY (`wrangler.jsonc`). Never widen that to `/guide/*`: the Worker would answer
+  before `_redirects` and old links would stop working. The entry must export nothing but its handler —
+  workerd reads every named export as an entrypoint and refuses to start on a constant. Its session
+  check is same-origin, so it accepts only a JSON 200: anything that puts `/v1/*` on the static path
+  (`wrangler dev`) answers with the SPA's `index.html`, 200. `src/test/user-guide-gate-paths.test.ts`
+  pins both gates, the SPA and `run_worker_first` to one path.
 - **Locally nothing is gated and nothing redirects** — Vite neither runs Pages Functions nor reads
   `_redirects`. Exercise both with `pnpm build:web` then `wrangler pages dev apps/web/dist` with
-  `API_ORIGIN` and `EDGE_CLIENT_IP_SECRET` set.
+  `API_ORIGIN` and `EDGE_CLIENT_IP_SECRET` set (Pages), or `wrangler dev` in `apps/web` (Workers).
 
 ## Observability
 

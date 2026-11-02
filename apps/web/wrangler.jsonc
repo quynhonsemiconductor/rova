@@ -20,10 +20,12 @@
 // deploy passes `--env`. `workers_dev`/`preview_urls` are repeated inside each
 // environment because Wrangler does NOT inherit them from the top level.
 //
-// US-119 USER GUIDE GATE: the gate that admits only signed-in readers is
-// `src/shared/lib/guide-gate.worker.ts`. That Worker runs for `/guide/*` and `/guide-assets/*` ONLY
-// (`assets.run_worker_first`), and every other path — the SPA bundle and its assets —
-// goes straight to the static fast path without executing user code.
+// US-119 USER GUIDE GATE: the gate that admits only signed-in readers to the guide's
+// files (its screenshots and the chunks carrying its text) is the Worker entry
+// `src/shared/lib/guide-gate.worker.ts`. It runs for `/guide-assets/*` ONLY
+// (`assets.run_worker_first`), and every other path — the SPA bundle and its assets,
+// and the old `/guide/*` links that `public/_redirects` moves to `/user-guide` —
+// goes straight to the static path without executing user code.
 
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -37,16 +39,16 @@
     "directory": "./dist",
     // `env.ASSETS.fetch(request)` is how the entry serves a file once the gate admits it.
     "binding": "ASSETS",
-    // ONLY the guide and its screenshots (`/guide-assets/*`, production data) run the Worker first; every other path stays on the static path.
-    "run_worker_first": ["/guide/*", "/guide-assets/*"],
+    // ONLY the guide's files (`/guide-assets/*`: production screenshots and the guide's text) run
+    // the Worker first; every other path stays on the static path, where `_redirects` applies.
+    "run_worker_first": ["/guide-assets/*"],
 
     // Unknown paths serve `index.html`: every SPA route (`/backlog`,
     // `/item/US-17`, …) is a client-side route with no file behind it.
     "not_found_handling": "single-page-application",
 
-    // `/guide/01-lam-quen` serves `guide/01-lam-quen.html`. Pinned because the
-    // User Guide's own script identifies pages by an extensionless URL (the BA
-    // edits assume Pages' behaviour, which Workers reproduces here by default).
+    // Pages' behaviour (`/x` serves `x.html`), which Workers reproduces by default;
+    // pinned so the two hosts keep serving `dist/` the same way.
     "html_handling": "auto-trailing-slash"
   },
 
