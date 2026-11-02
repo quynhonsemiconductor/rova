@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createServer, type AddressInfo } from 'node:net';
 import { Pool } from 'pg';
 import { DrizzleProvider } from './drizzle.provider';
 import type { AppConfigService } from '../config/app-config.service';
@@ -175,5 +176,67 @@ describe('DrizzleProvider.onModuleInit — warm-up', () => {
 
     expect(warn).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The 2026-11-03 node reboot: the API booted before PostgreSQL. The pool must come out of a failed
+ * warm-up usable (it dials again once the backoff passes, nothing is cached), and an idle client
+ * dropped by a database restart must not end the process.
+ */
+describe('DrizzleProvider — the pool heals in place', () => {
+  /** A "database" that accepts TCP and hangs up at once, counting every connection attempt. */
+  async function hangUpServer() {
+    let dials = 0;
+    const server = createServer((socket) => {
+      dials += 1;
+      socket.destroy();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    const cfg = {
+      get: (k: string) =>
+        k === 'DATABASE_URL'
+          ? `postgresql://test:test@127.0.0.1:${port}/test`
+          : config.get(k as never),
+    } as unknown as AppConfigService;
+    return { cfg, dials: () => dials, close: () => new Promise((r) => server.close(r)) };
+  }
+
+  it('dials again after a failed warm-up instead of staying failed, backing off in between', async () => {
+    const db = await hangUpServer();
+    const provider = new DrizzleProvider(db.cfg, poolMetrics);
+    vi.spyOn((provider as unknown as { logger: { warn: () => void } }).logger, 'warn');
+    const pool = provider.poolHandle;
+    try {
+      await provider.onModuleInit(); // warm-up fails, boot continues
+      const afterWarmUp = db.dials();
+      expect(afterWarmUp).toBeGreaterThan(0);
+
+      // Inside the backoff: fails fast without touching the database.
+      await expect(pool.query('SELECT 1')).rejects.toThrow();
+      expect(db.dials()).toBe(afterWarmUp);
+
+      // Past the longest backoff (5 s) it dials for real again: nothing failed is cached.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(Date.now() + 5_001);
+      await expect(pool.query('SELECT 1')).rejects.toThrow();
+      expect(db.dials()).toBe(afterWarmUp + 1);
+    } finally {
+      vi.useRealTimers();
+      await provider.onModuleDestroy();
+      await db.close();
+    }
+  });
+
+  it('survives an idle client error (a database restart) instead of throwing it', async () => {
+    const provider = new DrizzleProvider(config, poolMetrics);
+    try {
+      expect(() =>
+        provider.poolHandle.emit('error', new Error('terminating connection (57P01)')),
+      ).not.toThrow();
+    } finally {
+      await provider.onModuleDestroy();
+    }
   });
 });
