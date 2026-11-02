@@ -69,6 +69,22 @@ export const EDITED_AFTER_APPLY: ReadonlyMap<
   ],
 ]);
 
+/**
+ * The failure the migrator raises when journal entries are stranded. Only `missing` fails: an entry found
+ * neither at its `when` nor by its file's hash ran nowhere, so the schema the code expects is not there
+ * and the run must not report success. `mismatched` stays a warning (an edited file is ambiguous), and the
+ * allow-listed `knownEdits` never reach here.
+ */
+export function assertNoMissingMigrations(report: Pick<StrandedReport, 'missing'>): void {
+  if (report.missing.length === 0) return;
+  throw new Error(
+    `${report.missing.length} migration(s) in the journal never ran: ${report.missing.join(', ')}. ` +
+      'Drizzle applies only entries past the newest recorded `when`, so a non-ascending or duplicated ' +
+      'timestamp strands a file while the run still looks successful. Check that the objects each one ' +
+      'creates exist, then apply the file by hand (or recreate a developer database) before deploying.',
+  );
+}
+
 export function strandedMigrations(
   entries: readonly JournalEntry[],
   recorded: readonly RecordedMigration[],
