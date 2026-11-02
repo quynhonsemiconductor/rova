@@ -22,13 +22,13 @@ export default function Chapter() {
           <ChapterEyebrow>PART 11 · WORKSPACE ADMINISTRATION</ChapterEyebrow>
           <h2>Manage the right people, the right Project and the right Team</h2>
           <Lead>
-            <strong>Workspace Admin</strong> manage accounts in Workspace, Project structure, Teams
-            and access rights. When handling, always differentiate{' '}
-            <strong>Project permissions</strong> with <strong>Team member</strong>: a change in Team
-            does not automatically grant or revoke Project permissions.
+            <strong>Workspace Admin</strong> manages accounts in the Workspace, the Project
+            structure, Teams and access rights. When making changes, always distinguish{' '}
+            <strong>Project permissions</strong> from <strong>Team membership</strong>: a change in
+            Team does not automatically grant or revoke Project permissions.
           </Lead>
         </div>
-        <ChapterSummary aria-label="After this part you will be able to do it">
+        <ChapterSummary aria-label="After this chapter you will be able to">
           <strong>After this chapter, you will be able to</strong>
           <ul>
             <li>Select the correct Settings page for what you need to do.</li>
@@ -43,7 +43,7 @@ export default function Chapter() {
         id="mo-quan-tri-workspace"
         number="11.1"
         title="Open the admin area"
-        lead="Administrative functions are located in Settings and are divided according to the correct data type."
+        lead="Administrative functions are located in Settings and are divided by data type."
       >
         <InstructionList>
           <li>
@@ -51,8 +51,8 @@ export default function Chapter() {
             <div>
               <strong>Open Settings</strong>
               <p>
-                Select the Settings icon in the upper right corner. Group <strong>Personal</strong>{' '}
-                is for personal accounts; group <strong>Workspace</strong> is for general
+                Select the Settings icon in the upper right corner. The <strong>Personal</strong>{' '}
+                group is for personal accounts; the <strong>Workspace</strong> group is for general
                 administration.
               </p>
             </div>
@@ -62,7 +62,7 @@ export default function Chapter() {
             <div>
               <strong>Select the correct page</strong>
               <p>
-                Use <strong>User Management</strong> for account;{' '}
+                Use <strong>User Management</strong> for accounts;{' '}
                 <strong>Workspaces & Projects</strong> for Project, Team and Project permissions;{' '}
                 <strong>Permission Model</strong> to check permissions; <strong>Audit Log</strong>{' '}
                 to view history.
@@ -74,8 +74,8 @@ export default function Chapter() {
             <div>
               <strong>Check permissions before editing</strong>
               <p>
-                Workspace Admin can change structure. Admin and Editor only see parts that match the
-                assigned Project; Admin buttons can be hidden or read-only.
+                Workspace Admin can change the structure. Admin and Editor only see parts that match
+                the assigned Project; administration buttons may be hidden or read-only.
               </p>
             </div>
           </li>
@@ -110,7 +110,7 @@ export default function Chapter() {
               <td>
                 <strong>Audit Log</strong>
               </td>
-              <td>Contrast who made which changes and when.</td>
+              <td>Check who made which change and when.</td>
             </tr>
           </tbody>
         </DocTable>
@@ -119,7 +119,7 @@ export default function Chapter() {
         id="quan-ly-users"
         number="11.2"
         title="Managing Users in Workspace"
-        lead="User must exist and be active in Workspace before being granted Project permissions or added to a Team."
+        lead="A User must exist and be active in Workspace before being granted Project permissions or added to a Team."
       >
         <InstructionList>
           <li>
@@ -146,11 +146,11 @@ export default function Chapter() {
           <li>
             <span>3</span>
             <div>
-              <strong>Status management</strong>
+              <strong>Manage status</strong>
               <p>
                 Only keep Users in Active state when they still need to use the system. Status
                 changes affect the entire Workspace, so you must check related Projects and Teams
-                before implementing.
+                before making the change.
               </p>
             </div>
           </li>
@@ -160,8 +160,8 @@ export default function Chapter() {
               <strong>Open Manage Access</strong>
               <p>
                 Use this button to view or change the User's Project permissions. The same person
-                can be Admin in one Project, Editor in another Project and have no rights in the
-                remaining Project.
+                can be Admin in one Project, Editor in another Project and have no access to a third
+                Project.
               </p>
             </div>
           </li>
@@ -184,8 +184,8 @@ export default function Chapter() {
             <div>
               <strong>Select Project from the tree on the left</strong>
               <p>
-                The Projects screen displays the Key, Project name, Status and Team number. Select a
-                Project to open Details, Users & Permissions and Teams.
+                The Projects screen displays the Key, Project name, Status and number of Teams.
+                Select a Project to open Details, Users & Permissions and Teams.
               </p>
             </div>
           </li>
@@ -194,8 +194,8 @@ export default function Chapter() {
             <div>
               <strong>Create Project</strong>
               <p>
-                Select <strong>Create project</strong>. Enter name and Project key; The key uses
-                capital letters and numbers, is 1–10 characters long, does not overlap and does not
+                Select <strong>Create project</strong>. Enter the name and Project key; the key uses
+                capital letters and numbers, is 1–10 characters long, must be unique and cannot
                 change after creation.
               </p>
             </div>
@@ -207,7 +207,7 @@ export default function Chapter() {
               <p>
                 Check Status, start/end date, Project owner and Description.{' '}
                 <strong>
-                  Project owner is business information, does not grant Project rights itself.
+                  Project owner is business information; it does not grant Project permissions.
                 </strong>
               </p>
             </div>
@@ -215,27 +215,27 @@ export default function Chapter() {
           <li>
             <span>4</span>
             <div>
-              <strong>Estimation configuration</strong>
+              <strong>Configure Estimation</strong>
               <p>
                 Preliminary Estimate maps XS–XL to Points; Hours per point is used by Capacity
-                Planning and Reports. Only save positive values that match Project's estimation
+                Planning and Reports. Only save positive values that match the Project's estimation
                 method.
               </p>
             </div>
           </li>
         </InstructionList>
         <p>
-          <strong>Archive</strong> used when Project stops working but needs to keep history; can be
-          restored from the Archive page. <strong>Delete</strong> is used when deletion is allowed
-          and must go through a confirmation step. If the Project still has dependencies, the system
-          may refuse to delete it.
+          <strong>Archive</strong> is used when a Project is no longer active but its history must
+          be kept; it can be restored from the Archive page. <strong>Delete</strong> is used when
+          deletion is allowed and must go through a confirmation step. If the Project still has
+          dependencies, the system may refuse to delete it.
         </p>
       </Section>
       <Section
         id="phan-quyen-project"
         number="11.4"
         title="Assign Project permissions"
-        lead="Grant permissions at the Users & Permissions tab of the Project or via Manage Access of the User."
+        lead="Grant permissions on the Project's Users & Permissions tab or via the User's Manage Access."
       >
         <DocTable>
           <thead>
@@ -250,9 +250,9 @@ export default function Chapter() {
               <td>
                 <strong>Workspace Admin</strong>
               </td>
-              <td>Complete Workspace.</td>
+              <td>Entire Workspace.</td>
               <td>
-                Displayed with the label Workspace Admin; There is no Access Level change dropdown
+                Displayed with the label Workspace Admin; there is no Access Level change dropdown
                 and no Remove access button.
               </td>
             </tr>
@@ -262,7 +262,7 @@ export default function Chapter() {
               </td>
               <td>One Project · All Teams.</td>
               <td>
-                Managing delivery activities in Project; does not administer the Workspace
+                Manages delivery activities in the Project; does not administer the Workspace
                 structure.
               </td>
             </tr>
@@ -270,8 +270,8 @@ export default function Chapter() {
               <td>
                 <strong>Editor</strong>
               </td>
-              <td>A Project · Team is assigned.</td>
-              <td>Requires at least one active Team; Work within the assigned Team scope.</td>
+              <td>One Project · assigned Teams.</td>
+              <td>Requires at least one active Team; works within the assigned Team scope.</td>
             </tr>
             <tr>
               <td>
@@ -307,7 +307,7 @@ export default function Chapter() {
             <div>
               <strong>Select Access Level</strong>
               <p>
-                Admin always has All Teams. With Editor, select at least one active Team before
+                Admin always has All Teams. For Editor, select at least one active Team before
                 saving.
               </p>
             </div>
@@ -325,7 +325,7 @@ export default function Chapter() {
         </InstructionList>
         <p>
           <strong>Workspace Admin is a system permission.</strong> They appear in the Project list
-          for administrators to recognize, but do not require a separate Admin or Editor license.
+          so administrators can identify them, but need no separate Admin or Editor grant.
         </p>
       </Section>
       <Section
@@ -347,7 +347,7 @@ export default function Chapter() {
             <div>
               <strong>Create or edit a Team</strong>
               <p>
-                Team name is required. The team key is 2–10 characters long, uses capital letters
+                Team name is required. The Team key is 2–10 characters long, uses capital letters
                 and numbers, cannot be duplicated in the Project and does not change after the first
                 save.
               </p>
@@ -358,8 +358,8 @@ export default function Chapter() {
             <div>
               <strong>Add member</strong>
               <p>
-                Select <strong>Add member</strong>. Candidates must be Active and qualified in
-                Project: Admin, Editor assigned appropriately or Workspace Admin active.
+                Select <strong>Add member</strong>. Candidates must be Active and qualified in the
+                Project: an Admin, a suitably assigned Editor or an active Workspace Admin.
               </p>
             </div>
           </li>
@@ -368,15 +368,15 @@ export default function Chapter() {
             <div>
               <strong>Select Team Lead</strong>
               <p>
-                Team Lead must be an Active member of the Team. This role is responsible information
-                within the Team, does not create additional system rights.
+                Team Lead must be an Active member of the Team. This role records responsibility
+                within the Team; it does not create additional system permissions.
               </p>
             </div>
           </li>
           <li>
             <span>5</span>
             <div>
-              <strong>Deactivate when Team stops working</strong>
+              <strong>Deactivate when a Team is no longer active</strong>
               <p>
                 Do not assign new Work Items to inactive Teams. Check the relevant Work Item,
                 Iteration and Owner before changing the status.
@@ -387,7 +387,8 @@ export default function Chapter() {
         <p>
           <strong>Workspace Admin is not automatically a member of every Team.</strong> They can be
           added to a Team to be Project Owner, Team Lead or Work Item Owner when qualified. Removing
-          them from the Team only removes active membership, does not revoke Workspace Admin rights.
+          them from the Team only removes their operational membership; it does not revoke Workspace
+          Admin rights.
         </p>
       </Section>
       <Section
@@ -397,19 +398,21 @@ export default function Chapter() {
         lead="Permission Model is a fixed permission lookup table for Workspace Admin, Admin and Editor."
       >
         <p>
-          Each line is a group of functions such as Backlog, Timeboxes, Quality, Portfolio, Capacity
-          Planning, Reports or Settings. Values <strong>Full</strong>, <strong>view</strong>,{' '}
-          <strong>edit</strong> or mark <strong>--</strong> indicates the operation level of the
+          Each row is a group of functions such as Backlog, Timeboxes, Quality, Portfolio, Capacity
+          Planning, Reports or Settings. The values <strong>Full</strong>, <strong>view</strong>,{' '}
+          <strong>edit</strong> or the <strong>--</strong> mark indicate the level of access of the
           role.
         </p>
         <p>
-          <strong>Unable to create custom role or edit permission matrix.</strong> When a user is
-          missing an action, check their role, Project, and Team; Don't look for separate
-          configuration buttons for each small permission.
+          <strong>
+            Custom roles cannot be created and the permission matrix cannot be edited.
+          </strong>{' '}
+          When a user is missing an action, check their role, Project and Team; do not look for
+          separate configuration buttons for each small permission.
         </p>
         <p>
-          Part <strong>No Access</strong> explains the safe behavior: Ungranted projects are hidden
-          from the list, picker, and navigation; Access using direct URL is denied.
+          The <strong>No Access</strong> section explains the safe behavior: Projects not granted
+          are hidden from the list, pickers and navigation; access via a direct URL is denied.
         </p>
       </Section>
       <Section
@@ -425,7 +428,7 @@ export default function Chapter() {
               <strong>Open Audit Log</strong>
               <p>
                 Each line displays <strong>Time</strong>, <strong>Actor</strong> and{' '}
-                <strong>Details</strong>.
+                <strong>Detail</strong>.
               </p>
             </div>
           </li>
@@ -442,10 +445,10 @@ export default function Chapter() {
           <li>
             <span>3</span>
             <div>
-              <strong>Read Details</strong>
+              <strong>Read Detail</strong>
               <p>
-                Detail describes the type of event, object and content that is easy to understand,
-                for example creating a Project, renaming a Project, adding a Team member or granting
+                Detail describes the event type, the object and the change in plain language, for
+                example creating a Project, renaming a Project, adding a Team member or granting
                 Project permissions.
               </p>
             </div>
@@ -453,10 +456,10 @@ export default function Chapter() {
           <li>
             <span>4</span>
             <div>
-              <strong>Compare scope</strong>
+              <strong>Cross-check the scope</strong>
               <p>
-                Compare Actor, time and correct Project/Team before concluding. Audit Log is
-                read-only; Not used to undo changes.
+                Compare the Actor, time and exact Project/Team before concluding. Audit Log is
+                read-only; it cannot be used to undo changes.
               </p>
             </div>
           </li>
@@ -466,16 +469,16 @@ export default function Chapter() {
         id="xu-ly-quan-tri"
         number="11.8"
         title="Troubleshooting"
-        lead="Check the order of Workspace account → Project permissions → Team membership."
+        lead="Check in this order: Workspace account → Project permissions → Team membership."
       >
         <TroubleshootList>
           <article>
             <span>01</span>
             <div>
-              <strong>User not found when Add existing user</strong>
+              <strong>User not found in Add existing user</strong>
               <p>
-                Check that the User is already in the Workspace, is Active and has not been granted
-                Project rights.
+                Check that the User is already in the Workspace, is Active and has not already been
+                granted access to that Project.
               </p>
             </div>
           </article>
@@ -495,16 +498,16 @@ export default function Chapter() {
               <strong>Added to Team but still can't access Project</strong>
               <p>
                 Team membership does not grant Project Access. Go back to Users & Permissions and
-                level Admin or Editor accordingly.
+                grant Admin or Editor as appropriate.
               </p>
             </div>
           </article>
           <article>
             <span>04</span>
             <div>
-              <strong>Cannot change or delete the Workspace Admin line</strong>
+              <strong>Cannot change or delete the Workspace Admin row</strong>
               <p>
-                This is a system permission line, used only for identification. Do not grant
+                This is a system permission row, shown only for identification. Do not grant
                 additional Admin/Editor to the same Project.
               </p>
             </div>
@@ -515,7 +518,7 @@ export default function Chapter() {
               <strong>Workspace Admin does not appear in Owner</strong>
               <p>
                 Add them as Active members of the currently selected Team. Workspace Admin rights
-                allow creating US/DE but do not make the name appear in the Owner list.
+                allow creating US/DE but do not by themselves add the name to the Owner list.
               </p>
             </div>
           </article>
@@ -536,8 +539,8 @@ export default function Chapter() {
                 Permissions have just been changed but the interface has not been updated
               </strong>
               <p>
-                Reload the page, check for the next request and select Project/Team again in the
-                context selector.
+                Reload the page, check again on the next request and select Project/Team again in
+                the context selector.
               </p>
             </div>
           </article>
@@ -546,8 +549,8 @@ export default function Chapter() {
             <div>
               <strong>Cannot Archive or Delete Project</strong>
               <p>
-                Read dependency messages and assertion steps. Use Archive when you need to preserve
-                history and Delete only when the data is actually allowed to be deleted.
+                Read the dependency message and the confirmation step. Use Archive when you need to
+                preserve history and Delete only when the data is actually allowed to be deleted.
               </p>
             </div>
           </article>
@@ -556,10 +559,10 @@ export default function Chapter() {
       <CheckUnderstanding>
         <strong>Check yourself before moving on to the next section</strong>
         <ul>
-          <li>Have you distinguished between Project and Team member rights?</li>
-          <li>Do you know that Admin and Editor are different in Team scope?</li>
+          <li>Can you tell Project permissions apart from Team membership?</li>
+          <li>Do you know how Admin and Editor differ in Team scope?</li>
           <li>Do you know why Workspace Admin doesn't have a button to change Access Level?</li>
-          <li>Do you know how to use Audit Log to compare changes?</li>
+          <li>Do you know how to use Audit Log to cross-check changes?</li>
         </ul>
       </CheckUnderstanding>
     </>

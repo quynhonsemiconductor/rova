@@ -19,23 +19,23 @@ export default function Chapter() {
     <>
       <ChapterIntro id="chapter-10">
         <div>
-          <ChapterEyebrow>PART 10 · REPORT</ChapterEyebrow>
+          <ChapterEyebrow>PART 10 · REPORTS</ChapterEyebrow>
           <h2>Read progress from the correct data source</h2>
           <Lead>
             Rova provides three read-only reports: <strong>Iteration Burndown</strong> tracks
             remaining work each day, <strong>Velocity</strong> compares results across completed
-            Iterations and <strong>Team Capacity</strong> summarizes Capacity at the current Task
-            time.
+            Iterations and <strong>Team Capacity</strong> summarizes Capacity together with current
+            Task hours.
           </Lead>
         </div>
-        <ChapterSummary aria-label="After this part you will be able to do it">
+        <ChapterSummary aria-label="After this chapter you will be able to">
           <strong>After this chapter, you will be able to</strong>
           <ul>
             <li>Select the correct report for the question to answer.</li>
             <li>Read Burndown without confusing Hours with Points.</li>
             <li>Distinguish between Accepted During, After and Not Accepted.</li>
             <li>Read Capacity, Estimate, ToDo and Actual by Team.</li>
-            <li>Detect zeros, empty data, and no history.</li>
+            <li>Recognize zeros, empty data and missing history.</li>
           </ul>
         </ChapterSummary>
       </ChapterIntro>
@@ -56,24 +56,24 @@ export default function Chapter() {
           <tbody>
             <tr>
               <td>
-                <strong>Is the remaining work reduced as planned?</strong>
+                <strong>Is the remaining work decreasing as planned?</strong>
               </td>
               <td>Iteration Burndown</td>
-              <td>An Iteration is selected.</td>
+              <td>One selected Iteration.</td>
             </tr>
             <tr>
               <td>
-                <strong>How many Points does the team usually complete on time?</strong>
+                <strong>How many Points does the Team usually complete on time?</strong>
               </td>
               <td>Velocity</td>
-              <td>The last 5 or 10 Iterations have finished.</td>
+              <td>The 5 or 10 most recently finished Iterations.</td>
             </tr>
             <tr>
               <td>
-                <strong>Capacity and time How is the current Task allocated?</strong>
+                <strong>How are Capacity and current Task hours allocated?</strong>
               </td>
               <td>Team Capacity</td>
-              <td>An Iteration is selected.</td>
+              <td>One selected Iteration.</td>
             </tr>
           </tbody>
         </DocTable>
@@ -83,7 +83,7 @@ export default function Chapter() {
             <div>
               <strong>Select Project and Team</strong>
               <p>
-                Reports uses context selector on the header bar; There is no separate Project/Team
+                Reports uses the context selector in the top bar; there is no separate Project/Team
                 filter inside the page.
               </p>
             </div>
@@ -101,10 +101,10 @@ export default function Chapter() {
           <li>
             <span>3</span>
             <div>
-              <strong>Select time</strong>
+              <strong>Select the time range</strong>
               <p>
-                Burndown and Team Capacity use Iteration picker. Velocity uses Window = Last 5 or
-                Last 10 sprints.
+                Burndown and Team Capacity use the Iteration picker. Velocity uses Window = Last 5
+                or Last 10 sprints.
               </p>
             </div>
           </li>
@@ -113,30 +113,29 @@ export default function Chapter() {
             <div>
               <strong>Read data status first</strong>
               <p>
-                If the newspaper page has no history or no data, resolve the cause before using the
-                data.
+                If the page reports no history or no data, resolve the cause before using the data.
               </p>
             </div>
           </li>
         </InstructionList>
         <p>
           Reports are only available to Workspace Admins and assigned Project Admins. Editors and
-          accounts without Project rights cannot open Reports. The entire report is{' '}
-          <strong>is read-only</strong>.
+          accounts without Project rights cannot open Reports. All reports are{' '}
+          <strong>read-only</strong>.
         </p>
       </Section>
       <Section
         id="doc-iteration-burndown"
         number="10.2"
         title="Read Iteration Burndown"
-        lead="Burndown combines US/DE Task and Points hours on two different axes."
+        lead="Burndown combines Task hours and US/DE Points on two different axes."
       >
         <DocTable>
           <thead>
             <tr>
-              <th>Data string</th>
+              <th>Data series</th>
               <th>Unit</th>
-              <th>How to understand</th>
+              <th>How to read</th>
             </tr>
           </thead>
           <tbody>
@@ -156,8 +155,8 @@ export default function Chapter() {
               </td>
               <td>Hours</td>
               <td>
-                The ideal reduction line from the total Task Estimate at the time Iteration starts
-                to 0 on the last working day.
+                The ideal burndown line from the total Task Estimate when the Iteration starts to 0
+                on the last working day.
               </td>
             </tr>
             <tr>
@@ -166,7 +165,7 @@ export default function Chapter() {
               </td>
               <td>Points</td>
               <td>
-                US/DE's cumulative Plan Estimate has reached Accepted or Release as of each date.
+                Cumulative Plan Estimate of US/DE that reached Accepted or Release, as of each day.
               </td>
             </tr>
           </tbody>
@@ -177,8 +176,8 @@ export default function Chapter() {
             <div>
               <strong>Select Iteration</strong>
               <p>
-                Use the previous button, Iteration list and the following button. Confirm the
-                correct date range is displayed.
+                Use the previous button, the Iteration list and the next button. Confirm the correct
+                date range is displayed.
               </p>
             </div>
           </li>
@@ -187,8 +186,8 @@ export default function Chapter() {
             <div>
               <strong>Compare ToDo with Ideal</strong>
               <p>
-                Remaining To Do is higher than Ideal at the latest snapshot date which is understood
-                as Behind plan; equal or lower is On track.
+                Remaining To Do higher than Ideal on the latest snapshot date is read as Behind
+                plan; equal or lower is On track.
               </p>
             </div>
           </li>
@@ -196,9 +195,7 @@ export default function Chapter() {
             <span>3</span>
             <div>
               <strong>Read Accepted Points separately</strong>
-              <p>
-                Accepted uses Points axis. Do not take Points to deduct directly from ToDo Hours.
-              </p>
+              <p>Accepted uses the Points axis. Do not subtract Points directly from ToDo Hours.</p>
             </div>
           </li>
           <li>
@@ -207,27 +204,27 @@ export default function Chapter() {
               <strong>Check continuity</strong>
               <p>
                 Burndown uses end-of-day snapshots. Dates missing history must be displayed as
-                having no data, not automatically concatenated or rebuilt from today's value.
+                having no data, not automatically bridged or rebuilt from today's value.
               </p>
             </div>
           </li>
         </InstructionList>
         <p>
           <strong>Burndown history is frozen.</strong> Changing today's To Do, Estimate, or scope
-          does not rewrite the previous day's snapshot. The ideal also remains unchanged when the
-          Task is added or re-estimated after the Iteration begins.
+          does not rewrite the previous day's snapshot. Ideal also does not change when Tasks are
+          added or re-estimated after the Iteration starts.
         </p>
         <p>
-          When Iteration does not have daily history, the report is displayed{' '}
-          <strong>No burndown to show</strong> and do not draw Ideal if start baseline has not been
-          written.
+          When an Iteration has no daily history, the report shows{' '}
+          <strong>No burndown to show</strong> and does not draw Ideal if the start baseline has not
+          been recorded.
         </p>
       </Section>
       <Section
         id="doc-velocity"
         number="10.3"
         title="Read Velocity"
-        lead="Velocity separates work accepted on time, late, and unaccepted."
+        lead="Velocity separates work accepted on time, accepted late, and not yet accepted."
       >
         <DocTable>
           <thead>
@@ -249,15 +246,15 @@ export default function Chapter() {
               <td>
                 <strong>Accepted After Iteration</strong>
               </td>
-              <td>US/DE is accepted after Iteration has ended.</td>
-              <td>No; Used for context only.</td>
+              <td>US/DE is accepted after the Iteration has ended.</td>
+              <td>No; used for context only.</td>
             </tr>
             <tr>
               <td>
                 <strong>Not Accepted</strong>
               </td>
               <td>US/DE is not currently in Accepted or Release.</td>
-              <td>No; Used for context only.</td>
+              <td>No; used for context only.</td>
             </tr>
           </tbody>
         </DocTable>
@@ -267,7 +264,7 @@ export default function Chapter() {
             <div>
               <strong>Select Window</strong>
               <p>
-                Last 5 sprints focus on the near trend; Last 10 sprints give a more stable picture
+                Last 5 sprints focus on the recent trend; Last 10 sprints give a more stable picture
                 when enough data is available.
               </p>
             </div>
@@ -276,7 +273,10 @@ export default function Chapter() {
             <span>2</span>
             <div>
               <strong>Read each stacked column</strong>
-              <p>The three-part sum is all US/DE Points currently assigned to that Iteration.</p>
+              <p>
+                The three parts add up to all Points of the US/DE currently assigned to that
+                Iteration.
+              </p>
             </div>
           </li>
           <li>
@@ -284,15 +284,15 @@ export default function Chapter() {
             <div>
               <strong>Read Trend and Averages</strong>
               <p>
-                Trend, Last 3, Best 3 and Worst 3 only count as Accepted During. Accepted After
-                doesn't make Velocity better.
+                Trend, Last 3, Best 3 and Worst 3 count only Accepted During. Accepted After doesn't
+                make Velocity better.
               </p>
             </div>
           </li>
           <li>
             <span>4</span>
             <div>
-              <strong>Check available Iteration number</strong>
+              <strong>Check the number of available Iterations</strong>
               <p>
                 When there are fewer than three Iterations, the report uses the entire available
                 sample and must show the actual sample size.
@@ -314,14 +314,14 @@ export default function Chapter() {
         id="doc-team-capacity-report"
         number="10.4"
         title="Read Team Capacity"
-        lead="Report uses the same Capacity source and Task hours with Track → Team Status."
+        lead="The report uses the same Capacity and Task hour sources as Track → Team Status."
       >
         <DocTable>
           <thead>
             <tr>
-              <th>Index</th>
+              <th>Metric</th>
               <th>Source</th>
-              <th>How to understand</th>
+              <th>How to read</th>
             </tr>
           </thead>
           <tbody>
@@ -329,8 +329,8 @@ export default function Chapter() {
               <td>
                 <strong>Capacity</strong>
               </td>
-              <td>Capacity according to Member in Iteration.</td>
-              <td>Available hours planned.</td>
+              <td>Capacity per Member in the Iteration.</td>
+              <td>Planned available hours.</td>
             </tr>
             <tr>
               <td>
@@ -344,14 +344,14 @@ export default function Chapter() {
                 <strong>ToDo</strong>
               </td>
               <td>Total current Task ToDo.</td>
-              <td>Remaining volume updated by user.</td>
+              <td>Remaining work, updated by users.</td>
             </tr>
             <tr>
               <td>
                 <strong>Actual</strong>
               </td>
-              <td>Current Actual Task Total.</td>
-              <td>Actual time recorded; may be larger than Estimate.</td>
+              <td>Total current Task Actual.</td>
+              <td>Actual hours recorded; may be larger than Estimate.</td>
             </tr>
           </tbody>
         </DocTable>
@@ -360,9 +360,7 @@ export default function Chapter() {
             <span>1</span>
             <div>
               <strong>Select Iteration</strong>
-              <p>
-                Changing Iteration will recalculate the four totals and the entire Team/Member line.
-              </p>
+              <p>Changing the Iteration recalculates the four totals and all Team/Member rows.</p>
             </div>
           </li>
           <li>
@@ -370,17 +368,17 @@ export default function Chapter() {
             <div>
               <strong>Read by Team scope</strong>
               <p>
-                Select a Team to view that Team separately. All Teams displays Teams into groups and
-                can open Members below.
+                Select a Team to view that Team separately. All Teams shows each Team as a group
+                whose Members can be expanded.
               </p>
             </div>
           </li>
           <li>
             <span>3</span>
             <div>
-              <strong>Compare four hour numbers</strong>
+              <strong>Compare the four hour values</strong>
               <p>
-                Read values as independent data. ToDo is not equal to Estimate except Actual and
+                Read values as independent data. ToDo does not equal Estimate minus Actual, and
                 Actual is not limited by Estimate.
               </p>
             </div>
@@ -388,10 +386,10 @@ export default function Chapter() {
           <li>
             <span>4</span>
             <div>
-              <strong>Check special Member</strong>
+              <strong>Check special Members</strong>
               <p>
-                Member with Capacity but no Task is still displayed. Tasks that do not have an Owner
-                are under Unassigned with Capacity 0h.
+                Members with Capacity but no Tasks are still displayed. Tasks that do not have an
+                Owner are under Unassigned with Capacity 0h.
               </p>
             </div>
           </li>
@@ -420,49 +418,49 @@ export default function Chapter() {
               <td>
                 <strong>Iteration Burndown</strong>
               </td>
-              <td>Start baseline and daily snapshot have frozen.</td>
-              <td>
-                Only the current date or future snapshot changes; History has been kept intact.
-              </td>
+              <td>Frozen start baseline and daily snapshots.</td>
+              <td>Only today's or future snapshots change; locked history stays unchanged.</td>
             </tr>
             <tr>
               <td>
                 <strong>Velocity</strong>
               </td>
-              <td>Reclassify the current assignment, state, acceptedDate and Plan Estimate.</td>
+              <td>
+                Reclassified from the current assignment, state, acceptedDate and Plan Estimate.
+              </td>
               <td>The chart of the old Iteration may change.</td>
             </tr>
             <tr>
               <td>
                 <strong>Team Capacity</strong>
               </td>
-              <td>Projection directly from Capacity and current Task time.</td>
-              <td>Re-display immediately using the latest data in the current scope.</td>
+              <td>Live projection from Capacity and current Task hours.</td>
+              <td>Re-renders immediately with the new data in scope.</td>
             </tr>
           </tbody>
         </DocTable>
         <p>
           Selected Team only retrieves that Team's data. <strong>All Teams</strong> summarizes the
           Teams in the Project and must eliminate duplicates according to stable IDs. Do not
-          manually add the number of All Teams to the number of each Team.
+          manually add All Teams figures to individual Team figures.
         </p>
         <p>
-          Workspace timezone usage date. When comparing Accepted During/After or end-of-day
+          Dates use the Workspace timezone. When comparing Accepted During/After or end-of-day
           snapshots, check the Iteration date and timezone before concluding.
         </p>
       </Section>
       <Section
         id="kiem-tra-du-lieu-thieu"
         number="10.6"
-        title="Distinguishes zero from missing data"
-        lead="Do not use an empty status as evidence that Team is not working."
+        title="Distinguish zero from missing data"
+        lead="Do not use an empty status as evidence that the Team is not working."
       >
         <DocTable>
           <thead>
             <tr>
               <th>Notice or indication</th>
               <th>Meaning</th>
-              <th>Needs checking</th>
+              <th>What to check</th>
             </tr>
           </thead>
           <tbody>
@@ -471,13 +469,13 @@ export default function Chapter() {
                 <strong>No daily history</strong>
               </td>
               <td>Burndown does not have a snapshot at the end of the day.</td>
-              <td>Check the snapshot process, start date, and Iteration history.</td>
+              <td>Check the snapshot job, start date, and Iteration history.</td>
             </tr>
             <tr>
               <td>
                 <strong>No start baseline</strong>
               </td>
-              <td>The total Task Estimate was not recorded at the time Iteration started.</td>
+              <td>The total Task Estimate was not recorded when the Iteration started.</td>
               <td>Do not use or draw Ideal yourself.</td>
             </tr>
             <tr>
@@ -485,13 +483,13 @@ export default function Chapter() {
                 <strong>No completed Iteration with work</strong>
               </td>
               <td>Velocity does not have a qualified Iteration in scope yet.</td>
-              <td>End date and US/DE assigning.</td>
+              <td>End date and assigned US/DE.</td>
             </tr>
             <tr>
               <td>
                 <strong>No planned capacity and no scoped task hours</strong>
               </td>
-              <td>Team Capacity does not have both Capacity and Task hours.</td>
+              <td>Team Capacity has neither Capacity nor Task hours.</td>
               <td>Iteration, Team, Capacity record and Task assignment.</td>
             </tr>
             <tr>
@@ -499,7 +497,7 @@ export default function Chapter() {
                 <strong>0h or 0 Points</strong>
               </td>
               <td>There is valid data and the measured value is 0.</td>
-              <td>Compare the same scope, data source, and time period.</td>
+              <td>Read it in the same scope, source and point in time.</td>
             </tr>
           </tbody>
         </DocTable>
@@ -528,10 +526,10 @@ export default function Chapter() {
           <article>
             <span>02</span>
             <div>
-              <strong>Can't see Iteration to select</strong>
+              <strong>Can't find the Iteration to select</strong>
               <p>
                 Check Project, Team and date range. Burndown/Capacity uses an Iteration; Velocity
-                only takes Iteration that has ended and has US/DE.
+                only takes Iterations that have ended and contain US/DE.
               </p>
             </div>
           </article>
@@ -548,10 +546,10 @@ export default function Chapter() {
           <article>
             <span>04</span>
             <div>
-              <strong>Velocity changed in old Iteration</strong>
+              <strong>Velocity changed for an old Iteration</strong>
               <p>
-                Check that US/DE has just changed Iteration, Plan Estimate, state or acceptedDate.
-                This is a recalculated report according to the current assignment.
+                Check whether a US/DE recently changed Iteration, Plan Estimate, state or
+                acceptedDate. This report is recalculated from the current assignment.
               </p>
             </div>
           </article>
@@ -560,8 +558,8 @@ export default function Chapter() {
             <div>
               <strong>Capacity is different from Team Status</strong>
               <p>
-                Compare with Project, Team and Iteration; Check Member, Task Owner and data loading
-                time.
+                Compare within the same Project, Team and Iteration; check Member, Task Owner and
+                data loading time.
               </p>
             </div>
           </article>
@@ -578,26 +576,26 @@ export default function Chapter() {
           <article>
             <span>07</span>
             <div>
-              <strong>The number of All Teams is unusually large</strong>
+              <strong>All Teams figures are unusually large</strong>
               <p>
                 Check for items or Tasks with duplicate IDs across multiple Teams. Do not add the
-                number of each Team to the total of All Teams.
+                individual Team figures on top of the All Teams total.
               </p>
             </div>
           </article>
         </TroubleshootList>
         <p>
           Export, saved report configurations, and custom date ranges are not currently covered by
-          the guidance.
+          this guide.
         </p>
       </Section>
       <CheckUnderstanding>
-        <strong>Check yourself before moving on to the next section</strong>
+        <strong>Check yourself before moving on to the next chapter</strong>
         <ul>
-          <li>Did you know Burndown uses Hours and Points on two axes?</li>
+          <li>Do you know that Burndown uses Hours and Points on two axes?</li>
           <li>Do you know which part of Velocity is used for Trend?</li>
-          <li>Did you know that Team Capacity is a read-only report from Team Status?</li>
-          <li>Have you distinguished the number 0 from the state of no data?</li>
+          <li>Do you know that Team Capacity is a read-only report on Team Status data?</li>
+          <li>Can you tell a zero value from a no-data state?</li>
         </ul>
       </CheckUnderstanding>
     </>
