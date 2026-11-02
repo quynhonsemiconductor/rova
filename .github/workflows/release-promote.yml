@@ -87,7 +87,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@5afdeb84f1e64b2c13c5c1c6c91422e6606e369a  # ci#275
+      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@f6263728ef7b9d7ffd4b376f95a4ae428d91ef20  # ci#280
         with:
           product: rova
           env: prod
