@@ -1,8 +1,7 @@
 /**
- * The US-119 gate as a WORKER (the on-prem edge). The Pages Function's own spec covers the same
- * decisions through `proxyToApi`; these cases pin the Worker path: `/guide-assets/*` is gated, everything
- * else never executes user code, the session answer comes from the same-origin `/v1/bff/me`, and
- * every answer but a JSON 200/401/403 fails CLOSED.
+ * The US-119 gate, a Worker in front of Workers Static Assets. These cases pin it: `/guide-assets/*`
+ * is gated, everything else never executes user code, the session answer comes from the same-origin
+ * `/v1/bff/me`, and every answer but a JSON 200/401/403 fails CLOSED.
  */
 import { describe, expect, it, vi } from 'vitest'
 import * as entry from '@/shared/lib/guide-gate.worker'

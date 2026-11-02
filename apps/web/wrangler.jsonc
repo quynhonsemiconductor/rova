@@ -47,8 +47,8 @@
     // `/item/US-17`, …) is a client-side route with no file behind it.
     "not_found_handling": "single-page-application",
 
-    // Pages' behaviour (`/x` serves `x.html`), which Workers reproduces by default;
-    // pinned so the two hosts keep serving `dist/` the same way.
+    // `/x` serves `x.html`, the Workers default; pinned so a change of default cannot
+    // quietly change which URLs resolve.
     "html_handling": "auto-trailing-slash"
   },
 

@@ -1112,14 +1112,14 @@ top bar is a router `<Link to="/user-guide">` in the SAME tab — the BA confirm
 reversing US-119 AC1's new-tab rule — and `/user-guide` picks the edition from the FIRST browser language
 (`model/guide-url.ts`).
 
-- **It used to be static HTML under `public/guide`, and that is why it moved.** Pages served it through a
-  path-scoped Function that called `GET /v1/bff/me` for EVERY file — page, CSS, `guide.js`, each
+- **It used to be static HTML under `public/guide`, and that is why it moved.** Its gate called
+  `GET /v1/bff/me` for EVERY file — page, CSS, `guide.js`, each
   screenshot — about 15 API calls per page view. Now a chapter is static `.tsx`, one lazy chunk per
   chapter per edition, and a page view costs one session check per GUIDE file it loads — the chapter's
   chunk and its screenshots — and none for the page, the styles or the rest of the app.
-- **The guide's TEXT is gated too, by where the build writes it.** Pages serves every built file to anyone,
-  so `chunkFileName` (`vite.config.ts`) writes any chunk holding a chapter or the TOC under
-  `/guide-assets/js/`, and `functions/guide-assets/_middleware.ts` runs `_lib/guide-gate.ts` for
+- **The guide's TEXT is gated too, by where the build writes it.** Workers Static Assets serve every
+  built file to anyone unless the Worker runs first, so `chunkFileName` (`vite.config.ts`) writes any
+  chunk holding a chapter or the TOC under `/guide-assets/js/`, and the Worker gate runs for
   `/guide-assets/*` only (screenshots live there too). Guide text reaching the ENTRY chunk, or any
   chunk the entry imports statically, fails the build: signed-out visitors load those to reach
   `/login`, so gating them would lock them out. That check is `assertEntryIsPublic`, a
@@ -1144,20 +1144,20 @@ reversing US-119 AC1's new-tab rule — and `/user-guide` picks the edition from
   is off for `ui/parts/**` (it cannot see `part()`-made components). Guide chrome uses the `guide` i18n
   namespace, the one namespace with a `vi` resource, read with `lng` set to the edition. The long-form
   type scale is `text-doc-*`, registered with `tailwind-merge` like `text-ui-*`.
-- **Old `/guide/…` links still work** via `public/_redirects` (static, no Function): `/guide/` → `vi`,
+- **Old `/guide/…` links still work** via `public/_redirects` (static, no Worker): `/guide/` → `vi`,
   `/guide/en/` → `en`, same chapter (the app drops `.html` and maps `index` to the start chapter), and
   the browser keeps the `#section`. Pinned by `src/test/user-guide-redirects.test.ts`.
-- **The on-prem host is Workers Static Assets, which runs no Pages Function**, so the same gate exists
-  twice: `src/shared/lib/guide-worker-gate.ts` behind the entry `guide-gate.worker.ts`, run first for
-  `/guide-assets/*` ONLY (`wrangler.jsonc`). Never widen that to `/guide/*`: the Worker would answer
-  before `_redirects` and old links would stop working. The entry must export nothing but its handler —
-  workerd reads every named export as an entrypoint and refuses to start on a constant. Its session
-  check is same-origin, so it accepts only a JSON 200: anything that puts `/v1/*` on the static path
-  (`wrangler dev`) answers with the SPA's `index.html`, 200. `src/test/user-guide-gate-paths.test.ts`
-  pins both gates, the SPA and `run_worker_first` to one path.
-- **Locally nothing is gated and nothing redirects** — Vite neither runs Pages Functions nor reads
-  `_redirects`. Exercise both with `pnpm build:web` then `wrangler pages dev apps/web/dist` with
-  `API_ORIGIN` and `EDGE_CLIENT_IP_SECRET` set (Pages), or `wrangler dev` in `apps/web` (Workers).
+- **The gate is a Worker**: `src/shared/lib/guide-worker-gate.ts` behind the entry
+  `guide-gate.worker.ts`, run first for `/guide-assets/*` ONLY (`wrangler.jsonc`). Never widen that to
+  `/guide/*`: the Worker would answer before `_redirects` and old links would stop working. The entry
+  must export nothing but its handler — workerd reads every named export as an entrypoint and refuses
+  to start on a constant. Its session check is same-origin, so it accepts only a JSON 200: anything
+  that puts `/v1/*` on the static path (`wrangler dev`) answers with the SPA's `index.html`, 200. A
+  refusal is logged with its reason, never the cookie or the path (the only header it names is the
+  check's own Content-Type, quoted and capped). `src/test/user-guide-gate-paths.test.ts` pins the gate,
+  the SPA and `run_worker_first` to one path.
+- **Locally nothing is gated and nothing redirects** — Vite neither runs the Worker nor reads
+  `_redirects`. Exercise both with `pnpm build:web` then `wrangler dev` in `apps/web`.
 
 ## Observability
 

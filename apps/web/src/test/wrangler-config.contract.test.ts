@@ -58,8 +58,8 @@ describe('the Workers Static Assets config', () => {
   })
 
   it('wires the US-119 guide gate as a Worker that runs only for /guide-assets/*', () => {
-    // Workers Static Assets never run the Pages Function in apps/web/functions, so the gate that
-    // keeps the guide private is this entry. `run_worker_first` is what keeps every other path on
+    // Workers Static Assets publish every file unless a Worker runs first, so the gate that keeps
+    // the guide private is this entry. `run_worker_first` is what keeps every other path on
     // the static fast path; `binding` is the handle the entry serves files through.
     expect(config.main).toBe('src/shared/lib/guide-gate.worker.ts')
     const assets = config.assets as Record<string, unknown>

@@ -1,8 +1,7 @@
 /**
- * The US-119 User Guide gate for hosts served by Workers Static Assets (the on-prem edge), where the
- * Pages Function `functions/guide-assets/_middleware.ts` does not run. The Worker entry is
- * `guide-gate.worker.ts`; this module is its logic, kept apart so the entry exports nothing but its
- * handler (see there).
+ * The US-119 User Guide gate. The SPA is served by Workers Static Assets, which publish every file
+ * unless a Worker runs first; this is that Worker's logic. The entry is `guide-gate.worker.ts`, kept
+ * apart so it exports nothing but its handler (see there).
  *
  * The guide is a page of the SPA (`/user-guide`, behind `requireAuth`). What is gated is its files:
  * the production screenshots and, under `js/`, the build chunks that carry its text, all under
@@ -11,17 +10,14 @@
  * the SPA bundle, and the old `/guide/*` links that `public/_redirects` moves to `/user-guide` — stays
  * on the static path without executing user code.
  *
- * The decision is the API's, never ours, by the same rules as `functions/_lib/guide-gate.ts`: the
- * cookie's PRESENCE only saves a round trip; a present cookie is checked against `GET /v1/bff/me` on
- * the SAME origin (no `API_ORIGIN`, no `EDGE_CLIENT_IP_SECRET`: the subrequest is same-host and
+ * The decision is the API's, never ours: the cookie's PRESENCE only saves a round trip; a present
+ * cookie is checked against `GET /v1/bff/me` on the SAME origin (the subrequest is same-host and
  * cloudflared forwards the reader's address). Fails CLOSED: any answer except a JSON 200 / 401 / 403 —
  * a 5xx, a timeout, a network error, an HTML page — serves 503 and never the content, and logs which
- * of those it was (`sessionCheckFailed`). Only the transport differs between the two gates.
+ * of those it was (`sessionCheckFailed`).
  *
- * The two gates cannot share code (the Functions build is separate from the SPA's, and the session
- * check travels differently), so `src/test/user-guide-gate-paths.test.ts` pins their paths to each
- * other, to the SPA and to `wrangler.jsonc`, and `functions/_lib/guide-gate-parity.spec.ts` feeds both
- * the same API answers and requires the same response and log line from each.
+ * `src/test/user-guide-gate-paths.test.ts` pins the gated path to the SPA, to the build's guide chunk
+ * folder and to `wrangler.jsonc`.
  *
  * Guests pass: `/v1/bff/me` answers 200 for a guest session with `guest: true`, and the guide has no
  * role requirement.
@@ -36,7 +32,7 @@ const SESSION_CHECK_TIMEOUT_MS = 5_000
 
 /**
  * Applied to every guide file the gate lets through. The files are images and scripts, never a
- * document, so the CSP admits nothing a document would need — the same headers as the Pages gate.
+ * document, so the CSP admits nothing a document would need.
  */
 export const GUIDE_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'content-security-policy':
@@ -104,7 +100,7 @@ function withGuideHeaders(response: Response, setCookies: readonly string[]): Re
 
 /**
  * `/v1/bff/me` answers `application/json`. Exactly that, deliberately: a `+json` type or anything else
- * is not the API's answer to this question, so it fails closed. Same rule as the Pages gate.
+ * is not the API's answer to this question, so it fails closed.
  */
 function isJson(response: Response): boolean {
   return /^application\/json\s*(;|$)/i.test(response.headers.get('content-type') ?? '')
@@ -115,7 +111,7 @@ const MAX_LOGGED_CONTENT_TYPE = 60
 /**
  * The session check's Content-Type as the log shows it: quoted, so where it ends is unambiguous, and cut
  * to 60 characters, so whatever answered cannot write a long line into our log. A missing header is
- * `no content-type`, which no quoted value can be mistaken for. Same as the Pages gate.
+ * `no content-type`, which no quoted value can be mistaken for.
  */
 function loggedContentType(response: Response): string {
   const type = response.headers.get('content-type')
