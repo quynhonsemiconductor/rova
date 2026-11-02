@@ -15,7 +15,7 @@ import {
   type INotificationRepository,
 } from '@modules/notifications';
 
-import { adminActor, bootRallyApp, WORKSPACE_ID, ADMIN_USER_ID } from './support/flow-harness';
+import { adminActor, bootRovaApp, WORKSPACE_ID, ADMIN_USER_ID } from './support/flow-harness';
 
 describe('BA flow: notification cursor pagination (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
@@ -24,7 +24,7 @@ describe('BA flow: notification cursor pagination (real AppModule + seeded DB)',
   const actor = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     notifications = app.get(NotificationsService);
     repo = app.get<INotificationRepository>(NOTIFICATION_REPOSITORY);
     // Guarantee ≥ 3 notifications for the admin so two pages of size 2 exist.

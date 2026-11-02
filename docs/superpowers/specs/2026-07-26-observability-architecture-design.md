@@ -1,6 +1,6 @@
 # Observability Architecture — Design
 
-Date: 2026-07-26 · Status: **SUPERSEDED — see `2026-08-30-observability-architecture-current-state.md`** · Scope: **platform-wide** (rally, opshub, and every product after them)
+Date: 2026-07-26 · Status: **SUPERSEDED — see `2026-08-30-observability-architecture-current-state.md`** · Scope: **platform-wide** (rova, opshub, and every product after them)
 Author role: solution architect. Supersedes the observability sections of `RALLY_HARDENING_PLAN.md` (R9) and `OPSHUB_RALLY_PARITY_PLAN.md` (P2-1).
 
 **This document describes the ORIGINAL plan, not what was actually built.** Two decisions
@@ -16,9 +16,9 @@ original reasoning/cost analysis; read the other document for what is actually l
 
 ## 1. Why this document exists
 
-Rally has a complete OpenTelemetry implementation that reports nothing, and a logging implementation that is genuinely good but copy-pasted. OpsHub is about to inherit both. Before that happens, the company needs one answer to "how do we see what our systems are doing" that holds for the next several products.
+Rova has a complete OpenTelemetry implementation that reports nothing, and a logging implementation that is genuinely good but copy-pasted. OpsHub is about to inherit both. Before that happens, the company needs one answer to "how do we see what our systems are doing" that holds for the next several products.
 
-### 1.1 Verified current state (rally @ `7c258d9`)
+### 1.1 Verified current state (rova @ `7c258d9`)
 
 | Pillar | Evidence | State |
 |---|---|---|
@@ -219,7 +219,7 @@ qnsc-observability-nonprod   ← rally-develop, opshub-develop
 
 Split by **environment, not product** (P2). Inside each stack:
 
-- **Ingest tokens per product** — rally's token cannot write or read opshub's data
+- **Ingest tokens per product** — rova's token cannot write or read opshub's data
 - **Dashboard folders per product**, plus shared platform dashboards (RDS, cache, ALB, ECS)
 - **Alert routing per product** to that product's channel
 - **Cost attribution** by `service.name` / `service.namespace`
@@ -300,7 +300,7 @@ A product's observability config becomes a module version bump plus a service na
 | Trace continuity | `traceparent` on outbox rows and SNS/SQS message attributes → API span and worker span join in one trace |
 | Query performance | 14-day interactive tier stays small; heavy historical queries go to the archive tier, not the hot store |
 
-Realistic combined volume for rally + opshub today: **2–10 GB logs/month, 1–5 GB traces/month, 2–5k active series** — comfortably inside the free tier, with room for a third product.
+Realistic combined volume for rova + opshub today: **2–10 GB logs/month, 1–5 GB traces/month, 2–5k active series** — comfortably inside the free tier, with room for a third product.
 
 ---
 
@@ -341,7 +341,7 @@ Each phase is independently shippable and leaves the system better than before. 
 ### Phase 0 — Package and fix (1–2 days)
 
 1. Publish `@quynhonsemiconductor/observability` with the exports in §3.1.
-2. Migrate rally api + worker onto it — deletes both `otel.ts` copies and both logger blocks (defects 1, 5).
+2. Migrate rova api + worker onto it — deletes both `otel.ts` copies and both logger blocks (defects 1, 5).
 3. Fix defects 2 (dead `userId`), 3 (`withJobContext` in cron/relays/consumers), 8 (comment/code mismatch, and skip `/v1/readyz` too).
 
 **Acceptance:** one logger factory and one otel bootstrap in the codebase; worker logs carry `correlationId` and redact credentials; `pnpm test` + e2e green.
@@ -349,11 +349,11 @@ Each phase is independently shippable and leaves the system better than before. 
 ### Phase 1 — Turn tracing on in develop (1–2 days)
 
 1. New `observability-agent` TF module (collector sidecar + config + token from Secrets Manager).
-2. Wire it into rally develop; set `OTEL_ENABLED=true`, `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`.
+2. Wire it into rova develop; set `OTEL_ENABLED=true`, `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`.
 3. `SERVICE_VERSION` from the image tag via `qnsc-ci` (defect 7).
 4. Create both Grafana stacks and the per-product tokens; add the CloudWatch datasource; configure Loki/CloudWatch → Tempo derived field on `trace.id`.
 
-**Acceptance:** a request to rally develop produces a trace in Tempo whose spans include pg and redis children; clicking a log line jumps to its trace; every signal carries the §3.3 attributes.
+**Acceptance:** a request to rova develop produces a trace in Tempo whose spans include pg and redis children; clicking a log line jumps to its trace; every signal carries the §3.3 attributes.
 
 ### Phase 2 — Metrics that exist (2 days)
 
@@ -362,7 +362,7 @@ Each phase is independently shippable and leaves the system better than before. 
 3. Add the cardinality guard test.
 4. First dashboards: service RED, DB/cache USE, queue lag.
 
-**Acceptance:** dashboards show real data for rally develop; no metric carries an id-shaped label; `security.fail_open` is visible.
+**Acceptance:** dashboards show real data for rova develop; no metric carries an id-shaped label; `security.fail_open` is visible.
 
 ### Phase 3 — Async continuity, sampling, alerts (2 days)
 
@@ -374,7 +374,7 @@ Each phase is independently shippable and leaves the system better than before. 
 
 ### Phase 4 — Prod, SLOs, and the port (2–3 days)
 
-1. Enable in rally prod. Watch quota for a week.
+1. Enable in rova prod. Watch quota for a week.
 2. Define SLOs (availability, p95 latency per critical route) and burn-rate alerts.
 3. Port to opshub: package dependency + module version + service name. **This is the test of §4** — if it takes more than a day, the abstraction is wrong.
 4. Optional: `awsfirelens` in the shared module if Loki-native logs are wanted.

@@ -208,7 +208,7 @@ export class HttpLoggingInterceptor implements NestInterceptor {
         error: (err: unknown) => {
           const duration = Date.now() - startTime;
           // Reflect the ACTUAL response status in the access log. The global
-          // exception filter maps DomainException (rally's own or a shared
+          // exception filter maps DomainException (rova's own or a shared
           // @quynhonsemiconductor/* package's — both extend the shared base) to its
           // `httpStatus`; without this branch such errors would be mislogged as
           // 500/INTERNAL and pollute 5xx error-rate alerts. Fall back to Nest's

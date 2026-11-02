@@ -88,7 +88,7 @@ export class AccessService {
   }
 
   /**
-   * Every authorization decision in rally reduces to this one read: the user's
+   * Every authorization decision in rova reduces to this one read: the user's
    * role assignments in a workspace, each with its permission codes. Baseline
    * (global + workspace) and per-project sets are then filtered out of it in
    * memory, so one cached read serves both tiers.

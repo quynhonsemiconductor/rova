@@ -6,12 +6,12 @@
 
 ## 1. Context & Goal
 
-Rally was built as a multi-tenant SaaS: `tenant` is the top-level isolation
+Rova was built as a multi-tenant SaaS: `tenant` is the top-level isolation
 boundary, denormalized as a `tenant_id` column on nearly every table, backstopped
 (on paper) by Postgres RLS. A `DEPLOYMENT_MODE=single` flag lets it run the full
 multi-tenant model with N=1.
 
-Business decision: **Rally is single-tenant only. No SaaS multi-tenancy.**
+Business decision: **Rova is single-tenant only. No SaaS multi-tenancy.**
 We physically remove the `tenant` concept. Users still want **multiple
 workspaces**, each holding multiple projects, with team members belonging to one
 or many workspaces.

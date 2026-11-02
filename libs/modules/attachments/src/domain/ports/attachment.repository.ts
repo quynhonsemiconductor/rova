@@ -13,7 +13,7 @@ export const ATTACHMENT_REPOSITORY = Symbol('ATTACHMENT_REPOSITORY');
  * id, because an id alone no longer identifies a subject.
  *
  * Every method is workspace-scoped, and these predicates are the only isolation
- * that executes — by design. Rally is single-tenant, so DB-level isolation is an
+ * that executes — by design. Rova is single-tenant, so DB-level isolation is an
  * explicit non-goal and migration 0070 dropped the last `tenant_isolation` RLS
  * policies. This comment used to call RLS "currently inert", which invited someone
  * to switch it on; doing so denied every attachment write, because the policies

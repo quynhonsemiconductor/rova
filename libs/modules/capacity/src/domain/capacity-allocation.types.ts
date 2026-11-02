@@ -51,7 +51,7 @@ export interface CapacityAllocation {
 /**
  * The four numbers every capacity row shows, plus the advisory warnings derived from them.
  *
- * `rollup` and `complete` follow RALLY's definition: a child story counts only when its
+ * `rollup` and `complete` follow Rally's definition: a child story counts only when its
  * Project AND Release match the plan (Broadcom TechDocs, "View Capacity Plan Details").
  * Rally's model treats Project as the team, so the per-team split translates here to
  * `work_items.team_id`. Without the release filter a Feature whose children span releases

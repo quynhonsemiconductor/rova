@@ -21,7 +21,7 @@ import {
   DEVELOPER_ID,
   SEEDED,
   adminActor,
-  bootRallyApp,
+  bootRovaApp,
   grantProjectAccess,
   makeActor,
   uniqueKey,
@@ -92,7 +92,7 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
   const noAccess = viewerActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
     policy = app.get(PolicyGuard);

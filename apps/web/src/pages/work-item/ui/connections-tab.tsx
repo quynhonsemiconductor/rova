@@ -27,6 +27,7 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { formatWith } from '@/shared/lib/utils'
 import { listResource } from '@/shared/lib/query/resource'
 import { LoadErrorState } from '@/shared/ui/load-error-state'
+import { WrapBox } from '@/shared/ui/wrap-box'
 
 // ── Shared cell helpers ───────────────────────────────────────────────────────
 
@@ -80,14 +81,19 @@ const CONNECTION_COLUMNS: ColumnSpec<ScmConnection, ScmCtx, ConnColKey>[] = [
     locked: true,
     grow: true,
     cellClassName: 'flex min-w-0 items-center px-2',
-    // Name is plain text; the Url column carries the link (matches Rally).
+    // Name is plain text; the Url column carries the link (matches Rally). A `grow` free-text
+    // column, so it needs `WrapBox` for the same reason Message does: unwrapped, a long connection
+    // name (a pull request's title, a branch, a build) sizes the row and pushes Type / Url /
+    // Creation Date off-screen.
     cell: (c) => (
-      <span className="flex min-w-0 items-center gap-1.5">
-        <span className="break-words whitespace-normal text-foreground" title={c.name}>
-          {c.name}
+      <WrapBox>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 break-words whitespace-normal text-foreground" title={c.name}>
+            {c.name}
+          </span>
+          {c.state ? <span className="text-ui-xs text-foreground-subtle">({c.state})</span> : null}
         </span>
-        {c.state ? <span className="text-ui-xs text-foreground-subtle">({c.state})</span> : null}
-      </span>
+      </WrapBox>
     ),
   },
   {
@@ -143,11 +149,20 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     defaultWidth: 360,
     minWidth: 160,
     grow: true,
-    cellClassName: 'flex min-w-0 items-center px-2',
+    // `items-start`: a message that wraps reads from the top of the row, level with Name.
+    cellClassName: 'flex min-w-0 items-start px-2 py-1',
     cell: (c) => (
-      <span className="block break-words whitespace-normal" title={c.message ?? ''}>
-        {c.message ?? '--'}
-      </span>
+      <WrapBox>
+        <span
+          // `break-words` breaks at spaces first and only splits an unbroken token (a long hash or
+          // path inside the message) when it alone is wider than the column. `whitespace-pre-line`
+          // keeps the commit body's own line breaks instead of collapsing it into one run.
+          className="block break-words whitespace-pre-line"
+          title={c.message ?? ''}
+        >
+          {c.message ?? '--'}
+        </span>
+      </WrapBox>
     ),
   },
   {
@@ -156,23 +171,26 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     defaultWidth: 300,
     minWidth: 140,
     // One link per changed file (each opens the commit). Stacked, matching Rally.
-    cellClassName: 'flex min-w-0 flex-col justify-center gap-0.5 px-2 py-1',
+    cellClassName: 'flex min-w-0 items-start px-2 py-1',
     cell: (c) =>
       c.changes.length === 0 ? (
         <span className="text-muted-foreground">--</span>
       ) : (
-        <>
+        <WrapBox className="flex flex-col gap-0.5">
           {c.changes.map((x) => (
             <span
               key={x.path}
-              className="font-mono text-ui-xs break-all"
+              // `break-all`: a path has no spaces, so it can only wrap mid-token.
+              className="block font-mono text-ui-xs break-all"
               title={`${x.action} ${x.path}`}
             >
-              <span className="mr-1 text-foreground-subtle">{x.action}</span>
+              {/* A REAL space, not a margin: CSS never reaches the clipboard, so with a margin alone
+                  (`mr-1`) a copy read "Mapps/web/…". In a mono face the space is about as wide. */}
+              <span className="inline-block text-foreground-subtle">{x.action}</span>{' '}
               {c.uri ? <ExtLink href={c.uri}>{x.path}</ExtLink> : x.path}
             </span>
           ))}
-        </>
+        </WrapBox>
       ),
   },
   {

@@ -1,6 +1,6 @@
 # Declared divergence from opshub
 
-rally and opshub share one architecture on purpose, and the boilerplate is meant to
+rova and opshub share one architecture on purpose, and the boilerplate is meant to
 stay identical: `.github/workflows`, `infra/`, `libs/platform`, `libs/shared-kernel`,
 `apps/*/bootstrap`, `apps/web/src/{shared,app}`.
 
@@ -13,10 +13,10 @@ side.
 
 ## Allowed: product domain
 
-Not drift, never converging. Rally plans software delivery; opshub runs IT
+Not drift, never converging. Rova plans software delivery; opshub runs IT
 operations.
 
-| | rally | opshub |
+| | rova | opshub |
 | --- | --- | --- |
 | domain modules | work items, iterations, releases, milestones, backlog, quality, SCM | assets, access requests, compliance, workforce, licences, security posture, catalog |
 | tenancy | workspace-scoped (`contextId` is the workspace) | single-tenant (`contextId` unused) |
@@ -27,7 +27,7 @@ package: its `ns:*` semantics cannot express opshub's dotted codes.
 
 ## Allowed: authorization scope model
 
-| | rally | opshub |
+| | rova | opshub |
 | --- | --- | --- |
 | scope dimensions | `global`, `workspace`, `project` | `global`, `self`, `team`, `dept`, `region` |
 | delegation | none | `authz/delegation.service.ts` |
@@ -39,20 +39,20 @@ Both resolve from the database, cached per user, invalidated on write — that p
 the same model (`docs/superpowers/specs/2026-07-28-auth-convergence.md`). Only the
 dimensions differ, and they differ because the products do.
 
-**Convergence intent:** opshub's evaluator is the more general one. If rally ever
+**Convergence intent:** opshub's evaluator is the more general one. If rova ever
 needs to *subtract* a permission at project scope — the additive-only limitation in
 `RALLY_HARDENING_PLAN.md` R3 — the answer is to adopt opshub's shape, not to invent
 a third.
 
 ## Allowed: how domain events reach their read model
 
-| | rally | opshub |
+| | rova | opshub |
 | --- | --- | --- |
 | transport | DB-to-DB. `AuditProjectionRelay` polls `messaging.outbox_events` and writes `audit.audit_logs` | none — the generic domain-event outbox was removed (opshub migration 0013) |
 | consumers | one, in-process | n/a |
 | audit writes | asynchronous, through the projection | synchronous, `AuditService` in the request path |
 
-Rally deleted its SNS topic and four SQS queues to get here, and the reason is worth
+Rova deleted its SNS topic and four SQS queues to get here, and the reason is worth
 carrying over before opshub grows a consumer: the queue leg was broken in every
 deployed environment for as long as it existed, in three independent ways at once
 (the audit queue had no subscription, the one subscription that existed filtered on
@@ -70,7 +70,7 @@ beside a `webhookEnqueue.fanout` for the same event and payload, so the outbox c
 a second write of something already delivered. Notifications, email, webhooks and audit
 each had their own path with a real reader, which is why nobody missed it.
 
-So neither product now has a generic domain-event bus. rally has a DB-to-DB projection
+So neither product now has a generic domain-event bus. rova has a DB-to-DB projection
 with one reader; opshub has three purpose-built outboxes, each with a consumer. Both
 kept the shared `AbstractOutboxRelay`, its backoff and metrics, and the
 `outboxDeadLetter` alarm.
@@ -79,7 +79,7 @@ kept the shared `AbstractOutboxRelay`, its backoff and metrics, and the
 the consumer and an end-to-end test in the same change.** The failure above did not come
 from a missing feature; it came from a pipeline whose middle nothing exercised.
 
-## Temporary: rally is ahead, opshub should catch up
+## Temporary: rova is ahead, opshub should catch up
 
 Tracked as work, not as divergence. Ordered plan in the convergence spec.
 
@@ -97,9 +97,9 @@ Tracked as work, not as divergence. Ordered plan in the convergence spec.
 | e2e depth | no Playwright, no service-level flow suite |
 | R2 storage | S3 app-buckets, while `opshub_attachments_*` R2 buckets already exist unused |
 
-## Temporary: opshub is ahead, rally should catch up
+## Temporary: opshub is ahead, rova should catch up
 
-| gap | rally state |
+| gap | rova state |
 | --- | --- |
 | scoped authorization dimensions, delegation, grant expiry | workspace/project only |
 | IdP role mapping (`ISsoProvisioningHook`) | not bound; roles are app-assigned only |

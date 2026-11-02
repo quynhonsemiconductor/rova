@@ -45,6 +45,8 @@ import {
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { useReleases } from '@/features/releases/api'
 import { useProjectMembers } from '@/features/teams/api'
+import { entityDetailPath } from '@/shared/lib/entity-link'
+import { WrapBox } from '@/shared/ui/wrap-box'
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -388,7 +390,12 @@ const MILESTONES_COLUMNS: ColumnSpec<Milestone, MilestoneCtx, MilestoneColKey>[]
     sortCol: 'milestoneKey',
     cellClassName: 'flex items-center px-2',
     cell: (m, ctx) => (
-      <IdCell type="milestone" itemKey={m.milestoneKey ?? '--'} onOpen={() => ctx.onOpen(m.id)} />
+      <IdCell
+        type="milestone"
+        itemKey={m.milestoneKey ?? '--'}
+        onOpen={() => ctx.onOpen(m.id)}
+        href={entityDetailPath.milestone(m.id)}
+      />
     ),
   },
   {
@@ -400,7 +407,12 @@ const MILESTONES_COLUMNS: ColumnSpec<Milestone, MilestoneCtx, MilestoneColKey>[]
     grow: true,
     sortCol: 'name',
     cellClassName: 'flex min-w-0 items-center px-0',
-    cell: (m, ctx) => <MilestoneNameCell milestone={m} canEdit={ctx.canManage} />,
+    // A `grow` column of wrapping text in a `max-content` row: `WrapBox`, or a long name widens the row.
+    cell: (m, ctx) => (
+      <WrapBox>
+        <MilestoneNameCell milestone={m} canEdit={ctx.canManage} />
+      </WrapBox>
+    ),
   },
   {
     key: 'targetStartDate',
@@ -518,7 +530,7 @@ export function MilestonesPage() {
 
   const cellCtx: MilestoneCtx = {
     canManage,
-    onOpen: (id) => navigate({ to: '/milestones/$milestoneId', params: { milestoneId: id } }),
+    onOpen: (id) => navigate({ href: entityDetailPath.milestone(id) }),
   }
 
   return (

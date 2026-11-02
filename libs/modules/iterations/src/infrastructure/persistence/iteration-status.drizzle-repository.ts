@@ -321,7 +321,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       string | null
     >`coalesce(${devOwnerUser.displayName}, ${devOwnerUser.email})`;
 
-    // Child-defect rollup — Rally "Defects" (count) + "Defect Status" (open summary).
+    // Child-defect rollup — Rally's "Defects" (count) + "Defect Status" (open summary).
     const defectCount = sql<number>`(
       select count(*)::int from ${workItems} d
       where d.parent_id = ${workItems.id} and d.type = 'defect' and d.deleted_at is null
@@ -332,7 +332,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         and d.schedule_state not in (${acceptedScheduleStatesSql()})
     )`;
 
-    // Milestones directly assigned to the work item — Rally "Milestones" column.
+    // Milestones directly assigned to the work item — Rally's "Milestones" column.
     // Returns {id,name} objects so the grid can render names AND edit by id.
     const milestoneList = sql<Array<{ id: string; name: string }>>`coalesce((
       select json_agg(json_build_object('id', m.id, 'name', m.name) order by m.name)

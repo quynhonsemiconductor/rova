@@ -11,6 +11,7 @@ import { DateField } from '@/shared/ui/date-field'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { type ColKey } from '../model/columns'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 /** Lifecycle order — forward transitions are gated server-side (Commit/Accept). */
 const ITERATION_STATES: IterationState[] = ['planning', 'committed', 'accepted']
@@ -86,7 +87,14 @@ export function IterationRow({
         className="flex items-center px-2"
         onClick={stop}
       >
-        <IdCell type="iteration" itemKey={it.iterationKey ?? '--'} onOpen={onOpen} />
+        <IdCell
+          type="iteration"
+          itemKey={it.iterationKey ?? '--'}
+          onOpen={onOpen}
+          // Not gated: `onOpen` is a REQUIRED prop here, so every row opens and its URL cannot drift
+          // from the click. Addressed by id, so an iteration with no key yet still has a real page.
+          href={entityDetailPath.iteration(it.id)}
+        />
       </div>
 
       {/* Name — inline-editable */}

@@ -95,7 +95,7 @@ export const projects = workSchema.table(
 );
 
 // ── workspace_item_counters (item_key seq) ─────────────────────────────────
-// Per-WORKSPACE, per-type sequential counter (Rally FormattedID model): a
+// Per-WORKSPACE, per-type sequential counter (FormattedID model, per Rally): a
 // work-item key like US-42 is unique across the whole workspace, not per
 // project. Composite PK (workspaceId, itemType) gives each type its own
 // workspace-wide sequence (US-*, DE-*, TA-* …).
@@ -325,7 +325,7 @@ export const workflowTransitions = workSchema.table(
   }),
 );
 
-// ── iterations (Rally timeboxes) ──────────────────────────────────────────
+// ── iterations (Rally-style timeboxes) ─────────────────────────────────────
 // A date-bounded planning timebox scoped to a project (and optionally a team).
 // State follows the Rally vocabulary: planning → committed → accepted.
 
@@ -581,7 +581,7 @@ export const portfolioItems = workSchema.table(
     // its children, which is what makes the rollups authoritative.
     //
     // NOT NULL DEFAULT 0, unlike every other typed estimate in this schema, and unlike
-    // what the general rule below would suggest. Real Rally shows these as 0 rather than
+    // what the general rule below would suggest. Rally shows these as 0 rather than
     // blank and lets a planner type 0, so 0 — not NULL — is the absent state here (0081).
     // Nothing downstream needed changing: the tier chain already selects the refined
     // forecast only `if > 0`, so 0 falls through to the Preliminary Estimate mapping,
@@ -730,14 +730,14 @@ export const capacityPlanAllocations = workSchema.table(
     /**
      * Rally's PRIMARY team assignment for this Feature in this plan.
      *
-     * Rally: "you can assign the portfolio item to one primary team and then allocate points or
+     * Per its docs: "you can assign the portfolio item to one primary team and then allocate points or
      * story counts to the additional teams that will contribute to the work." One team owns the
      * Feature; the rest are contributors. The Items tab's "Planned Project Assignment" shows
      * this team, which is why it cannot just be inferred from the allocation list.
      *
      * A flag on the allocation rather than a column on a plan-item table, because the primary is
      * BY DEFINITION one of the teams that has an allocation — and "in the plan with no team at
-     * all" is already expressed by `team_id IS NULL`, Rally's unassigned state.
+     * all" is already expressed by `team_id IS NULL`, the tool's unassigned state.
      */
     isPrimary: boolean('is_primary').notNull().default(false),
     /**

@@ -70,6 +70,7 @@ export default defineConfig({
       include: [
         'db/database-url.ts',
         'db/pg-pool-config.ts',
+        'db/pg-ssl.ts',
         'db/stranded-migrations.ts',
         'libs/shared-kernel/src/health.ts',
         'libs/modules/portfolio/src/domain/portfolio-rollup.ts',
@@ -88,9 +89,11 @@ export default defineConfig({
         'libs/modules/collaboration/src/application/collaboration.service.ts',
         'libs/platform/src/aws/secrets-manager-secret-resolver.ts',
         'libs/platform/src/auth/session-auth.guard.ts',
+        'libs/platform/src/mcp-call-token.ts',
         'libs/platform/src/rate-limit/pre-auth-rate-limit.guard.ts',
         'libs/platform/src/http/session-token-redaction.ts',
         'libs/modules/api-tokens/src/interface/http/api-token.guard.ts',
+        'libs/modules/api-tokens/src/interface/http/reject-api-token-auth.guard.ts',
         'libs/platform/src/config/env.schema.ts',
         'libs/platform/src/email/email-delivery.service.ts',
         'libs/platform/src/email/email.service.ts',
@@ -121,13 +124,10 @@ export default defineConfig({
         'libs/modules/scm/src/infrastructure/github/github-rest.client.ts',
         'libs/modules/scm/src/infrastructure/github/github-rest.mapper.ts',
         'libs/modules/team-status/src/application/team-status.service.ts',
+        'libs/modules/test-cases/src/application/test-activity-enrichment.ts',
         'libs/modules/test-cases/src/application/test-cases.service.ts',
         'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/test-cases/src/application/test-case-types.service.ts',
-        'libs/modules/test-cases/src/application/test-results.service.ts',
-        'libs/modules/test-cases/src/application/test-case-types.service.ts',
-        'libs/modules/test-cases/src/application/test-results.service.ts',
-        'libs/modules/test-cases/src/application/test-results.service.ts',
         'libs/modules/work-items/src/application/work-items.service.ts',
         // Phase 7 SU-01. `split-story.ts` is required (it has `split-story.spec.ts`);
         // `iteration-assignable.ts` is added deliberately even though it has no spec of its own — it
@@ -168,6 +168,14 @@ export default defineConfig({
         'libs/platform/src/storage/storage.service.ts',
         'libs/platform/src/utils/lexorank.util.ts',
         'libs/shared-kernel/src/permissions.ts',
+        // First apps/api entry. The boot-time roster assert has an ordinary unit spec, and
+        // test/coverage-include.spec.ts excludes only test/ and apps/web — so it must be measured.
+        'apps/api/src/bootstrap/platform-admin-emails.ts',
+        // MCP P1: the principal bridge and the /mcp route. No apostrophes in this comment: the
+        // coverage-include spec parses this list naively, and one would poison it.
+        'apps/api/src/mcp/principal.guard.ts',
+        'apps/api/src/mcp/route.ts',
+        'apps/api/src/mcp/access-jwt.adapter.ts',
       ],
       exclude: ['**/*.spec.ts'],
       // Ratchet: raise these incrementally as coverage improves, NEVER lower them.
@@ -214,11 +222,14 @@ export default defineConfig({
       // regression to chase.
       // RE-MEASURED 2026-10-19 (identity v8 cutover, #718 CI): branches 82.05 — the identity-8 auth code
       // brought well-covered branches in, so the 79 floor fell 3.05 behind and the ratchet failed. Raised to 82.
+      // RE-MEASURED 2026-10-30 (US-118 Carryover retest, #829 CI): stmts 88.21, branch 82.48, funcs
+      // 86.3, lines 88.92 — main sat at 87.99 statements, and the PR's new specs tipped the 85 floor
+      // 3.21 behind. Raised `statements` to 88; the other three are still within 3 points.
       thresholds: {
         lines: 86,
         functions: 84,
         branches: 82,
-        statements: 85,
+        statements: 88,
       },
     },
   },

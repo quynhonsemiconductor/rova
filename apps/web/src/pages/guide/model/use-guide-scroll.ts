@@ -1,0 +1,86 @@
+import { useEffect, useState, type RefObject } from 'react'
+
+/**
+ * The element with `id` inside `pane`, or null. Scoped to the reading pane so an element elsewhere in
+ * the app that happens to share an id cannot be scrolled to or highlighted; matched by `el.id` rather
+ * than a CSS selector, because the id can come from the URL's hash.
+ */
+function findInPane(pane: HTMLElement | null, id: string): HTMLElement | null {
+  if (!pane || !id) return null
+  for (const el of pane.querySelectorAll<HTMLElement>('[id]')) if (el.id === id) return el
+  return null
+}
+
+/**
+ * Land on the URL's section once the chapter has rendered, or at the top for a chapter with none.
+ *
+ * Chapters are lazy, so at navigation time the target id does not exist yet and the router cannot
+ * scroll to it. Call this from a component rendered INSIDE the chapter's `Suspense` boundary: its
+ * effect then runs only after the chapter's DOM is committed.
+ */
+export function useScrollToHash(
+  container: RefObject<HTMLElement | null>,
+  chapter: string,
+  hash: string,
+) {
+  useEffect(() => {
+    const target = findInPane(container.current, hash)
+    if (target) target.scrollIntoView({ block: 'start' })
+    else container.current?.scrollTo({ top: 0 })
+  }, [container, chapter, hash])
+}
+
+/** How far below the top of the reading pane a section's heading counts as "being read". */
+const READING_LINE_PX = 120
+
+/**
+ * The id of the section being read: the last of `ids` whose top has scrolled above the reading
+ * line. Drives the sidebar highlight, as `guide.js` did on scroll — but without rewriting the URL,
+ * which would turn every scroll into a router navigation.
+ */
+export function useActiveSection(
+  container: RefObject<HTMLElement | null>,
+  ids: readonly string[],
+): string | undefined {
+  // Section ids are DOM ids, which cannot contain spaces, so the join is an exact key for `ids`.
+  const key = ids.join(' ')
+  // Measured per `key`: another chapter's ids read as "nothing measured yet" (its first section)
+  // on the render that switches chapter, instead of the previous chapter's section for a frame.
+  const [measured, setMeasured] = useState<{ key: string; active: string | undefined }>()
+  const active = measured?.key === key ? measured.active : ids[0]
+
+  useEffect(() => {
+    const pane = container.current
+    if (!pane) return
+    let frame = 0
+    const measure = () => {
+      frame = 0
+      const line = pane.getBoundingClientRect().top + READING_LINE_PX
+      // One walk of the pane per frame: `measure` runs on every scrolled frame.
+      const byId = new Map<string, HTMLElement>()
+      for (const el of pane.querySelectorAll<HTMLElement>('[id]')) byId.set(el.id, el)
+      let current: string | undefined = ids[0]
+      for (const id of ids) {
+        const el = byId.get(id)
+        if (el && el.getBoundingClientRect().top <= line) current = id
+      }
+      // Same section as last frame: keep the same state object, so React skips the re-render.
+      setMeasured((previous) =>
+        previous?.key === key && previous.active === current ? previous : { key, active: current },
+      )
+    }
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(measure)
+    }
+    measure()
+    pane.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      pane.removeEventListener('scroll', onScroll)
+      if (frame) cancelAnimationFrame(frame)
+    }
+    // `key` stands for `ids`: a fresh array with the same ids must not re-subscribe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [container, key])
+
+  return active
+}

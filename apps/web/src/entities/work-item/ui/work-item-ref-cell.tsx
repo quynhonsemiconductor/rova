@@ -1,5 +1,8 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { useRecordHref } from '@/entities/work-item/model/use-record-href'
 import type { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
+import { RECORD_LABEL_LAYOUT, RECORD_LINK_LABEL, RecordOpener } from '@/shared/ui/record-link'
+import { cn } from '@/shared/lib/utils'
 
 interface WorkItemRefCellProps {
   /**
@@ -21,6 +24,25 @@ interface WorkItemRefCellProps {
    * on Access Denied is worse than a label, because it is offered as the way forward.
    */
   onOpen?: () => void
+  /**
+   * Detail URL for Ctrl/Cmd+click, middle-click and "Open link in new tab" (US-120). Defaults to
+   * `/item/{itemKey}` for a Story / Task / Defect, and to `/portfolio/{recordId}` for an Epic /
+   * Feature given `recordId`. Without either the reference opens in place only.
+   */
+  href?: string
+  /**
+   * The record's own id, so an Epic / Feature is addressed by id exactly as `IdCell` does it. A call
+   * site that can render an Epic / Feature MUST pass it (or `href`), or the cell silently falls back
+   * to an in-place button. `FeatureCell` passes `href`; the other callers — the detail sidebar's
+   * parent pill, Team Status' work product, Quality's parent Story and the linked-items list — render
+   * only WORK ITEMS (each opens `/item/$itemKey`), which are addressed by key and need no id. That
+   * rests on `as WorkItemType` casts of API strings, so it is not enforced by the compiler: a
+   * portfolio type slipping through would get no URL — and `defaultRecordHref` then REPORTS it
+   * (`useRecordHref`: dev warning, prod error) rather than dropping it silently. A grid that can
+   * render both kinds
+   * passes `recordId` unconditionally, as `ArtifactTable` does.
+   */
+  recordId?: string
   /**
    * Visual treatment:
    * - `inline` (default) — bare glyph + text for use inside grid cells.
@@ -46,14 +68,13 @@ export function WorkItemRefCell({
   itemKey,
   title,
   onOpen,
+  href,
+  recordId,
   variant = 'inline',
 }: WorkItemRefCellProps) {
   const label = title ? `${itemKey}: ${title}` : itemKey
-  const open = (e: { stopPropagation: () => void }) => {
-    e.stopPropagation()
-    onOpen?.()
-  }
-
+  // Before the read-only return: a hook runs on every render, whichever branch follows.
+  const target = useRecordHref({ href, type, itemKey, recordId, enabled: onOpen !== undefined })
   if (!onOpen) {
     return (
       <span
@@ -71,44 +92,43 @@ export function WorkItemRefCell({
   }
 
   if (variant === 'pill') {
-    return (
-      <button
-        type="button"
-        onClick={open}
-        title={label}
-        // `text-ui-sm`, matching the read-only rendering above and every other editable cell: this
-        // trigger was 12px, so opening the same value for edit made it grow.
-        className="flex w-full cursor-pointer items-center gap-1.5 truncate rounded border border-input px-2.5 py-1.5 text-ui-sm text-primary-light hover:bg-slate-50"
-      >
+    // `text-ui-sm`, matching the read-only rendering above and every other editable cell: this
+    // trigger was 12px, so opening the same value for edit made it grow.
+    // `border-solid`, not just `border`: `RecordOpener`'s reset carries `border-none` (a border-STYLE
+    // class), which tailwind-merge keeps beside `border` (a WIDTH class) — so the pill painted no
+    // border at all. `border-solid` is the same group as `border-none`, so it replaces it.
+    const pillClass =
+      'flex w-full cursor-pointer items-center gap-1.5 truncate rounded border border-solid border-input px-2.5 py-1.5 text-ui-sm text-primary-light no-underline hover:bg-slate-50'
+    const pillContent = (
+      <>
         <TypeBadge type={type} size={16} />
         <span className="truncate">{label}</span>
-      </button>
+      </>
+    )
+    return (
+      <RecordOpener href={target} onOpen={onOpen} title={label} className={pillClass}>
+        {pillContent}
+      </RecordOpener>
     )
   }
 
-  return (
-    <button
-      type="button"
-      onClick={open}
-      title={label}
-      // `items-start` + wrapping label: the reference carries a work-item TITLE, which is
-      // free text of unbounded length, and every grid that shows it uses `min-h-*` rows
-      // that can grow. `items-start` keeps the type glyph on the first line instead of
-      // floating to the vertical middle of a two-line title.
-      className="inline-flex max-w-full cursor-pointer items-start gap-1.5 border-none bg-transparent p-0"
-      onMouseOver={(e) => {
-        e.currentTarget.style.textDecoration = 'underline'
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.textDecoration = 'none'
-      }}
-    >
+  // `items-start` + wrapping label: the reference carries a work-item TITLE, which is
+  // free text of unbounded length, and every grid that shows it uses `min-h-*` rows
+  // that can grow. `items-start` keeps the type glyph on the first line instead of
+  // floating to the vertical middle of a two-line title.
+  // `RecordOpener` supplies the reset (incl. `group` for the hover underline); this is only layout.
+  const inlineClass = 'inline-flex max-w-full items-start gap-1.5'
+  const inlineContent = (
+    <>
       <TypeBadge type={type} size={16} />
       {/* `min-h-5` so a one-line reference centres against its type glyph instead of riding its top
           edge — the same rule the team, owner and ID cells follow. */}
-      <span className="flex min-h-5 min-w-0 items-center text-ui-sm break-words whitespace-normal text-primary-light">
-        {label}
-      </span>
-    </button>
+      <span className={cn(RECORD_LABEL_LAYOUT, 'text-ui-sm', RECORD_LINK_LABEL)}>{label}</span>
+    </>
+  )
+  return (
+    <RecordOpener href={target} onOpen={onOpen} title={label} className={inlineClass}>
+      {inlineContent}
+    </RecordOpener>
   )
 }

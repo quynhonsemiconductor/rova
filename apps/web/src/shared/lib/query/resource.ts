@@ -79,12 +79,25 @@ interface ResourceBase {
  */
 export interface ListResource<T> extends ResourceBase {
   /**
-   * Mutable `T[]`, not `readonly T[]`, on purpose: the seam has to be CHEAPER than the idiom it
-   * replaces or it gets bypassed, and a `readonly` array forces a spread at every existing helper
-   * that takes `T[]` (`iterationsInScope`, the pickers, `useMemo` filters). The invariant this file
-   * defends is "an error is not an empty answer", not immutability.
+   * `readonly T[]`, so the compiler refuses an in-place mutation: `ReadonlyArray` has NO `sort`,
+   * `reverse`, `push`, `pop`, `shift`, `unshift`, `splice`, `fill` or `copyWithin` (`rows.sort(…)`
+   * is `TS2339`). Whenever there is no data —
+   * loading, error, disabled, or `emptyListResource()` — `rows` is the shared FROZEN `NO_ROWS` array
+   * (see there for why it must keep one reference). On that EMPTY frozen array only the
+   * LENGTH-changing writes throw a `TypeError` — `push`, `pop`, `shift`, `unshift`, `splice` —
+   * and only in those states, which a fixture that resolves data never reaches. `sort`, `reverse`,
+   * `fill` and `copyWithin` write nothing there and never throw, so against them the only guard is
+   * the compile error above. When data is
+   * present, `rows` IS the query cache's array, which must not be mutated either.
+   *
+   * It used to be `T[]` to save a spread at helpers typed `T[]`; widening those helpers' parameters to
+   * `readonly` cost less than the runtime-only guarantee did. To reorder, copy — `[...rows].sort(…)`, the pattern the codebase uses (`toSorted` would
+   * type-check under the ES2023 lib, but Vite's default build target does not guarantee it at runtime
+   * and nothing polyfills it) — and keep the result reference-stable either way (memoise it, e.g. inside `useMemo`): `[...rows].sort(…)` computed inline on
+   * every render hands a fresh reference to consumers like `useRowRerank` and reintroduces the
+   * error-301 loop described on `NO_ROWS`.
    */
-  readonly rows: T[]
+  readonly rows: readonly T[]
 }
 
 /** A single-value resource (a detail record, a count). */
@@ -98,6 +111,29 @@ function pending<T>(q: QueryLike<T>): boolean {
   // `isPending && isFetching`. Prefer `isLoading` when present so a query parked on a
   // missing id does not render a permanent skeleton.
   return q.isLoading ?? q.isPending ?? false
+}
+
+/**
+ * The ONE empty array every list resource without data hands out — `listResource` while a query
+ * has nothing, and `emptyListResource()`.
+ *
+ * `q.data ?? []` minted a fresh array on every render while a query was pending (or failed, or
+ * disabled). Anything keyed on the REFERENCE of `rows` then saw a change on every render — and
+ * `useRowRerank` re-syncs its optimistic copy DURING render when its `items` reference changes, so a
+ * Tasks or Test Cases tab that re-rendered before its fetch resolved set state, re-rendered, got
+ * another new `[]`, and hit React's "Too many re-renders" (minified error 301). Production, 2026-10-05:
+ * opening the Tasks tab on US-120 replaced the page with the error boundary.
+ *
+ * Frozen so a caller that changes its LENGTH (`push`, `pop`, `shift`, `unshift`, `splice`) throws
+ * instead of corrupting every other empty resource. `sort` / `reverse` / `fill` / `copyWithin`
+ * write nothing on an empty array and never throw — against those the only guard is the `readonly`
+ * compile error on `ListResource.rows`.
+ */
+const NO_ROWS: readonly never[] = Object.freeze([])
+
+/** `NO_ROWS` as a list's `rows`. No cast: `readonly never[]` is already a `readonly T[]`. */
+function noRows<T>(): readonly T[] {
+  return NO_ROWS
 }
 
 /**
@@ -118,7 +154,7 @@ function pending<T>(q: QueryLike<T>): boolean {
  * optimisable, and `pnpm lint` fails on the one-line form.
  */
 export function listResource<T>(q: QueryLike<T[]>): ListResource<T> {
-  const rows = q.data ?? []
+  const rows = q.data ?? noRows<T>()
   const isError = q.isError === true
   const isLoading = pending(q) && !isError
   return {
@@ -171,5 +207,11 @@ export function firstError(...parts: readonly ResourceBase[]): unknown {
  * server answered.
  */
 export function emptyListResource<T>(): ListResource<T> {
-  return { rows: [], phase: 'empty', isLoading: false, isError: false, error: undefined }
+  return {
+    rows: noRows<T>(),
+    phase: 'empty',
+    isLoading: false,
+    isError: false,
+    error: undefined,
+  }
 }

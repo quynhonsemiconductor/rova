@@ -10,7 +10,7 @@
  * order, the selection gutter, the client-side pagination and the bulk bar —
  * so they drifted (some had a metric strip, some a totals row, some pagination).
  * This component composes those pieces in ONE fixed order that mirrors Broadcom
- * Rally's Iteration Status screen, and OWNS the shared state (client-side
+ * Broadcom's Rally Iteration Status screen, and OWNS the shared state (client-side
  * pagination + row selection), so a page only declares its columns, rows,
  * metrics, filters and bulk actions.
  *

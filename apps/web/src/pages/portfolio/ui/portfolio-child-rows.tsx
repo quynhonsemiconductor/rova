@@ -63,6 +63,7 @@ import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { useFieldCommit } from '@/shared/lib/hooks/use-field-commit'
 import { type ColKey } from '../model/columns'
 import { PORTFOLIO_STATES } from '../model/portfolio-states'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 type ColStyleFor = (key: ColKey, base?: CSSProperties) => CSSProperties
 
@@ -139,7 +140,12 @@ function ChildFeatureRow({
       <div className="px-2" style={colStyleFor('rank')} />
 
       <div className={`flex items-center pr-2 ${NESTED_ROW_INDENT}`} style={colStyleFor('id')}>
-        <IdCell type={feature.type} itemKey={feature.itemKey} onOpen={() => onOpen(feature.id)} />
+        <IdCell
+          type={feature.type}
+          itemKey={feature.itemKey}
+          onOpen={() => onOpen(feature.id)}
+          recordId={feature.id}
+        />
       </div>
 
       <div
@@ -407,7 +413,7 @@ export function PortfolioChildRows({
   const { isLoading } = isEpic ? features : children
 
   const openPortfolioItem = (id: string) =>
-    void navigate({ to: '/portfolio/$itemId', params: { itemId: id } })
+    void navigate({ href: entityDetailPath.portfolioItem(id) })
 
   const rows = isEpic
     ? (features.data ?? []).map((f) => (

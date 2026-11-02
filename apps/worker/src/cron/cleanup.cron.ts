@@ -170,7 +170,7 @@ export class CleanupCronService {
     // push and per pull_request event, each holding the raw payload as jsonb. Nothing
     // deleted them, so the table and its TOAST storage grew without bound on an
     // instance sized for 30 GB. It is bounded by activity, not by users: a busy repo
-    // generates rows whether or not anyone opens rally.
+    // generates rows whether or not anyone opens rova.
     //
     // Only TERMINAL rows are eligible. `pending` is excluded no matter how old,
     // because a row waiting on backoff is still work owed — the relay retries with

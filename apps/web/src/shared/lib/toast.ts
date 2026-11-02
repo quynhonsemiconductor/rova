@@ -1,7 +1,7 @@
 import { toast as sonner } from 'sonner'
 
 /**
- * Rally's toast facade over `sonner`.
+ * Rova's toast facade over `sonner`.
  *
  * Pages should import `notify` from here rather than `toast` from 'sonner'
  * directly, so toast copy/format/variants stay consistent from one place and

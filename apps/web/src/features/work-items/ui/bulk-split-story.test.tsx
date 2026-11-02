@@ -129,13 +129,13 @@ describe('BulkSplitStory', () => {
   it('is disabled with nothing selected', () => {
     renderBulk([])
     expect(splitButton()).toBeDisabled()
-    expect(splitButton()).toHaveAttribute('title', 'Select exactly one User Story to split')
+    expect(splitButton()).not.toHaveAttribute('title')
   })
 
   it('is disabled for MORE than one row — Bulk Split is out of scope (SRS §16)', () => {
     renderBulk(['wi-1', 'wi-3'])
     expect(splitButton()).toBeDisabled()
-    expect(splitButton()).toHaveAttribute('title', 'Select exactly one User Story to split')
+    expect(splitButton()).not.toHaveAttribute('title')
   })
 
   it('is disabled for a single non-Story row, and asks the server nothing', () => {
@@ -143,9 +143,8 @@ describe('BulkSplitStory', () => {
     expect(splitButton()).toBeDisabled()
     // The narrowing at work: no request is enabled for a Defect, because none could succeed.
     expect(useSplitPreview).toHaveBeenCalledWith('wi-2', { enabled: false })
-    // And the sentence is about the SELECTION, which the reader can act on — not "this story cannot
-    // be split", which would be false of a Defect.
-    expect(splitButton()).toHaveAttribute('title', 'Select exactly one User Story to split')
+    // And no explanatory tooltip (SU-01 AC3, BA retest TC-39).
+    expect(splitButton()).not.toHaveAttribute('title')
   })
 
   it('stays disabled for a non-Story even when a WARM eligible preview is cached', () => {
@@ -182,14 +181,14 @@ describe('BulkSplitStory', () => {
     useSplitPreview.mockReturnValue(preview(false))
     renderBulk(['wi-1'])
     expect(splitButton()).toBeDisabled()
-    expect(splitButton()).toHaveAttribute('title', 'This story cannot be split')
+    // No explanatory message of any kind (SU-01 AC4–AC6, BA retest TC-39).
+    expect(splitButton()).not.toHaveAttribute('title')
   })
 
   it('NEVER renders `ineligibleReason` (SRS §11)', () => {
     useSplitPreview.mockReturnValue(preview(false))
     renderBulk(['wi-1'])
     expect(screen.queryByText(/no_target/i)).not.toBeInTheDocument()
-    expect(splitButton().getAttribute('title')).not.toMatch(/no_target/i)
   })
 
   it('opens the modal on the selected Story', () => {

@@ -190,6 +190,7 @@ export function AllocationRow({
           type="feature"
           itemKey={allocation.itemKey}
           onOpen={() => onOpenFeature(allocation.portfolioItemId)}
+          recordId={allocation.portfolioItemId}
         />
       </div>
 

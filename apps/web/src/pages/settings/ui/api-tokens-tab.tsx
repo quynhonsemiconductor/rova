@@ -2,7 +2,7 @@
  * Settings ▸ Personal ▸ API Tokens.
  *
  * The surface for the credentials a machine uses on your behalf: an integration, a CI job, a script,
- * or agent-forge driving Rally through the API. Personal rather than workspace, because a token
+ * or agent-forge driving Rova through the API. Personal rather than workspace, because a token
  * carries its owner's permissions and never more — the backend intersects the requested scopes with
  * whatever the owner holds, so "my tokens" is the honest unit.
  *

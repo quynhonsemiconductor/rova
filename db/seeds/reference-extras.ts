@@ -343,7 +343,10 @@ async function seedScm(db: Db): Promise<void> {
         provider: 'github',
         type: 'pull_request',
         externalId: '4821',
-        name: 'feat(nx): upgrade to v21',
+        // A real PR title's length, on purpose — see the changeset message below (`backlog.e2e.ts`).
+        name:
+          'feat(nx): upgrade the workspace to Nx v21, move every generator onto the project graph API ' +
+          'and drop the legacy workspace.json reader',
         url: 'https://github.com/quynhonsemiconductor/rova/pull/4821',
         state: 'open',
       },
@@ -369,6 +372,17 @@ async function seedScm(db: Db): Promise<void> {
       provider: 'github',
       revision: '9f2c1ab',
       name: 'feat(nx): bump workspace to v21',
+      // A real commit's length and shape (subject + wrapped body) on purpose: a one-line message
+      // never reproduced the US-120 Changesets defect, where the Message column sized the row to the
+      // whole message and pushed Changes / Author / Commit Timestamp off-screen (`backlog.e2e.ts`).
+      message:
+        'feat(nx): bump workspace to v21 and migrate the generators to the new project graph API\n\n' +
+        'Nx 21 removes the legacy workspace.json project configuration reader, so every generator ' +
+        'that still read it through readWorkspaceConfiguration is moved onto readProjectsConfigurationFromProjectGraph. ' +
+        'The migration script under tools/ rewrites the remaining callers and is idempotent.\n\n' +
+        // One UNBROKEN token far wider than the column, so the e2e also proves a token with no space
+        // to break at wraps inside the Message column (`break-words`) instead of widening the row.
+        'Refs: tools/migrations/nx-21/readProjectsConfigurationFromProjectGraph/replace-legacy-workspace-json-reader.migration.ts',
       uri: 'https://github.com/quynhonsemiconductor/rova/commit/9f2c1ab',
       repositoryFullName: 'quynhonsemiconductor/rova',
       authorName: 'Nghia-VanTrong',

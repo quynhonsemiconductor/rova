@@ -27,7 +27,7 @@ export type MetricCardProps = {
 
 /**
  * Compact KPI card used in the tracking metric strips (Iteration Status,
- * and reusable for any Rally read-model summary). Encapsulates the
+ * and reusable for Rally read-model summary). Encapsulates the
  * label / big-number / caption / progress-bar layout so every strip stays
  * visually consistent.
  */

@@ -6,6 +6,7 @@ import { failOpenLog, SecurityMetrics } from '@quynhonsemiconductor/observabilit
 import { clientIp } from '@quynhonsemiconductor/platform-http';
 import { bearerValue, isApiTokenValue } from '../auth/api-token-principal';
 import { RateLimitedException } from '../errors/exceptions';
+import { MCP_CALL_TOKEN_HEADER, peekMcpCallToken } from '../mcp-call-token';
 import { RATE_LIMIT_TIERS, SKIP_RATE_LIMIT_KEY } from './rate-limit.constants';
 
 /**
@@ -19,7 +20,9 @@ import { RATE_LIMIT_TIERS, SKIP_RATE_LIMIT_KEY } from './rate-limit.constants';
  *
  * Two buckets: every request (PRE_AUTH), and requests presenting an API token (PRE_AUTH_TOKEN, tighter: each one costs a lookup and a
  * guess is free to repeat). The user-keyed DEFAULT bucket stays where it is, after authentication, so a corporate NAT's users are
- * still not penalised for each other. Honours `@SkipRateLimit()` (probes) and `DISABLE_RATE_LIMIT`; fails open on a cache outage
+ * still not penalised for each other. One exception, from the MCP bridge: a request carrying a live
+ * in-process call token (`peekMcpCallToken`) keys its PRE_AUTH bucket by the person the token names —
+ * every injected call shares loopback, so per-address keying would make all MCP users one bucket. Honours `@SkipRateLimit()` (probes) and `DISABLE_RATE_LIMIT`; fails open on a cache outage
  * with the same tagged log as RateLimitGuard, so the existing alarm sees it.
  */
 @Injectable()
@@ -46,12 +49,22 @@ export class PreAuthRateLimitGuard implements CanActivate {
     const ip = clientIp(req);
 
     const bearer = bearerValue(req.headers['authorization']);
-    const tiers: Array<'PRE_AUTH' | 'PRE_AUTH_TOKEN'> =
-      bearer && isApiTokenValue(bearer) ? ['PRE_AUTH', 'PRE_AUTH_TOKEN'] : ['PRE_AUTH'];
 
-    for (const tier of tiers) {
+    // An MCP internal call arrives over loopback inject(), where EVERY caller shares one address:
+    // keyed by IP, all MCP users would fill one PRE_AUTH bucket together. If the request carries a
+    // LIVE call token (peeked, not consumed — spending it is the principal guard's job), the floor
+    // keys by the person the token names instead.
+    const mcpPeer = peekMcpCallToken(req.headers[MCP_CALL_TOKEN_HEADER]);
+
+    const buckets: Array<{ tier: 'PRE_AUTH' | 'PRE_AUTH_TOKEN'; key: string }> = mcpPeer
+      ? [{ tier: 'PRE_AUTH', key: `PRE_AUTH:uid:${mcpPeer.userId}` }]
+      : (bearer && isApiTokenValue(bearer)
+          ? (['PRE_AUTH', 'PRE_AUTH_TOKEN'] as const)
+          : (['PRE_AUTH'] as const)
+        ).map((tier) => ({ tier, key: `${tier}:ip:${ip}` }));
+
+    for (const { tier, key } of buckets) {
       const { limit, windowSeconds } = RATE_LIMIT_TIERS[tier];
-      const key = `${tier}:ip:${ip}`;
       let outcome: { allowed: boolean; remaining: number; resetAt: number };
       try {
         outcome = await this.cache.consumeRateLimit(key, limit, windowSeconds);

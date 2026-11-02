@@ -1,5 +1,5 @@
 /**
- * AppModal — Rally's standard modal shell built on Radix Dialog.
+ * AppModal — Rova's standard modal shell built on Radix Dialog.
  *
  * Benefits over hand-rolled `fixed inset-0` divs:
  *  - Focus trap (Tab stays inside the modal)

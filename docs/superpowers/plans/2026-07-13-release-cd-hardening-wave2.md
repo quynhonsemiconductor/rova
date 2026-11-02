@@ -10,7 +10,7 @@
 
 **Reference spec:** `docs/superpowers/specs/2026-07-13-release-cd-hardening-design.md` (Wave 2).
 **Prerequisites:** Wave 1 merged and **`qnsc-ci v1.4.0` tag exists** (Tasks 4–5 pin to it). Track A (Tasks 1–3) can run independently of the tag.
-**Scope:** canonical monorepos `rally`, `opshub` (+ any active repo calling the security reusable: qnsc-app-platform, qnsc-landing). Legacy split repos excluded.
+**Scope:** canonical monorepos `rova`, `opshub` (+ any active repo calling the security reusable: qnsc-app-platform, qnsc-landing). Legacy split repos excluded.
 
 ---
 
@@ -22,10 +22,10 @@
 
 - [ ] **Step 1: Trigger a security run and read findings for each repo**
 
-For `rally` then `opshub`, open (or re-run) the latest `Security · Scan` run and capture the Semgrep + osv sections:
+For `rova` then `opshub`, open (or re-run) the latest `Security · Scan` run and capture the Semgrep + osv sections:
 ```bash
 unset GITHUB_TOKEN GH_TOKEN
-repo=rally   # then opshub
+repo=rova   # then opshub
 rid=$(gh run list --repo QNSC-VN/$repo --workflow="Security · Scan" -L1 --json databaseId -q '.[0].databaseId')
 gh run view "$rid" --repo QNSC-VN/$repo --log 2>/dev/null | grep -iE 'semgrep|osv|finding|vuln|WARNING|ERROR' | tee /tmp/$repo-sec-baseline.txt | head -80
 ```
@@ -81,7 +81,7 @@ fixed. Prepares the gate to be flipped to blocking."
 
 ### Task 3: Flip blocking in each security caller
 
-**Files (per repo):** the security caller workflow (rally: `.github/workflows/backend-security.yml`; opshub: its `security.yml`/inline job; others: `.github/workflows/security.yml`).
+**Files (per repo):** the security caller workflow (rova: `.github/workflows/backend-security.yml`; opshub: its `security.yml`/inline job; others: `.github/workflows/security.yml`).
 
 - [ ] **Step 1: Add the blocking inputs to the reusable call**
 
@@ -92,7 +92,7 @@ In the `with:` block of the `uses: QNSC-VN/qnsc-ci/.github/workflows/security.ym
           semgrep_blocking: true
           osv_blocking: true
 ```
-(For opshub, which runs Semgrep/osv inline rather than via the reusable, set the equivalent `--error` / non-zero-exit behavior in its inline job, or — preferred — migrate opshub to call the reusable `security.yml` so it inherits the phased inputs. If migrating, mirror rally's caller.)
+(For opshub, which runs Semgrep/osv inline rather than via the reusable, set the equivalent `--error` / non-zero-exit behavior in its inline job, or — preferred — migrate opshub to call the reusable `security.yml` so it inherits the phased inputs. If migrating, mirror rova's caller.)
 
 - [ ] **Step 2: Open a PR and confirm the gate now fails ONLY on un-allowlisted findings**
 

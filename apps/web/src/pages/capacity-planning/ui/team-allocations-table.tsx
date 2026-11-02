@@ -84,7 +84,7 @@ export function TeamAllocationsTable({
   const { t } = useTranslation('capacity')
   const table = useDataTable<CapacityAllocation, unknown, AllocColKey>(
     CAPACITY_ALLOCATION_COLUMNS,
-    { storageKey: 'rally-capacity-allocation-columns' },
+    { storageKey: 'rally-capacity-allocation-columns' }, // legacy physical name, do not rename
   )
   const colStyleFor = useCallback(
     (key: AllocColKey, base?: CSSProperties) => table.styleFor(key, base),

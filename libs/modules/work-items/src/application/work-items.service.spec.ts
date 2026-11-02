@@ -3617,6 +3617,34 @@ describe('WorkItemsService', () => {
       expect(actions).toContain('work_item.split_in');
       expect(actions).toContain('task.parent_changed');
     });
+
+    it('tags EVERY row it writes with the splitId, and names ids by key (SU-07 AC4, TC-51)', async () => {
+      workItemRepo.listTasksByParent.mockResolvedValue([task('ta-1')]);
+      const result = await service.splitWorkItem(
+        mockActor,
+        'wi-1',
+        input({ unfinishedTaskIds: ['ta-1'] }),
+      );
+
+      const entries = activityRepo.log.mock.calls.flatMap(
+        (call) =>
+          call[0] as Array<{
+            action: string;
+            changes: { field: string } | null;
+            metadata?: Record<string, unknown>;
+          }>,
+      );
+      expect(entries.length).toBeGreaterThan(3);
+      for (const entry of entries) {
+        expect(entry.metadata?.splitId, entry.action).toBe(result.split.id);
+      }
+
+      const reparent = entries.find((entry) => entry.action === 'task.parent_changed');
+      expect(reparent?.metadata).toMatchObject({ oldName: 'US-1', newName: 'US-7' });
+      const moved = entries.find((entry) => entry.changes?.field === 'iterationId');
+      expect(moved?.metadata?.oldName).toEqual(expect.any(String));
+      expect(moved?.metadata?.newName).toEqual(expect.any(String));
+    });
   });
 
   // ── Phase 7 Carryover (CO-03/05/06) ──────────────────────────────────────────

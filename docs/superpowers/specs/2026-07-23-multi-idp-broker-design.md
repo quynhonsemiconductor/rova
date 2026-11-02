@@ -1,25 +1,25 @@
 # Multi-IdP Authentication Broker — Design Spec (v2)
 
 **Date:** 2026-07-23 (revised) · **Status:** Green-light ready · **Author:** Technical Solution Lead
-**Scope:** `qnsc-app-platform/packages/identity` (the shared broker — owns the mechanism *and* the connection contract) + each consuming app (Rally first: login UI, seed, DI wiring). Cross-repo.
+**Scope:** `qnsc-app-platform/packages/identity` (the shared broker — owns the mechanism *and* the connection contract) + each consuming app (Rova first: login UI, seed, DI wiring). Cross-repo.
 
 > **v2 changes** (from the v1 review): provisioning is now **connection-driven** (no hardcoded `entra`), connections have a **kind** (`directory` vs `shared`) so consumer IdPs like Gmail are invite-gated not domain-gated, discovery is **mandatory** (no broken override branch), the verifier accepts an **issuer list** (Entra v1/v2), auth requests carry **nonce + connectionId**, the connection **schema is owned by the platform package**, and the cross-repo build order is fixed with a **prerelease**. Corrected for the company's **M365 Business Standard** licensing (no Entra P1).
 
 > ## ⚠️ Implementation revisions (2026-07-24) — these SUPERSEDE conflicting text below
 > The package half (T1–T9) is built; these decisions were made/validated during implementation and override earlier wording:
-> 1. **Secret store → AWS Secrets Manager, not SSM (Decision 8).** SSM in this infra is `type=String` for *non-sensitive config*; the paved path for secrets is **Secrets Manager** (CMK, IAM, empty-in-IaC/value-out-of-band). The concrete resolver (`SecretsManagerSecretResolver`) is **app-side (Rally)**; the package ships only the store-agnostic **`SecretResolver` port** (no `@quynhonsemiconductor/identity/ssm` subpath, no aws-sdk in the core package). Secrets live under `arn:…:secret:rally/${env}/sso/*`.
+> 1. **Secret store → AWS Secrets Manager, not SSM (Decision 8).** SSM in this infra is `type=String` for *non-sensitive config*; the paved path for secrets is **Secrets Manager** (CMK, IAM, empty-in-IaC/value-out-of-band). The concrete resolver (`SecretsManagerSecretResolver`) is **app-side (Rova)**; the package ships only the store-agnostic **`SecretResolver` port** (no `@quynhonsemiconductor/identity/ssm` subpath, no aws-sdk in the core package). Secrets live under `arn:…:secret:rally/${env}/sso/*`.
 > 2. **IaC (new work, all Terraform):** add a **task-role** policy `secretsmanager:GetSecretValue` on `rally/${env}/sso/*` + `kms:Decrypt` on the shared CMK (today only the *execution* role reads secrets, for boot-time env injection — the broker reads at **runtime**). Adopt the `rally/${env}/sso/*` prefix. Verify the shared CMK key policy allows the task role + runtime egress to Secrets Manager (VPC endpoint/NAT). Secret **values** stay manual/out-of-band. Rotation is a separate hygiene follow-up (no auto-rotation configured today).
 > 3. **SSO-identity key → `(provider-namespace, provider_sub)`, NOT `(connectionId, subject)` (revises Decision 12 / §3).** `identity.sso_identities` is **unchanged** (keeps its `(provider, provider_sub)` unique index — **no `connection_id` column, no re-key migration**). The broker keys identities by the connection's **`provider`** value (entra/google/okta), which also works for single-tenant `opshub` (connectionless identities). B1's real fix — connection-driven *routing/gating* — stands. (Rare same-provider-multi-connection-same-subject collisions are an accepted, documented edge.)
 > 4. **Registry has no cache (instant cutoff).** `ConnectionRegistry` does not cache the assembled connection — it re-reads the row each resolve, so `status='disabled'` locks out immediately. Expensive I/O is cached in `OidcDiscovery` + the `SecretResolver`.
 > 5. **Single gate.** One `assertConnectionAllows` (status/owned-domain/invite-only break-glass) is shared by the legacy home path and the broker.
 > 6. **Structure.** All broker code lives under `packages/identity/src/oidc/`.
-> 7. **Legacy retained.** `EntraOidcClient`/`entra-verifier`/`ssoLogin` stay (opshub depends on them; broker deps are `@Optional`). Staged retirement: Rally home route at T18; package legacy only after opshub migrates + shared claim/error types are relocated to a neutral module.
+> 7. **Legacy retained.** `EntraOidcClient`/`entra-verifier`/`ssoLogin` stay (opshub depends on them; broker deps are `@Optional`). Staged retirement: Rova home route at T18; package legacy only after opshub migrates + shared claim/error types are relocated to a neutral module.
 
 ---
 
 ## 1. Problem & Goal
 
-Rally authenticates only through a **single hard-coded Entra tenant** (BFF Auth-Code + PKCE). External teams — an outsourced vendor with its own directory, freelancers on Google — cannot sign in. The company is invite-only and runs on **M365 Business Standard** (Entra ID **Free** — app registrations + OIDC, security-defaults MFA, **no Conditional Access / P1**).
+Rova authenticates only through a **single hard-coded Entra tenant** (BFF Auth-Code + PKCE). External teams — an outsourced vendor with its own directory, freelancers on Google — cannot sign in. The company is invite-only and runs on **M365 Business Standard** (Entra ID **Free** — app registrations + OIDC, security-defaults MFA, **no Conditional Access / P1**).
 
 **Goal:** turn `@quynhonsemiconductor/identity` into a **provider-agnostic OIDC broker** driven by the `sso_connections` registry, reusable by **any** platform app, so any OIDC IdP (extra Entra tenants, Google Workspace, Okta, consumer Google) is federated by adding a connection — **no local passwords, one code path per IdP, near-zero running cost**.
 
@@ -46,7 +46,7 @@ Rally authenticates only through a **single hard-coded Entra tenant** (BFF Auth-
 | 5 | Login UX | **Email-first**: type email → domain → `directory` connection → IdP. Keep the home "Sign in with Microsoft" quick button; optional per-`shared`-connection buttons ("Sign in with Google"). **Unknown/unmatched ⇒ denied** ("contact administrator"). |
 | 6 | Discovery | **Mandatory** `.well-known/openid-configuration` per connection (via `authority_url`), TTL-cached. `jwks_uri` / extra `accepted_issuers` are optional overrides. No hand-entered authorize/token endpoints. |
 | 7 | Token verification | Strict **issuer(s) + audience** match against the resolved connection. `accepted_issuers` allows the Entra v1 (`sts.windows.net`) + v2 pair; default `[discovery issuer]`. **`nonce`** bound to the auth request. |
-| 8 | Secret storage | **`SecretResolver` port** in the package (store-agnostic, no aws-sdk). Concrete impl is **app-side**: Rally uses **`SecretsManagerSecretResolver`** (AWS Secrets Manager — the infra's paved path for secrets: CMK-encrypted, empty-in-IaC/value-out-of-band). SSM is **not** used (it's `String`/non-sensitive config here). Secrets under `rally/${env}/sso/*`; DB holds only a **ref**. |
+| 8 | Secret storage | **`SecretResolver` port** in the package (store-agnostic, no aws-sdk). Concrete impl is **app-side**: Rova uses **`SecretsManagerSecretResolver`** (AWS Secrets Manager — the infra's paved path for secrets: CMK-encrypted, empty-in-IaC/value-out-of-band). SSM is **not** used (it's `String`/non-sensitive config here). Secrets under `rally/${env}/sso/*`; DB holds only a **ref**. |
 | 9 | Redirect URI | **One app-level** `IDENTITY_REDIRECT_URI` (the shared `/bff/callback`); `state` carries the connectionId. **Not** per-connection. |
 | 10 | Cutoff | `status='disabled'` on the connection = instant lockout for that directory (the 2-year switch). |
 | 11 | Owned-domain storage (S1) | Normalized **`identity.sso_connection_domains(connection_id, domain UNIQUE)`** table is the **source of truth** for a `directory` connection's owned domains — used for **both** routing and the provisioning gate. `allowed_email_domains` jsonb is retained for back-compat and **backfilled** into the table; a `UNIQUE(domain)` makes domain→connection unambiguous. `shared` connections have **no** rows here. |
@@ -137,7 +137,7 @@ One code path for every IdP. Generalize the Entra-specific pieces; keep them as 
 
 ---
 
-## 7. Frontend (per-app; Rally first)
+## 7. Frontend (per-app; Rova first)
 
 Minimal change to the existing dark login card:
 - **Email input** + submit → `POST /bff/login/start` → follow the redirect.

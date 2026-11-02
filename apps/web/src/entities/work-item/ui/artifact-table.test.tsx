@@ -71,4 +71,21 @@ describe('ArtifactTable', () => {
     expect(screen.getByText('Wire the picker')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
+
+  // US-120: the table hands every row's id to the ID cell and lets `defaultRecordHref` choose. Every
+  // kind a Milestone or Release can list must come out as a real link — a kind the rule did not
+  // address would silently degrade to an in-place-only button.
+  it.each([
+    ['story', 'US-2', '/item/US-2'],
+    ['task', 'TA-2', '/item/TA-2'],
+    ['defect', 'DE-2', '/item/DE-2'],
+    ['feature', 'FE-2', '/portfolio/pf-2'],
+    ['epic', 'EP-2', '/portfolio/pf-2'],
+  ])('links a %s row to its detail page', (type, itemKey, href) => {
+    renderTable({ data: [{ ...ITEM, id: 'pf-2', type, itemKey }] })
+    // By the link's title (the key), not a RegExp built from data.
+    const link = screen.getByTitle(itemKey)
+    expect(link.tagName).toBe('A')
+    expect(link.getAttribute('href')).toBe(href)
+  })
 })

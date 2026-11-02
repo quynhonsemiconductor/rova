@@ -601,3 +601,75 @@ describe('frozen history: one series per read, never a sum and never a leak', ()
     expect(report.hasScheduledWork).toBe(true);
   });
 });
+
+describe('the Carryover report reads the selected Iteration ALONE (US-118 BA retest)', () => {
+  /** A Carryover event between two Iterations, with one Task carrying `todo` hours. */
+  const event = (id: string, source: string, target: string, todo: number) => ({
+    transitionId: id,
+    occurredAt: '2026-06-10T00:00:00.000Z',
+    storyId: `story-${id}`,
+    storyKey: `US-${id}`,
+    storyTitle: 'Story',
+    storyStartDate: null,
+    targetEndDate: '2026-06-20',
+    sourceIterationId: source,
+    sourceIterationName: source,
+    targetIterationId: target,
+    targetIterationName: target,
+    tasks: [
+      {
+        taskId: `t-${id}`,
+        estimateHours: todo,
+        todoHours: todo,
+        actualHours: 0,
+        currentActualHours: 0,
+      },
+    ],
+  });
+
+  it('ignores a timebox sibling, so an Iteration with no events reports 0 and no rows', async () => {
+    // IT-7 and IT-12 share a timebox group (computed once at create, kept across a date edit), and
+    // only IT-12 has Carryovers. Reading the fused set showed IT-12's events under IT-7.
+    const it7 = iteration({ id: 'it-7', name: 'IT-7' });
+    const it12 = iteration({ id: 'it-12', name: 'IT-12', startDate: '2026-06-15' });
+    const { service, repo } = harness({ teams: null, iteration: it7 });
+    vi.mocked(repo.findTimeboxSiblings).mockResolvedValue([it7, it12]);
+    vi.mocked(repo.findCarryoverEvents).mockResolvedValue([
+      event('1', 'it-other', 'it-12', 5),
+      event('2', 'it-12', 'it-next', 8),
+      event('3', 'it-12', 'it-next', 8),
+    ]);
+    vi.mocked(repo.listScopedIterations).mockResolvedValue([it7, it12]);
+
+    const report = await service.getCarryover(admin, { projectId: PROJECT, iterationId: 'it-7' });
+
+    expect(report.kpis).toEqual({
+      carryIn: 0,
+      carryOut: 0,
+      transferredTodoHours: 0,
+      carryoverRate: 0,
+    });
+    expect(report.rows).toEqual([]);
+    expect(report.timebox.iterationCount).toBe(1);
+    expect(vi.mocked(repo.listScheduledStoryIds).mock.calls[0][1]).toEqual(['it-7']);
+    // The KPIs and the selected Iteration's own trend bar now say the same thing.
+    expect(report.trend.find((p) => p.iterationId === 'it-7')).toMatchObject({
+      carryIn: 0,
+      carryOut: 0,
+    });
+  });
+
+  it('still counts the selected Iteration own events', async () => {
+    const it12 = iteration({ id: 'it-12', name: 'IT-12' });
+    const { service, repo } = harness({ teams: null, iteration: it12 });
+    vi.mocked(repo.findCarryoverEvents).mockResolvedValue([
+      event('1', 'it-other', 'it-12', 5),
+      event('2', 'it-12', 'it-next', 8),
+    ]);
+
+    const report = await service.getCarryover(admin, { projectId: PROJECT, iterationId: 'it-12' });
+
+    expect(report.kpis).toMatchObject({ carryIn: 1, carryOut: 1, transferredTodoHours: 13 });
+    expect(report.rows.map((r) => r.direction)).toEqual(['in', 'out']);
+  });
+});

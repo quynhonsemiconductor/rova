@@ -4,7 +4,7 @@
 
 **Goal:** Make merging a Release PR actually deploy — fix the release-tag→deploy mismatch in the canonical monorepos and repair the broken/ inconsistent merge gates.
 
-**Architecture:** Two classes of change. (a) **Repo config** — a one-line `release-please-config.json` edit in `rally` and `opshub` so tags are `vX.Y.Z` instead of `rally-apivX.Y.Z`, matching the deploy trigger glob. (b) **Repo settings** — align each ruleset's required Gitleaks status context to the name the workflow actually emits, and enable branch auto-delete. Config changes ship as PRs; settings changes are applied by an org admin via `gh api` (they cannot run in restricted automation).
+**Architecture:** Two classes of change. (a) **Repo config** — a one-line `release-please-config.json` edit in `rova` and `opshub` so tags are `vX.Y.Z` instead of `rally-apivX.Y.Z`, matching the deploy trigger glob. (b) **Repo settings** — align each ruleset's required Gitleaks status context to the name the workflow actually emits, and enable branch auto-delete. Config changes ship as PRs; settings changes are applied by an org admin via `gh api` (they cannot run in restricted automation).
 
 **Tech Stack:** release-please (node), GitHub Actions, GitHub repository rulesets, `gh` CLI.
 
@@ -16,7 +16,7 @@
 
 ---
 
-## Task 1: Fix release tag format in `rally` (config PR)
+## Task 1: Fix release tag format in `rova` (config PR)
 
 **Files:**
 - Modify: `release-please-config.json` (repo root, in a fresh branch off `origin/main`)
@@ -25,7 +25,7 @@
 
 ```bash
 unset GITHUB_TOKEN GH_TOKEN
-cd /home/nghiavt18/personal/qnsc/rally
+cd /home/nghiavt18/personal/qnsc/rova
 git fetch origin main
 git checkout -B fix/release-tag-format origin/main
 ```
@@ -57,7 +57,7 @@ In `release-please-config.json`, inside the `"."` package object (same level as 
 Run:
 ```bash
 npx --yes release-please@16 release-pr \
-  --repo-url=QNSC-VN/rally --target-branch=main --dry-run \
+  --repo-url=QNSC-VN/rova --target-branch=main --dry-run \
   --token="$(gh auth token)" 2>&1 | grep -iE 'tag|version' | head
 ```
 Expected: the proposed tag / release is `v0.2.0` (NOT `rally-apiv0.2.0`). If the dry-run cannot run in the environment, fall back to Step 4b.
@@ -145,7 +145,7 @@ Disable include-component-in-tag → tag = vX.Y.Z."
 git push -u origin fix/release-tag-format
 gh pr create --base main --head fix/release-tag-format \
   --title "fix(release): emit vX.Y.Z tags so Release PR triggers deploy" \
-  --body "Same fix as rally: disable include-component-in-tag so the release tag is \`vX.Y.Z\`, matching the deploy trigger. No tags exist yet."
+  --body "Same fix as rova: disable include-component-in-tag so the release tag is \`vX.Y.Z\`, matching the deploy trigger. No tags exist yet."
 ```
 Expected: PR URL printed.
 
@@ -159,7 +159,7 @@ Rulesets must require the status context the workflow **emits**: bare
 named `security`. This task fixes the two confirmed-broken repos.
 
 **Repos/rulesets (from audit):** `opshub` ruleset requires the prefixed name but
-emits bare; `qnsc-infra` same. `rally` already consistent (leave it).
+emits bare; `qnsc-infra` same. `rova` already consistent (leave it).
 
 - [ ] **Step 1: Verify the mismatch per repo before changing anything**
 
@@ -218,7 +218,7 @@ Expected: prints active repo names.
 
 ```bash
 unset GITHUB_TOKEN GH_TOKEN
-for repo in rally opshub qnsc-ci qnsc-app-platform qnsc-landing qnsc-infra qnsc-infra-template ceo-suite; do
+for repo in rova opshub qnsc-ci qnsc-app-platform qnsc-landing qnsc-infra qnsc-infra-template ceo-suite; do
   gh api -X PATCH "repos/QNSC-VN/$repo" -F delete_branch_on_merge=true >/dev/null \
     && echo "enabled: $repo"
 done
@@ -228,7 +228,7 @@ Expected: `enabled: <repo>` per repo.
 - [ ] **Step 3: Verify**
 
 ```bash
-for repo in rally opshub qnsc-ci qnsc-app-platform qnsc-landing; do
+for repo in rova opshub qnsc-ci qnsc-app-platform qnsc-landing; do
   echo "$repo: $(gh api repos/QNSC-VN/$repo -q .delete_branch_on_merge)"
 done
 ```
@@ -242,7 +242,7 @@ Expected: each prints `true`.
 
 Once Tasks 1–2 are merged, prove the whole chain works.
 
-- [ ] **Step 1: Merge the open Release PR in `rally`**
+- [ ] **Step 1: Merge the open Release PR in `rova`**
 
 Confirm PR #8 (`chore(release): 0.2.0`) shows a `v0.1.0...v0.2.0` compare link (proves Task 1). Merge it.
 
@@ -250,8 +250,8 @@ Confirm PR #8 (`chore(release): 0.2.0`) shows a `v0.1.0...v0.2.0` compare link (
 
 ```bash
 unset GITHUB_TOKEN GH_TOKEN
-gh release list --repo QNSC-VN/rally | head        # expect v0.2.0
-gh run list --repo QNSC-VN/rally --workflow=backend-deploy.yml --limit 3   # expect a run triggered by the tag
+gh release list --repo QNSC-VN/rova | head        # expect v0.2.0
+gh run list --repo QNSC-VN/rova --workflow=backend-deploy.yml --limit 3   # expect a run triggered by the tag
 ```
 Expected: a `v0.2.0` GitHub Release exists AND `backend-deploy` (+ web-deploy) ran on the tag. Prod deploy pauses at the `production` Environment approval gate.
 

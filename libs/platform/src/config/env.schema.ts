@@ -59,6 +59,10 @@ export const EnvSchema = z
     DATABASE_USER: z.string().optional(),
     DATABASE_PASSWORD: z.string().optional(),
     DATABASE_SSLMODE: z.string().default('require'),
+    // Path to the CA bundle database certificates must chain to (RDS global bundle in the
+    // image today, the CNPG ca.crt on-prem). REQUIRED in production: without it the
+    // process refuses to connect (see db/pg-ssl.ts) instead of encrypting unverified.
+    DATABASE_SSL_CA: emptyToUndefined(z.string().optional()),
 
     DATABASE_POOL_MIN: z.coerce.number().int().positive().default(2),
     DATABASE_POOL_MAX: z.coerce.number().int().positive().default(20),
@@ -102,7 +106,7 @@ export const EnvSchema = z
     IDENTITY_TEST_LOGIN: emptyToUndefined(z.enum(['enabled']).optional()),
 
     // Cookie signing. Distinct from CSRF_SECRET on purpose: this one signs every
-    // cookie rally sets, so rotating it invalidates all of them. Sharing one value
+    // cookie rova sets, so rotating it invalidates all of them. Sharing one value
     // between the two made a cookie-hygiene rotation read as a CSRF change (and
     // vice versa) in the audit trail.
     COOKIE_SECRET: z.string().min(32),
@@ -119,6 +123,27 @@ export const EnvSchema = z
      * published the endpoint inventory without anyone choosing to.
      */
     SWAGGER_ENABLED: booleanish(false),
+
+    /**
+     * The MCP endpoint (`/mcp`). Defaults OFF everywhere and must be turned on explicitly. The
+     * route is raw (outside `/v1`, the session guards and Swagger), verifies the Cloudflare
+     * Access JWT per request, and composes the product's own REST routes in-process with the
+     * person as principal. Until the app-platform `identity/access-jwt` verifier is wired in,
+     * an enabled endpoint answers every call 503.
+     */
+    MCP_ENABLED: booleanish(false),
+
+    // The MCP Access application's origin settings (MCP-PLAN §5). Required only when MCP_ENABLED
+    // is true (asserted at boot); test fixtures only until the owner sets the real values.
+    // `iss` of the Access JWT must equal this origin. DEPLOYMENT REQUIREMENT: the /mcp Access
+    // application must allow ONLY the Entra IdP — no One-time PIN, no social IdPs — because the
+    // adapter maps by email and guests (unverified addresses) are refused.
+    MCP_CF_TEAM_DOMAIN: z
+      .string()
+      .regex(/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/)
+      .optional(),
+    // The AUD tag of the "/mcp" Access application. A token minted for another app is rejected.
+    MCP_ACCESS_AUD: z.string().min(1).optional(),
 
     // SCM webhooks (GitHub/GHE) — HMAC shared secret for X-Hub-Signature-256.
     // Optional so the app boots without SCM configured; the webhook endpoint
@@ -200,7 +225,8 @@ export const EnvSchema = z
     /**
      * Which email transport to use. Defaults to 'dev' (logs to stdout).
      * 'graph' sends through Microsoft 365 (Graph sendMail) from the environment's shared mailbox: needs MAIL_GRAPH_SENDER and
-     * MAIL_GRAPH_CLIENT_ID (the "Rova <Env> Service" app, NOT the sign-in app), and in the WORKER its certificate MAIL_GRAPH_CERTIFICATE.
+     * MAIL_GRAPH_CLIENT_ID (the "Rova <Dev|Prod> Service" app, NOT the sign-in app), and in the WORKER the file at
+     * AZURE_CLIENT_CERTIFICATE_PATH (the ONE Graph credential mechanism, ONPREM-PLAN §7.3).
      * See docs/runbooks/mail-graph.md.
      */
     EMAIL_PROVIDER: z.enum(['graph', 'smtp', 'dev']).default('dev'),
@@ -215,17 +241,18 @@ export const EnvSchema = z
      */
     MAIL_GRAPH_SENDER: emptyToUndefined(z.string().email().optional()),
     /**
-     * The "Rova <Env> Service" Entra app: certificate only, worker only, no client secret. NOT `ENTRA_CLIENT_ID`, the sign-in app (delegated,
+     * The "Rova <Dev|Prod> Service" Entra app: certificate only, worker only, no client secret. NOT `ENTRA_CLIENT_ID`, the sign-in app (delegated,
      * client secret, API): a compromised API process must not hold a credential that can send mail. The Exchange RBAC role "Application
      * Mail.Send" is assigned to THIS app, scoped to this environment's mailbox. A public identifier.
      */
     MAIL_GRAPH_CLIENT_ID: emptyToUndefined(z.string().uuid().optional()),
     /**
-     * Credential for the 'graph' provider, ECS (now): a PEM holding the private key AND the certificate of the Service app (MAIL_GRAPH_CLIENT_ID),
-     * raw or base64, from the standalone secret `rova/<env>/mail-graph-certificate` (NOT the app bundle: the API's task role reads the bundle).
-     * READ BY THE WORKER ONLY (the API never sends; only the worker's execution role is granted the secret).
+     * Credential for the 'graph' provider: PATH of the worker-only file holding the Service app's ONE PEM (private key first, then the
+     * certificate, `cat mail.key mail.crt`), synced from the standalone secret `rova-<env>-graph-cert` and mounted INTO THE WORKER only
+     * (the API never sends; the API task is never given the file). platform-mail reads it under its standard name
+     * AZURE_CLIENT_CERTIFICATE_PATH (ONPREM-PLAN §7.3) — a path, never a PEM env value.
      */
-    MAIL_GRAPH_CERTIFICATE: emptyToUndefined(z.string().min(1).optional()),
+    AZURE_CLIENT_CERTIFICATE_PATH: emptyToUndefined(z.string().min(1).optional()),
     /**
      * Credential for the 'graph' provider, k3s (later): the projected ServiceAccount token a federated credential on the app exchanges. Wins over
      * the certificate, so the move is: mount the token, set this, delete the certificate.
@@ -242,7 +269,7 @@ export const EnvSchema = z
 
     /** Reply-To address shown in email clients. Defaults to a no-reply alias. */
     MAIL_REPLY_TO: z.string().email().optional(),
-    /** Public base URL used to build password-reset and invitation links (e.g. https://app.rally.io). */
+    /** Public base URL used to build password-reset and invitation links (e.g. https://app.rova.io). */
     APP_BASE_URL: z.string().url().default('http://localhost:5173'),
 
     // Observability
@@ -251,7 +278,7 @@ export const EnvSchema = z
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default('http://localhost:4318'),
     /** 0.0–1.0 fraction of root spans to sample. Defaults: 1.0 dev, 0.1 prod. */
     OTEL_SAMPLING_PROBABILITY: z.coerce.number().min(0).max(1).optional(),
-    /** Semver string injected into OTEL resource and Pino logs. */
+    /** The release (image tag), injected into the OTEL resource, Pino logs and the MCP server version. */
     SERVICE_VERSION: z.string().default('dev'),
     /**
      * Deployment identity for telemetry (`deployment.environment.name`) — NOT the
@@ -263,7 +290,8 @@ export const EnvSchema = z
      * every develop span, metric and log as `production` — indistinguishable from
      * real production — and silently applied the production sampling ratio there.
      *
-     * Infra sets this to `develop` / `production`. Left unset, `@quynhonsemiconductor/observability`
+     * The deployment sets this to `dev` / `prod` (on-prem) or `develop` / `production` (AWS era);
+     * observability treats `prod` and `production` alike. Left unset, `@quynhonsemiconductor/observability`
      * falls back to `NODE_ENV`, which is why this is optional rather than required.
      */
     DEPLOYMENT_ENV: z.string().optional(),
@@ -302,9 +330,9 @@ export const EnvSchema = z
      *
      * When true, `WorkspaceService.inviteMember` writes a `messaging.guest_invite_outbox` row in
      * the invite transaction and the worker relay calls
-     * `POST https://graph.microsoft.com/v1.0/invitations` app-only, reusing the SAME app
-     * registration and secret as the BFF (`ENTRA_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`) —
-     * no new secret and no infra change.
+     * `POST https://graph.microsoft.com/v1.0/invitations` app-only, on the "Rova <Env> Service"
+     * app's certificate (`MAIL_GRAPH_CLIENT_ID` + the worker-only file
+     * `AZURE_CLIENT_CERTIFICATE_PATH`) — no client secret anywhere (ONPREM-PLAN §7.3).
      *
      * DEFAULT FALSE, and load-bearing. The registration needs the `User.Invite.All` APPLICATION
      * permission with admin consent before any of it can work; without it every Graph call is a
@@ -336,13 +364,20 @@ export const EnvSchema = z
      * Whether a staff-domain address may create its own account at first sign-in (`true`) or only when it already has
      * a profile or a live invitation (`false`: invite-only, how every deployed environment runs). B2B guests are always
      * invite-only. Also read by the migrator's tenant bootstrap.
+     *
+     * DEFAULT false (changed 2026-11-01, pre-prod security review): the safe value must be the one an environment gets
+     * by omission. Every deployed environment already sets it explicitly; a new one that forgets the key is now
+     * invite-only rather than open to any address the tenant vouches for in `qnsc.vn`.
      */
-    SSO_JIT_ENABLED: booleanish(true),
+    SSO_JIT_ENABLED: booleanish(false),
     /**
      * Comma-separated SSO (Entra) emails auto-granted workspace_admin on first login.
-     * Example: "nghiavt@qnsc.vn,quangld@qnsc.vn"
+     * Example: "alice@example.test,bob@example.test"
      */
     PLATFORM_ADMIN_EMAILS: z.string().default(''),
+    // No schema-level requirement here ON PURPOSE: the worker shares this schema and
+    // never sees the roster (the bundle key is injected into the API only), and it must
+    // boot without it. The API asserts its own copy at boot — apps/api/bootstrap.
   })
   .superRefine((env, ctx) => {
     /**
@@ -421,7 +456,7 @@ export const EnvSchema = z
         code: z.ZodIssueCode.custom,
         path: ['MAIL_GRAPH_CLIENT_ID'],
         message:
-          'MAIL_GRAPH_CLIENT_ID is required when EMAIL_PROVIDER is "graph": the "Rova <Env> Service" app that holds the ' +
+          'MAIL_GRAPH_CLIENT_ID is required when EMAIL_PROVIDER is "graph": the "Rova <Dev|Prod> Service" app that holds the ' +
           'Exchange "Application Mail.Send" role for the mailbox (not the sign-in app, ENTRA_CLIENT_ID).',
       });
     }
@@ -473,6 +508,52 @@ export const EnvSchema = z
         path: ['APP_BASE_URL'],
         message:
           'APP_BASE_URL must be https when NODE_ENV=production: it is the origin Entra redirects the browser to (/api/auth/callback/microsoft) and the origin of the session cookie.',
+      });
+    }
+    // Pre-prod security review (2026-11-01): switches that are useful locally and are a hole in production.
+    // Refused rather than warned, because each one is a single environment variable away from shipping and
+    // none of them has a legitimate production use here.
+    for (const key of [
+      'DISABLE_RATE_LIMIT',
+      'SWAGGER_ENABLED',
+      'LOG_HTTP_BODIES',
+      'LOG_DEV_EMAIL_CONTENT',
+    ] as const) {
+      if (env[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} cannot be true when NODE_ENV=production: it exists for local work and is a hole on a public host.`,
+        });
+      }
+    }
+    if (env.EMAIL_PROVIDER === 'dev') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_PROVIDER'],
+        message:
+          'EMAIL_PROVIDER=dev cannot be set when NODE_ENV=production: it logs messages instead of sending them, so every invitation would be marked sent and lost.',
+      });
+    }
+    // `CORS_ORIGINS` defaults to the dev server. A production task that keeps it (or a copied tfvars) would
+    // let a page on the operator's own machine read the API with a session cookie attached.
+    const localOrigins = env.CORS_ORIGINS.split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => {
+        try {
+          const host = new URL(origin).hostname;
+          return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+        } catch {
+          return false;
+        }
+      });
+    if (localOrigins.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['CORS_ORIGINS'],
+        message:
+          `CORS_ORIGINS must not contain a localhost origin when NODE_ENV=production (found ${localOrigins.join(', ')}): ` +
+          "it would let a page on the operator's machine read the API with the reader's cookie.",
       });
     }
   });

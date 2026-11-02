@@ -15,7 +15,7 @@ import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 import type { WorkItemFilters } from '@modules/work-items';
 
-import { ALL, ADMIN_USER_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { ALL, ADMIN_USER_ID, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 const NO_WI_FILTERS = {} as WorkItemFilters;
 const NO_IS_FILTERS = {} as IterationStatusFilters;
@@ -29,7 +29,7 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
   const actor = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
     iterations = app.get(IterationsService);

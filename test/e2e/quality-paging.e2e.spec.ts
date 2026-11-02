@@ -24,7 +24,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { QualityService } from '@modules/quality';
 import { WorkItemsService } from '@modules/work-items';
 
-import { SEEDED, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { SEEDED, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('Quality defects: server-side paging', () => {
   let app: NestFastifyApplication;
@@ -38,7 +38,7 @@ describe('Quality defects: server-side paging', () => {
   const marker = uniqueKey('PAGE');
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     quality = app.get(QualityService);
     workItems = app.get(WorkItemsService);
 

@@ -32,7 +32,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FILE_REPOSITORY, type IFileRepository } from '@modules/attachments';
 import { DRIZZLE, type DrizzleDB } from '@platform';
 
-import { ADMIN_USER_ID, WORKSPACE_ID, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { ADMIN_USER_ID, WORKSPACE_ID, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('file storage (e2e)', () => {
   let app: NestFastifyApplication;
@@ -40,7 +40,7 @@ describe('file storage (e2e)', () => {
   let db: DrizzleDB;
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     files = app.get<IFileRepository>(FILE_REPOSITORY);
     db = app.get<DrizzleDB>(DRIZZLE);
   });
@@ -52,7 +52,7 @@ describe('file storage (e2e)', () => {
   /**
    * The regression guard, and the reason this file is worth more than its length.
    *
-   * RLS on these tables is not a config choice someone may re-make: Rally is
+   * RLS on these tables is not a config choice someone may re-make: Rova is
    * single-tenant, so DB-level isolation is an explicit non-goal of the
    * drop-multi-tenant design, and migration 0025 tore the apparatus down. Migration
    * 0053 then re-added it to two tables on the stated belief that it "mirrors the
@@ -75,7 +75,7 @@ describe('file storage (e2e)', () => {
 
     expect(
       rows.map((r) => (r as { tbl: string }).tbl),
-      'RLS is enabled on a table. Rally enforces workspace isolation in the repository ' +
+      'RLS is enabled on a table. Rova enforces workspace isolation in the repository ' +
         'layer (see test/workspace-scope.ratchet.spec.ts); no application code sets ' +
         'app.workspace_id, so any policy referencing it denies every write as soon as the ' +
         'app connects as a non-owner. See migration 0070.',

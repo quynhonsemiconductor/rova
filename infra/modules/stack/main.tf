@@ -156,7 +156,7 @@ locals {
     }, {
     # There is deliberately NO jwt-public here. `env.schema.ts` derives the public key
     # from this one, because an ES256 public key is a pure function of its private half and
-    # rally publishes no JWKS. Storing both allowed the one failure a key pair cannot
+    # rova publishes no JWKS. Storing both allowed the one failure a key pair cannot
     # otherwise have — a mismatched pair, where signing succeeds and every verification
     # rejects — which nothing detected, since both halves were individually valid to
     # Terraform, to the deploy preflight and to the schema. Do not add it back.
@@ -165,8 +165,14 @@ locals {
     # NOTE: give this a value BEFORE the next app deploy — COOKIE_SECRET is required at
     # startup, so a task wired to an empty secret cannot boot (a failed deploy plus
     # rollback, not a silent downgrade, which is the intent).
-    "cookie-secret"       = "Cookie signing secret (distinct from csrf-secret)"
-    "entra-client-secret" = "Microsoft Entra confidential-client secret (sign-in app; the worker's Graph guest invite reuses it until it moves to the Service app)"
+    "cookie-secret" = "Cookie signing secret (distinct from csrf-secret)"
+    # Comma-separated emails auto-granted workspace_admin on SSO login. API only. The
+    # owner adds the KEY to <product>/<env>/app by hand (it names staff, so it is not
+    # in git and Terraform never sets it); until the key exists the injected task
+    # cannot start, and the API also refuses to boot on an empty value — loud, never
+    # silent.
+    "platform-admin-emails" = "Comma-separated emails auto-granted workspace_admin on SSO login (API only)"
+    "entra-client-secret"   = "Microsoft Entra confidential-client secret (sign-in app; the worker's Graph guest invite reuses it until it moves to the Service app)"
     # identity 8 (Better Auth): signs the session cookie and encrypts what it stores. API only; rotating it signs everyone out.
     # A KEY of the app bundle, absent until the owner puts a value in; injected into the API only once `better_auth_secret_set`.
     "better-auth-secret" = "Identity 8 (Better Auth) cookie-signing and encryption secret, 32+ characters (openssl rand -base64 48). API only. Not the cookie-secret, not the csrf-secret."
@@ -338,7 +344,7 @@ module "cache" {
 # export into a void. That is what makes turning telemetry on a one-line change
 # per environment rather than a migration.
 # ── Cloudflare Tunnel ─────────────────────────────────────────────────────────
-# Created by Terraform via the shared cf-tunnel module. Both of rally's tunnels predate
+# Created by Terraform via the shared cf-tunnel module. Both of rova's tunnels predate
 # it and were made in the dashboard, so live/*/main.tf carries an `import` block that
 # adopts each one — the module ignores `secret` precisely so that adoption is a no-op
 # rather than a rotation. Rotating the secret would change the connector token, and every
@@ -352,20 +358,20 @@ module "tunnel" {
 
   // ── STEP ONE OF TWO: ADOPT THE TUNNEL, CHANGE NOTHING ─────────────────────
   // `hostname` is deliberately left unset, so this module creates NO configuration
-  // resource and rally keeps the routing it has today.
+  // resource and rova keeps the routing it has today.
   //
   // That restraint is the whole point. Cloudflare's tunnel-configuration API is a
   // whole-document PUT, so writing a partial rule set silently discards anything the
   // live configuration holds that this file does not reproduce — against a tunnel that
   // is currently carrying traffic, on a hostname nobody has compared rule-by-rule.
   //
-  // config_src is left UNSET, because that is what rally's tunnels actually have. The
+  // config_src is left UNSET, because that is what rova's tunnels actually have. The
   // first plan of this change proved it, and proved why it matters:
   //
   //   + config_src = "cloudflare" # forces replacement
   //
   // Writing the attribute would have destroyed and recreated a tunnel currently serving
-  // rally-api-dev.qnsc.vn — new UUID, new CNAME target, new connector token. The plan is
+  // rally-api-dev.qnsc.vn (legacy physical hostname, do not rename) — new UUID, new CNAME target, new connector token. The plan is
   // the only place that was visible before it happened.
   //
   // STEP TWO IS NOW AVAILABLE, PER ENVIRONMENT, via `tunnel_routing_managed`.
@@ -374,7 +380,7 @@ module "tunnel" {
   // rule, so `cloudflared` connected, reported healthy and returned 503 to every request
   // — `No ingress rules were defined in provided config (if any) nor from the cli`. The
   // post-deploy readiness check caught it, but nothing in the pipeline could have created
-  // the rule, because rally adopted its tunnels and left routing outside Terraform. That
+  // the rule, because rova adopted its tunnels and left routing outside Terraform. That
   // is a step someone has to remember, and on production nobody did.
   //
   // Still OPT-IN, and still off for develop, because the configuration API is a
@@ -652,7 +658,7 @@ locals {
   # The explicit bucket boundaries of http_server_duration_milliseconds, in
   # milliseconds — the only `le` values that exist on the series.
   #
-  # MIRRORS apps/api/src/main.ts. The list is NOT the OpenTelemetry JS defaults any
+  # MIRRORS apps/api/src/app-options.ts. The list is NOT the OpenTelemetry JS defaults any
   # more: those stop at 10000, and the same change that added this gate widened the
   # view (`httpDurationBoundaries` on startOtel) precisely because the top finite
   # bucket is where a p99 goes to hide. The first fifteen entries are still the SDK
@@ -679,8 +685,7 @@ locals {
   # exporter might in fact have), but a rejected legal boundary is still a plan that
   # fails for the wrong reason.
   http_duration_boundaries_ms = [
-    0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000,
-    15000, 30000, 60000, 120000, 180000,
+    0, 250, 1000, 2500, 5000, 10000, 60000, 180000,
   ]
 
   # The three ratio thresholds rendered as PERCENTAGES for the alert summaries.
@@ -760,7 +765,8 @@ locals {
 # ── VOLUME GATE: why four of these queries end in `and on() (... >= N)` ───────
 #
 # A PERCENTILE OVER A HANDFUL OF SAMPLES IS NOT A PERCENTILE, and neither is a
-# ratio. Production paged on `rally-production-http-p99-latency` with a value of
+# ratio. Production paged on `rally-production-http-p99-latency` (legacy physical
+# alert-rule name, do not rename) with a value of
 # A=10000 and resolved at A=48.5. Neither number described the service:
 #
 #   * 10000 is not a latency at all. It was the largest finite bucket boundary of
@@ -1136,7 +1142,8 @@ data "grafana_data_source" "tempo" {
 # intended.
 #
 # Fixed by creating it ONCE, centrally, in qnsc-infra/live/observability
-# (`grafana_folder.rally_dashboards`) — same fix as `alerts_folder_uid`
+# (`grafana_folder.rally_dashboards` — legacy physical identifiers "grafana_folder.
+# rally_dashboards" and the "Rally" folder title, do not rename) — same fix as `alerts_folder_uid`
 # already being a plain resource reference there, not a var that can be
 # left unset. `var.grafana_alerting.product_dashboards_folder_uid` below
 # is that folder's real UID.
@@ -1211,7 +1218,7 @@ resource "grafana_dashboard" "overview" {
     # backend-deploy.yml's `annotate-deploy` job posts these via Grafana's
     # own annotation API after each successful deploy, tagged so ONLY this
     # product's THIS environment's deploys show here (a develop dashboard
-    # showing prod's deploy markers, or rally's dashboard showing another
+    # showing prod's deploy markers, or rova's dashboard showing another
     # product's, would misattribute exactly the correlation this exists to
     # enable). Built-in "-- Grafana --" datasource — Grafana's own
     # annotation store, not a Loki/Prometheus query.
@@ -1358,7 +1365,8 @@ resource "grafana_dashboard" "overview" {
         # screenshot review, before prod — an ungrouped query returns one
         # series PER RUNNING TASK (service_instance_id differs across
         # replicas/rollouts even though service_name doesn't), which
-        # rendered as duplicate-looking "rally-api in_use" legend entries
+        # rendered as duplicate-looking "rally-api in_use" (legacy physical service
+        # name, do not rename) legend entries
         # instead of one line per service.
         targets = [
           {
@@ -1516,7 +1524,7 @@ resource "grafana_dashboard" "runtime" {
     # backend-deploy.yml's `annotate-deploy` job posts these via Grafana's
     # own annotation API after each successful deploy, tagged so ONLY this
     # product's THIS environment's deploys show here (a develop dashboard
-    # showing prod's deploy markers, or rally's dashboard showing another
+    # showing prod's deploy markers, or rova's dashboard showing another
     # product's, would misattribute exactly the correlation this exists to
     # enable). Built-in "-- Grafana --" datasource — Grafana's own
     # annotation store, not a Loki/Prometheus query.
@@ -1874,6 +1882,7 @@ module "api" {
   #
   #   AccessDeniedException: assumed-role/rally-develop-api-exec is not authorized to
   #   perform: secretsmanager:GetSecretValue on .../rally/develop/tunnel-token-tf-*
+  #   (quoted verbatim from the live error — legacy physical role/secret names, do not rename)
   #
   # The apply that introduced the secret succeeded and wired the sidecar to it, so
   # nothing failed until the next task START — which then could not, the circuit breaker
@@ -1919,6 +1928,9 @@ module "api" {
     # non-secret and passed as plain env below; the app composes the URL.
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    # Fail-closed on purpose: empty or absent, the API refuses to boot (env.schema
+    # superRefine) rather than silently granting nobody workspace_admin.
+    { name = "PLATFORM_ADMIN_EMAILS", secret_arn = module.secrets.secret_arns["platform-admin-emails"] },
     { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
     # `JWT_PRIVATE_KEY` above and `ENTRA_REDIRECT_URI` below are identity 7's. The image no longer reads them; they stay bound so that
@@ -1995,7 +2007,9 @@ module "api" {
     # granted GetSecretValue on it via task_secret_arns below.
     { name = "IDENTITY_HOME_SECRET_REF", value = module.secrets.secret_arns["entra-client-secret"] },
     # Comma-separated emails auto-granted workspace_admin on every SSO login
-    { name = "PLATFORM_ADMIN_EMAILS", value = join(",", var.platform_admin_emails) },
+    # PLATFORM_ADMIN_EMAILS is NOT here: it is a KEY of the app bundle, injected from
+    # it in the API's secrets list below (fail-closed: the API refuses to boot without
+    # it, and a bundle without the key fails the task at start — see the map entry).
     # Messaging — SQS queue URLs injected at deploy time from module outputs
     # Attachments object storage — Cloudflare R2 (S3-compatible) from the platform
     # storage-dev stack. Bucket name still travels as S3_ATTACHMENTS_BUCKET; the
@@ -2016,12 +2030,15 @@ module "api" {
     # URL)", which is what develop did until the buckets got a custom domain.
     { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs["${var.product}_attachments_endpoint"] },
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
-    # Email — Microsoft Graph is the only transport (SES and Resend were removed, rova#717). The
-    # mailbox and the Service app are REQUIRED alongside it: the API refuses to boot without them.
-    { name = "EMAIL_PROVIDER", value = "graph" },
+    # Email — SES in production. The sender is REQUIRED alongside the provider: without it the API
+    # now fails at boot by design, because the old behaviour was to send every message as
+    # `"Mini Rally" <>`, collect an SES rejection for each, open the email circuit breaker for the
+    # life of the process — and go on reporting healthy.
+    { name = "EMAIL_PROVIDER", value = var.email_provider },
     # The shared mailbox Graph sends as (not a secret). The api gets it so both tasks agree on the transport; only the worker has the certificate.
     { name = "MAIL_GRAPH_SENDER", value = var.mail_graph_sender },
     { name = "MAIL_GRAPH_CLIENT_ID", value = var.mail_graph_client_id },
+    { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     # Observability
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
@@ -2215,12 +2232,20 @@ module "worker" {
     # URL)", which is what develop did until the buckets got a custom domain.
     { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs["${var.product}_attachments_endpoint"] },
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
-    # The WORKER sends too — the notification relay is its job — so it needs the transport and the
-    # mailbox the same way the api task does.
-    { name = "EMAIL_PROVIDER", value = "graph" },
+    # The WORKER sends too — the notification relay is its job — so it needs the sender for the
+    # same reason the api task does.
+    { name = "EMAIL_PROVIDER", value = var.email_provider },
     # The shared mailbox Graph sends as (not a secret). The api gets it so both tasks agree on the transport; only the worker has the certificate.
     { name = "MAIL_GRAPH_SENDER", value = var.mail_graph_sender },
     { name = "MAIL_GRAPH_CLIENT_ID", value = var.mail_graph_client_id },
+    // `try`, not a plain index: the _shared stack owns these outputs, and a PR-time plan runs
+    // against the remote state as it is TODAY — which does not have them yet. Empty until
+    // _shared applies, which is exactly the loop's off state (the worker logs "feedback OFF").
+    // The queue ARN below is CONSTRUCTED instead, same idiom as ses_identity_arn, so the IAM
+    // grant is correct from the first apply and needs no ordering at all.
+    { name = "SES_BOUNCE_CONFIGSET", value = aws_sesv2_configuration_set.email_feedback.configuration_set_name },
+    { name = "SES_BOUNCE_QUEUE_URL", value = aws_sqs_queue.ses_bounce_feedback.url },
+    { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
     { name = "OTEL_SERVICE_NAME", value = "${var.product}-worker" },
@@ -2518,17 +2543,17 @@ module "observability" {
   # module silently skips the two user-facing ALB alarms.
   alb_arn = try(data.terraform_remote_state.runtime.outputs.alb_arn, "")
 
-  # Node mode only, and only rally's OWN dedicated node (never the shared node in
+  # Node mode only, and only rova's OWN dedicated node (never the shared node in
   # the runtime layer — see cache_cluster_id's own description for why: a shared
   # node's alarms belong where the node is created, not in one tenant's stack).
   # enable_cache_alarms is a SEPARATE, plan-time-known condition from
   # cache_cluster_id's value: on a from-scratch environment the cache node's
   # cluster_id output is unknown until apply, and a count gated on that directly
   # is a hard OpenTofu error, not a deferred plan (opshub hit this live; ported
-  # back here before rally ever exercises the same first-apply path).
+  # back here before rova ever exercises the same first-apply path).
   enable_cache_alarms = var.cache.enabled && !var.cache.shared && var.cache.mode == "node"
   cache_cluster_id    = var.cache.enabled && !var.cache.shared && var.cache.mode == "node" ? module.cache[0].cluster_id : ""
-  # `identifier` (rally-prod), NOT `instance_id` (db-F35NKOG…). CloudWatch publishes RDS
+  # `identifier` (rally-prod — legacy physical name, do not rename), NOT `instance_id` (db-F35NKOG…). CloudWatch publishes RDS
   # metrics under the DBInstanceIdentifier dimension, and `aws_db_instance.id` returns the
   # RESOURCE id on AWS provider 5.x — so this pointed at a dimension value that does not
   # exist. Six alarms sat in INSUFFICIENT_DATA permanently: RDS CPU, connections and free
@@ -2540,8 +2565,8 @@ module "observability" {
 
   # Drives BOTH per-target-group alarms: response latency and UnHealthyHostCount.
   # Scoped by target group because the ALB is shared with other products — a
-  # load-balancer-wide dimension aggregated rally and opshub into one p95 and paged
-  # under a rally name for traffic that was not always rally's.
+  # load-balancer-wide dimension aggregated rova and opshub into one p95 and paged
+  # under a legacy rally name for traffic that was not always rova's.
   #
   # Passed unconditionally now. It used to be gated on `monitor_target_health`, which
   # meant develop — where the cost-saver makes zero tasks a normal state — gave up
@@ -3250,3 +3275,203 @@ resource "aws_scheduler_schedule" "ecs_scale_up" {
 # and jointly produce the exact state the other check exists to prevent — tasks up,
 # no cache, REDIS_URL falling back to localhost, denylist and rate limiter failing
 # open — except on a timer, at 08:00, with nobody watching.
+
+
+# ── Outbound email: the permission half ───────────────────────────────────────
+#
+# The IDENTITY is created once in `infra/live/_shared` (per account+region, and both environments
+# share both). What belongs here is the runtime grant: without `ses:SendEmail` on the task role, every
+# send fails with AccessDenied before the sender is even looked at — which is what both environments
+# did, while `EMAIL_PROVIDER=ses` and `MAIL_FROM_EMAIL` sat correctly configured beside it. Three
+# failures then opened the app's in-process email circuit breaker and the API kept reporting healthy,
+# so invitations and notifications were silently dead.
+#
+# The shared `ecs-service` module takes no policy input, so this attaches to the role it outputs.
+# `split("/", arn)[1]` is the same idiom `infra/live/_shared` already uses for the deploy-role guards.
+#
+# SCOPED TWO WAYS, because a bare `ses:SendEmail` on `"*"` would let a compromised task send as any
+# verified identity in the account — including prod's — from either environment:
+#   • `Resource` is this account's identity for the sender's own domain, so develop cannot send
+#     through an identity it does not share;
+#   • `ses:FromAddress` pins the envelope sender to `MAIL_FROM_EMAIL` exactly, so the grant cannot be
+#     used to impersonate another address on the same domain.
+# The ARN is CONSTRUCTED rather than read from the shared state on purpose: IAM happily references a
+# resource that does not exist yet, so the two applies can run in either order and the permission
+# simply starts working once the identity is verified. A remote-state dependency would make this
+# stack fail until `_shared` had been applied.
+locals {
+  mail_domain      = split("@", var.mail_from_email)[1]
+  ses_identity_arn = "arn:aws:ses:${var.region}:${data.aws_caller_identity.current.account_id}:identity/${local.mail_domain}"
+
+  ses_send_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["ses:SendEmail", "ses:SendRawEmail"]
+        # BOTH resources, or a send that names a configuration set is denied on the
+        # config-set ARN even with the identity allowed: SES evaluates EVERY resource the
+        # request touches. Found live — worker emails failed with AccessDenied on
+        # 'configuration-set/rova-email-feedback' the moment #468 tagged sends with it,
+        # opening the email circuit breaker in both environments.
+        Resource = [local.ses_identity_arn, "arn:aws:ses:${var.region}:${data.aws_caller_identity.current.account_id}:configuration-set/rova-email-feedback"]
+        Condition = {
+          StringEquals = { "ses:FromAddress" = var.mail_from_email }
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "api_ses_send" {
+  name   = "${local.name}-api-ses-send"
+  role   = split("/", module.api.task_role_arn)[1]
+  policy = local.ses_send_policy
+}
+
+# The worker relays the outbox, so it sends MORE mail than the API does — the API only sends inline
+# where a caller waits for the result. Both need it; a grant on one is a half outage that looks like a
+# flake.
+resource "aws_iam_role_policy" "worker_ses_send" {
+  name   = "${local.name}-worker-ses-send"
+  role   = split("/", module.worker.task_role_arn)[1]
+  policy = local.ses_send_policy
+}
+
+
+# ── SES asynchronous feedback, PER ENVIRONMENT ───────────────────────────────
+#
+# The loop's whole point is that a verdict lands on the row that sent it, in the
+# DATABASE that sent it — so the queue an environment drains must be its own. The
+# first cut of this lived in _shared with one config set, topic and queue for both
+# environments, and both workers long-polled that one queue: whichever polled first
+# consumed the event, and when it was the other environment's worker the verdict
+# logged "matched no sent row" in one database while the sending row stayed bare in
+# the other. Observed live twice on 2026-08-21. The SES IDENTITY above this comment
+# stays shared — it is one-per-account-and-region — but a configuration set is an
+# ordinary named resource and each environment owns its own chain end to end.
+#
+# EXPAND FIRST: the shared chain is removed from _shared in the change AFTER this
+# one deploys (the repo's own #394 rule — removing infrastructure running code still
+# uses needs the deploy first). Until then both chains exist and the workers, on
+# their new task definitions, use only their own.
+#
+# The queue policy is the delivery half: aws_sns_topic_subscription confirms the
+# subscription, but each published event is a separate cross-service call that SQS
+# authorizes against this policy — without it every verdict dies between the two
+# services while every metric reads green. Also diagnosed live, same day.
+resource "aws_sesv2_configuration_set" "email_feedback" {
+  # `configuration_set_name`, not `name`: the pinned provider predates the rename.
+  configuration_set_name = "${local.name}-email-feedback"
+}
+
+resource "aws_sns_topic" "ses_bounce_events" {
+  name = "${local.name}-ses-bounce-events"
+}
+
+resource "aws_sesv2_configuration_set_event_destination" "bounces" {
+  configuration_set_name = aws_sesv2_configuration_set.email_feedback.configuration_set_name
+  event_destination_name = "bounce-complaints-to-sqs"
+
+  event_destination {
+    enabled              = true
+    matching_event_types = ["BOUNCE", "COMPLAINT"]
+    sns_destination {
+      topic_arn = aws_sns_topic.ses_bounce_events.arn
+    }
+  }
+}
+
+resource "aws_sqs_queue" "ses_bounce_feedback" {
+  name = "${local.name}-ses-bounce-feedback"
+}
+
+resource "aws_sqs_queue_policy" "ses_bounce_feedback" {
+  queue_url = aws_sqs_queue.ses_bounce_feedback.url
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "sns.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.ses_bounce_feedback.arn
+        Condition = {
+          ArnEquals = { "aws:SourceArn" = aws_sns_topic.ses_bounce_events.arn }
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_sns_topic_subscription" "ses_bounce_to_sqs" {
+  topic_arn = aws_sns_topic.ses_bounce_events.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.ses_bounce_feedback.arn
+}
+
+# This queue had NO alarm of any kind — checked, zero aws_cloudwatch_metric_alarm
+# resources reference it anywhere in this repo, unlike every other AWS resource the
+# stack owns. If BounceFeedbackService's long-poll loop stalls (a bug, a permission
+# change, a worker deploy that drops the consumer), bounce/complaint events pile up
+# silently: no failed health check, no 5xx, nothing — the app keeps sending mail to
+# addresses SES already told us are bad, which is the compliance-relevant failure
+# mode, not just a queue-depth one.
+resource "aws_cloudwatch_metric_alarm" "ses_bounce_queue_depth" {
+  alarm_name          = "${local.name}-ses-bounce-queue-depth-high"
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  dimensions          = { QueueName = aws_sqs_queue.ses_bounce_feedback.name }
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 3
+  threshold           = 100
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [module.observability.alarm_topic_arn]
+  tags                = local.tags
+}
+
+# The direct "is anyone draining this" signal — depth alone can spike from a real
+# burst of bounces/complaints and clear on its own; age only grows when nothing is
+# consuming. 1 hour is generous: BounceFeedbackService long-polls continuously, so a
+# healthy consumer never lets a message sit anywhere near that long.
+resource "aws_cloudwatch_metric_alarm" "ses_bounce_queue_stalled" {
+  alarm_name          = "${local.name}-ses-bounce-queue-stalled"
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateAgeOfOldestMessage"
+  dimensions          = { QueueName = aws_sqs_queue.ses_bounce_feedback.name }
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 3600
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [module.observability.alarm_topic_arn]
+  tags                = local.tags
+}
+
+# The feedback half of the SES loop: the worker's BounceFeedbackService long-polls the shared
+# bounce queue. Scoped to the ONE queue and the three calls a drain makes — Receive to claim a
+# batch, Delete to acknowledge (which the consumer does whether or not the event matched a row,
+# so an unmatched event can never poison the queue into a retry that cannot succeed), and
+# GetQueueAttributes for the SDK's standard startup probe. No wildcard: a compromised worker
+# must not be able to drain or tamper with any other queue in the account.
+resource "aws_iam_role_policy" "worker_sqs_bounce_feedback" {
+  name = "${local.name}-worker-sqs-bounce-feedback"
+  role = split("/", module.worker.task_role_arn)[1]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+        # Deterministic queue name, so the ARN needs no remote-state round trip — the same
+        # reason ses_identity_arn is constructed. The queue is created in _shared with this name.
+        Resource = aws_sqs_queue.ses_bounce_feedback.arn
+      },
+    ]
+  })
+}

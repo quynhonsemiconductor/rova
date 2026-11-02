@@ -49,6 +49,7 @@ import { PORTFOLIO_STATES } from './model/portfolio-states'
 import { PortfolioRow } from './ui/portfolio-row'
 import { PortfolioTypeSwitcher } from './ui/portfolio-type-switcher'
 import { CreatePortfolioItemModal } from './ui/create-portfolio-item-modal'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 export function PortfolioPage() {
   const { t } = useTranslation('portfolio')
@@ -192,7 +193,7 @@ export function PortfolioPage() {
   )
 
   const openDetail = useCallback(
-    (id: string) => void navigate({ to: '/portfolio/$itemId', params: { itemId: id } }),
+    (id: string) => void navigate({ href: entityDetailPath.portfolioItem(id) }),
     [navigate],
   )
 

@@ -51,7 +51,7 @@ import {
   ADMIN_USER_ID,
   WORKSPACE_ID,
   adminActor,
-  bootRallyApp,
+  bootRovaApp,
   grantProjectAccess,
   makeActor,
   uniqueKey,
@@ -92,7 +92,7 @@ describe('Phase 6 reports (e2e)', () => {
   let localToday: string;
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     db = app.get<DrizzleDB>(DRIZZLE);
     projects = app.get(ProjectsService);
     items = app.get(WorkItemsService);

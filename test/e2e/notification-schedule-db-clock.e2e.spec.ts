@@ -21,7 +21,7 @@ import { DRIZZLE, type DrizzleDB } from '@platform';
 import { NotificationSchedulerService } from '@platform/notifications';
 
 import { notificationOutbox } from '../../db/schema/messaging';
-import { WORKSPACE_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { WORKSPACE_ID, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 const HOUR_MS = 60 * 60 * 1000;
 /** Generous: the database and the test runner share a machine; the stamp only has to be near the DB clock. */
@@ -33,7 +33,7 @@ describe('notification scheduled_at is stamped on the database clock (e2e)', () 
   let scheduler: NotificationSchedulerService;
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     db = app.get<DrizzleDB>(DRIZZLE);
     scheduler = app.get(NotificationSchedulerService, { strict: false });
   });

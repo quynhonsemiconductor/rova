@@ -14,7 +14,7 @@ rova/
 │   ├── api/       # NestJS 11 (Fastify) HTTP API — ECS Fargate service
 │   ├── worker/    # NestJS background/queue worker — ECS Fargate service
 │   └── web/       # React 19 + Vite SPA — S3 + CloudFront (pnpm workspace member)
-├── libs/          # shared backend libs (shared-kernel, platform, contracts, 12 domain modules)
+├── libs/          # shared backend libs (shared-kernel, platform, 12 domain modules)
 │                  #   ↳ this is the design's "packages/" role, using the NestJS `libs/` convention
 ├── db/            # Drizzle schema + migrations + seeds
 ├── deploy/ecs/    # deploy-descriptor notes (task-def is infra-owned — see deploy/ecs/README.md)
@@ -27,7 +27,7 @@ rova/
 
 ## Workspace model
 
-- The **NestJS backend** (`apps/api`, `apps/worker`, `libs/`, `db/`) is the **root package** — resolved by `nest-cli.json` (`monorepo: true`) + tsconfig path aliases (`@shared-kernel`, `@platform`, `@contracts`, `@modules/*`). It is **not** a set of pnpm workspace packages.
+- The **NestJS backend** (`apps/api`, `apps/worker`, `libs/`, `db/`) is the **root package** — resolved by `nest-cli.json` (`monorepo: true`) + tsconfig path aliases (`@shared-kernel`, `@platform`, `@modules/*`). It is **not** a set of pnpm workspace packages.
 - `apps/web` is the **one pnpm workspace member** (separate Vite toolchain, package name `rova-web`).
 - `pnpm-workspace.yaml` lists only `apps/web`; the backend is the root.
 

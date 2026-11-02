@@ -1,4 +1,4 @@
-# Rally Web — Frontend Component & Consistency Audit
+# Rova Web — Frontend Component & Consistency Audit
 
 **Scope:** `apps/web` (React 19, Vite, TanStack Router/Query/Table/Virtual, Tailwind 4, Zustand, react-hook-form + Zod, i18next, shadcn-style primitives, Feature-Sliced Design).
 **Method:** full read of all 19 pages + `shared/ui`, `features`, `entities`, `widgets`, design tokens, and lint/CI config. 87 `.tsx` files, ~18k lines of page code.
@@ -9,7 +9,7 @@
 
 > **The infrastructure is good. The adoption discipline is not.**
 
-Rally already has a well-designed design-token system (CI-enforced), a headless table engine, and ~40 shared UI primitives. The inconsistency you feel does **not** come from a missing foundation — it comes from **pages being allowed to bypass that foundation**: monolithic page files, hand-rolled copies of components that already exist, inline styling instead of tokens, and no enforcement stopping any of it.
+Rova already has a well-designed design-token system (CI-enforced), a headless table engine, and ~40 shared UI primitives. The inconsistency you feel does **not** come from a missing foundation — it comes from **pages being allowed to bypass that foundation**: monolithic page files, hand-rolled copies of components that already exist, inline styling instead of tokens, and no enforcement stopping any of it.
 
 This is a **governance + refactor problem, not a rebuild.** Do not throw anything away. Close the gaps, force adoption with lint, and decompose the monoliths.
 

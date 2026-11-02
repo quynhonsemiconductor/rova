@@ -125,6 +125,26 @@ describe('TestCaseDetailPage', () => {
     expect(screen.getAllByRole('combobox').length).toBeGreaterThan(0)
   })
 
+  it('US-93 TC-23: the header leads with the "Test Case" badge (SRS §6.1)', () => {
+    canPermission.mockReturnValue(false)
+    testCaseByKey.mockReturnValue({ data: testCase(), isLoading: false, isError: false })
+    render(<TestCaseDetailPage />)
+
+    expect(screen.getByText('Test Case')).toBeInTheDocument()
+  })
+
+  it('US-93 TC-23: the validation sections use the agreed names, not "Input" / "Expected Result"', () => {
+    canPermission.mockReturnValue(false)
+    testCaseByKey.mockReturnValue({ data: testCase(), isLoading: false, isError: false })
+    render(<TestCaseDetailPage />)
+
+    expect(screen.getByText('Validation Input')).toBeInTheDocument()
+    expect(screen.getByText('Validation Expected Result')).toBeInTheDocument()
+    // The negatives are the defect: the bare labels must be gone, not merely joined.
+    expect(screen.queryByText('Input')).not.toBeInTheDocument()
+    expect(screen.queryByText('Expected Result')).not.toBeInTheDocument()
+  })
+
   it('BR17: unions the row’s OWN Type with the live selectable list', () => {
     canPermission.mockReturnValue(true)
     testCaseTypes.mockReturnValue({ data: [{ id: 'type-2', name: 'Regression' }] })

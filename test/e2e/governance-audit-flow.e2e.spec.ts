@@ -47,7 +47,7 @@ import {
   WORKSPACE_ID,
   adminActor,
   bootAuditProjectionRelay,
-  bootRallyApp,
+  bootRovaApp,
   uniqueKey,
   viewerActor,
 } from './support/flow-harness';
@@ -86,7 +86,7 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
   const viewer = viewerActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
     workspace = app.get(WorkspaceService);

@@ -13,8 +13,48 @@ overrides:
   # root primitive, CVSS 5.4). Raised 5.10.0 -> 5.12.3. Still an EXACT pin, for the reason the
   # note below gives: the value's job is to keep ONE fastify copy in the tree, so a range here
   # would reintroduce the two-copy type mismatch it exists to prevent.
-  fastify: "5.12.5"
+  fastify: "5.12.7"
+  # GHSA-mrhx-c7xc-m3w5 (CVSS 8.2, memory exhaustion validating oversized constrained
+  # collections, fixed 4.6.6): identity 8.5.0 exact-deps zod 4.6.5, so the tree carries it
+  # transitively until identity 8.5.1 ships (release PR #304). FLOORED, not removed — drop this
+  # entry in the identity ^8.5.1 bump PR.
+  "zod@>=4 <4.6.6": "4.6.7"
+  # FULL OSV SWEEP (rova#793): the advisories below ride transitive chains the same way —
+  # a parent pins an exact or stale copy, so range updates never reach them. With identity
+  # 8.5.1 (zod 4.6.6) and platform-mail 0.1.7 (nodemailer 10.1.7) the zod and nodemailer
+  # floors are GONE; what remains:
+  #  - GHSA-xcx6-jx8p-x3h5 (7.5): msal-node 7.1.0 — identity 8.5.1 still rides
+  #    @azure/identity 4.14.0, which declares ^6.0.0; the floor crosses that vendor range
+  #    and is gated by platform-mail's suite (no code here imports msal directly)
+  #  - GHSA-27r3-jxmh-p828 (7.5): body-parser 2.4.0, via the express chain
+  #  - GHSA-333x/-w74x/-wjr9/-xhq7: fast-uri 3.1.9 (3.x) / 4.2.3 (4.x)
+  "@azure/identity>@azure/msal-node": "7.1.1"
+  "body-parser@>=2.3.0 <2.4.0": "2.4.0"
+  # plain pins: the range-selector form silently failed to apply to the ajv chain
+  "fast-uri": "3.1.9"
+  "undici": "7.30.1"
   "esbuild@<0.25.0": ">=0.25.0"
+  # GHSA-3g3m-2fjr-6pw4 (CVSS 6.3) — glob's AbortSignal cancellation bypass lets a timed-out
+  # traversal keep walking the filesystem. Introduced in 9.0.0 and fixed in 14.0.2, so there is
+  # NO patched release on 10.x or 13.x: the fix only exists beyond the next major, which is why
+  # this crosses majors where the entries above stay inside one.
+  #
+  # The two copies in this tree are rimraf 5 (via gaxios -> @opentelemetry/resource-detector-gcp,
+  # i.e. the runtime OTel chain) and @fastify/static 10 / @nestjs/cli (`**` file listing). All
+  # three call glob through named exports (`{ glob }` / `{ globSync }`), which 14 keeps, and 14 is
+  # dual CJS/ESM like the majors they declare. The selector is bounded BELOW only, so a package
+  # that legitimately asks for glob 15 later is not dragged down.
+  "glob@<14.0.3": "14.0.3"
+  # GHSA-g3hv-75wg-m249 (CVSS 6.9) — minimatch's globparts amplification, a DoS reachable from a
+  # pattern an attacker can influence. Fixed in 11.0.1, again with no patch on 3.x/5.x/9.x/10.x.
+  #
+  # Four majors are in the tree: 3.1.5 (fork-ts-checker-webpack-plugin, the nest build),
+  # 5.1.9 (@redocly/openapi-core, the SPA's openapi codegen), 9.0.9 (@swc/cli, and glob 10
+  # beneath rimraf) and 10.2.6 (eslint's @eslint/config-array). Every consumer here calls
+  # minimatch the way the patched line still supports, and 11 ships CJS + ESM builds. Forcing one
+  # version rather than four pinned majors is deliberate: the advisory covers all of them, so a
+  # per-major pin would only re-open the gate on the next unaudited major.
+  "minimatch@<11.0.3": "11.0.3"
   # GHSA-8r5x-fm3f-whwj (CVSS 9.8), GHSA-p8wg-vrv2-v86f (9.2), GHSA-xw65-4hp5-5hc7 (4.7) —
   # JavaScript injection in handlebars' compiler, all fixed in 4.7.10. Transitive only, through
   # @boundaries/elements (eslint-plugin-boundaries) at lint time; nothing here compiles untrusted
@@ -89,7 +129,10 @@ overrides:
   # RAISED 3.4.13 -> 3.4.16 for GHSA-p98j-92pf-mc4p (CVSS 2.3): a node-removing `afterSanitize`
   # hook in IN_PLACE mode left the detached subtree's event handlers armed — the same sink as
   # above, so it is the same production exposure. Introduced in 3.4.13, fixed in 3.4.16.
-  "dompurify@<3.4.16": ">=3.4.16"
+  #
+  # RAISED 3.4.16 -> 3.4.17 for GHSA-cg2g-xh64-v4q7 (CVSS 9.2) and GHSA-mrv2-3pqr-j5jr (CVSS 7.6),
+  # both published 2026-10-22, fixed in 3.4.17. Same direct-deps-of-apps/web production sink.
+  "dompurify@<3.4.17": ">=3.4.17"
   # GHSA-2v37-7h3g-55p8 — nanoid, "custom generators can loop indefinitely when size is
   # zero". Reached only via postcss -> nanoid, i.e. the web BUILD toolchain, and postcss
   # calls it with a fixed non-zero size — so the zero-size path is not reachable here.
@@ -206,6 +249,36 @@ overrides:
   # in 1.2.2. DEV / BUILD-ONLY: postcss, vite, tailwind, jsdom and coverage all read source maps
   # this repo generates. Every consumer declares `^1.x`; kept in 1.x.
   "source-map-js@<1.2.2": ">=1.2.2 <2.0.0"
+
+  # Keep Better Auth's optional peers out of the production tree, declaratively (replaces
+  # .pnpmfile.cjs, whose pnpmfileChecksum broke every Renovate lockfile regen; see "Keeping Better
+  # Auth's optional peers out of the runtime image" in identity's README). better-auth declares 18
+  # OPTIONAL peers (its CLI `drizzle-kit`, its test helpers `vitest`, its React/Solid clients, the
+  # databases it can run on ...); pnpm resolves an optional peer against whatever the importing
+  # project has installed, and `pnpm install --prod` follows the resulting optionalDependencies —
+  # the runtime image gains vitest, vite and esbuild. The old .pnpmfile.cjs stripped only the four
+  # peers installed when it was written (solid-js already slipped through into the web tree); this
+  # drops every optional peer — all 16 — so a newly installed devDependency cannot reopen the leak.
+  # drizzle-orm and pg stay: identity uses them. scripts/check-better-auth-overrides.mjs compares
+  # this list against better-auth's installed peerDependenciesMeta and fails on any Better Auth
+  # peer change. pnpm 11 honours these; pnpm 10.33.2 keeps the peers out of the --prod tree too,
+  # though it still records the peer declarations in the lockfile manifest copy (checked 2026-10-26).
+  "better-auth>@lynx-js/react": "-"
+  "better-auth>@prisma/client": "-"
+  "better-auth>@sveltejs/kit": "-"
+  "better-auth>@tanstack/react-start": "-"
+  "better-auth>@tanstack/solid-start": "-"
+  "better-auth>drizzle-kit": "-"
+  "better-auth>mongodb": "-"
+  "better-auth>mysql2": "-"
+  "better-auth>next": "-"
+  "better-auth>prisma": "-"
+  "better-auth>react": "-"
+  "better-auth>react-dom": "-"
+  "better-auth>solid-js": "-"
+  "better-auth>svelte": "-"
+  "better-auth>vitest": "-"
+  "better-auth>vue": "-"
   # GHSA-qqmp-wf37-98f9 (CVSS 5.8, the DB username on every query span as `db.user`) is NOT pinned
   # here: the eight instrumentation-* packages are fixed by moving @opentelemetry/
   # auto-instrumentations-node to ^0.79.0 together with the 0.221 experimental line (package.json),
@@ -213,15 +286,21 @@ overrides:
   #
   # GHSA-vfj7-8cjw-p6xm (braces <= 3.0.3) has NO fixed release; it is accepted, time-boxed, in
   # `osv-scanner.toml` at the repo root.
-# pnpm 11 wrote this block during its migration and left every value as the literal
-# placeholder "set this to true or false". Unresolved, pnpm treats the decision as unmade,
-# refuses to run those postinstalls, and exits 1 with ERR_PNPM_IGNORED_BUILDS — and because
-# pnpm 11 runs an implicit `install` before every script, that failure blocks EVERY
-# `pnpm <script>` in this repo, `db:migrate` included. The values below mirror
-# `onlyBuiltDependencies` beneath, which is the allowlist this repo already committed;
-# they are not a new trust decision.
+  # pnpm 11 wrote this block during its migration and left every value as the literal
+  # placeholder "set this to true or false". Unresolved, pnpm treats the decision as unmade,
+  # refuses to run those postinstalls, and exits 1 with ERR_PNPM_IGNORED_BUILDS — and because
+  # pnpm 11 runs an implicit `install` before every script, that failure blocks EVERY
+  # `pnpm <script>` in this repo, `db:migrate` included. The values below mirror
+  # `onlyBuiltDependencies` beneath, which is the allowlist this repo already committed;
+  # they are not a new trust decision.
 allowBuilds:
   '@scarf/scarf': true
+  # wrangler's tree pulls miniflare's sharp; its postinstall downloads the prebuilt
+  # libvips binary (allowed — mirror of opshub#495: pnpm 11 aborts the whole install
+  # while the decision is unrecorded, which re-broke Web · Deploy on the pnpm 11.28.8
+  # bump). workerd stays `false` below: its postinstall only verifies a binary that
+  # `pages deploy` never runs.
+  sharp: true
   '@swc/core': true
   argon2: true
   cpu-features: true
@@ -238,6 +317,7 @@ allowBuilds:
   workerd: false
 onlyBuiltDependencies:
   - '@scarf/scarf'
+  - sharp
   - '@swc/core'
   - argon2
   - cpu-features
@@ -265,3 +345,5 @@ onlyBuiltDependencies:
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - '@quynhonsemiconductor/*'
+patchedDependencies:
+  nestjs-zod@5.5.0: patches/nestjs-zod@5.5.0.patch

@@ -36,7 +36,7 @@ release-blocking bug and a tier of enterprise gaps in the shared CD flow.
 
 ## Guiding decisions (locked in brainstorming)
 
-- **Monorepo is canonical.** `rally` and `opshub` monorepos are the source of
+- **Monorepo is canonical.** `rova` and `opshub` monorepos are the source of
   truth. The split `*-api` / `*-web` repos are legacy and out of scope (archive
   tracked separately). `qnsc-ci` is the single shared CI; `qnsc-gitops` (used
   only by the split repos) is retired for products.
@@ -62,7 +62,7 @@ release-blocking bug and a tier of enterprise gaps in the shared CD flow.
 ### Wave 0 — Unblock releases (fast, low-risk)
 
 **W0.1 Tag fix (repo config; PR).** Add `"include-component-in-tag": false` to
-the package in `release-please-config.json` for **rally** and **opshub**. Result:
+the package in `release-please-config.json` for **rova** and **opshub**. Result:
 tags become `vX.Y.Z`, matching the existing deploy glob. Leave `qnsc-app-platform`
 unchanged (multi-package library — component-prefixed tags are correct and its
 `publish.yml` matches them).
@@ -71,7 +71,7 @@ unchanged (multi-package library — component-prefixed tags are correct and its
 
 **W0.2 Gitleaks gate alignment (settings; run/approve).** Per repo, set the
 ruleset's required status context to the **name the workflow actually emits**:
-- Reusable-caller (job `security: uses: qnsc-ci/.../security.yml`) → `security / Secret scan (Gitleaks)` (rally — already correct).
+- Reusable-caller (job `security: uses: qnsc-ci/.../security.yml`) → `security / Secret scan (Gitleaks)` (rova — already correct).
 - Inline runner → bare `Secret scan (Gitleaks)` (fix opshub, qnsc-infra to require the bare name).
 Rule: match the ruleset to reality; do not blanket-add the prefix. Also normalize
 `opshub-web`'s lowercase `Secret scan (gitleaks)` job name (legacy split — skip

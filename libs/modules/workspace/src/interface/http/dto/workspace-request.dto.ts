@@ -75,7 +75,7 @@ export const InviteMemberSchema = z.object({
    * Deliberately a plain object schema with NO `superRefine`. The duplicate-project rule lives in
    * `WorkspaceService.assertInvitationProjectAccess` instead: wrapping this schema in a refinement
    * makes it a `ZodEffects`, and the committed API client is generated from the OpenAPI document
-   * these DTOs produce (`pnpm --filter rally-web codegen`, diffed by the `OpenAPI contract` job) —
+   * these DTOs produce (`pnpm --filter rally-web codegen` — legacy physical name, do not rename — diffed by the `OpenAPI contract` job) —
    * so a shape change here is a client change, for a rule the service enforces anyway.
    */
   projectAccess: z.array(InvitationProjectAccessSchema).optional(),

@@ -1,5 +1,5 @@
 /**
- * Rally brand palette — a typed accessor over the CSS custom properties defined
+ * Rova brand palette — a typed accessor over the CSS custom properties defined
  * in `app/styles/globals.css`, which is the SINGLE source of truth for the token
  * values (light in `:root`, dark in `.dark`).
  *

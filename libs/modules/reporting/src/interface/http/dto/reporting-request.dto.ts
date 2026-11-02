@@ -102,7 +102,7 @@ export const ReleaseTrackingQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
   /**
    * `"<field>[:asc|:desc]"` over the whole bucket — `rank`, `id`, `team` or `name`
-   * (RT-AC-05, plus the `name` Rally-parity divergence). Parsed by the shared `parseSort`
+   * (RT-AC-05, plus the `name` agile-ALM-parity divergence). Parsed by the shared `parseSort`
    * against `RELEASE_TRACKING_SORT_FIELDS`, so an unknown field falls back to rank order
    * instead of failing the request.
    */

@@ -38,7 +38,7 @@ import {
   ALL,
   WORKSPACE_ID,
   adminActor,
-  bootRallyApp,
+  bootRovaApp,
   uniqueKey,
 } from './support/flow-harness';
 
@@ -54,7 +54,7 @@ describe('derived invariants (e2e)', () => {
   const actor = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     db = app.get<DrizzleDB>(DRIZZLE);
     items = app.get(WorkItemsService);
     iterations = app.get(IterationsService);

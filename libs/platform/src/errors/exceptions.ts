@@ -9,9 +9,9 @@ import type { ErrorCategory, ErrorCode } from './error-codes';
  *
  * Extends the shared `@quynhonsemiconductor/platform-http` DomainException so that errors
  * thrown by shared packages (e.g. @quynhonsemiconductor/identity's AuthService) and errors
- * thrown by rally's own use-cases share ONE class identity. The global
+ * thrown by rova's own use-cases share ONE class identity. The global
  * exception filter maps both through a single `instanceof` branch instead of
- * letting shared-package errors fall through to a generic 500. Rally keeps its
+ * letting shared-package errors fall through to a generic 500. Rova keeps its
  * strict `ErrorCode` catalog typing on the constructor (the shared base
  * intentionally accepts an open `string`); the shared base derives `httpStatus`
  * from the (identical) category table.

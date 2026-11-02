@@ -29,7 +29,7 @@ import { WorkspaceService } from '@modules/workspace';
 import { decodeCursor, DRIZZLE as DRIZZLE_FOR_TEST } from '@platform';
 import { sql } from 'drizzle-orm';
 
-import { WORKSPACE_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { WORKSPACE_ID, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 interface Page<T> {
   data: T[];
@@ -72,7 +72,7 @@ describe('cursor pagination walks are sound', () => {
   const admin = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
   }, 60_000);
   afterAll(async () => {
     await app?.close();

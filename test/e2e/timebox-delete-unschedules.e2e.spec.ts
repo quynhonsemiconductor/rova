@@ -40,7 +40,7 @@ import { WorkItemsService } from '@modules/work-items';
 import { DRIZZLE, type DrizzleDB } from '@platform';
 
 import { milestoneArtifacts, tasks, workItems } from '@db/schema/work';
-import { adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 import { SEED_PROJECTS } from '../../db/seeds/constants';
 
 const NXP = SEED_PROJECTS[0].id;
@@ -56,7 +56,7 @@ describe('deleting a timebox unschedules its work (e2e)', () => {
   const admin = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     db = app.get<DrizzleDB>(DRIZZLE);
     iterations = app.get(IterationsService);
     releases = app.get(ReleasesService);

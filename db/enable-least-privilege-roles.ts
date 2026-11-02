@@ -34,7 +34,7 @@ try {
 }
 
 import { Client } from 'pg';
-import { pgOptions } from './pg-ssl';
+import { pgOptions, tlsFromEnv } from './pg-ssl';
 import { resolveMigrationUrl } from './database-url';
 import { log } from './script-log';
 
@@ -146,7 +146,7 @@ async function enableRole(
   appUrl.username = role;
   appUrl.password = password;
 
-  const app = new Client(pgOptions(appUrl.toString()));
+  const app = new Client(pgOptions(appUrl.toString(), tlsFromEnv()));
   await app.connect();
   let ddlAllowed = false;
   try {
@@ -195,7 +195,7 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
-  const admin = new Client(pgOptions(adminUrl));
+  const admin = new Client(pgOptions(adminUrl, tlsFromEnv()));
   await admin.connect();
   try {
     for (const { target, password } of requested) {

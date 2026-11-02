@@ -36,6 +36,30 @@ describe('iterationStatusTotals', () => {
   it('is zero for an empty scope, and says so with a count of zero', () => {
     expect(iterationStatusTotals([])).toEqual({ planEst: 0, taskEst: 0, toDoSum: 0, count: 0 })
   })
+
+  it('rounds every total to one decimal place, so float noise never reaches the label', () => {
+    // 0.1 + 0.2 is 0.30000000000000004 in IEEE-754; Production printed `43.200000000000001 Hours`.
+    const totals = iterationStatusTotals([
+      { planEstimate: 0.1, toDo: 0.1, actual: 7.1 },
+      { planEstimate: 0.2, toDo: 0.2, actual: 35.8 },
+      { planEstimate: 7.26, toDo: 0.04 },
+    ])
+
+    expect(totals.planEst).toBe(7.6)
+    expect(totals.taskEst).toBe(43.2)
+    expect(totals.toDoSum).toBe(0.3)
+  })
+
+  it('rounds an exact half-way sum UP, though the float sum lands just below it', () => {
+    // 8.45 + 2.10 is 10.549999999999999 as a double; rounding that alone printed 10.5.
+    const totals = iterationStatusTotals([{ planEstimate: 8.45 }, { planEstimate: 2.1 }])
+
+    expect(totals.planEst).toBe(10.6)
+  })
+
+  it('shows hundredths at one decimal place — the product decision, not a precision loss bug', () => {
+    expect(iterationStatusTotals([{ planEstimate: 14.52 }]).planEst).toBe(14.5)
+  })
 })
 
 describe('sortStatusRows', () => {

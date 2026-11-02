@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ScmService, ScmLinkerService } from '@modules/scm';
 import type { NormalizedPullRequest, NormalizedCommit } from '@modules/scm';
 
-import { adminActor, bootRallyApp, ALL } from './support/flow-harness';
+import { adminActor, bootRovaApp, ALL } from './support/flow-harness';
 
 // Seeded fixtures (db/seeds/seed.ts): US-1 is the workspace-unique key for this item.
 const US1_ID = '00000000-0000-7000-8000-000000000030';
@@ -27,7 +27,7 @@ describe('BA flow: SCM Connections (real AppModule + seeded DB)', () => {
   const fullName = `acme/demo-${Date.now().toString(36)}`;
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     scm = app.get(ScmService);
     linker = app.get(ScmLinkerService);
   });

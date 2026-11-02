@@ -50,7 +50,7 @@ export function hashToken(plaintext: string): string {
   return createHash('sha256').update(plaintext, 'utf8').digest('hex');
 }
 
-/** The prefix a raw token would have been stored under, or null when it is not a Rally token. */
+/** The prefix a raw token would have been stored under, or null when it is not a Rova token. */
 export function prefixOf(plaintext: string): string | null {
   if (!plaintext.startsWith(API_TOKEN_PREFIX)) return null;
   const body = plaintext.slice(API_TOKEN_PREFIX.length);

@@ -91,6 +91,12 @@ export interface VelocityBar {
    * were left out of this bar" is a question a reader auditing a sprint asks, and a bare number
    * cannot answer it. The count is `splitStoryIds.length`, so there is no second field to keep in
    * step with the sum.
+   *
+   * KEPT WITH NO SPA CONSUMER, deliberately. The SPA's only reader was the carryover footnote, which
+   * SU-09 AC5 forbids ("no additional explanatory message", BA retest TC-55), and the chart, table and
+   * CSV need only `splitCarryover`. The ids stay because SRS §10.1 attributes reports by stable id —
+   * they are the API's audit answer to "which placeholders is this bar excluding", pinned by
+   * `phase6-reports.e2e.spec.ts`. Drop them only together with that e2e assertion and a codegen round.
    */
   splitStoryIds: string[];
   /** How many Team iterations were fused. 1 for a selected Team. */

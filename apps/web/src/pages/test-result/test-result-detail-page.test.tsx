@@ -42,9 +42,6 @@ vi.mock('@/features/test-cases/api', () => ({
   useUpdateTestResult: () => ({ mutateAsync: updateTestResult }),
   useTestResultActivity: (...args: unknown[]) => testResultActivity(...args),
 }))
-vi.mock('@/features/work-items/api', () => ({
-  useWorkItem: () => ({ data: { id: 'wi-1', itemKey: 'US-1' } }),
-}))
 
 const canPermission = vi.fn()
 vi.mock('@/features/access/api', () => ({
@@ -73,6 +70,7 @@ const result = (over: Partial<TestResult> = {}): TestResult =>
     projectId: 'proj-1',
     testCaseId: 'tc-1',
     workItemId: 'wi-1',
+    workItemKey: 'US-1',
     testResultKey: 'TR-1',
     build: 'build-1',
     runDate: '2026-09-01',
@@ -116,6 +114,14 @@ describe('TestResultDetailPage', () => {
 
     expect(screen.getByLabelText('Build')).not.toHaveAttribute('readonly')
     expect(screen.getByRole('button', { name: 'Verdict' })).toBeInTheDocument()
+  })
+
+  it('US-97 TC-35: the header leads with the "Test Result" badge (SRS §9.1)', () => {
+    canPermission.mockReturnValue(false)
+    testResult.mockReturnValue({ data: result(), isLoading: false, isError: false })
+    render(<TestResultDetailPage />)
+
+    expect(screen.getByText('Test Result')).toBeInTheDocument()
   })
 
   it('BR13: Test Case and Work Product render as read-only display, never a picker', () => {

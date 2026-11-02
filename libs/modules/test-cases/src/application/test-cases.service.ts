@@ -30,6 +30,7 @@ import {
 } from '../domain/ports/test-case-type.repository';
 import type { TestCase } from '../domain/test-case.types';
 import { TEST_CASE_ACTIVITY_CONFIG } from './test-case-activity-diff';
+import { collectTestActivityRefs, enrichTestActivity } from './test-activity-enrichment';
 import type { TestCaseMethod, TestCasePriority } from '../../../../../db/schema/enums';
 
 export interface CreateTestCaseCommand {
@@ -125,10 +126,42 @@ export class TestCasesService {
     id: string,
     args: { limit: number; offset: number },
   ): Promise<{ items: ActivityLog[]; total: number }> {
-    await this.getById(actor, id);
+    const testCase = await this.getById(actor, id);
     const page = Math.floor(args.offset / args.limit) + 1;
     const res = await this.activityLogger.listFor(id, actor.workspaceId, page, args.limit);
-    return { items: res.data, total: res.total };
+    return {
+      items: await this.enrichActivity(res.data, actor.workspaceId, testCase.testCaseKey),
+      total: res.total,
+    };
+  }
+
+  /**
+   * Adds the display values a Test Case / Test Result Revision History row needs — its record's
+   * key and the NAMES behind person-field ids (`test-activity-enrichment.ts`). Public because
+   * `TestResultsService.getActivity` reads its history through the same projection; it lives here
+   * because this service already holds the result repository and the reverse dependency would
+   * close a cycle (see the constructor).
+   */
+  async enrichActivity(
+    logs: ActivityLog[],
+    workspaceId: string,
+    testCaseKey: string | null,
+  ): Promise<ActivityLog[]> {
+    const refs = collectTestActivityRefs(logs);
+    let resultKeys: ReadonlyMap<string, string> = new Map();
+    let userNames: ReadonlyMap<string, string> = new Map();
+    try {
+      [resultKeys, userNames] = await Promise.all([
+        this.testResultRepo.findKeysByIds(refs.resultIds, workspaceId),
+        this.testResultRepo.findUserNames(refs.userIds),
+      ]);
+    } catch (err) {
+      // Best-effort display data, like `logSafe` on the write side: a failed lookup must not take
+      // the history feed down. Rows still carry the keys their metadata holds, and an unresolved
+      // person reads "Unknown user" — never the uuid.
+      this.logger.warn({ err, workspaceId }, 'Test activity enrichment lookup failed');
+    }
+    return enrichTestActivity(logs, { resultKeys, userNames, testCaseKey });
   }
 
   /**

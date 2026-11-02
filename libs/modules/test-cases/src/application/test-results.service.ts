@@ -126,6 +126,34 @@ export class TestResultsService {
     }
 
     if (!created) throw lastErr;
+
+    // US-97 TC-37: the Result's FIRST revision. Without it the history began at the first edit, so
+    // the record never said who recorded it, or what. The metadata is the record AS RECORDED — a
+    // later edit has its own diff row — and names are resolved on read (`enrichActivity`), the same
+    // as every person-field change. `contextId` = the Test Case, so its history shows the run too.
+    // TX1: outside the transaction, `logSafe` — see `update`'s identical reasoning.
+    await this.activityLogger.logSafe([
+      this.activityLogger.build(
+        {
+          workspaceId: actor.workspaceId,
+          projectId: created.projectId,
+          entityType: 'test_result',
+          entityId: created.id,
+          contextId: testCaseId,
+        },
+        actor.sub,
+        'test_result.created',
+        null,
+        {
+          testResultKey: created.testResultKey,
+          build: created.build,
+          verdict: created.verdict,
+          runDate: created.runDate,
+          testerId: created.testerId,
+        },
+      ),
+    ]);
+
     return created;
   }
 
@@ -231,7 +259,11 @@ export class TestResultsService {
     await this.getById(actor, id);
     const page = Math.floor(args.offset / args.limit) + 1;
     const res = await this.activityLogger.listFor(id, actor.workspaceId, page, args.limit);
-    return { items: res.data, total: res.total };
+    // A Result's history holds only its own rows, so the Test Case key is never a row's subject here.
+    return {
+      items: await this.testCasesService.enrichActivity(res.data, actor.workspaceId, null),
+      total: res.total,
+    };
   }
 
   // ── Attachments (E2) ─────────────────────────────────────────────────────────

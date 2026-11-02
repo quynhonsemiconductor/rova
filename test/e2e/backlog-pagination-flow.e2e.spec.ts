@@ -22,7 +22,7 @@ import type { WorkItemFilters } from '@modules/work-items';
 import { decodeCursor } from '@platform';
 import type { CursorPayload } from '@platform';
 
-import { adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('BA flow: backlog keyset pagination (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
@@ -62,7 +62,7 @@ describe('BA flow: backlog keyset pagination (real AppModule + seeded DB)', () =
   }
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
 

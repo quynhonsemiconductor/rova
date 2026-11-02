@@ -2,7 +2,7 @@
  * Team Status domain types — P3.1
  *
  * Dense grouped table of task-level rows per iteration, grouped by
- * owner/member. Sourced from Mini_Rally_pj Phase 3 SRS §8.2.
+ * owner/member. Sourced from Mini_Rally_pj Phase 3 SRS §8.2 (legacy physical path, do not rename).
  */
 
 /** Normalized task-state values used in Team Status UI. */

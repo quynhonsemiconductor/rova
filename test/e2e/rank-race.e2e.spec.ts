@@ -26,7 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 
-import { adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('rank integrity', () => {
   let app: NestFastifyApplication;
@@ -35,7 +35,7 @@ describe('rank integrity', () => {
   const admin = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
   });

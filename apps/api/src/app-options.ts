@@ -7,10 +7,13 @@ import type { HttpAppOptions } from '@quynhonsemiconductor/platform-runtime/boot
  * Import discipline: this file imports only a TYPE at the top. The product modules are imported inside the functions, after OpenTelemetry is
  * installed, which is the whole point of `module` being a function.
  */
-const HTTP_DURATION_BOUNDARIES_MS = [
-  0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1_000, 2_500, 5_000, 7_500, 10_000, 15_000, 30_000,
-  60_000, 120_000, 180_000,
-];
+// Trimmed 2026-10-21 from the 20-entry list (the OTel defaults plus extensions) to stay under
+// Grafana Cloud's free-tier series cap: every boundary is one `_bucket` series per
+// route x method x status class x instance, and http_server_duration was ~50% of the whole
+// bill. Kept, deliberately: 1_000 and 2_500 (the slow_request_bucket_ms values the infra
+// precondition and the http-slow-request-count rule select on), 10_000 (the old p99 clamp)
+// and 180_000 (a 12-second request must stay separable from a spent retry budget).
+const HTTP_DURATION_BOUNDARIES_MS = [0, 250, 1_000, 2_500, 5_000, 10_000, 60_000, 180_000];
 
 export const apiAppOptions: HttpAppOptions = {
   module: () => import('./app.module').then((m) => m.AppModule),

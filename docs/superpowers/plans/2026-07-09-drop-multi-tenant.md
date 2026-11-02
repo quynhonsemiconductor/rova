@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Physically remove the `tenant` concept from Rally, making `workspace` the switchable root, with users belonging to one or many workspaces.
+**Goal:** Physically remove the `tenant` concept from rova, making `workspace` the switchable root, with users belonging to one or many workspaces.
 
 **Architecture:** Merge `tenant` into `workspace` (Approach A). Rename the scope column `tenant_id`→`workspace_id` on all scoped tables; delete tenant tables, the RLS layer, and the `DEPLOYMENT_MODE` apparatus. Greenfield — dev DBs are reset, no data backfill. App-layer `workspace_id` filtering is the only isolation boundary.
 
@@ -17,7 +17,7 @@
 - **Migration source of truth is the Drizzle schema** (`db/schema/*.ts`). Structural DDL is produced with `pnpm db:generate`. RLS teardown is hand-written (Drizzle does not model RLS).
 - **Order matters:** RLS policies reference `tenant_id`; drop them BEFORE renaming/dropping columns.
 - **The rename sweep will not typecheck until schema + all references change together.** Phases 1→4 land as one coherent backend branch; do not expect green typecheck mid-phase. The gate is at the END of Phase 4.
-- **Verification commands** (run from repo root `rally/`):
+- **Verification commands** (run from repo root `rova/`):
   - Typecheck: `pnpm -w exec tsc --noEmit` (or `pnpm typecheck` in `apps/web` for FE)
   - Tests: `pnpm test` (Vitest)
   - Migrate a fresh DB: `pnpm db:migrate` ; seed: `pnpm db:seed`
@@ -61,7 +61,7 @@
 - [ ] **Step 1: Create a feature branch**
 
 ```bash
-cd rally
+cd rova
 git checkout -b feat/drop-multi-tenant
 ```
 
@@ -385,7 +385,7 @@ git commit -m "refactor(shared-kernel): rename domain event tenantId to workspac
 - [ ] **Step 1: Mechanical rename within these modules**
 
 ```bash
-cd rally
+cd rova
 grep -rl "tenantId\|tenant_id" libs/modules/access libs/modules/audit libs/modules/reporting libs/modules/collaboration --include="*.ts" \
   | xargs sed -i 's/tenantId/workspaceId/g; s/tenant_id/workspace_id/g'
 ```

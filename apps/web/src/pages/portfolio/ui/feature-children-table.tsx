@@ -151,7 +151,7 @@ export function FeatureChildrenTable({
   const { sortField, sortDir, toggle } = useTableSort<ChildSortField>()
 
   const table = useDataTable<PortfolioChild, unknown, ChildColKey>(PORTFOLIO_CHILD_COLUMNS, {
-    storageKey: 'rally-portfolio-children-columns',
+    storageKey: 'rally-portfolio-children-columns', // legacy physical name, do not rename
     // The select gutter is 48px and precedes every column; without it the computed table width is
     // short by exactly that and the horizontal scroll region ends early.
     leadingWidth: 48,

@@ -1,5 +1,8 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import type { WorkItemType } from '@/entities/work-item/model/types'
+import { useRecordHref } from '@/entities/work-item/model/use-record-href'
+import { RECORD_LABEL_LAYOUT, RECORD_LINK_LABEL, RecordOpener } from '@/shared/ui/record-link'
+import { cn } from '@/shared/lib/utils'
 
 interface IdCellProps {
   /** Work-item type — drives the leading {@link TypeBadge} glyph. */
@@ -16,6 +19,25 @@ interface IdCellProps {
    * parents' 12px one.
    */
   onOpen?: () => void
+  /**
+   * The record's detail URL (an in-app path from `entityDetailPath`), so Ctrl/Cmd+click,
+   * middle-click and "Open link in new tab" work (US-120). A plain click still calls `onOpen`.
+   *
+   * Defaults to `/item/{itemKey}` for a Story / Task / Defect, whose detail route is addressed by
+   * key, and to `/portfolio/{recordId}` for an Epic / Feature given `recordId`. Every other type
+   * (timebox, project, plan) MUST pass it — without one the cell falls back to a button that opens
+   * in place only.
+   *
+   * Honoured only with `onOpen`: a cell without one is read-only text by design, and the URL is
+   * ignored.
+   */
+  href?: string
+  /**
+   * The record's own id. Pass it unconditionally from a grid that mixes artifact kinds: the cell
+   * derives the right URL from `type` (`defaultRecordHref`), so the id-vs-key rule is not
+   * re-implemented per grid.
+   */
+  recordId?: string
 }
 
 /**
@@ -29,38 +51,40 @@ interface IdCellProps {
  * `styleFor('id')`; this component only lays out badge + key.
  */
 /** Shared by both renderings, so the glyph/key pairing cannot drift between them. */
-const KEY_CLASS =
-  'flex min-h-5 min-w-0 items-center font-mono text-ui-md break-words whitespace-normal'
+const KEY_CLASS = cn(RECORD_LABEL_LAYOUT, 'font-mono text-ui-md')
 
-export function IdCell({ type, itemKey, onOpen }: IdCellProps) {
+// `items-start` + no `overflow-hidden`: the key wraps, so the type glyph must stay
+// on its first line and the control must be allowed to grow.
+// `RecordOpener` supplies the reset (incl. `group` for the hover underline); this is only layout.
+// Glyph + key geometry, shared by the openable and the read-only rendering so they cannot drift.
+const CELL_LAYOUT = 'min-w-0 items-start gap-1'
+const OPEN_CLASS = cn('flex', CELL_LAYOUT)
+
+export function IdCell({ type, itemKey, onOpen, href, recordId }: IdCellProps) {
+  // Before the read-only return: a hook runs on every render, whichever branch follows.
+  const target = useRecordHref({ href, type, itemKey, recordId, enabled: onOpen !== undefined })
   if (onOpen === undefined) {
     return (
-      <span className="inline-flex min-w-0 items-start gap-1" title={itemKey}>
+      <span className={cn('inline-flex', CELL_LAYOUT)} title={itemKey}>
         <TypeBadge type={type} />
-        <span className={`${KEY_CLASS} text-muted-foreground`}>{itemKey}</span>
+        <span className={cn(KEY_CLASS, 'text-muted-foreground')}>{itemKey}</span>
       </span>
     )
   }
 
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation()
-        onOpen()
-      }}
-      title={itemKey}
-      // `items-start` + no `overflow-hidden`: the key wraps, so the type glyph must stay
-      // on its first line and the button must be allowed to grow.
-      className="group flex min-w-0 cursor-pointer items-start gap-1 border-none bg-transparent p-0 text-left"
-    >
+  const content = (
+    <>
       <TypeBadge type={type} />
-      {/* `min-h-5` (in `KEY_CLASS`) so a one-line key sits CENTRED against the type glyph rather than
+      {/* `min-h-5` (in `RECORD_LABEL_LAYOUT`, which `KEY_CLASS` composes) so a one-line key sits CENTRED against the type glyph rather than
           riding its top edge, which is the same rule the team and owner cells follow. A wrapped key
           still starts level with the glyph. */}
-      <span className={`${KEY_CLASS} text-primary-light underline-offset-2 group-hover:underline`}>
-        {itemKey}
-      </span>
-    </button>
+      <span className={cn(KEY_CLASS, RECORD_LINK_LABEL)}>{itemKey}</span>
+    </>
+  )
+
+  return (
+    <RecordOpener href={target} onOpen={onOpen} title={itemKey} className={OPEN_CLASS}>
+      {content}
+    </RecordOpener>
   )
 }

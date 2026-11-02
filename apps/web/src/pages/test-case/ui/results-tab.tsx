@@ -34,14 +34,11 @@ export function ResultsTab({
   testCaseId,
   projectId,
   teamId,
-  workItemKey,
 }: {
   testCaseId: string
   projectId: string
   /** The owning Test Case's own team (BR5) — Tester's per-row offer feed is scoped to it. */
   teamId: string | null
-  /** The Test Case's own Work Product item key — ONE value for the whole tab (BR13). */
-  workItemKey: string | null
 }) {
   const { t } = useTranslation('test-cases')
   const { can } = useProjectPermissions(projectId)
@@ -242,7 +239,6 @@ export function ResultsTab({
             result={row}
             canEdit={canEdit}
             colStyles={colStyles}
-            workItemKey={workItemKey}
             projectId={projectId}
             teamId={teamId}
           />

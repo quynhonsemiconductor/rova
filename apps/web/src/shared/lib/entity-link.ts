@@ -26,12 +26,7 @@ export interface EntityLinkSubject {
   url: string
 }
 
-export type EntityLinkFormatId =
-  | 'linkAndName'
-  | 'markdownWithName'
-  | 'markdown'
-  | 'html'
-  | 'plain'
+export type EntityLinkFormatId = 'linkAndName' | 'markdownWithName' | 'markdown' | 'html' | 'plain'
 
 export interface EntityLinkFormat {
   id: EntityLinkFormatId
@@ -79,7 +74,11 @@ export function entityLinkFormats(subject: EntityLinkSubject): EntityLinkFormat[
 
   return [
     // Pastes as a live hyperlink whose visible text is `key: name`; falls back to that text.
-    { id: 'linkAndName', value: label, html: `<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>` },
+    {
+      id: 'linkAndName',
+      value: label,
+      html: `<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`,
+    },
     { id: 'markdownWithName', value: `[${escapeMarkdownLabel(label)}](${target})` },
     { id: 'markdown', value: `[${escapeMarkdownLabel(key)}](${target})` },
     { id: 'html', value: `<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>` },

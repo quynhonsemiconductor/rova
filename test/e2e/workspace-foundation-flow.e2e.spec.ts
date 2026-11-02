@@ -28,7 +28,7 @@ import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 import { TeamService } from '@modules/workspace';
 
-import { ADMIN_USER_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { ADMIN_USER_ID, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('BA flows: Company → Project → Team foundation (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
@@ -38,7 +38,7 @@ describe('BA flows: Company → Project → Team foundation (real AppModule + se
   const actor = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
     teams = app.get(TeamService);

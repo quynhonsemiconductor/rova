@@ -25,8 +25,9 @@ variable "env_slug" {
   description = <<-EOT
     Short environment token used in RESOURCE NAMES (`<product>-<env_slug>`).
     Deliberately separate from `env`: existing resources are named `rally-prod`
-    while the environment is called `production`, and renaming them would force
-    replacement of the cluster, RDS instance and log groups.
+    (legacy physical name, do not rename — recreated as rova-prod in the
+    on-prem move) while the environment is called `production`, and renaming
+    them would force replacement of the cluster, RDS instance and log groups.
   EOT
   type        = string
 }
@@ -48,12 +49,12 @@ variable "api_domain" {
 }
 
 variable "web_record" {
-  description = "Cloudflare CNAME label for the SPA (e.g. `rally-dev`, `rally`)."
+  description = "Cloudflare CNAME label for the SPA (e.g. `rova-dev`, `rova`)."
   type        = string
 }
 
 variable "api_record" {
-  description = "Cloudflare CNAME label for the API (e.g. `rally-api-dev`, `rally-api`)."
+  description = "Cloudflare CNAME label for the API (e.g. `rova-api-dev`, `rova-api`)."
   type        = string
 }
 
@@ -175,15 +176,35 @@ variable "cache" {
   }
 }
 
-variable "platform_admin_emails" {
-  description = "Emails auto-granted workspace_admin on every SSO login."
-  type        = list(string)
-  default     = []
+variable "email_provider" {
+  description = <<-EOT
+    Which transport sends mail: "graph" sends through Microsoft 365 (Graph `sendMail`) from `mail_graph_sender`, "ses" uses this
+    account's SES (being replaced by graph), "dev" logs and sends nothing.
+
+    Defaults to "ses", which is what both environments ran when this variable did not exist, so applying this changes nothing until
+    somebody chooses "graph". "graph" needs `mail_graph_sender` and the worker's certificate (`mail_graph_certificate_set`); the WORKER
+    is the only process that sends. The mailbox is granted to the Entra app by Exchange RBAC for Applications, NOT by a Graph
+    permission in Entra: docs/runbooks/mail-graph.md has the owner steps, in order.
+  EOT
+  type        = string
+  default     = "ses"
+
+  validation {
+    condition     = contains(["graph", "ses", "dev"], var.email_provider)
+    error_message = "email_provider must be graph, ses or dev."
+  }
+
+  validation {
+    condition = var.email_provider != "graph" || (
+      var.mail_graph_sender != "" && var.mail_graph_client_id != "" && var.mail_graph_certificate_set
+    )
+    error_message = "email_provider = \"graph\" needs mail_graph_sender, mail_graph_client_id and mail_graph_certificate_set = true. Finish docs/runbooks/mail-graph.md first: the deploy refuses to inject a secret that holds no value."
+  }
 }
 
 variable "mail_graph_sender" {
   description = <<-EOT
-    The shared mailbox Graph sends as, e.g. `noreply-rova@qnsc.vn`. Required: Graph is the only sending transport. A public address, held in git.
+    The shared mailbox Graph sends as, e.g. `noreply-rova@qnsc.vn`. Required for email_provider = "graph". A public address, held in git.
     Graph sends as exactly this mailbox: the Exchange role assignment is scoped to its PrimarySmtpAddress, so any other sender is a 403.
 
     A NON-PROD ENVIRONMENT NEVER SENDS FROM THE PROD MAILBOX (decision 2026-10-18, HYBRID-INFRA-PLAN §7.4): develop sends as
@@ -228,12 +249,32 @@ variable "mail_graph_certificate_set" {
     OFF by default, for the same mechanical reason as `edge_client_ip_secret_set`: the deploy preflight refuses to deploy when an
     injected Secrets Manager secret holds no value. Order, per environment (docs/runbooks/mail-graph.md):
       1. generate a key and certificate with openssl, upload the public certificate to the Entra app;
-      2. put the PEM (the private key, then the certificate; raw or base64) into the standalone secret `<product>/<env>/mail-graph-certificate`
+      2. put the PEM (the private key, then the certificate; raw PEM, never base64) into the standalone secret `<product>/<env>/mail-graph-certificate`
          (NOT the app bundle: the API's task role reads the bundle, and must not be able to read this);
-      3. set this true.
+      3. set this true, together with email_provider = "graph".
   EOT
   type        = bool
   default     = false
+}
+
+variable "mail_from_email" {
+  description = <<-EOT
+    Verified sender for all outbound mail. REQUIRED while email_provider is not "dev":
+    the API now fails at boot without it, deliberately, because the previous behaviour was
+    to send every message as `"Mini Rally" <>`, have SES reject each one, open the email
+    circuit breaker and report healthy — a silent outage of invitations, notifications and
+    password resets in both environments.
+
+    The address (or its domain) must be a verified identity in the target account's SES,
+    or every send still fails — Terraform cannot check that for you.
+  EOT
+  type        = string
+  default     = "noreply@qnsc.vn"
+
+  validation {
+    condition     = can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.mail_from_email))
+    error_message = "mail_from_email must be a single bare email address (no display name)."
+  }
 }
 
 variable "seed_on_deploy" {
@@ -571,11 +612,12 @@ variable "grafana_alerting" {
     `product_dashboards_folder_uid` are THREE DIFFERENT folders in the same
     shared Grafana stack — do not collapse them. A real bug caught before
     merge: the dashboard resource briefly reused `alerts_folder_uid`, which
-    would have filed rally's dashboard under the Alerts folder. A second
+    would have filed rova's dashboard under the Alerts folder. A second
     real bug, caught in production: `product_dashboards_folder_uid` used to
     be a `grafana_folder` resource created HERE, once per environment —
     since develop and prod are separate Terraform root modules with
-    separate state, that created two real, separate "Rally" folders. It is
+    separate state, that created two real, separate "Rally" folders (legacy
+    physical folder titles, do not rename). It is
     now qnsc-infra/live/observability's `rally_dashboards_folder_uid`
     output — a plain UID, created once, centrally, same as the other two.
   EOT
@@ -850,7 +892,8 @@ variable "idle_schedule" {
     The 7-day window bounds when AWS force-STARTS the instance, not how long it then runs.
     Stop it on Sunday, AWS starts it the following Sunday, and the next weekly pass is up
     to seven days after that. So a weekly re-stop bounds the exposure at seven days rather
-    than one. Measured on rally-prod under exactly that expression: 59 of 168 hours in a
+    than one. Measured on rally-prod (legacy physical instance name, do not
+    rename) under exactly that expression: 59 of 168 hours in a
     week published CloudWatch datapoints — a pre-launch database with no users, no tasks
     and no cache node running 35% of the time, roughly $4/mo for nothing.
 
@@ -1011,7 +1054,7 @@ variable "tunnel_routing_managed" {
     mapping), instead of leaving them to whatever was configured by hand.
 
     WHY THIS IS OPT-IN RATHER THAN THE DEFAULT. A tunnel with no ingress rule is inert:
-    it connects, reports healthy, and 503s every request — which is exactly how rally
+    it connects, reports healthy, and 503s every request — which is exactly how rova
     production went live. But turning routing on for a tunnel that is ALREADY SERVING is
     the dangerous direction: Cloudflare's tunnel-configuration API is a whole-document
     PUT, so a partial rule set silently discards anything the live configuration holds
@@ -1092,7 +1135,7 @@ variable "cpu_architecture" {
     an x86 runner multiplies build minutes by enough to outweigh the Fargate saving.
 
     NOT EVERY PRODUCT CAN TAKE THIS. It depends on every image in the task having an
-    arm64 build — including sidecars. rally qualifies: the app is `node:alpine`
+    arm64 build — including sidecars. rova qualifies: the app is `node:alpine`
     (multi-arch), and both sidecars publish arm64 (`cloudflare/cloudflared` and
     `amazon/aws-otel-collector`, checked 2026-08-17). qnsc-kb does NOT: `clamav/clamav`
     is amd64-only on every published tag.

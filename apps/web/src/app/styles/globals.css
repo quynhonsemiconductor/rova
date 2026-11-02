@@ -3,7 +3,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* ── Rally Design Tokens ────────────────────────────────────────────────────
+/* ── Rova Design Tokens ────────────────────────────────────────────────────
    Navy corporate palette. Single source of truth (FRONTEND_STRUCTURE §10).
    Light/dark via CSS variables — no inline hex values in components.
 ────────────────────────────────────────────────────────────────────────────── */
@@ -95,6 +95,14 @@
   --report-planned: #d98324; /* Burnup: planned scope */
   --report-preliminary: #8b6fd1; /* Burnup: top-down Preliminary estimate */
   --report-grid: #dfe5ec;
+
+  /* User Guide screenshot markers. The numbered pins drawn ON `02-top-navigation-annotated.png`, so
+     the legend beside it must use the same four colours; they are image colours, not theme colours,
+     and are deliberately not redefined for dark mode. */
+  --guide-marker-1: #16a34a;
+  --guide-marker-2: #dc2626;
+  --guide-marker-3: #7c3aed;
+  --guide-marker-4: #db2777;
   --warning: #d97706;
   --warning-bg: #fef5e4;
   --warning-border: #f0d9a5;
@@ -288,6 +296,10 @@
   --color-warning-border: var(--warning-border);
   --color-info: var(--info);
   --color-info-bg: var(--info-bg);
+  --color-guide-marker-1: var(--guide-marker-1);
+  --color-guide-marker-2: var(--guide-marker-2);
+  --color-guide-marker-3: var(--guide-marker-3);
+  --color-guide-marker-4: var(--guide-marker-4);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-border-subtle: var(--border-subtle);
@@ -351,6 +363,31 @@
   --text-ui-lg--line-height: 1.428571rem; /* 20px */
   --text-ui-xl: 1.071429rem; /* 15px */
   --text-ui-xl--line-height: 1.5rem; /* 21px */
+}
+
+/* ── Long-form reading scale (User Guide) ─────────────────────────────────────
+   The `text-ui-*` scale tops out at 15px because it sizes CONTROLS. The User Guide is prose a reader
+   reads top to bottom, at the sizes the BA's guide was written for (`pages/guide`). A separate,
+   namespaced scale rather than raw `text-lg`/`text-2xl`, so the guide neither borrows a control size
+   for a heading nor adds to the raw-font-size ratchet. Line heights follow the guide's own rhythm —
+   about 1.7 for body and lead, 1.35 for h2/h3 — and tighten to about 1.1 on title and display, where
+   1.35 leading would gape.
+──────────────────────────────────────────────────────────────────────────────── */
+@theme {
+  --text-doc-sm: 0.857143rem; /* 12px — captions, labels */
+  --text-doc-sm--line-height: 1.285714rem; /* 18px */
+  --text-doc-body: 1.071429rem; /* 15px */
+  --text-doc-body--line-height: 1.821429rem; /* 25.5px */
+  --text-doc-lead: 1.142857rem; /* 16px */
+  --text-doc-lead--line-height: 1.942857rem; /* 27.2px */
+  --text-doc-h3: 1.214286rem; /* 17px */
+  --text-doc-h3--line-height: 1.642857rem; /* 23px */
+  --text-doc-h2: 1.428571rem; /* 20px */
+  --text-doc-h2--line-height: 1.928571rem; /* 27px */
+  --text-doc-title: 2.285714rem; /* 32px */
+  --text-doc-title--line-height: 2.642857rem; /* 37px */
+  --text-doc-display: 3.142857rem; /* 44px */
+  --text-doc-display--line-height: 3.428571rem; /* 48px */
 }
 
 @layer base {

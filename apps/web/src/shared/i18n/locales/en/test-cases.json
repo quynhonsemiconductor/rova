@@ -1,5 +1,9 @@
 {
   "tabName": "Test Cases",
+  "recordType": {
+    "testCase": "Test Case",
+    "testResult": "Test Result"
+  },
   "search": "Search test cases",
   "addNew": {
     "label": "Add New",
@@ -71,8 +75,8 @@
     "description": "Description",
     "objective": "Objective",
     "preconditions": "Preconditions",
-    "validationInput": "Input",
-    "validationExpectedResult": "Expected Result",
+    "validationInput": "Validation Input",
+    "validationExpectedResult": "Validation Expected Result",
     "postconditions": "Postconditions",
     "notes": "Notes",
     "project": "Project",
@@ -99,7 +103,25 @@
     "notRunYet": "Not run yet"
   },
   "history": {
-    "subtitle": "Activity log for field changes on this Test Case."
+    "subtitle": "Activity recorded for this Test Case.",
+    "columns": {
+      "time": "Time",
+      "actor": "Actor",
+      "action": "Action",
+      "details": "Details"
+    },
+    "actions": {
+      "testCaseCreated": "created Test Case",
+      "testCaseDeleted": "deleted Test Case",
+      "resultRecorded": "recorded Result",
+      "resultDeleted": "deleted Result",
+      "changed": "changed {{field}}"
+    },
+    "resultRecorded": "{{tester}} recorded {{verdict}} for build {{build}} on {{date}}",
+    "change": "{{from}} → {{to}}",
+    "contentChanged": "Content changed",
+    "empty": "(empty)",
+    "unknownUser": "Unknown user"
   },
   "results": {
     "tabName": "Results",
@@ -145,7 +167,7 @@
       "tester": "Filter by Tester"
     },
     "history": {
-      "subtitle": "Activity log for field changes on this Test Result."
+      "subtitle": "Activity recorded for this Test Result."
     },
     "detail": {
       "notFound": "No Test Result found",

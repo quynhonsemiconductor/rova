@@ -234,7 +234,11 @@ export function PortfolioDetailPage() {
       backLabel={t('title')}
       badge={<TypeBadge type={item.type} />}
       itemKey={item.itemKey}
-      copyLink={{ key: item.itemKey, name: item.name, url: entityDetailUrl('portfolioItem', item.id) }}
+      copyLink={{
+        key: item.itemKey,
+        name: item.name,
+        url: entityDetailUrl('portfolioItem', item.id),
+      }}
       title={item.name}
       /* Icons and the inline count, laid out exactly as Work Item detail builds its tabs:
          the same `size={19}` lucide glyph, and a counted tab renders its number INSIDE the

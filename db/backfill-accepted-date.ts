@@ -23,7 +23,7 @@
  */
 import { Pool } from 'pg';
 
-import { pgOptions } from './pg-ssl';
+import { pgOptions, tlsFromEnv } from './pg-ssl';
 import { log } from './script-log';
 
 export interface BackfillResult {
@@ -46,7 +46,7 @@ export async function backfillAcceptedDate(options: {
     options.connectionUrl ?? process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_URL;
   if (!url) throw new Error('backfill needs DATABASE_URL (or DATABASE_MIGRATION_URL).');
 
-  const pool = new Pool(pgOptions(url));
+  const pool = new Pool(pgOptions(url, tlsFromEnv()));
   try {
     /**
      * Candidates and their best available evidence, in one query.

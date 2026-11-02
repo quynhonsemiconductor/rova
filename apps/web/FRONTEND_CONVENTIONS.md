@@ -1,4 +1,4 @@
-# Rally Web — Frontend Conventions
+# Rova Web — Frontend Conventions
 
 The rules that keep the UI consistent as the app scales. Enforced by lint + the
 ratchet tests in `src/test/fe-consistency.ratchet.test.ts`. Companion to

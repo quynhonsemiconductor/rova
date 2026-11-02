@@ -17,7 +17,7 @@ import {
   useCarryoverReport,
   type CarryoverDirection,
 } from '@/features/reporting/api'
-import { iterationsInScope, reportScopeLabel } from '@/features/reporting/scope'
+import { iterationsOwnedByTeam, reportScopeLabel } from '@/features/reporting/scope'
 import { EMPTY_VALUE, NUMERIC_CELL_CLASS, formatDateIso } from '@/shared/lib/utils'
 import {
   CHART_AXIS,
@@ -70,7 +70,7 @@ export function CarryoverReport({
   const { t } = useTranslation(['carryover', 'reports', 'common'])
   const iterationsQuery = useIterationOptions(projectId)
   const iterationFeed = listResource(iterationsQuery)
-  const iterations = iterationsInScope(iterationFeed.rows, teamId)
+  const iterations = iterationsOwnedByTeam(iterationFeed.rows, teamId)
   const { selectedId, select } = useSelectedIteration(projectId, iterations)
   const { data, isLoading, isError } = useCarryoverReport({
     projectId,

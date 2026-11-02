@@ -4,7 +4,7 @@ import { useResetOnIdChange } from './use-reset-on-id-change'
 /**
  * usePendingPatch — accumulates field edits locally instead of saving each one
  * immediately, so a detail page can offer a single Save/Cancel action over the
- * whole form (matching Broadcom Rally's UX) instead of auto-saving every field
+ * whole form (matching Broadcom's Rally UX) instead of auto-saving every field
  * on blur/change.
  *
  * Takes two type params on purpose: `TEntity` (the read shape rendered on

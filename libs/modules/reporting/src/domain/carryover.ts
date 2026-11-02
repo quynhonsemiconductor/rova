@@ -8,8 +8,9 @@ import { roundForDisplay } from './report-scope';
  * Split Events and Manual Moves are never in the input (CO-BR-35), so nothing here has to exclude
  * them.
  *
- * Iterations are matched as a SET, because every report reads the selected Iteration's fused timebox
- * (`findTimeboxSiblings`): for All Teams that is every participating Team's Iteration.
+ * Iterations are matched as a SET, because the Burndown / Team Capacity badges read the selected
+ * Iteration's fused timebox (`findTimeboxSiblings`): for All Teams that is every participating Team's
+ * Iteration. The dedicated report passes a set of ONE — see `ReportingService.getCarryover`.
  */
 
 export type CarryoverDirection = 'in' | 'out';

@@ -52,7 +52,7 @@ import {
   DEVELOPER_ID,
   VIEWER_ID,
   adminActor,
-  bootRallyApp,
+  bootRovaApp,
   uniqueKey,
 } from './support/flow-harness';
 
@@ -67,7 +67,7 @@ describe('BA flows: E2E-002 admin prepares team and user for work management', (
   const admin = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     teams = app.get(TeamService);
     workItems = app.get(WorkItemsService);

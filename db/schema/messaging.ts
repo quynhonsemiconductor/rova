@@ -203,7 +203,7 @@ export const notificationOutbox = messagingSchema.table(
  * WHY NOT AN INLINE CALL: Graph is a network round-trip, and this repo's rule against holding a
  * Postgres transaction across one is stated at
  * `libs/modules/attachments/src/application/entity-attachments.service.ts:106-110`. A
- * fire-and-forget call after commit is not the alternative either — a failure there leaves a Rally
+ * fire-and-forget call after commit is not the alternative either — a failure there leaves a rova
  * invitation whose Entra guest was never created, and the invitee's login refusal surfaces only as
  * `AUTH_TOKEN_INVALID`.
  *

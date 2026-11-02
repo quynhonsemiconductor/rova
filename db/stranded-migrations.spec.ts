@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { strandedMigrations, type RecordedMigration } from './stranded-migrations';
+import {
+  assertNoMissingMigrations,
+  EDITED_AFTER_APPLY,
+  strandedMigrations,
+  type RecordedMigration,
+} from './stranded-migrations';
 
 const sha = (text: string) => createHash('sha256').update(text).digest('hex');
 const files: Record<string, string> = {
@@ -29,6 +34,7 @@ describe('strandedMigrations', () => {
       missing: [],
       mismatched: [],
       recordedUnderOtherTimestamp: [],
+      knownEdits: [],
     });
   });
 
@@ -82,7 +88,12 @@ describe('strandedMigrations', () => {
 
   it('skips an entry whose file does not exist', () => {
     const report = strandedMigrations([{ tag: '0099_gone', when: 999 }], [], hashOf);
-    expect(report).toEqual({ missing: [], mismatched: [], recordedUnderOtherTimestamp: [] });
+    expect(report).toEqual({
+      missing: [],
+      mismatched: [],
+      recordedUnderOtherTimestamp: [],
+      knownEdits: [],
+    });
   });
 });
 
@@ -119,6 +130,7 @@ describe('strandedMigrations — the real journal, on a database that ran 0006 a
       missing: [],
       mismatched: [],
       recordedUnderOtherTimestamp: [],
+      knownEdits: [],
     });
   });
 
@@ -127,5 +139,61 @@ describe('strandedMigrations — the real journal, on a database that ran 0006 a
     expect(strandedMigrations(journal.entries, without, realHash).missing).toEqual([
       expect.stringContaining('0006_enum_columns'),
     ]);
+  });
+
+  it('reports 0068 as a KNOWN edit, not as a mismatch, on a database that ran the pre-#832 text', () => {
+    // Every database that migrated before 4fbadd6 recorded the OLD 0068 hash; the file on disk hashes to the new
+    // one. Without the allow-list this is a permanent entry in `mismatched`, which is how a real mismatch gets
+    // dismissed. Both hashes are named in db/stranded-migrations.ts and asserted here against the real pair.
+    const pair = EDITED_AFTER_APPLY.get('0068_app_role_least_privilege');
+    expect(pair).toBeDefined();
+    expect(realHash('0068_app_role_least_privilege')).toBe(pair?.fileHash);
+
+    const rows = journal.entries.map((e) => ({
+      created_at: e.when,
+      hash: e.tag === '0068_app_role_least_privilege' ? pair!.recordedHash : realHash(e.tag),
+    }));
+    const report = strandedMigrations(journal.entries, rows, realHash);
+    expect(report.mismatched).toEqual([]);
+    expect(report.missing).toEqual([]);
+    expect(report.knownEdits).toEqual([expect.stringContaining('0068_app_role_least_privilege')]);
+  });
+
+  it('still reports 0068 when the recorded hash is neither the old nor the new one', () => {
+    const rows = journal.entries.map((e) => ({
+      created_at: e.when,
+      hash: e.tag === '0068_app_role_least_privilege' ? sha('some third text') : realHash(e.tag),
+    }));
+    const report = strandedMigrations(journal.entries, rows, realHash);
+    expect(report.knownEdits).toEqual([]);
+    expect(report.mismatched).toEqual([expect.stringContaining('0068_app_role_least_privilege')]);
+  });
+});
+
+describe('assertNoMissingMigrations', () => {
+  it('passes when nothing is missing (mismatched and known edits never fail the Job)', () => {
+    expect(() => assertNoMissingMigrations({ missing: [] })).not.toThrow();
+  });
+
+  it('throws naming every stranded file', () => {
+    expect(() => assertNoMissingMigrations({ missing: ['0125_api_tokens', '0126_x'] })).toThrow(
+      /2 migration\(s\) in the journal never ran: 0125_api_tokens, 0126_x/,
+    );
+  });
+
+  it('fails end to end for a stranded entry and passes for a mismatch', () => {
+    const entries = [
+      { tag: '0005_a', when: 100 },
+      { tag: '0006_b', when: 200 },
+    ];
+    const stranded = strandedMigrations(entries, [row('0005_a', 100)], hashOf);
+    expect(() => assertNoMissingMigrations(stranded)).toThrow(/0006_b/);
+    const edited = strandedMigrations(
+      entries,
+      [row('0005_a', 100), { created_at: 200, hash: sha('other text') }],
+      hashOf,
+    );
+    expect(edited.mismatched).toEqual(['0006_b (when=200)']);
+    expect(() => assertNoMissingMigrations(edited)).not.toThrow();
   });
 });

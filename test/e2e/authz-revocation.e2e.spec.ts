@@ -6,7 +6,7 @@
  * underpins every business flow but proves no single one. Recorded explicitly so
  * the coverage matrix can tell "deliberately not a flow" from "untraced".
  *
- * History, because it explains the shape of these assertions. Rally used to embed
+ * History, because it explains the shape of these assertions. Rova used to embed
  * `claims.permissions` in every access token and authorize from that snapshot, so
  * revoking a role left the issued token working for up to `JWT_ACCESS_EXPIRY`.
  * That was patched with an authorization epoch: a counter bumped on every change,

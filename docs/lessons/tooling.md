@@ -88,7 +88,7 @@ not a function`, so use `AuthService.devLogin` for a bearer token), the **Valida
   place to add the keyboard sensor. Capacity Planning's grip already did this correctly and was the
   model.
 - **`EMPTY_VALUE` (`'--'`) is the only placeholder for an absent value**, per its own docblock ("not an
-  em-dash, because that is what real Rally renders"). 15 em-dash literals had drifted back in, two of
+  em-dash, because that is what Rally renders"). 15 em-dash literals had drifted back in, two of
   them colliding *within one screen* — Portfolio detail rendered `'--'` in the sidebar beside `'—'` in
   both children tables. When replacing these, note that the string also appears in prose comments; a
   blind find-and-replace edits those too.

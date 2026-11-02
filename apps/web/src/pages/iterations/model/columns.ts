@@ -9,14 +9,7 @@ import { type Iteration } from '@/features/iterations/api'
  * (a click-to-open key link), matching Iteration Status / real Rally.
  */
 export type ColKey =
-  | 'id'
-  | 'name'
-  | 'theme'
-  | 'startDate'
-  | 'endDate'
-  | 'plannedVelocity'
-  | 'taskEstimate'
-  | 'state'
+  'id' | 'name' | 'theme' | 'startDate' | 'endDate' | 'plannedVelocity' | 'taskEstimate' | 'state'
 
 export const ITERATIONS_COLUMNS: ColumnSpec<Iteration, unknown, ColKey>[] = [
   { key: 'id', label: 'ID', defaultWidth: 84, minWidth: 60, locked: true },

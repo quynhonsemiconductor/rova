@@ -464,7 +464,7 @@ function TaskRow({
   projectKey: string | null
   projectName: string | null
   teamOf: (id?: string | null) => { id: string; name: string; key?: string | null } | undefined
-  members: { userId: string; displayName?: string | null; email?: string | null }[]
+  members: readonly { userId: string; displayName?: string | null; email?: string | null }[]
   parentTeamId: string | null
   onOpen: (task: WorkItem) => void
   selected: boolean

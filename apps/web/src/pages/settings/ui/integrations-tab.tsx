@@ -1,7 +1,7 @@
 /**
  * Settings ▸ Integrations — source-control (GitHub) dashboard.
  *
- * Org-level model: connect the Rally GitHub App once and its repositories are
+ * Org-level model: connect the Rova GitHub App once and its repositories are
  * discovered automatically (from `installation`/`installation_repositories`
  * webhooks) and back-filled. PRs/commits link to work items by their workspace-
  * unique key (Rally FormattedID) — no per-project mapping. A manual owner/name

@@ -25,6 +25,7 @@ import { CapacityModule } from '@modules/capacity';
 import { QualityModule } from '@modules/quality';
 import { ScmModule } from '@modules/scm';
 import { ApiTokensModule } from '@modules/api-tokens';
+import { McpModule } from './mcp/mcp.module';
 import { TestCasesModule } from '@modules/test-cases';
 import { GlobalExceptionFilter, REQUEST_CONTEXT } from '@quynhonsemiconductor/platform-http';
 import { AuthApiErrorFilter } from '@quynhonsemiconductor/identity/nest';
@@ -45,6 +46,10 @@ import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
     // test/e2e/api-tokens.e2e.spec.ts and test/e2e/rate-limit-keying.e2e.spec.ts.
     PreAuthRateLimitModule,
     ApiTokensModule,
+    // MCP principal bridge: between ApiTokenGuard (owns a `rly_` request) and identity's
+    // SessionGuard (stands aside for, but still ban-checks, an MCP principal). Global guard
+    // order is module order — see mcp/principal.guard.ts.
+    McpModule,
     AuthModule,
     RateLimitModule,
 

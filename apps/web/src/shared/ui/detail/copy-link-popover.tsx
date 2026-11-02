@@ -87,7 +87,7 @@ export function CopyLinkPopover({ subject }: CopyLinkPopoverProps) {
                   // Selecting on focus makes the keyboard path match the button: tab to the row,
                   // the value is already selected, copy with the OS shortcut.
                   onFocus={(e) => e.currentTarget.select()}
-                  className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1.5 text-ui-xs text-foreground"
+                  className="bg-surface min-w-0 flex-1 rounded border border-border px-2 py-1.5 text-ui-xs text-foreground"
                 />
                 <CopyButton
                   value={format.value}

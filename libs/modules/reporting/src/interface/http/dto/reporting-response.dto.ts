@@ -126,6 +126,8 @@ const VelocityBarSchema = z.object({
    * splitCarryover` = the displayed points (§8 Q7).
    */
   splitCarryover: z.number(),
+  // No SPA consumer since SU-09 AC5 removed the footnote; kept as the audit answer — see
+  // `VelocityBar.splitStoryIds` in `domain/velocity.ts`.
   splitStoryIds: z
     .array(z.string().uuid())
     .describe('The `[Unfinished]` placeholders behind splitCarryover — the excluded population.'),

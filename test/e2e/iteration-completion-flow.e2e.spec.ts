@@ -18,7 +18,7 @@ import { IterationsService } from '@modules/iterations';
 import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 
-import { adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('BA flows: task completion → parent + iteration auto-status (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
@@ -28,7 +28,7 @@ describe('BA flows: task completion → parent + iteration auto-status (real App
   const actor = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
     iterations = app.get(IterationsService);

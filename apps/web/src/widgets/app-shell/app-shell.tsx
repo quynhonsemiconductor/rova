@@ -7,7 +7,6 @@ import {
   ChevronDown,
   ChevronRight,
   Check,
-  HelpCircle,
   Layers,
   LogOut,
   Search,
@@ -37,6 +36,7 @@ import { NAV_ITEMS, isNavGroupActive, isNavPathActive, type NavItem } from '@/sh
 import { queryClient } from '@/shared/api/query-client'
 import { NotificationPopover } from '@/widgets/notification-popover/notification-popover'
 import { GlobalSearch } from './global-search'
+import { HelpLink } from './help-link'
 
 /**
  * A single row in the workspace-switcher "Projects & Teams" tree. The row can be
@@ -729,15 +729,8 @@ export function AppShell() {
             <NotificationPopover open={notifOpen} onClose={() => setNotifOpen(false)} />
           </div>
 
-          {/* Help */}
-          <button
-            className="rounded p-1.5"
-            style={{ color: 'rgba(255,255,255,0.65)' }}
-            aria-label="Help"
-            onClick={() => toast.info('Help & documentation coming soon', { duration: 2500 })}
-          >
-            <HelpCircle size={14} />
-          </button>
+          {/* Help — opens the User Guide in a new tab (US-119) */}
+          <HelpLink />
 
           {/* Settings */}
           <Link

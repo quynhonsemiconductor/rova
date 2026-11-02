@@ -29,6 +29,7 @@ import { formatWith } from '@/shared/lib/utils'
 import { useSystemRoles } from '../model/use-system-roles'
 import { memberSelectOption } from '@/shared/ui/owner-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { WrapBox } from '@/shared/ui/wrap-box'
 
 const AUDIT_DEFAULT_PAGE_SIZE = 50
 
@@ -289,13 +290,17 @@ export function AuditLogTab() {
         minWidth: 220,
         grow: true,
         cellClassName: 'flex min-w-0 items-center',
+        // A `grow` column of wrapping text in a `max-content` row: `WrapBox`, or a long event widens
+        // the row and pushes the columns after it off-screen.
         cell: (r, ctx) => (
-          <span
-            className="text-ui-md break-words whitespace-normal text-foreground"
-            title={`${r.action} · ${r.resourceType} · ${r.resourceId}`}
-          >
-            {describeAuditEvent(r, ctx.resolver)}
-          </span>
+          <WrapBox>
+            <span
+              className="text-ui-md break-words whitespace-normal text-foreground"
+              title={`${r.action} · ${r.resourceType} · ${r.resourceId}`}
+            >
+              {describeAuditEvent(r, ctx.resolver)}
+            </span>
+          </WrapBox>
         ),
       },
     ],

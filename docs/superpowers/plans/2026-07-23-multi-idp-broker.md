@@ -4,12 +4,12 @@
 
 > ## ⚠️ Status & revisions (2026-07-24) — read before executing
 > **Package tasks T1–T9 are DONE** on branch `feat/multi-idp-oidc-broker` (stacked on `feat/identity-invite-break-glass`), all green (163 tests). The following override the task text below:
-> - **Secret store = AWS Secrets Manager, NOT SSM.** Ignore the `AWS SSM` / `@aws-sdk/client-ssm` / `SsmSecretResolver` / `@quynhonsemiconductor/identity/ssm` mentions. The package ships only the `SecretResolver` **port** (done, store-agnostic). **Rally (T9-app) implements `SecretsManagerSecretResolver`.** Secrets under `rally/${env}/sso/*`.
-> - **NEW IaC task (Terraform, `qnsc-tf-modules` + Rally live):** add a **task-role** policy `secretsmanager:GetSecretValue` on `rally/${env}/sso/*` + `kms:Decrypt` on the shared CMK (today only the *execution* role reads secrets, for boot-time env injection — the broker reads at **runtime**). Verify CMK key policy + runtime egress (VPC endpoint/NAT). Values set out-of-band. Rotation = separate hygiene follow-up.
+> - **Secret store = AWS Secrets Manager, NOT SSM.** Ignore the `AWS SSM` / `@aws-sdk/client-ssm` / `SsmSecretResolver` / `@quynhonsemiconductor/identity/ssm` mentions. The package ships only the `SecretResolver` **port** (done, store-agnostic). **Rova (T9-app) implements `SecretsManagerSecretResolver`.** Secrets under `rally/${env}/sso/*`.
+> - **NEW IaC task (Terraform, `qnsc-tf-modules` + Rova live):** add a **task-role** policy `secretsmanager:GetSecretValue` on `rally/${env}/sso/*` + `kms:Decrypt` on the shared CMK (today only the *execution* role reads secrets, for boot-time env injection — the broker reads at **runtime**). Verify CMK key policy + runtime egress (VPC endpoint/NAT). Values set out-of-band. Rotation = separate hygiene follow-up.
 > - **SSO-identity: NO schema change.** Skip **T11's `sso_identities` re-key** and **T12's user-repo re-key** — `sso_identities` keeps `(provider, provider_sub)`; the broker keys by `connection.provider`. `upsertBySsoIdentity/findSsoIdentity` signatures are unchanged.
 > - **Registry has no cache** (instant cutoff), **one shared `assertConnectionAllows` gate**, and all broker code lives under `packages/identity/src/oidc/`.
-> - **Legacy retained** (opshub depends on it; broker deps `@Optional`). Retire Rally's home route at T18; package legacy only after opshub migrates.
-> - **T10 (publish):** use the platform repo's release flow (don't `npm publish` from a feature branch); or `pnpm link` for local Rally dev.
+> - **Legacy retained** (opshub depends on it; broker deps `@Optional`). Retire Rova's home route at T18; package legacy only after opshub migrates.
+> - **T10 (publish):** use the platform repo's release flow (don't `npm publish` from a feature branch); or `pnpm link` for local rova dev.
 
 **Goal:** invite-only users from ANY OIDC directory (extra Entra tenants, Google Workspace, Okta, consumer Google) sign into any platform app through one email-first login — no local passwords, per-connection secrets in AWS SSM, MFA delegated to each IdP.
 
@@ -17,7 +17,7 @@
 
 **Tech:** NestJS, Drizzle (Postgres), `jose`, Valkey, Vitest, `@aws-sdk/client-ssm`, React (Vite).
 
-**Repos:** `platform/qnsc-app-platform` (`@quynhonsemiconductor/identity` — mechanism + contract) and `rally` (migration, wiring, endpoint, UI, seed).
+**Repos:** `platform/qnsc-app-platform` (`@quynhonsemiconductor/identity` — mechanism + contract) and `rova` (migration, wiring, endpoint, UI, seed).
 
 **Build order (P1):** do all **package** tasks (T1–T9) → **publish `@quynhonsemiconductor/identity@X.Y.0-rc.1`** (T10) → **app** tasks consume the rc (T11–T17) → **GA publish + bump + cleanup** (T18). During package dev, apps may `pnpm link` the workspace; CI consumes the published rc.
 
@@ -106,7 +106,7 @@
 ## Task 8: Connection-driven provisioning (B1) + `ssoLoginFromConnection`
 **Files:** `auth.service.ts`, `auth.service.test.ts`, `repository-ports.ts` (`upsertBySsoIdentity`).
 - [ ] **Refactor `resolveAndProvisionSsoUser`** to take the **resolved connection** + claims (no `findByExternalTenantId`, no `'entra'`, no `tid`): route to `connection.workspaceId`/`defaultRoleSlug`; **reuse the existing gate** (`status`, `directory`→domain allowlist, `shared`→require pending invite, `jitEnabled` invite-check, platform-admin break-glass).
-- [ ] **Identity keyed by connection (Decision 12):** change the **port** signature to `upsertBySsoIdentity(connectionId, subject, email, displayName, tx?)` and `findSsoIdentity(connectionId, subject)` (was `provider, providerSub`). The Rally **impl** (`user.drizzle-repository`) + **migration** land in T11/T12 — this task only moves the port + `auth.service` call sites.
+- [ ] **Identity keyed by connection (Decision 12):** change the **port** signature to `upsertBySsoIdentity(connectionId, subject, email, displayName, tx?)` and `findSsoIdentity(connectionId, subject)` (was `provider, providerSub`). The Rova **impl** (`user.drizzle-repository`) + **migration** land in T11/T12 — this task only moves the port + `auth.service` call sites.
 - [ ] Add `ssoLoginFromConnection(conn, claims, ip)` = the post-verify tail (mint session via existing pipeline). Keep `ssoLogin(idToken, ip)` for the legacy home path (verify with `entra-verifier` then delegate) until cleanup.
 - [ ] Tests: directory JIT provisions into the connection's workspace/role; `shared` without invite → rejected; `jitEnabled=false` + uninvited → rejected; platform-admin break-glass allowed; identity upsert keyed by `(connectionId, subject)`. Commit.
 
@@ -120,49 +120,49 @@
 
 ---
 
-# APP (Rally) — consumes `@quynhonsemiconductor/identity@X.Y.0-rc.1`
+# APP (Rova) — consumes `@quynhonsemiconductor/identity@X.Y.0-rc.1`
 
-## Task 11: Migrations — connection columns, domain table, identity re-key (Rally)
+## Task 11: Migrations — connection columns, domain table, identity re-key (Rova)
 **Files:** `db/schema/identity.ts`, `db/migrations/0057_sso_connection_oidc_fields.sql`, `db/migrations/meta/_journal.json`.
 - [ ] **Connection columns** — add to the `ssoConnections` Drizzle table + SQL: `kind` enum(`directory`,`shared`) default `directory`, `authority_url`, `jwks_uri`, `accepted_issuers jsonb default '[]'`, `scopes` default `'openid profile email'`, `client_id`, `client_secret_ref`, `display_name`. **No `redirect_uri`.**
 - [ ] **Owned-domain table (Decision 11)** — create `identity.sso_connection_domains(id, connection_id fk→sso_connections on delete cascade, domain varchar(255) lowercased, created_at)` with `UNIQUE(domain)` + index on `connection_id`. Add the Drizzle table. **Backfill** from existing `allowed_email_domains` where `kind='directory'` (`INSERT … SELECT` unnesting the jsonb, lowercased, `ON CONFLICT (domain) DO NOTHING`). Keep the jsonb column for back-compat.
 - [ ] **Identity re-key (Decision 12)** — in the same migration: `ADD COLUMN connection_id uuid REFERENCES sso_connections(id)`; `UPDATE sso_identities SET connection_id = (SELECT id FROM sso_connections WHERE provider='entra' LIMIT 1)` (the sole home connection today); `SET NOT NULL`; drop `uq_sso_identities_provider_sub`; create `UNIQUE(connection_id, provider_sub)`. Update the Drizzle `ssoIdentities` table + unique index. **Guard:** the migration must assert exactly one connection exists before backfilling (else fail loudly — don't guess).
 - [ ] Hand-write the SQL migration + journal entry (drizzle-kit needs a TTY — hand-write per repo convention). Apply to dev; verify `\d identity.sso_connections`, `\d identity.sso_connection_domains`, and the new `sso_identities` index. Commit.
 
-## Task 12: Repos — connection lookups + connection-scoped identity (Rally)
+## Task 12: Repos — connection lookups + connection-scoped identity (Rova)
 **Files:** `sso-connection.drizzle-repository.ts` (+spec), `user.drizzle-repository.ts` (+spec).
 - [ ] **Connection repo:** `findDirectoryByEmailDomain(email)` = join `sso_connection_domains` (domain = lowercased email domain) → `sso_connections` filtered `status='active' AND kind='directory'`; `connectionOwnsEmailDomain(connectionId, email)` (gate reuse, same table); `findSharedByInvitedEmail(email)` = active `kind='shared'` connection with a **pending invitation** for that email; `findById`; `listActiveShared`; a `private map(row)` for the new columns; route `findByExternalTenantId` through `map`.
 - [ ] **User repo (Decision 12):** change `upsertBySsoIdentity(connectionId, providerSub, email, displayName, tx?)` and `findSsoIdentity(connectionId, providerSub)` to key on `(connection_id, provider_sub)` (set `connection_id` on insert; look up by it).
 - [ ] Specs: domain match via the table (case-insensitive, directory only), shared requires a pending invite, no-match→null, column mapping; identity upsert/find keyed by `(connectionId, providerSub)`. Commit.
 
-## Task 13: Wire the broker in Rally DI (Rally)
+## Task 13: Wire the broker in Rova DI (Rova)
 **Files:** `libs/modules/identity/src/identity.module.ts`.
 - [ ] Bind `OidcDiscovery`, `OidcClient`, `OidcTokenVerifier`, `{ provide: SECRET_RESOLVER, useClass: SsmSecretResolver }` (from `@quynhonsemiconductor/identity/ssm`), and `ConnectionRegistry` (factory injecting the connection repo + `SECRET_RESOLVER` + `OidcDiscovery` + `IDENTITY_REDIRECT_URI`). Extend the `BffService` provider to inject them. Keep the legacy Entra providers during transition. Typecheck; commit.
 
-## Task 14: `POST /bff/login/start` + rate-limit + audit (Rally)
+## Task 14: `POST /bff/login/start` + rate-limit + audit (Rova)
 **Files:** `bff.controller.ts` (+ `dto/login-start.dto.ts`), controller test.
 - [ ] `@Public() @Post('login/start')` with `LoginStartDto { email: string; returnTo?: string }`; **rate-limited** (existing throttler guard); call `beginLogin(returnTo, email)`; set the `__Host` state cookie; return `{ authorizeUrl }`. `NO_CONNECTION` → 401. Keep `GET /bff/login` (home) + `GET /bff/callback` (routes by stored connectionId — no change).
 - [ ] Emit `login.started/succeeded/failed` audit events (connectionId + email domain) via the platform audit bus.
 - [ ] Test: known-domain → 200 + authorizeUrl + cookie; unknown → 401 `NO_CONNECTION`; rate-limit trips. Commit.
 
-## Task 15: Seed home connection + env (Rally)
+## Task 15: Seed home connection + env (Rova)
 **Files:** `db/seeds/bootstrap.ts`, `libs/platform/src/config/env.schema.ts`.
 - [ ] Seed the home `directory` connection (idempotent `onConflictDoUpdate`): `kind='directory'`, `authorityUrl=https://login.microsoftonline.com/${ENTRA_TENANT_ID}/v2.0`, `acceptedIssuers=[v2 issuer, https://sts.windows.net/${ENTRA_TENANT_ID}/]` (C1), `clientId=ENTRA_CLIENT_ID`, `clientSecretRef=IDENTITY_HOME_SECRET_REF`, `scopes`, `displayName='QNSC (home)'`, `allowedEmailDomains` from env.
 - [ ] Env: add `IDENTITY_REDIRECT_URI` (single callback), `IDENTITY_HOME_SECRET_REF`, `IDENTITY_HOME_EMAIL_DOMAINS`. Put the home secret in SSM (dev: LocalStack param) at `IDENTITY_HOME_SECRET_REF`; keep `ENTRA_CLIENT_SECRET` as the legacy-path fallback during transition. Re-seed dev; verify. Commit.
 
-## Task 16: Email-first login UI (Rally)
+## Task 16: Email-first login UI (Rova)
 **Files:** `apps/web/src/pages/login/login-page.tsx`.
 - [ ] Email input + submit → `POST /v1/bff/login/start` → follow `authorizeUrl`; 401 → "No access — contact your administrator". Keep the MS home button; render a button per `listActiveShared()` connection (`display_name`). Match the dark login card. Typecheck; commit.
 
-## Task 17: E2E — resolution, provisioning, cutoff, contract (Rally)
+## Task 17: E2E — resolution, provisioning, cutoff, contract (Rova)
 **Files:** `test/e2e/sso-multi-connection-flow.e2e.spec.ts`, `test/e2e/sso-connection-contract.e2e.spec.ts`.
 - [ ] Contract test: `assertConnectionContract` from the package against the real DB.
 - [ ] Seam test (real DB + stub secret/discovery injected): seed home + `directory` vendor.com (+ optionally a `shared` Google with a pending invite). `resolveForEmail('x@vendor.com')`→resolves; `'x@nowhere.com'`→null; shared email without invite→null, with invite→resolves; flip vendor `disabled`→null (**cutoff**); `ssoLoginFromConnection(vendorConn, claims)`→user in vendor workspace/role; identity keyed `(connectionId, subject)`.
 - [ ] (Optional) mock-OIDC container for one full authorize→callback→session. Run e2e; commit.
 
 ## Task 18: GA publish + bump + runbook + cleanup
-- [ ] Package green → **GA publish** `@quynhonsemiconductor/identity@X.Y.0`; bump Rally off the rc; `pnpm i`.
-- [ ] Full verify (Rally): `tsc -b`, web `tsc`, `vitest run`, e2e — all green.
+- [ ] Package green → **GA publish** `@quynhonsemiconductor/identity@X.Y.0`; bump Rova off the rc; `pnpm i`.
+- [ ] Full verify (Rova): `tsc -b`, web `tsc`, `vitest run`, e2e — all green.
 - [ ] `docs/runbooks/add-sso-connection.md`: (1) put the IdP secret in SSM `/…/sso/<slug>/client_secret`; (2) insert an `sso_connections` row (`kind`, `provider`, `external_tenant_id`, `authority_url`, `client_id`, `client_secret_ref`, `allowed_email_domains` [directory] or invite [shared], `default_role_slug`, `workspace_id`, `status=active`); (3) register `IDENTITY_REDIRECT_URI` in the IdP; (4) test; (5) engagement end → `status='disabled'` (instant cutoff).
 - [ ] Post-verify: remove the legacy `EntraOidcClient`/`entra-verifier`/`GET /bff/login` shims once the home connection is confirmed on the generic path. Commit.
 

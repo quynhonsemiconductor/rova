@@ -35,6 +35,7 @@ import { TeamAvatar } from '@/shared/ui/team-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { type ColumnSpec } from '@/shared/ui/table'
 import { type ProjectColKey, type ProjectCtx } from '../model/columns'
+import { entityDetailPath } from '@/shared/lib/entity-link'
 
 // ArchiveConfirmModal removed — dead code. Bulk archive uses ConfirmDialog;
 // SRS §9 reserves typed-key confirmation for Delete only.
@@ -534,7 +535,16 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     cellClassName: 'flex items-center',
     // Same as every work-item/timebox grid: the shared IdCell (type glyph +
     // monospace key link to the detail page).
-    cell: (p, ctx) => <IdCell type="project" itemKey={p.key} onOpen={() => ctx.onOpen(p.key)} />,
+    cell: (p, ctx) => (
+      <IdCell
+        type="project"
+        itemKey={p.key}
+        onOpen={() => ctx.onOpen(p.key)}
+        // Projects are addressed by KEY (`/projects/$projectKey`), exactly where `ctx.onOpen` goes;
+        // `defaultRecordHref` covers only work and portfolio items, so the URL is passed here.
+        href={entityDetailPath.project(p.key)}
+      />
+    ),
   },
   {
     key: 'name',

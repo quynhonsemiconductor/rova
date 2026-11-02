@@ -36,7 +36,7 @@ const SEED_CONTEXT = {
  * family. The API runs with DISABLE_RATE_LIMIT=true in e2e, so per-test login
  * doesn't hit the AUTH_LOGIN limit.
  *
- * Rally is SSO-only; the E2E environment has no Entra tenant, so we use the
+ * Rova is SSO-only; the E2E environment has no Entra tenant, so we use the
  * passwordless dev-login form (email only, seeded accounts, non-production).
  *
  * Don't wait for 'networkidle' — the app holds a persistent SSE notifications
@@ -64,7 +64,7 @@ export async function login(
   // exercised `useInitialProject`, so a granted user landing in a No Access shell was invisible here.
   if (seedContext) {
     await page.evaluate((ctx) => {
-      localStorage.setItem('rally-context', JSON.stringify({ state: ctx, version: 0 }))
+      localStorage.setItem('rally-context', JSON.stringify({ state: ctx, version: 0 })) // legacy physical name, do not rename
     }, SEED_CONTEXT)
     await page.reload({ waitUntil: 'domcontentloaded' })
   }

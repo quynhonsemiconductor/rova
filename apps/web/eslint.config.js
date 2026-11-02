@@ -17,7 +17,8 @@ const dependencyRules = FSD_LAYERS.map((layer, index) => ({
 }))
 
 export default defineConfig([
-  globalIgnores(['dist', 'coverage', 'src/shared/api/generated/**']),
+  // `public/guide` is the BA's static User Guide (US-119), shipped as authored — not app code.
+  globalIgnores(['dist', 'coverage', 'src/shared/api/generated/**', 'public/guide/**']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -67,6 +68,15 @@ export default defineConfig([
   // alongside the component — a deliberate convention, not a refresh hazard.
   {
     files: ['src/shared/ui/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  // The User Guide's layout parts are components made by the `part()` factory
+  // (`export const Callout = part(…)`), which the rule cannot recognise as components.
+  // The cost is a full reload instead of a hot swap when a part file is edited.
+  {
+    files: ['src/pages/guide/ui/parts/**/*.{ts,tsx}'],
     rules: {
       'react-refresh/only-export-components': 'off',
     },

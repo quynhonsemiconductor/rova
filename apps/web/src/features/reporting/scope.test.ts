@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { iterationsInScope, reportScopeLabel, teamScopeLabel } from './scope'
+import { iterationsInScope, iterationsOwnedByTeam, reportScopeLabel, teamScopeLabel } from './scope'
 
 describe('report scope labels', () => {
   it('names the aggregate scope instead of printing nothing', () => {
@@ -45,5 +45,21 @@ describe('iterationsInScope', () => {
   it('offers everything under All Teams', () => {
     // No team selected is the aggregate, not "no filter yet" — every timebox is in scope.
     expect(iterationsInScope(iterations, undefined)).toHaveLength(3)
+  })
+})
+
+describe('iterationsOwnedByTeam', () => {
+  const iterations = [
+    { id: 'shared', teamId: null },
+    { id: 'alpha', teamId: 'team-a' },
+    { id: 'beta', teamId: 'team-b' },
+  ]
+
+  it('keeps only the selected Team own iterations — no shared ones (Carryover, R7)', () => {
+    expect(iterationsOwnedByTeam(iterations, 'team-a').map((i) => i.id)).toEqual(['alpha'])
+  })
+
+  it('keeps every iteration for All Teams', () => {
+    expect(iterationsOwnedByTeam(iterations, undefined)).toHaveLength(3)
   })
 })

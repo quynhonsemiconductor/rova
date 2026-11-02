@@ -22,7 +22,7 @@ import type { DrizzleDB } from '@platform';
 import { WorkItemsService } from '@modules/work-items';
 import { ReportingService } from '@modules/reporting';
 
-import { SEEDED, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { SEEDED, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('task iteration is derived from its parent (e2e)', () => {
   let app: NestFastifyApplication;
@@ -51,7 +51,7 @@ describe('task iteration is derived from its parent (e2e)', () => {
   }
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     db = app.get<DrizzleDB>(DRIZZLE);
     service = app.get(WorkItemsService);
   });
@@ -169,7 +169,7 @@ describe('archived teams in Team Capacity (e2e)', () => {
   const actor = adminActor();
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     db = app.get<DrizzleDB>(DRIZZLE);
     reporting = app.get(ReportingService);
   });

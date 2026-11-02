@@ -71,7 +71,11 @@ describe('TestCasesService', () => {
     findRanksByIds: ReturnType<typeof vi.fn>;
     updateRank: ReturnType<typeof vi.fn>;
   };
-  let testResultRepo: { softDeleteByTestCaseIds: ReturnType<typeof vi.fn> };
+  let testResultRepo: {
+    softDeleteByTestCaseIds: ReturnType<typeof vi.fn>;
+    findKeysByIds: ReturnType<typeof vi.fn>;
+    findUserNames: ReturnType<typeof vi.fn>;
+  };
   let typeRepo: { listSelectable: ReturnType<typeof vi.fn> };
   let workItems: { getWorkItemForView: ReturnType<typeof vi.fn> };
   let access: { resolveTeamScope: ReturnType<typeof vi.fn> };
@@ -118,7 +122,11 @@ describe('TestCasesService', () => {
       findRanksByIds: vi.fn().mockResolvedValue([]),
       updateRank: vi.fn().mockResolvedValue(undefined),
     };
-    testResultRepo = { softDeleteByTestCaseIds: vi.fn().mockResolvedValue(undefined) };
+    testResultRepo = {
+      softDeleteByTestCaseIds: vi.fn().mockResolvedValue(undefined),
+      findKeysByIds: vi.fn().mockResolvedValue(new Map()),
+      findUserNames: vi.fn().mockResolvedValue(new Map()),
+    };
     typeRepo = { listSelectable: vi.fn().mockResolvedValue(SELECTABLE_TYPES) };
     workItems = {
       getWorkItemForView: vi
@@ -612,6 +620,77 @@ describe('TestCasesService', () => {
         'WORK_ITEM_NOT_FOUND',
       );
       expect(activity.listFor).not.toHaveBeenCalled();
+    });
+
+    // US-93 TC-25 / US-97 TC-37: each row names its OWN record, and a person field reads as a name.
+    it('keys every row by its own record and resolves person ids to names', async () => {
+      const row = (over: Record<string, unknown>) => ({
+        id: 'log',
+        createdAt: '2026-10-16T00:00:00.000Z',
+        actorId: 'user-1',
+        actorName: 'Admin',
+        entityType: 'test_case',
+        entityId: 'tc-1',
+        action: 'test_case.updated',
+        changes: null,
+        metadata: {},
+        ...over,
+      });
+      activity.listFor.mockResolvedValue({
+        data: [
+          row({ changes: { field: 'ownerId', old: null, new: 'user-2' } }),
+          row({
+            entityType: 'test_result',
+            entityId: 'tr-1',
+            action: 'test_result.created',
+            metadata: { testerId: 'user-3' },
+          }),
+        ],
+        total: 2,
+      });
+      testResultRepo.findKeysByIds.mockResolvedValue(new Map([['tr-1', 'TR-7']]));
+      testResultRepo.findUserNames.mockResolvedValue(
+        new Map([
+          ['user-2', 'Bao'],
+          ['user-3', 'Chi'],
+        ]),
+      );
+
+      const { items } = await service.getActivity(actor, 'tc-1', { limit: 50, offset: 0 });
+
+      expect(testResultRepo.findKeysByIds).toHaveBeenCalledWith(['tr-1'], 'ws-1');
+      expect(testResultRepo.findUserNames).toHaveBeenCalledWith(['user-2', 'user-3']);
+      expect(items[0].metadata).toEqual({ subjectKey: 'TC-1', oldName: null, newName: 'Bao' });
+      expect(items[1].metadata).toEqual({
+        testerId: 'user-3',
+        subjectKey: 'TR-7',
+        testerName: 'Chi',
+      });
+    });
+
+    it('a failed name lookup degrades the rows instead of failing the feed', async () => {
+      activity.listFor.mockResolvedValue({
+        data: [
+          {
+            id: 'log',
+            createdAt: '2026-10-16T00:00:00.000Z',
+            actorId: 'user-1',
+            actorName: 'Admin',
+            entityType: 'test_case',
+            entityId: 'tc-1',
+            action: 'test_case.updated',
+            changes: { field: 'ownerId', old: null, new: 'user-2' },
+            metadata: {},
+          },
+        ],
+        total: 1,
+      });
+      testResultRepo.findUserNames.mockRejectedValue(new Error('db down'));
+
+      const { items, total } = await service.getActivity(actor, 'tc-1', { limit: 50, offset: 0 });
+
+      expect(total).toBe(1);
+      expect(items[0].metadata).toEqual({ subjectKey: 'TC-1', oldName: null, newName: null });
     });
   });
 

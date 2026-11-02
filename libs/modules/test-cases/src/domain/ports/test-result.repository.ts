@@ -48,6 +48,16 @@ export interface ITestResultRepository {
   nextKeyNumber(workspaceId: string, executor?: DbExecutor): Promise<number>;
   create(input: CreateTestResultInput, executor: DbExecutor): Promise<TestResult>;
 
+  // ── Revision History display values (US-93 TC-25, US-97 TC-37) ─────────────
+
+  /**
+   * `TR-<n>` per id, soft-deleted Results INCLUDED — a deleted Result's rows stay in its Test Case's
+   * history, and they must still say which Result they were about.
+   */
+  findKeysByIds(ids: string[], workspaceId: string): Promise<Map<string, string>>;
+  /** `coalesce(display_name, email)` per user id — the same name the Tester cell renders. */
+  findUserNames(ids: string[]): Promise<Map<string, string>>;
+
   // ── Writes (Phase E) ────────────────────────────────────────────────────────
 
   /**

@@ -81,9 +81,9 @@ export const workItemPriorityEnum = pgEnum('work_item_priority', [
   'urgent',
 ]);
 
-// Rally-style ScheduleState: orthogonal business-maturity dimension, separate
+// Agile-ALM-style ScheduleState: orthogonal business-maturity dimension, separate
 // from the per-project workflow engine (status_id → workflow_statuses).
-// Aligned to BA flow-state vocabulary (mini-rally): 6 states, no 'ready',
+// Aligned to BA flow-state vocabulary (the BA design): 6 states, no 'ready',
 // terminal state spelled 'release'. Migration 0041 backfills 'ready'→'defined'
 // and renames 'released'→'release'.
 export const workItemScheduleStateEnum = pgEnum('work_item_schedule_state', [
@@ -232,7 +232,7 @@ export const scmInboxStatusEnum = pgEnum('scm_inbox_status', [
 export const scmBackfillStatusEnum = pgEnum('scm_backfill_status', ['pending', 'done', 'failed']);
 
 // P3.4 — Defect severity (separate from priority). Aligned to BA taxonomy
-// (mini-rally): tokens now equal labels (Critical / Major / Minor / Trivial /
+// (the BA design): tokens now equal labels (Critical / Major / Minor / Trivial /
 // None). Migration 0040 renames high→major, medium→minor, low→trivial.
 export const defectSeverityEnum = pgEnum('defect_severity', [
   'critical',
@@ -308,11 +308,11 @@ export const milestoneStatusEnum = pgEnum('milestone_status', [
 // template, one rank column and one archive rule. Their only differences are
 // three nullable columns (parent/team/release) and which rollup applies — see the
 // CHECK constraints on the table. Rally models every portfolio item type in one
-// collection too, so this also matches the reference product.
+// collection too, and this mirrors that.
 //
-// Mini Rally's `epic` is Rally's `Initiative` level, renamed by BA decision
-// 2026-07-28. Rally's own hierarchy is Feature → Initiative → Theme and has no
-// "Epic"; keep that mapping in mind before aligning anything with Rally docs.
+// The BA design's `epic` is Rally's `Initiative` level, renamed by BA
+// decision 2026-07-28. Rally's own hierarchy is Feature → Initiative → Theme and has no
+// "Epic"; keep that mapping in mind before aligning anything with its docs.
 export const portfolioItemTypeEnum = pgEnum('portfolio_item_type', ['epic', 'feature']);
 
 // Portfolio Item State — 11 values, BA-confirmed (Portfolio Items SRS §7).
@@ -566,10 +566,10 @@ export type PreliminaryEstimateMap = Record<PreliminaryEstimateSize, Preliminary
  */
 export const DEFAULT_PRELIMINARY_ESTIMATE_MAP: PreliminaryEstimateMap = {
   /**
-   * The unsized state, and the one entry with NO Rally counterpart.
+   * The unsized state, and the one entry with NO reference-ALM counterpart.
    *
    * Rally's Preliminary Estimate has no "None" option and no zero-valued size — each size
-   * must carry a name and a whole-number value, and Rally expresses "not sized" by leaving
+   * must carry a name and a whole-number value, and the tool expresses "not sized" by leaving
    * the FIELD unset. Our column is a NOT NULL enum, so the absent state has to be a member,
    * and it maps to 0.
    *
@@ -585,7 +585,7 @@ export const DEFAULT_PRELIMINARY_ESTIMATE_MAP: PreliminaryEstimateMap = {
   // itself calls temporary mockup data pending Settings > Workspace > Project Management.
   //
   // DELIBERATE DIVERGENCE FROM RALLY — do not "correct" these back.
-  // Rally ships XS=13 / S=20 / M=40 / L=100 / XL=250, unitless, one number per size:
+  // That tool ships XS=13 / S=20 / M=40 / L=100 / XL=250, unitless, one number per size:
   // https://techdocs.broadcom.com/us/en/ca-enterprise-software/valueops/rally/rally-help/administration/managing-your-workspace/customizing-portfolio-item-types/customizing-fields-for-portfolio-item-types/customizing-the-portfolio-item-preliminary-estimate-field.html
   // An earlier version of this comment cited Broadcom KB 94797 as proof that 1/3/5/8/13
   // "matches Rally's documented defaults exactly". The KB does say that, but it is undated,
@@ -594,7 +594,7 @@ export const DEFAULT_PRELIMINARY_ESTIMATE_MAP: PreliminaryEstimateMap = {
   //
   // We keep the BA scale anyway, on two grounds: Rally makes this a per-workspace admin
   // setting with no cross-workspace guarantee, so any seed value is legal; and the approved
-  // mockups were designed against these numbers. Rally has no `count` dimension at all —
+  // mockups were designed against these numbers. The tool has no `count` dimension at all —
   // that half is ours.
   //
   // Re-scaling is NOT a constant edit. `db/migrations/0101_capacity_allocation_fixed_value.sql:66`

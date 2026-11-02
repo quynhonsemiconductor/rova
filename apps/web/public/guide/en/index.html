@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Rova User Guide — getting started, work scopes, Work Items, and access permissions.">
+  <title>00. Getting Started | Rova User Guide</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b4f87'/%3E%3Cpath d='M16 5 25 10v12l-9 5-9-5V10l9-5Z' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../styles.css?v=20260917-06">
+</head>
+<body data-chapter="#gioi-thieu">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <header class="topbar">
+    <button class="icon-button menu-toggle" type="button" aria-label="Open guide menu" aria-expanded="false" aria-controls="guide-sidebar">
+      <span></span><span></span><span></span>
+    </button>
+    <a class="brand" href="index.html#top" aria-label="Rova User Guide — front page">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="img">
+          <path d="M16 3 27 9v14l-11 6L5 23V9l11-6Z" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="m10 12 6-3 6 3-6 3-6-3Zm0 5 6 3 6-3M10 22l6 3 6-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="brand-copy">
+        <strong>Rova</strong>
+        <span class="brand-subline"><small>User Guide</small><span class="status-pill brand-version">Version 1.0</span></span>
+      </span>
+    </a>
+    <div class="topbar-context" aria-label="Document information">
+      <span>User Guide</span>
+      <label class="language-selector">
+        <span class="sr-only">Select language</span>
+        <select id="guide-language" aria-label="Select language">
+          <option value="vi">Vietnamese</option>
+          <option value="en" selected>English</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <div class="app-shell" id="top">
+    <aside class="sidebar" id="guide-sidebar" aria-label="Guide contents">
+      <div class="sidebar-tools">
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+          <span class="sr-only">Search the contents</span>
+          <input id="guide-search" type="search" placeholder="Search this guide" autocomplete="off">
+        </label>
+      </div>
+
+      <nav class="guide-nav">
+        <p class="nav-label">GET STARTED</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="index.html#gioi-thieu" data-search="introduction begins the table of contents">
+              <span class="nav-number">00</span>
+              <span><strong>Get started</strong><small>Introduction &amp; contents</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-00" aria-label="Open items in Start">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-00">
+            <a href="index.html#truoc-khi-doc" data-search="before starting the target permission scope check"><span>00.1</span>Before you start</a>
+            <a href="index.html#chon-lo-trinh" data-search="select demand role route"><span>00.2</span>Choose a learning path</a>
+            <a href="index.html#phuong-phap-doc" data-search="how to read the tutorial reading method"><span>00.3</span>How to use each chapter</a>
+          </div>
+        </div>
+
+        <p class="nav-label">DAILY WORK</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="01-lam-quen.html#chapter-01" data-search="familiarize yourself with the concept of workspace project team epic feature user story defect task iteration release milestone owner rights">
+              <span class="nav-number">01</span><span><strong>Introduction</strong><small>Workspace, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-01" aria-label="Open items in Getting Started">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-01">
+            <a href="01-lam-quen.html#pham-vi-lam-viec" data-search="workspace project team three scope layers"><span>01.1</span>Three layers of scope</a>
+            <a href="01-lam-quen.html#doi-tuong-cong-viec" data-search="epic feature user story defect task work object"><span>01.2</span>Work item types</a>
+            <a href="01-lam-quen.html#doi-tuong-ke-hoach" data-search="iteration release milestone planning object"><span>01.3</span>Planning object</a>
+            <a href="01-lam-quen.html#quyen-va-trach-nhiem" data-search="owner editor permissions and responsibilities"><span>01.4</span>Rights &amp; responsibilities</a>
+            <a href="01-lam-quen.html#vi-du-xuyen-suot" data-search="simulation example scenario"><span>01.5</span>Scenario walkthrough</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="02-truy-cap-pham-vi.html#chapter-02" data-search="access select scope login home navigation search account information">
+              <span class="nav-number">02</span><span><strong>Access &amp; Scope</strong><small>Login, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-02" aria-label="Opens items in the Access &amp; scope section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-02">
+            <a href="02-truy-cap-pham-vi.html#dang-nhap" data-search="sign in email continue microsoft"><span>02.1</span>Login</a>
+            <a href="02-truy-cap-pham-vi.html#thanh-dieu-huong" data-search="home plan track quality portfolio reports navigation"><span>02.2</span>Navigation bar</a>
+            <a href="02-truy-cap-pham-vi.html#chon-project-team" data-search="workspace project team all teams context selector scope"><span>02.3</span>Select Project &amp; Team</a>
+            <a href="02-truy-cap-pham-vi.html#doc-trang-home" data-search="home my work recent activity project health"><span>02.4</span>Read the Home page</a>
+            <a href="02-truy-cap-pham-vi.html#cong-cu-ca-nhan" data-search="search work items notifications unread profile settings sign out"><span>02.5</span>Personal tools</a>
+            <a href="02-truy-cap-pham-vi.html#xu-ly-truy-cap" data-search="did not see the project team denying access processing"><span>02.6</span>Troubleshoot missing scope</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="03-backlog-cong-viec.html#chapter-03" data-search="backlog user story defect create work item owner team update search">
+              <span class="nav-number">03</span><span><strong>Backlog &amp; Work Items</strong><small>US, DE and Owner</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-03" aria-label="Open items in the Backlog &amp; tasks section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-03">
+            <a href="03-backlog-cong-viec.html#doc-backlog" data-search="read search backlog search filter show fields"><span>03.1</span>Read &amp; find Backlog</a>
+            <a href="03-backlog-cong-viec.html#tao-user-story" data-search="create user story us add new"><span>03.2</span>Create User Story</a>
+            <a href="03-backlog-cong-viec.html#tao-defect" data-search="creates defect log for parent story"><span>03.3</span>Record Defect</a>
+            <a href="03-backlog-cong-viec.html#chon-team-owner" data-search="select team owner no entry membership rights"><span>03.4</span>Select Team &amp; Owner</a>
+            <a href="03-backlog-cong-viec.html#cap-nhat-work-item" data-search="update work item details feature parent story"><span>03.5</span>Update Work Item</a>
+            <a href="03-backlog-cong-viec.html#xu-ly-backlog" data-search="item owner not found to process"><span>03.6</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="04-testing.html#chapter-04" data-search="testing test case test result verdict quality validation">
+              <span class="nav-number">04</span><span><strong>Testing</strong><small>Test Case and Test Result</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-04" aria-label="Open items in the Testing section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-04">
+            <a href="04-testing.html#hieu-luong-testing" data-search="testing flow user story defect test case result"><span>04.1</span>Understand the Testing flow</a>
+            <a href="04-testing.html#mo-test-cases" data-search="open test cases tab list last verdict last run"><span>04.2</span>Open Test Cases</a>
+            <a href="04-testing.html#tao-test-case" data-search="create test case add new type method priority owner assigned"><span>04.3</span>Create Test Case</a>
+            <a href="04-testing.html#hoan-thien-test-case" data-search="description objective preconditions input expected result postconditions"><span>04.4</span>Complete Test Case</a>
+            <a href="04-testing.html#ghi-test-result" data-search="add result build date verdict duration tester notes"><span>04.5</span>Record Test Result</a>
+            <a href="04-testing.html#doc-ket-qua-testing" data-search="last verdict last run results revision history"><span>04.6</span>Read results &amp; history</a>
+            <a href="04-testing.html#quan-ly-test-case-type" data-search="settings project test case types acceptance functional regression"><span>04.7</span>Manage Test Case Type</a>
+            <a href="04-testing.html#xu-ly-testing" data-search="processing not found test case result cannot be saved"><span>04.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="05-lap-ke-hoach.html#chapter-05" data-search="iteration planning timeboxes unscheduled planning committed accepted">
+              <span class="nav-number">05</span><span><strong>Iteration Planning</strong><small>Iteration and scope</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-05" aria-label="Opens items in the Planning section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-05">
+            <a href="05-lap-ke-hoach.html#doc-timeboxes" data-search="read list iteration timeboxes metrics filter"><span>05.1</span>Read the Iteration list</a>
+            <a href="05-lap-ke-hoach.html#tao-iteration" data-search="create iteration add new team start and end date"><span>05.2</span>Create Iteration</a>
+            <a href="05-lap-ke-hoach.html#lap-planned-velocity" data-search="planned velocity points capacity committed accepted planning"><span>05.3</span>Create Planned Velocity</a>
+            <a href="05-lap-ke-hoach.html#gan-cong-viec-iteration" data-search="assign user story defect work item iteration"><span>05.4</span>Add Work Items to Iteration</a>
+            <a href="05-lap-ke-hoach.html#doi-iteration" data-search="change iteration returns unscheduled backlog"><span>05.5</span>Change or return Unscheduled</a>
+            <a href="05-lap-ke-hoach.html#trang-thai-iteration" data-search="status committed planning accepted"><span>05.6</span>Status update</a>
+            <a href="05-lap-ke-hoach.html#xu-ly-iteration" data-search="processing not found iteration failed to save"><span>05.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="06-thuc-hien-cong-viec.html#chapter-06" data-search="task daily task execution status owner actual estimate todo">
+              <span class="nav-number">06</span><span><strong>Work Execution</strong><small>Task, status and time</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-06" aria-label="Open items in the Work Execution section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-06">
+            <a href="06-thuc-hien-cong-viec.html#mo-task-list" data-search="open user story defect tab tasks task list"><span>06.1</span>Open the Task list</a>
+            <a href="06-thuc-hien-cong-viec.html#tao-task-con" data-search="create child task add task name estimate todo actual owner"><span>06.2</span>Create a child Task</a>
+            <a href="06-thuc-hien-cong-viec.html#giao-task" data-search="giao task owner dev owner team member no entry"><span>06.3</span>Assign Task</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-task-state" data-search="task state defined in-progress completed status"><span>06.4</span>Status update</a>
+            <a href="06-thuc-hien-cong-viec.html#cap-nhat-gio-task" data-search="estimate to do actual actuals independent hours"><span>06.5</span>Update hours</a>
+            <a href="06-thuc-hien-cong-viec.html#bo-sung-task" data-search="description attachment linked items notes comments revision history"><span>06.6</span>Additional information</a>
+            <a href="06-thuc-hien-cong-viec.html#xu-ly-task" data-search="process does not see task owner status"><span>06.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="07-loi-theo-doi-team.html#chapter-07" data-search="defect quality team status monitors defect quality team progress">
+              <span class="nav-number">07</span><span><strong>Defects &amp; Team Tracking</strong><small>Defect and progress</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-07" aria-label="Open items in the Errors and Team Tracking section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-07">
+            <a href="07-loi-theo-doi-team.html#mo-quality-defect" data-search="quality defects dashboard index list"><span>07.1</span>Open Quality Defects</a>
+            <a href="07-loi-theo-doi-team.html#tao-defect-quality" data-search="add new create defect quality title description severity priority"><span>07.2</span>Create Defect from Quality</a>
+            <a href="07-loi-theo-doi-team.html#phan-loai-defect" data-search="severity priority user story fixed in build classification"><span>07.3</span>Defect Classification</a>
+            <a href="07-loi-theo-doi-team.html#vong-doi-defect" data-search="submitted open fixed closed declined flow state state"><span>07.4</span>Update lifecycle</a>
+            <a href="07-loi-theo-doi-team.html#doc-team-status" data-search="track team status iteration member capacity estimate todo actual"><span>07.5</span>Read Team Status</a>
+            <a href="07-loi-theo-doi-team.html#kiem-tra-rollup" data-search="task parent rollup completed in progress"><span>07.6</span>Check parent progress</a>
+            <a href="07-loi-theo-doi-team.html#xu-ly-chat-luong-team" data-search="does not see defect team status iteration member processing"><span>07.7</span>Troubleshooting</a>
+          </div>
+        </div>
+
+        <p class="nav-label">MANAGEMENT &amp; ADMINISTRATION</p>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="08-release-milestone.html#chapter-08" data-search="release milestone timebox link artifacts release tracking">
+              <span class="nav-number">08</span><span><strong>Release &amp; Milestone</strong><small>Timebox and link</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-08" aria-label="Open items in the Release and Milestone sections">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-08">
+            <a href="08-release-milestone.html#chon-dung-man-hinh" data-search="plan timeboxes release tracking select screen"><span>08.1</span>Select the correct display</a>
+            <a href="08-release-milestone.html#tao-release" data-search="create release add new planning active accepted"><span>08.2</span>Create Release</a>
+            <a href="08-release-milestone.html#tao-milestone" data-search="creates milestone target status associated releases"><span>08.3</span>Create Milestone</a>
+            <a href="08-release-milestone.html#lien-ket-release-milestone" data-search="release milestone date inferred hand input date"><span>08.4</span>Link &amp; target date</a>
+            <a href="08-release-milestone.html#quan-ly-artifacts" data-search="release milestone artifacts story defect feature epic"><span>08.5</span>Artifacts Management</a>
+            <a href="08-release-milestone.html#doc-release-tracking" data-search="portfolio release tracking burnup points count"><span>08.6</span>Read Release Tracking</a>
+            <a href="08-release-milestone.html#xu-ly-release-milestone" data-search="handle not seeing release milestone artifact burnup"><span>08.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="09-portfolio-capacity.html#chapter-09" data-search="portfolio capacity epic feature allocation publish">
+              <span class="nav-number">09</span><span><strong>Portfolio &amp; Capacity</strong><small>Epic, Feature, allocation</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-09" aria-label="Open the items in the Portfolio and Capacity sections">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-09">
+            <a href="09-portfolio-capacity.html#mo-portfolio-items" data-search="opens portfolio items all teams epic feature"><span>09.1</span>Open Portfolio Items</a>
+            <a href="09-portfolio-capacity.html#phan-biet-epic-feature" data-search="distinguish epic feature hierarchy project team"><span>09.2</span>Distinguishing Epic &amp; Feature</a>
+            <a href="09-portfolio-capacity.html#tao-cap-nhat-portfolio" data-search="create update epic feature owner release state estimate"><span>09.3</span>Create &amp; update Portfolio</a>
+            <a href="09-portfolio-capacity.html#doc-tien-do-portfolio" data-search="percent done estimate count accepted progress"><span>09.4</span>Read Portfolio progress</a>
+            <a href="09-portfolio-capacity.html#tao-capacity-plan" data-search="capacity plan single release points items draft"><span>09.5</span>Create Capacity Plan</a>
+            <a href="09-portfolio-capacity.html#phan-bo-capacity" data-search="team capacity add feature allocate split unassign demand"><span>09.6</span>Capacity allocation</a>
+            <a href="09-portfolio-capacity.html#publish-capacity-plan" data-search="publish without updating fields revert draft published"><span>09.7</span>Publish &amp; Revert</a>
+            <a href="09-portfolio-capacity.html#xu-ly-portfolio-capacity" data-search="handle epic feature plan capacity warning not found"><span>09.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="10-bao-cao.html#chapter-10" data-search="report reports burndown velocity capacity metrics">
+              <span class="nav-number">10</span><span><strong>Reports</strong><small>Read metrics correctly</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-10" aria-label="Open items in the Reports section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-10">
+            <a href="10-bao-cao.html#chon-bao-cao" data-search="select project team scope report type"><span>10.1</span>Select the correct report</a>
+            <a href="10-bao-cao.html#doc-iteration-burndown" data-search="iteration burndown todo ideal accepted points snapshot"><span>10.2</span>Read Iteration Burndown</a>
+            <a href="10-bao-cao.html#doc-velocity" data-search="velocity during after not accepted trend average"><span>10.3</span>Read Velocity</a>
+            <a href="10-bao-cao.html#doc-team-capacity-report" data-search="team capacity hours estimate todo actual member"><span>10.4</span>Read Team Capacity</a>
+            <a href="10-bao-cao.html#hieu-pham-vi-du-lieu" data-search="all teams selected team current frozen history"><span>10.5</span>Understand scope &amp; data</a>
+            <a href="10-bao-cao.html#kiem-tra-du-lieu-thieu" data-search="empty no history no data unavailable zero"><span>10.6</span>Check for missing data</a>
+            <a href="10-bao-cao.html#xu-ly-bao-cao" data-search="handle not seeing report iteration data"><span>10.7</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="11-quan-tri-workspace.html#chapter-11" data-search="workspace admin admin user project team permission permission audit">
+              <span class="nav-number">11</span><span><strong>Workspace Administration</strong><small>User, permissions, Project, Team</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-11" aria-label="Open items in Workspace Administration">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-11">
+            <a href="11-quan-tri-workspace.html#mo-quan-tri-workspace" data-search="settings opens admin workspace permissions"><span>11.1</span>Open the admin area</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-users" data-search="user management invite member access status"><span>11.2</span>User Management</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-project" data-search="workspaces projects create edit archive restore delete estimation"><span>11.3</span>Project Management</a>
+            <a href="11-quan-tri-workspace.html#phan-quyen-project" data-search="users permissions admin editor all teams add existing user"><span>11.4</span>Assign Project permissions</a>
+            <a href="11-quan-tri-workspace.html#quan-ly-team" data-search="team member lead active deactive workspace admin"><span>11.5</span>Team Management</a>
+            <a href="11-quan-tri-workspace.html#doc-permission-model" data-search="permission model role capability fixed permission"><span>11.6</span>Read Permission Model</a>
+            <a href="11-quan-tri-workspace.html#xem-audit-log" data-search="audit log time actor detail filter"><span>11.7</span>View Audit Log</a>
+            <a href="11-quan-tri-workspace.html#xu-ly-quan-tri" data-search="handle not seeing user project team permissions"><span>11.8</span>Troubleshooting</a>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group>
+          <div class="nav-row">
+            <a class="nav-item" href="12-viet-backlog-item.html#chapter-12" data-search="agile write backlog item feature user story defect acceptance criteria gherkin">
+              <span class="nav-number">12</span><span><strong>Agile Guideline</strong><small>User Story and Defect</small></span>
+            </a>
+            <button class="submenu-toggle" type="button" aria-expanded="false" aria-controls="submenu-12" aria-label="Opens items in the Agile Guideline section">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"></path></svg>
+            </button>
+          </div>
+          <div class="submenu" id="submenu-12">
+            <a href="12-viet-backlog-item.html#viet-user-story" data-search="user story persona goal value business rule acceptance criteria given when then invest"><span>12.1</span>Write User Story</a>
+            <a href="12-viet-backlog-item.html#viet-defect" data-search="defect bug actual expected reproduce severity priority evidence"><span>12.2</span>Write Defect</a>
+          </div>
+        </div>
+      </nav>
+    </aside>
+
+    <button class="sidebar-backdrop" type="button" aria-label="Close menu"></button>
+
+    <main class="main-content" id="main-content">
+      <div class="content-width">
+        <nav class="breadcrumb" aria-label="Path">
+          <a href="index.html#gioi-thieu">Rova User Guide</a><span aria-hidden="true">/</span><strong>00. Get started</strong>
+        </nav>
+
+        <section class="hero" id="gioi-thieu">
+          <div class="hero-copy">
+            <span class="eyebrow">PART 00 · GET STARTED</span>
+            <h1>Work in the right scope from the start</h1>
+            <p class="lead">This guide helps you select the right Project and Team, manage Work Items, track progress, and administer Rova according to your permissions.</p>
+            <div class="hero-actions">
+              <a class="button primary" href="index.html#chon-lo-trinh">Choose what to read</a>
+              <a class="button secondary" href="index.html#truoc-khi-doc">Before you start</a>
+            </div>
+          </div>
+
+          <div class="scope-preview" aria-label="Rova scope structure illustration">
+            <div class="preview-top">
+              <span class="preview-logo">QNSC</span>
+              <span class="preview-context">ROVA · TEAM</span>
+            </div>
+            <div class="preview-body">
+              <p>Currently selected scope</p>
+              <div class="scope-path">
+                <span>Workspace</span><b>QNSC</b>
+                <i aria-hidden="true">›</i>
+                <span>Project</span><b>Rova</b>
+                <i aria-hidden="true">›</i>
+                <span>Team</span><b>Your team</b>
+              </div>
+              <div class="preview-cards" aria-hidden="true">
+                <span><i></i><i></i><i></i></span>
+                <span><i></i><i></i></span>
+              </div>
+            </div>
+            <p class="preview-caption">Check Project and Team before creating or updating tasks.</p>
+          </div>
+        </section>
+
+        <section class="meta-strip" aria-label="Document version information">
+          <div><span>Product</span><strong>ROVA</strong></div>
+          <div><span>Document version</span><strong>1.0</strong></div>
+          <div><span>Language</span><strong>Vietnamese / English</strong></div>
+          <div><span>Format</span><strong>User Guide</strong></div>
+        </section>
+
+        <section class="section-block" id="truoc-khi-doc">
+          <div class="section-heading">
+            <span class="section-number">00.1</span>
+            <div><h2>Before you start</h2><p>Three things to help you avoid manipulating the wrong data or finding the wrong function.</p></div>
+          </div>
+
+          <div class="starter-grid">
+            <article class="starter-card">
+              <span class="step-badge">1</span>
+              <h3>Check the selected scope</h3>
+              <p>Look at the upper left corner and confirm it is correct <strong>Workspace · Project · Team</strong>. The Work Items you can see and the available Owners depend on this scope.</p>
+            </article>
+            <article class="starter-card">
+              <span class="step-badge">2</span>
+              <h3>Know your rights</h3>
+              <p>You might be <strong>Workspace Admin</strong>, <strong>Admin</strong> of Project, or <strong>Editor</strong> in Team. Buttons and displayed data may vary.</p>
+            </article>
+            <article class="starter-card">
+              <span class="step-badge">3</span>
+              <h3>Select the correct target</h3>
+              <p>Go from what you want to get done: create tasks, create plans, update Tasks, view reports, or administer. There is no need to read the entire document sequentially.</p>
+            </article>
+          </div>
+
+          <aside class="callout info">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path></svg>
+            <div><strong>Permissions note</strong><p>Role names such as PM, BA, Developer, or QA are not permission names in Rova. Operational permissions are determined by Workspace, Project and Team.</p></div>
+          </aside>
+        </section>
+
+        <section class="section-block" id="chon-lo-trinh">
+          <div class="section-heading">
+            <span class="section-number">00.2</span>
+            <div><h2>Choose a learning path</h2><p>Start with the work you need to do.</p></div>
+          </div>
+
+          <div class="path-grid" id="toc-cards">
+            <article class="path-card" data-search="novice workspace project team login">
+              <div class="path-icon blue" aria-hidden="true">01</div>
+              <div class="path-copy">
+                <span class="audience">I'M NEW TO ROVA</span>
+                <h3>Understand the system and get into the right scope</h3>
+                <ul>
+                  <li><a href="01-lam-quen.html#chapter-01">01. Get acquainted with Rova <span>Read now</span></a></li>
+                  <li><a href="02-truy-cap-pham-vi.html#chapter-02">02. Access &amp; Scope <span>Read now</span></a></li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="path-card" data-search="daily work backlog user story defect iteration task team">
+              <div class="path-icon teal" aria-hidden="true">02</div>
+              <div class="path-copy">
+                <span class="audience">I WORK IN ROVA DAILY</span>
+                <h3>Create, plan, and execute work</h3>
+                <ul>
+                  <li><a href="03-backlog-cong-viec.html#chapter-03">03. Backlog &amp; Work Items <span>Read now</span></a></li>
+                  <li><a href="04-testing.html#chapter-04">04. Testing with Test Case and Result <span>Read now</span></a></li>
+                  <li><a href="05-lap-ke-hoach.html#chapter-05">05. Iteration Planning <span>Read now</span></a></li>
+                  <li><a href="06-thuc-hien-cong-viec.html#chapter-06">06. Work Execution <span>Read now</span></a></li>
+                  <li><a href="07-loi-theo-doi-team.html#chapter-07">07. Defects &amp; Team Tracking <span>Read now</span></a></li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="path-card" data-search="delivery release management milestone portfolio capacity report">
+              <div class="path-icon violet" aria-hidden="true">03</div>
+              <div class="path-copy">
+                <span class="audience">I MANAGE DELIVERY</span>
+                <h3>Coordinate plans and read progress</h3>
+                <ul>
+                  <li><a href="08-release-milestone.html#chapter-08">08. Release &amp; Milestone</a></li>
+                  <li><a href="09-portfolio-capacity.html#chapter-09">09. Portfolio &amp; Capacity</a></li>
+                  <li><a href="10-bao-cao.html#chapter-10">10. Reports</a></li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="path-card" data-search="workspace admin admin user permissions project team support">
+              <div class="path-icon amber" aria-hidden="true">05</div>
+              <div class="path-copy">
+                <span class="audience">I ADMINISTER ROVA</span>
+                <h3>User management and working structure</h3>
+                <ul>
+                  <li><a href="11-quan-tri-workspace.html#chapter-11">11. Workspace Administration</a></li>
+                  <li><a href="12-viet-backlog-item.html#chapter-12">12. Agile Guideline</a></li>
+                </ul>
+              </div>
+            </article>
+          </div>
+          <p class="empty-search" id="empty-search" hidden>No matching topics were found in the current table of contents.</p>
+        </section>
+
+        <section class="section-block compact" id="phuong-phap-doc">
+          <div class="section-heading">
+            <span class="section-number">00.3</span>
+            <div><h2>How to use each chapter</h2><p>Each chapter follows the same structure so you can scan and verify each task quickly.</p></div>
+          </div>
+          <ol class="reading-flow">
+            <li><span>01</span><div><strong>When to use</strong><p>What this chapter helps you do.</p></div></li>
+            <li><span>02</span><div><strong>Before you start</strong><p>Required permissions and data.</p></div></li>
+            <li><span>03</span><div><strong>Steps</strong><p>Short steps in the correct order.</p></div></li>
+            <li><span>05</span><div><strong>Result</strong><p>How to know if the operation was successful.</p></div></li>
+            <li><span>06</span><div><strong>Other scenarios</strong><p>Common branches and how to handle them.</p></div></li>
+          </ol>
+        </section>
+
+        <nav class="chapter-pagination" aria-label="Navigate between sections">
+          <span aria-hidden="true"></span>
+          <a class="chapter-nav-link next" href="01-lam-quen.html#chapter-01"><span class="chapter-nav-copy"><small>Next</small><strong>01. Introduction</strong></span><span class="chapter-nav-arrow" aria-hidden="true">→</span></a>
+        </nav>
+
+        <footer class="guide-footer">
+          <div><strong>Rova User Guide</strong><span>00. Getting Started · Version 1.0</span></div>
+          <a href="#top">Back to top ↑</a>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <script src="../guide.js?v=20261007-02"></script>
+</body>
+</html>

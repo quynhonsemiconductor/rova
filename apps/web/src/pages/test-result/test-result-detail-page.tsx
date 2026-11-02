@@ -24,7 +24,6 @@ import {
   type UpdateTestResultInput,
 } from '@/features/test-cases/api'
 import { VERDICT_LABEL } from '@/features/test-cases/model/test-result-columns'
-import { useWorkItem } from '@/features/work-items/api'
 import { useTeamOwnerOptions, useProjectMemberOptions } from '@/features/teams/api'
 import { useProjectPermissions } from '@/features/access/api'
 import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
@@ -36,6 +35,7 @@ import { DateField } from '@/shared/ui/date-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { OwnerSelectField } from '@/shared/ui/entity-select-field'
 import { VerdictBadge } from '@/features/test-cases/ui/verdict-badge'
+import { RecordTypeBadge } from '@/features/test-cases/ui/record-type-badge'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
 import { PageSpinner } from '@/shared/ui/spinner'
 import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
@@ -69,7 +69,6 @@ export function TestResultDetailPage() {
 
   // The owning Test Case, for the sidebar's read-only "Test Case" link and its Team (Tester feed).
   const { data: testCase } = useTestCase(result?.testCaseId)
-  const { data: workItem } = useWorkItem(result?.workItemId ?? undefined)
 
   // Walks the REAL history stack (`useDetailBack`), like every other detail page — this page used
   // to call `navigate()` directly instead, which PUSHES a new forward entry rather than consuming
@@ -144,6 +143,7 @@ export function TestResultDetailPage() {
   return (
     <DetailLayout
       onBack={back}
+      badge={<RecordTypeBadge type="testResult" />}
       itemKey={testResult.testResultKey}
       copyLink={{
         key: testResult.testResultKey,
@@ -221,7 +221,8 @@ export function TestResultDetailPage() {
                 <ReadOnlyFieldValue>{testCase?.testCaseKey ?? EMPTY_VALUE}</ReadOnlyFieldValue>
               </DetailField>
               <DetailField label={t('fields.workProduct')}>
-                <ReadOnlyFieldValue>{workItem?.itemKey ?? EMPTY_VALUE}</ReadOnlyFieldValue>
+                {/* The snapshot's own key, from the row — the same field the Results list reads (TR-84). */}
+                <ReadOnlyFieldValue>{result.workItemKey ?? EMPTY_VALUE}</ReadOnlyFieldValue>
               </DetailField>
 
               <DetailFieldPair>

@@ -31,7 +31,7 @@ export function TypeBadge({ type, size = 18 }: TypeBadgeProps) {
       ...BADGE_FALLBACK,
     }
   const Icon = cfg.icon
-  // Broadcom Rally parity: a circular, solid-colour chip with a white glyph.
+  // parity with Broadcom Rally: a circular, solid-colour chip with a white glyph.
   // Single source for the work-item type mark — reused by IdCell,
   // WorkItemRefCell, the detail header and every grid's ID column, so the type
   // icon can never drift between pages.

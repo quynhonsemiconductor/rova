@@ -87,14 +87,14 @@ export const authSessions = identitySchema.table(
 import { sql } from 'drizzle-orm';
 
 // ── sso_identities ───────────────────────────────────────────────────────────
-// Links an external SSO identity (e.g. Microsoft Entra) to a Rally user.
+// Links an external SSO identity (e.g. Microsoft Entra) to a rova user.
 // One user may have at most one identity per provider.
 
 // ── api_tokens ────────────────────────────────────────────────────────────
 //
 // Long-lived credentials for MACHINE clients (CI, scripts, the agent platform).
 // Real Rally's equivalent is the API Key a user mints in My Settings; this follows
-// that shape with the three things Rally's model lacks and every current product has
+// that shape with the three things that model lacks and every current product has
 // converged on — mandatory expiry, an optional scope narrowing, and an audit trail.
 //
 // The token itself is never stored. `token_hash` is `sha256(plaintext)`, NOT a slow
@@ -122,7 +122,7 @@ export const apiTokens = identitySchema.table(
     tokenHash: text('token_hash').notNull(),
     /** Narrowing only; NULL means "inherit the user's permissions unchanged". */
     scopes: text('scopes').array(),
-    /** Mandatory, unlike real Rally's never-expiring keys. Capped in the service. */
+    /** Mandatory, unlike Rally's never-expiring keys. Capped in the service. */
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     /**
      * Touched on use, throttled to once a minute in the repository: a write on every
@@ -157,7 +157,7 @@ export const ssoIdentities = identitySchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // A single Entra OID maps to exactly one Rally user globally
+    // A single Entra OID maps to exactly one rova user globally
     providerSubIdx: uniqueIndex('uq_sso_identities_provider_sub').on(t.provider, t.providerSub),
     userIdx: index('ix_sso_identities_user').on(t.userId),
   }),

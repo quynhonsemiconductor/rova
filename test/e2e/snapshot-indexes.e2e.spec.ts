@@ -19,7 +19,7 @@ import type { DrizzleDB } from '@platform';
 import { sql } from 'drizzle-orm';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 
-import { bootRallyApp } from './support/flow-harness';
+import { bootRovaApp } from './support/flow-harness';
 
 /** The nil UUID both migrations coalesce a null team into. */
 const NIL = '00000000-0000-0000-0000-000000000000';
@@ -29,7 +29,7 @@ describe('snapshot unique indexes (e2e)', () => {
   let db: DrizzleDB;
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     db = app.get<DrizzleDB>(DRIZZLE);
   });
 

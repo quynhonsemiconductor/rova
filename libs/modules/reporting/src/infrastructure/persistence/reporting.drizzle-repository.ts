@@ -513,7 +513,13 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         and(
           eq(iterations.workspaceId, workspaceId),
           eq(iterations.projectId, projectId),
-          timeboxInScope(scope),
+          /**
+           * The Team's OWN Iterations, not `timeboxInScope`'s own-plus-shared (US-118 AC5, BA
+           * retest TR-110). Carryover uses strict team equality (R7), so a team-less Iteration can
+           * only ever hold team-less events, which `teamMatches` withholds from a Team scope — the
+           * shared sprints were permanent 0/0 bars that read as this Team's Iterations.
+           */
+          teamMatches(scope, iterations.teamId),
         ),
       )
       .orderBy(asc(iterations.startDate), asc(iterations.id));

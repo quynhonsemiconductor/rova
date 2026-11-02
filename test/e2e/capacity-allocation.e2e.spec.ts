@@ -32,7 +32,7 @@ import type { DrizzleDB } from '@platform';
 import { projectTeams, teams, workItems, workflowStatuses } from '@db/schema/work';
 import { eq } from 'drizzle-orm';
 
-import { WORKSPACE_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { WORKSPACE_ID, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('capacity allocation (e2e)', () => {
   let app: NestFastifyApplication;
@@ -87,7 +87,7 @@ describe('capacity allocation (e2e)', () => {
   }
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     capacity = app.get(CapacityPlansService);
     portfolio = app.get(PortfolioItemsService);
     projects = app.get(ProjectsService);

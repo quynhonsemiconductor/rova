@@ -94,7 +94,10 @@ export class ApiTokenDrizzleRepository {
       .orderBy(desc(apiTokens.createdAt), desc(apiTokens.id));
   }
 
-  /** Every LIVE token in a workspace — the administrator's offboarding view. */
+  /**
+   * Every token in a workspace that is not revoked (`revoked_at IS NULL`), newest first. Expiry is NOT
+   * filtered here: an expired but unrevoked token is included — the administrator's offboarding view.
+   */
   async listActiveForWorkspace(workspaceId: string): Promise<ApiTokenRow[]> {
     return await this.db
       .select()

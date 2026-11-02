@@ -65,7 +65,7 @@ export class ResilienceService implements OnModuleDestroy {
   constructor(private readonly config: AppConfigService) {
     this.enabled = config.get('RESILIENCE_ENABLED') === true;
 
-    const meter = metrics.getMeter('rally-resilience', '1.0.0');
+    const meter = metrics.getMeter('rally-resilience', '1.0.0'); // legacy physical name, do not rename
     this.successCounter = meter.createCounter('resilience.success', {
       description: 'Successful resilient operations',
     });

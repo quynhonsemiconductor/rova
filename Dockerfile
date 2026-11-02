@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # =============================================================================
-# Rally API — Production Dockerfile
+# Rova API — Production Dockerfile
 # =============================================================================
 # Targets:
 #   api       → HTTP API server          (default / most common)
@@ -20,10 +20,10 @@
 #   - api / worker / migrator stages: minimal runtime images
 # =============================================================================
 
-ARG NODE_VERSION=24
-ARG ALPINE_VERSION=3.22
-# Keep equal to `packageManager` in package.json and to PNPM_VERSION in the workflows.
-ARG PNPM_VERSION=11.28.5
+# The base image is a LITERAL in every FROM below (no ARG indirection) so Renovate's docker
+# manager sees it: Node and Alpine bumps arrive as one grouped PR. Change all FROM lines together.
+# pnpm is NOT pinned here: corepack reads `packageManager` from package.json (single source of
+# truth, bumped by Renovate); the build stages below COPY package.json before the first pnpm call.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1 │ deps
@@ -35,14 +35,13 @@ ARG PNPM_VERSION=11.28.5
 # placeholder line. The file never contains the token: pnpm expands it from the NODE_AUTH_TOKEN
 # environment variable, which exists only inside that RUN (read from the BuildKit secret).
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS deps
-ARG PNPM_VERSION
-
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+FROM node:24-alpine3.22 AS deps
+RUN corepack enable
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .pnpmfile.cjs ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY patches ./patches
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     --mount=type=secret,id=node_auth_token \
@@ -58,14 +57,17 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
 # Install production-only packages — this slim node_modules goes into the
 # final API and worker images.  Runs in parallel with the builder stage.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS prod-deps
-ARG PNPM_VERSION
+FROM alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 AS rds-ca
+ADD https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /bundle.pem
+RUN chmod 0644 /bundle.pem
 
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+FROM node:24-alpine3.22 AS prod-deps
+RUN corepack enable
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .pnpmfile.cjs ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY patches ./patches
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     --mount=type=secret,id=node_auth_token \
@@ -81,10 +83,8 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
 # Compile the full NestJS monorepo.  Uses the ALL-deps node_modules so the
 # TypeScript compiler and NestJS CLI plugins are available.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS builder
-ARG PNPM_VERSION
-
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+FROM node:24-alpine3.22 AS builder
+RUN corepack enable
 
 # pnpm 11 runs an implicit `install` before every script when node_modules does not match the workspace.
 # Here it never does, on purpose: node_modules is copied from `deps` (root package only), while the full
@@ -116,7 +116,7 @@ RUN pnpm build:migrator
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 4 │ api  (default production target)
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS api
+FROM node:24-alpine3.22 AS api
 
 # Upgrade all Alpine packages to latest security patches within the pinned
 # Alpine version, and remove the base image's global npm — it is unused at
@@ -126,10 +126,22 @@ FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS api
 RUN apk upgrade --no-cache \
     && apk add --no-cache tini \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+    && rm -rf /usr/local/lib/node_modules/corepack /usr/local/bin/corepack \
+    && rm -rf /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v* \
     && rm -rf /var/cache/apk/*
 
 # Runtime tunables — override via docker run -e or Kubernetes env
 ENV NODE_ENV=production
+# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
+# default points at the baked file; a task definition may override it (on-prem:
+# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
+# CAs over time and a stale local copy would fail verification against new
+# instances instead of being silently wrong. Own stage so it is fetched once and
+# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
+# (nestjs/migrator) must read it.
+COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
+ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+
 ENV NODE_OPTIONS="--max-old-space-size=512"
 ENV PORT=3000
 ENV HOST=0.0.0.0
@@ -164,14 +176,26 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 5 │ worker
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS worker
+FROM node:24-alpine3.22 AS worker
 
 RUN apk upgrade --no-cache \
     && apk add --no-cache tini \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+    && rm -rf /usr/local/lib/node_modules/corepack /usr/local/bin/corepack \
+    && rm -rf /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v* \
     && rm -rf /var/cache/apk/*
 
 ENV NODE_ENV=production
+# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
+# default points at the baked file; a task definition may override it (on-prem:
+# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
+# CAs over time and a stale local copy would fail verification against new
+# instances instead of being silently wrong. Own stage so it is fetched once and
+# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
+# (nestjs/migrator) must read it.
+COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
+ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+
 ENV NODE_OPTIONS="--max-old-space-size=256"
 
 WORKDIR /app
@@ -186,7 +210,10 @@ RUN addgroup --system --gid 1001 nodejs \
 
 USER nestjs
 
-ENTRYPOINT ["/sbin/tini", "--"]
+# ECS bridge: materialize the injected MAIL_GRAPH_CERTIFICATE secret value as
+# the file AZURE_CLIENT_CERTIFICATE_PATH (worker only; see the script header).
+COPY docker/graph-cert-bridge.sh /app/docker/graph-cert-bridge.sh
+ENTRYPOINT ["/sbin/tini", "--", "/bin/sh", "/app/docker/graph-cert-bridge.sh"]
 CMD ["node", "dist/apps/worker/apps/worker/src/main.js"]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -199,14 +226,26 @@ CMD ["node", "dist/apps/worker/apps/worker/src/main.js"]
 #     -e DATABASE_MIGRATION_URL="postgresql://..." \
 #     rally-migrator:latest
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS migrator
+FROM node:24-alpine3.22 AS migrator
 
 RUN apk upgrade --no-cache \
     && apk add --no-cache tini \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+    && rm -rf /usr/local/lib/node_modules/corepack /usr/local/bin/corepack \
+    && rm -rf /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v* \
     && rm -rf /var/cache/apk/*
 
 ENV NODE_ENV=production
+# The RDS global CA bundle (public certificates only) for DATABASE_SSL_CA. The
+# default points at the baked file; a task definition may override it (on-prem:
+# the CNPG ca.crt). Fetched at build time, unpinned on purpose: the bundle gains
+# CAs over time and a stale local copy would fail verification against new
+# instances instead of being silently wrong. Own stage so it is fetched once and
+# lands world-readable: a remote ADD is root-owned 0600, and the runtime users
+# (nestjs/migrator) must read it.
+COPY --from=rds-ca /bundle.pem /etc/ssl/rds-global-bundle.pem
+ENV DATABASE_SSL_CA=/etc/ssl/rds-global-bundle.pem
+
 
 WORKDIR /app
 

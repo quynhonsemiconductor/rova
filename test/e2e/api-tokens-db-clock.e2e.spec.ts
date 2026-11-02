@@ -32,6 +32,7 @@ import { signInAs } from './support/session';
 const PROBE_ROUTE = '/audit-logs';
 const ADMIN_EMAIL = 'admin@qnsc.dev';
 const HUNDRED_DAYS_MS = 100 * 24 * 60 * 60 * 1000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const NINETY_DAYS_S = 90 * 24 * 60 * 60;
 /** Generous: the database and the test runner share a machine, and the stamp only has to be near the DB clock. */
 const DB_NEAR_SECONDS = 300;
@@ -165,7 +166,9 @@ describe('API token expiry, last-use and revocation on the database clock (e2e)'
     const session = await sessionFor(ADMIN_EMAIL);
     const created = await mint(session, 'db-clock last-used');
 
-    skewHostBy(HUNDRED_DAYS_MS);
+    // One day, not 100: this case is about the last-used stamp and its throttle, not expiry. A day is still
+    // far outside DB_NEAR_SECONDS, so a host-stamped last_used_at fails the assertion below.
+    skewHostBy(ONE_DAY_MS);
     expect((await withAuth(created.token).get(PROBE_ROUTE)).statusCode).toBe(200);
 
     // The write is fire-and-forget by design, so wait for it to land rather than assume it has.

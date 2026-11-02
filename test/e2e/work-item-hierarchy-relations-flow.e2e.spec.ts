@@ -17,7 +17,7 @@ import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 import { QualityService } from '@modules/quality';
 
-import { adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('BA flows: work-item hierarchy + relations (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
@@ -29,7 +29,7 @@ describe('BA flows: work-item hierarchy + relations (real AppModule + seeded DB)
   const newProject = (name: string) => projects.createProject(actor, { key: uniqueKey(), name });
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
     quality = app.get(QualityService);

@@ -32,7 +32,7 @@ import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { workItems } from '@db/schema/work';
 
-import { SEEDED, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { SEEDED, adminActor, bootRovaApp, uniqueKey } from './support/flow-harness';
 
 describe('Velocity refuses to guess an accepted item with no acceptedDate (P6-VEL-008)', () => {
   let app: INestApplication;
@@ -62,7 +62,7 @@ describe('Velocity refuses to guess an accepted item with no acceptedDate (P6-VE
   const HEALTHY_POINTS = 5;
 
   beforeAll(async () => {
-    app = await bootRallyApp();
+    app = await bootRovaApp();
     reporting = app.get(ReportingService);
     db = app.get<DrizzleDB>(DRIZZLE);
     const iterations = app.get(IterationsService);
