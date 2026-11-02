@@ -118,37 +118,75 @@ describe('the User Guide gate as a Worker', () => {
     }
   })
 
-  it('fails CLOSED on anything else: 500, 503, a network error, and a 200 that is not JSON', async () => {
-    const cases: [string, () => Promise<Response>][] = [
-      ['500', async () => new Response(null, { status: 500 })],
-      ['503', async () => new Response(null, { status: 503 })],
+  it('fails CLOSED on anything else, and logs why — the reason only, never the cookie or path', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const ofType = (type: string) => async () =>
+      new Response('<!doctype html>', { status: 200, headers: { 'content-type': type } })
+    const cases: [string, (input: RequestInfo | URL) => Promise<Response>][] = [
+      ['status 500', async () => new Response(null, { status: 500 })],
+      ['status 503', async () => new Response(null, { status: 503 })],
       [
         'network error',
         async () => {
-          throw new Error('network down')
+          throw new TypeError('network down')
         },
+      ],
+      [
+        'timeout',
+        (input) =>
+          new Promise<Response>((_, reject) => {
+            const signal = (input as Request).signal
+            signal.addEventListener('abort', () => reject(signal.reason))
+          }),
       ],
       // Same-origin `/v1/bff/me` on the static path (wrangler dev, a missing route) is the SPA's
       // index.html, 200. Seen in `wrangler dev`: before this case the gate served the file.
-      [
-        'index.html',
-        async () =>
-          new Response('<!doctype html>', {
-            status: 200,
-            headers: { 'content-type': 'text/html; charset=utf-8' },
-          }),
-      ],
+      ['200 that is not JSON (text/html; charset=utf-8)', ofType('text/html; charset=utf-8')],
+      // Exactly `application/json`, deliberately: it is the only thing the API answers here.
+      ['200 that is not JSON (application/problem+json)', ofType('application/problem+json')],
     ]
-    for (const [name, fetchImpl] of cases) {
-      const assets = assetsFetcher()
-      const res = await handleWorkerRequest(
+    try {
+      for (const [reason, fetchImpl] of cases) {
+        warn.mockClear()
+        const assets = assetsFetcher()
+        const res = await handleWorkerRequest(
+          withSession(SCREENSHOT),
+          { ASSETS: assets },
+          { fetchImpl: fetchImpl as typeof fetch, timeoutMs: 10 },
+        )
+        expect(res.status, reason).toBe(503)
+        expect(await res.text()).toContain('temporarily unavailable')
+        expect(assets.fetch, reason).not.toHaveBeenCalled()
+        const lines = warn.mock.calls.map((args) => args.join(' '))
+        expect(lines, reason).toEqual([`[guide-gate] session check failed: ${reason}; serving 503`])
+        expect(lines.join(), reason).not.toMatch(/abc|guide-assets/)
+      }
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('logs nothing on the paths that are not failures', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await handleWorkerRequest(
         withSession(SCREENSHOT),
-        { ASSETS: assets },
-        { fetchImpl: fetchImpl as unknown as typeof fetch },
+        { ASSETS: assetsFetcher() },
+        {
+          fetchImpl: vi.fn(async () => signedIn()),
+        },
       )
-      expect(res.status, name).toBe(503)
-      expect(await res.text()).toContain('temporarily unavailable')
-      expect(assets.fetch, name).not.toHaveBeenCalled()
+      await handleWorkerRequest(
+        withSession(SCREENSHOT),
+        { ASSETS: assetsFetcher() },
+        {
+          fetchImpl: vi.fn(async () => new Response(null, { status: 401 })),
+        },
+      )
+      await handleWorkerRequest(new Request(`${ORIGIN}${SCREENSHOT}`), { ASSETS: assetsFetcher() })
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
     }
   })
 

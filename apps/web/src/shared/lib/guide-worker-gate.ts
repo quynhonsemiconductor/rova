@@ -11,11 +11,12 @@
  * the SPA bundle, and the old `/guide/*` links that `public/_redirects` moves to `/user-guide` — stays
  * on the static path without executing user code.
  *
- * The decision is the API's, never ours, exactly as in `functions/_lib/guide-gate.ts`: the cookie's
- * PRESENCE only saves a round trip; a present cookie is checked against `GET /v1/bff/me` on the SAME
- * origin (no `API_ORIGIN`, no `EDGE_CLIENT_IP_SECRET`: the subrequest is same-host and cloudflared
- * forwards the reader's address). Fails CLOSED: any answer except a JSON 200 / 401 / 403 — a 5xx, a
- * timeout, a network error, an HTML page — serves 503 and never the content.
+ * The decision is the API's, never ours, by the same rules as `functions/_lib/guide-gate.ts`: the
+ * cookie's PRESENCE only saves a round trip; a present cookie is checked against `GET /v1/bff/me` on
+ * the SAME origin (no `API_ORIGIN`, no `EDGE_CLIENT_IP_SECRET`: the subrequest is same-host and
+ * cloudflared forwards the reader's address). Fails CLOSED: any answer except a JSON 200 / 401 / 403 —
+ * a 5xx, a timeout, a network error, an HTML page — serves 503 and never the content, and logs which
+ * of those it was (`sessionCheckFailed`). Only the transport differs between the two gates.
  *
  * The two gates cannot share code (the Functions build is separate from the SPA's, and the session
  * check travels differently), so `src/test/user-guide-gate-paths.test.ts` pins their paths to each
@@ -100,8 +101,31 @@ function withGuideHeaders(response: Response, setCookies: readonly string[]): Re
   return out
 }
 
+/**
+ * `/v1/bff/me` answers `application/json`. Exactly that, deliberately: a `+json` type or anything else
+ * is not the API's answer to this question, so it fails closed. Same rule as the Pages gate.
+ */
 function isJson(response: Response): boolean {
-  return /^application\/json\b/i.test(response.headers.get('content-type') ?? '')
+  return /^application\/json\s*(;|$)/i.test(contentType(response))
+}
+
+function contentType(response: Response): string {
+  return response.headers.get('content-type') ?? 'none'
+}
+
+/**
+ * A 503 for the reader, and one line for the Worker's log saying which way the check failed — a
+ * timeout, a network error, a status, a non-JSON answer. Never the cookie, a header or the path: the
+ * reason alone says whether the API, the route or the network is at fault.
+ */
+function sessionCheckFailed(reason: string): Response {
+  console.warn(`[guide-gate] session check failed: ${reason}; serving 503`)
+  return unavailable()
+}
+
+/** A thrown session check: `AbortSignal.timeout` rejects with a `TimeoutError`, anything else is the network. */
+function thrownReason(error: unknown): string {
+  return error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'network error'
 }
 
 function setCookiesOf(response: Response): string[] {
@@ -145,15 +169,16 @@ export async function handleWorkerRequest(
     session = await fetchImpl(
       new Request(sessionCheckRequest(request), { signal: AbortSignal.timeout(timeoutMs) }),
     )
-  } catch {
-    return unavailable()
+  } catch (error) {
+    return sessionCheckFailed(thrownReason(error))
   }
 
   if (session.status === 401 || session.status === 403) return loginRedirect(request)
+  if (session.status !== 200) return sessionCheckFailed(`status ${session.status}`)
   // A 200 counts only when it is the API's answer. The check is same-origin, so anything that puts
   // `/v1/*` back on the static path — `wrangler dev`, or a missing route — answers it with the SPA's
   // `index.html` (200, text/html), which must not read as "signed in".
-  if (session.status !== 200 || !isJson(session)) return unavailable()
+  if (!isJson(session)) return sessionCheckFailed(`200 that is not JSON (${contentType(session)})`)
 
   // The body is not needed; release it so the runtime can reuse the connection.
   await session.body?.cancel()

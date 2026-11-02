@@ -5,15 +5,15 @@ import { useTranslation } from 'react-i18next'
 import { IconButton } from '@/shared/ui/icon-button'
 
 /**
- * The top bar's Help icon: opens the User Guide (US-119) as a page of the app, in the SAME tab.
+ * The top bar's Help icon: opens the User Guide (US-119) in the SAME tab, like any other page, so Back
+ * returns the reader to where they were (BA, 2026-10-30, reversing AC1's new tab).
  *
- * It used to open the standalone HTML guide in a new tab (US-119 AC1). The guide is now the
- * `/user-guide` route, and the BA confirmed (2026-10-30) that Help navigates to it in place, like any
- * other page — Back returns the reader to where they were. `/user-guide` picks the edition from the
- * browser language itself (`pages/guide/model/guide-url.ts`), which this widget layer cannot import.
+ * The link names no edition. `/user-guide` chooses one itself — from the browser language
+ * (`pages/guide/model/guide-url.ts`, which this widget layer cannot import) — EXCEPT when the reader
+ * is already in the guide: `params={true}` keeps the current route's `lang`, so Help from the English
+ * guide stays in English rather than jumping to the browser's edition. No other route has a `lang`.
  *
- * A router link rather than a click handler, so middle-click and "Open in new tab" still work for a
- * reader who wants the guide beside their work.
+ * A router link rather than a click handler, so middle-click and "Open in new tab" still work.
  */
 export function HelpLink() {
   const { t } = useTranslation('nav')
@@ -27,7 +27,7 @@ export function HelpLink() {
       // the resting ink is the top bar's 65% white (Notifications/Settings), reaching full white on hover.
       className="text-white/65 hover:bg-white/10 hover:text-white"
     >
-      <Link to="/user-guide/{-$lang}" params={{}}>
+      <Link to="/user-guide/{-$lang}" params={true}>
         <HelpCircle size={14} aria-hidden="true" />
       </Link>
     </IconButton>
