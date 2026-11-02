@@ -481,7 +481,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Không đổi hoặc xóa được dòng Workspace Admin</strong>
               <p>
@@ -491,7 +491,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Workspace Admin không xuất hiện trong Owner</strong>
               <p>
@@ -501,7 +501,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Project owner không có quyền quản lý</strong>
               <p>
@@ -511,7 +511,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>08</span>
+            <span>07</span>
             <div>
               <strong>Quyền vừa đổi nhưng giao diện chưa cập nhật</strong>
               <p>
@@ -521,7 +521,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>09</span>
+            <span>08</span>
             <div>
               <strong>Không Archive hoặc Delete được Project</strong>
               <p>

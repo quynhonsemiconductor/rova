@@ -537,7 +537,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Velocity thay đổi ở Iteration cũ</strong>
               <p>
@@ -547,7 +547,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Capacity khác Team Status</strong>
               <p>
@@ -557,7 +557,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Actual lớn hơn Estimate</strong>
               <p>
@@ -567,7 +567,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>08</span>
+            <span>07</span>
             <div>
               <strong>Số All Teams lớn bất thường</strong>
               <p>

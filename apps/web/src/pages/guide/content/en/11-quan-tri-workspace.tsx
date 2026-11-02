@@ -500,7 +500,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Cannot change or delete the Workspace Admin line</strong>
               <p>
@@ -510,7 +510,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Workspace Admin does not appear in Owner</strong>
               <p>
@@ -520,7 +520,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Project owner does not have management rights</strong>
               <p>
@@ -530,7 +530,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>08</span>
+            <span>07</span>
             <div>
               <strong>
                 Permissions have just been changed but the interface has not been updated
@@ -542,7 +542,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>09</span>
+            <span>08</span>
             <div>
               <strong>Cannot Archive or Delete Project</strong>
               <p>

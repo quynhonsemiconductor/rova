@@ -389,7 +389,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Photos only</strong>
               <p>Photos are proof, do not replace Steps, Actual and Expected.</p>

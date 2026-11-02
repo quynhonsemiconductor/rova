@@ -387,7 +387,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Chỉ có ảnh chụp</strong>
               <p>Ảnh là bằng chứng, không thay thế Steps, Actual và Expected.</p>
