@@ -16,6 +16,7 @@ describe('chunkFileName', () => {
     [`${SRC}/pages/guide/content/vi/01-lam-quen.tsx`],
     [`${SRC}/pages/guide/content/en/12-viet-backlog-item.tsx`],
     [`${SRC}/pages/guide/model/toc.vi.ts`],
+    [`${SRC}/pages/guide/model/toc.en.ts?used`],
     ['D:\\repo\\apps\\web\\src\\pages\\guide\\model\\toc.ts'],
   ])('gates a chunk holding guide text (%s)', (id) => {
     expect(chunkFileName({ moduleIds: [`${SRC}/shared/ui/button.tsx`, id] })).toBe(
@@ -24,6 +25,8 @@ describe('chunkFileName', () => {
   })
 
   it.each([
+    // Not the TOC: a helper whose name merely starts with it.
+    [`${SRC}/pages/guide/model/toc-utils.ts`],
     [`${SRC}/pages/guide/model/guide-url.ts`],
     [`${SRC}/pages/guide/ui/parts/prose.tsx`],
     [`${SRC}/pages/backlog/backlog-page.tsx`],
@@ -83,12 +86,12 @@ describe('a real build', () => {
   }
 
   const page = (script: string) => `<script type="module" src="/${script}"></script>`
-  const TOC = { 'src/pages/guide/model/toc.js': "export const TOC = 'Bắt đầu'" }
+  const TOC = { 'src/pages/guide/model/toc.ts': "export const TOC = 'Bắt đầu'" }
 
   it('gates the guide text a page loads lazily, and keeps the entry public', async () => {
     const files = await buildApp({
       'index.html': page('main.js'),
-      'main.js': "import('./src/pages/guide/model/toc.js').then((m) => console.log(m.TOC))",
+      'main.js': "import('./src/pages/guide/model/toc.ts').then((m) => console.log(m.TOC))",
       ...TOC,
     })
     expect(files.filter((f) => f.startsWith(`${GUIDE_CHUNK_DIR}/`))).toHaveLength(1)
@@ -99,7 +102,7 @@ describe('a real build', () => {
     await expect(
       buildApp({
         'index.html': page('main.js'),
-        'main.js': "import { TOC } from './src/pages/guide/model/toc.js'; console.log(TOC)",
+        'main.js': "import { TOC } from './src/pages/guide/model/toc.ts'; console.log(TOC)",
         ...TOC,
       }),
     ).rejects.toThrow(/reaches the entry "assets\/index-.*\.js" through "assets\/index-/)
@@ -112,8 +115,8 @@ describe('a real build', () => {
       buildApp({
         'index.html': page('main.js'),
         'other.html': page('other.js'),
-        'main.js': "import { TOC } from './src/pages/guide/model/toc.js'; console.log(TOC)",
-        'other.js': "import { TOC } from './src/pages/guide/model/toc.js'; console.warn(TOC)",
+        'main.js': "import { TOC } from './src/pages/guide/model/toc.ts'; console.log(TOC)",
+        'other.js': "import { TOC } from './src/pages/guide/model/toc.ts'; console.warn(TOC)",
         ...TOC,
       }),
     ).rejects.toThrow(new RegExp(`through "${GUIDE_CHUNK_DIR}/`))

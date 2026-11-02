@@ -1,13 +1,14 @@
 /**
  * Session gate for the static User Guide (US-119), served by Cloudflare Pages at `/guide/*`, and for
- * the in-app guide's screenshots at `/guide-assets/*`.
+ * the in-app guide's gated files at `/guide-assets/*`: its screenshots, and under `js/` the build
+ * chunks that carry its text.
  *
- * Both are plain files — the static guide under `apps/web/public/guide`, the in-app guide's screenshots
- * under `apps/web/public/guide-assets` — so Pages would serve every page and every production
- * screenshot to anyone with the URL. This gate runs in front of them (wired by the path-scoped
- * `functions/guide/_middleware.ts` and `functions/guide-assets/_middleware.ts`, so the SPA's own
- * assets never pass through user code)
- * and admits only a reader the API itself recognises as signed in.
+ * All are plain files — the static guide under `apps/web/public/guide`, the in-app guide's screenshots
+ * under `apps/web/public/guide-assets` and its text chunks written beside them by the build — so Pages
+ * would serve every page, every chapter's text and every production screenshot to anyone with the
+ * URL. This gate runs in front of them (wired by the path-scoped `functions/guide/_middleware.ts` and
+ * `functions/guide-assets/_middleware.ts`, so the SPA's own assets never pass through user code) and
+ * admits only a reader the API itself recognises as signed in.
  *
  * The decision is the API's, never ours: the cookie's PRESENCE only saves a round trip for a reader
  * who obviously has no session. A present cookie is checked against `GET /v1/bff/me`, the same call
@@ -69,17 +70,17 @@ export function hasSessionCookie(request: Request): boolean {
 
 /**
  * `/login?returnTo=<path>` on the SAME origin as the request. A static guide page comes back to
- * itself; an in-app guide file (a screenshot) comes back to `/user-guide`, the page that asked for
- * it; anything else collapses to the static guide root. `returnTo` is only ever the request's own
- * `/guide/` path or a constant, so it can never name another site (`//evil.example`) and the gate is
- * not an open redirect, whatever URL it is handed.
+ * itself; an in-app guide file (a screenshot or a text chunk) comes back to `/user-guide`, the page
+ * that asked for it; anything else collapses to the static guide root. `returnTo` is only ever the
+ * request's own `/guide/` path or a constant, so it can never name another site (`//evil.example`)
+ * and the gate is not an open redirect, whatever URL it is handed.
  */
 export function loginRedirect(request: Request): Response {
   const url = new URL(request.url)
   const candidate = url.pathname + url.search
   let returnTo = GUIDE_ROOT
   if (candidate.startsWith(GUIDE_ASSETS_ROOT)) {
-    // A screenshot is never the page the reader opened; the in-app guide is.
+    // A screenshot or a text chunk is never the page the reader opened; the in-app guide is.
     returnTo = IN_APP_GUIDE
   } else if (candidate.startsWith(GUIDE_ROOT) && !candidate.startsWith('//')) {
     returnTo = candidate

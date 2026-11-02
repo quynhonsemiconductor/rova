@@ -34,8 +34,13 @@ const devOriginsPlugin: Plugin = {
  * signed-in readers only. So any chunk holding one of these is written under `/guide-assets/js/`
  * instead, which `functions/guide-assets/_middleware.ts` puts behind the same session check as the
  * guide's screenshots. Only these chunks pay for the check; the rest of the app stays on the fast path.
+ *
+ * It is a LIST, not a judgement: guide text put anywhere else (a new model file, a UI part) ships in
+ * a public chunk until it is named here. The TOC is matched by its exact files (`toc.ts`,
+ * `toc.vi.ts`, `toc.en.ts`), so a helper that merely starts with `toc` is not gated by accident.
  */
-const GUIDE_TEXT = /[\\/]src[\\/]pages[\\/]guide[\\/](?:content[\\/]|model[\\/]toc)/
+const GUIDE_TEXT =
+  /[\\/]src[\\/]pages[\\/]guide[\\/](?:content[\\/]|model[\\/]toc(?:\.(?:vi|en))?\.ts(?:$|\?))/
 
 export const GUIDE_CHUNK_DIR = 'guide-assets/js'
 
