@@ -30,7 +30,7 @@ const devOriginsPlugin: Plugin = {
 /**
  * Modules that carry the User Guide's TEXT: its chapters and its table of contents.
  *
- * Every other built file is public — Pages serves `/assets/*` to anyone — and the guide is for
+ * Every other built file is public — the static handler serves `/assets/*` to anyone — and the guide is for
  * signed-in readers only. So any chunk holding one of these is written under `/guide-assets/js/`
  * instead, which the Worker (`src/shared/lib/guide-gate.worker.ts`) puts behind the same session check as the
  * guide's screenshots. Only these chunks pay for the check; the rest of the app stays on the fast path.

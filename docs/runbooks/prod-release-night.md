@@ -152,10 +152,13 @@ A worker that starts with Graph half-configured fails at boot rather than queuei
 - **SCM webhook**: `curl -s -o /dev/null -w '%{http_code}' -X POST https://rova.qnsc.vn/v1/scm/webhook/<provider>`
   → a 4xx from the API (bad signature), **never** a 302 to `cloudflareaccess.com` (0.7).
 - **`/readyz`**: 200, database and cache green; the uptime alert sees it.
-- **User Guide (US-119)**: signed out, `https://rova.qnsc.vn/guide/` redirects to
-  `/login?returnTo=/guide/`; signed in it loads. The screenshots live under `/guide-assets/*`
-  (production data): signed out, `curl -sI https://rova.qnsc.vn/guide-assets/<file>.png` must be a 302 to
-  `/login`, never 200. This is the Worker gate (`apps/web/src/shared/lib/guide-gate.worker.ts`), not an Access policy.
+- **User Guide (US-119)**: the guide is the app page `/user-guide`; signed in, the Help icon opens it.
+  Its files — the screenshots and the chunks carrying its text — live under `/guide-assets/*`
+  (production data): signed out, `curl -sI https://rova.qnsc.vn/guide-assets/02-top-navigation-annotated.png`
+  must be a 302 to `/login?returnTo=%2Fuser-guide`, never 200. This is the Worker gate
+  (`apps/web/src/shared/lib/guide-worker-gate.ts`), not an Access policy. Old links still work:
+  `curl -sI https://rova.qnsc.vn/guide/en/03-backlog-cong-viec.html` is a 301 to
+  `/user-guide/en/03-backlog-cong-viec.html` (`public/_redirects`, no Worker involved).
 - **UTC**: a new row's `created_at` is from the DB clock; a fresh log line's `time` is UTC.
 
 ## 6. Rollback

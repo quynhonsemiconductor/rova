@@ -1,9 +1,8 @@
-import { Suspense, useMemo, useRef, useState, type RefObject } from 'react'
+import { Suspense, useMemo, useRef, useState, type ComponentType, type RefObject } from 'react'
 import { Navigate, useParams, useRouterState } from '@tanstack/react-router'
-import { BookOpen, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/shared/lib/utils'
-import { EmptyState } from '@/shared/ui/empty-state'
 import { IconButton } from '@/shared/ui/icon-button'
 import { PageSpinner } from '@/shared/ui/spinner'
 import { GUIDE_CHAPTERS } from './model/chapters'
@@ -24,8 +23,8 @@ import { GuideSidebar } from './ui/guide-sidebar'
  * `/guide-assets/` (see `chunkFileName` in `vite.config.ts`).
  *
  * This component only settles the URL — an unknown edition, a static-guide spelling of a chapter
- * (`01-lam-quen.html`, `index`) or an unknown chapter is replaced by its canonical URL — and hands a
- * valid one to `GuideReader`.
+ * (`01-lam-quen.html`, `index`, which old bookmarks reach through `public/_redirects`) or an unknown
+ * chapter is replaced by its canonical URL — and hands a valid one to `GuideReader`.
  */
 export function GuidePage() {
   const params = useParams({ from: '/auth/user-guide/$lang/$chapter' })
@@ -33,9 +32,13 @@ export function GuidePage() {
 
   const lang: GuideLang = isGuideLang(params.lang) ? params.lang : browserGuideLang()
   const slug = canonicalChapterSlug(params.chapter)
-  const chapter = findChapter(lang, slug)
+  // A TOC entry always has its chapter file (`user-guide.integrity.test.tsx`, which also pins the
+  // start chapter's — the fallback below, so it cannot redirect to itself). Resolved here, once, and
+  // handed down, so `GuideReader` can never be given a chapter it cannot render.
+  const Content = GUIDE_CHAPTERS[lang][slug]
+  const chapter = Content ? findChapter(lang, slug) : undefined
 
-  if (!chapter || lang !== params.lang || slug !== params.chapter) {
+  if (!Content || !chapter || lang !== params.lang || slug !== params.chapter) {
     return (
       <Navigate
         to="/user-guide/$lang/$chapter"
@@ -45,16 +48,19 @@ export function GuidePage() {
       />
     )
   }
-  return <GuideReader lang={lang} chapter={chapter} hash={hash} />
+  return <GuideReader lang={lang} chapter={chapter} Content={Content} hash={hash} />
 }
 
 function GuideReader({
   lang,
   chapter,
+  Content,
   hash,
 }: {
   lang: GuideLang
   chapter: GuideChapter
+  /** The chapter's own text, from `GUIDE_CHAPTERS` — a stable lazy component, never one built here. */
+  Content: ComponentType
   hash: string
 }) {
   const { t } = useTranslation('guide', { lng: lang })
@@ -68,7 +74,6 @@ function GuideReader({
   )
   const activeSection = useActiveSection(pane, sectionIds)
   const context = useMemo(() => ({ lang, chapter: chapter.slug, query }), [lang, chapter, query])
-  const Content = GUIDE_CHAPTERS[lang][chapter.slug]
 
   return (
     <GuideContext.Provider value={context}>
@@ -104,31 +109,10 @@ function GuideReader({
             onOpenMenu={() => setMenuOpen(true)}
           />
           <article className="mx-auto w-full max-w-5xl px-9 pb-14 max-md:px-4">
-            {Content ? (
-              <Suspense fallback={<PageSpinner />}>
-                <Content />
-                <ScrollToHash pane={pane} chapter={chapter.slug} hash={hash} />
-              </Suspense>
-            ) : (
-              <>
-                {/* No section to land on: scroll to the top, as a chapter with no hash does. */}
-                <ScrollToHash pane={pane} chapter={chapter.slug} hash="" />
-                <EmptyState
-                  icon={<BookOpen size={22} className="text-border-strong" />}
-                  title={t('unavailable.title')}
-                  description={t('unavailable.description')}
-                  action={
-                    // Until every chapter is ported, the standalone guide still serves this one.
-                    <a
-                      href={staticGuideUrl(lang, chapter.slug, hash)}
-                      className="text-ui-sm text-primary-light hover:underline"
-                    >
-                      {t('unavailable.action')}
-                    </a>
-                  }
-                />
-              </>
-            )}
+            <Suspense fallback={<PageSpinner />}>
+              <Content />
+              <ScrollToHash pane={pane} chapter={chapter.slug} hash={hash} />
+            </Suspense>
             <ChapterPager lang={lang} chapter={chapter} />
             <GuideFooter lang={lang} chapter={chapter} pane={pane} />
           </article>
@@ -136,12 +120,6 @@ function GuideReader({
       </div>
     </GuideContext.Provider>
   )
-}
-
-/** The same chapter and section in the standalone guide, `public/guide` (VI at the root, EN under `en/`). */
-function staticGuideUrl(lang: GuideLang, slug: string, hash: string): string {
-  const page = slug === START_CHAPTER ? 'index.html' : `${slug}.html`
-  return `/guide/${lang === 'en' ? 'en/' : ''}${page}${hash ? `#${hash}` : ''}`
 }
 
 /** Rendered inside the chapter's `Suspense`, so it runs once the chapter is on screen. */

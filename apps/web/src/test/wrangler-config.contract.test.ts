@@ -12,8 +12,9 @@
  *   token deliberately does not have;
  * - `workers_dev` / `preview_urls` off, at the TOP level and inside every environment (Wrangler does
  *   not inherit these), so the bundle has exactly one address: the host Access protects;
- * - SPA fallback and trailing-slash HTML handling, because every app route is client-side and the
- *   User Guide links pages without `.html` (Pages stripped it; Workers must keep doing so).
+ * - SPA fallback, because every app route is client-side, and Pages' trailing-slash HTML handling;
+ * - the guide gate runs for the guide's FILES only, so the old `/guide/*` links stay on the static
+ *   path where `public/_redirects` moves them into the app (a Worker in front would answer first).
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -56,18 +57,19 @@ describe('the Workers Static Assets config', () => {
     }
   })
 
-  it('wires the US-119 guide gate as a Worker that runs only for /guide/* and /guide-assets/*', () => {
-    // Workers Static Assets never run the Pages Function in apps/web/functions, so the gate that
-    // keeps the guide private is this entry. `run_worker_first` is what keeps every other path on
+  it('wires the US-119 guide gate as a Worker that runs only for /guide-assets/*', () => {
+    // Workers Static Assets publish every file unless a Worker runs first, so the gate that keeps
+    // the guide private is this entry. `run_worker_first` is what keeps every other path on
     // the static fast path; `binding` is the handle the entry serves files through.
     expect(config.main).toBe('src/shared/lib/guide-gate.worker.ts')
     const assets = config.assets as Record<string, unknown>
     expect(assets.binding).toBe('ASSETS')
-    // `/guide-assets/*` holds screenshots of production data: it must be gated like the guide.
-    expect(assets.run_worker_first).toEqual(['/guide/*', '/guide-assets/*'])
+    // `/guide-assets/*` holds screenshots of production data and the chunks carrying the guide's
+    // text. `/guide/*` is NOT here: those are old links, redirected statically by `_redirects`.
+    expect(assets.run_worker_first).toEqual(['/guide-assets/*'])
   })
 
-  it('serves the built SPA with client-side routing and extensionless guide pages', () => {
+  it('serves the built SPA with client-side routing and Pages-style HTML handling', () => {
     const assets = config.assets as Record<string, unknown>
     expect(assets.directory).toBe('./dist')
     expect(assets.not_found_handling).toBe('single-page-application')

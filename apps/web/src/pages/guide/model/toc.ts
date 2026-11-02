@@ -11,7 +11,7 @@ import { TOC_EN } from './toc.en'
  * page from it. The chapter files only render content.
  *
  * Slugs and section ids are the static guide's own, and IDENTICAL across editions, so switching
- * language keeps the reader on the same chapter and section. `user-guide-spa.integrity.test.tsx` pins that
+ * language keeps the reader on the same chapter and section. `user-guide.integrity.test.tsx` pins that
  * and pins every id here to an id the chapter actually renders.
  */
 export interface GuideSection {
@@ -68,8 +68,7 @@ export function adjacentChapters(
 /**
  * A chapter slug as the static guide spelled it, mapped onto this one: Pages served
  * `01-lam-quen.html` and `01-lam-quen` alike, and the start page was `index.html` or the bare folder.
- * Today that covers an old file name typed or pasted onto the new path; old `/guide/…` bookmarks reach
- * it once the static guide is retired and `public/_redirects` sends them here.
+ * Old bookmarks arrive here through `public/_redirects`.
  */
 export function canonicalChapterSlug(raw: string): string {
   const slug = raw.replace(/\.html$/i, '')
