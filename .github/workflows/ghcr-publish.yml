@@ -59,8 +59,10 @@ jobs:
       platforms: linux/amd64
       build_runner: ubuntu-24.04
 
-  # rova-dev follows main: write tag + digest into gitops tags.dev.yaml (commit
-  # mode, no review — dev only). Prod never goes through here.
+  # rova-dev follows main: the bot opens a PR `bump/rova-dev-sha-<12>` that sets tag + digest in
+  # gitops values/rova/tags.dev.yaml and enables auto-merge (squash). gitops `bot-scope` lets a bot
+  # PR merge without a human only when it touches nothing but values/*/tags.dev.yaml. Prod never
+  # goes through here.
   bump-dev:
     needs: publish
     runs-on: ubuntu-24.04
@@ -72,8 +74,7 @@ jobs:
       group: gitops-bump-rova-dev
       cancel-in-progress: false
     steps:
-      # App token scoped to the gitops repo only. It must be able to push
-      # values/rova/tags.dev.yaml to gitops main (dev path) and nothing else.
+      # App token scoped to the gitops repo only: branch push + open PR + enable auto-merge.
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
         with:
@@ -82,12 +83,14 @@ jobs:
           owner: quynhonsemiconductor
           repositories: gitops
           permission-contents: write
-      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@5afdeb84f1e64b2c13c5c1c6c91422e6606e369a  # ci#275
+          permission-pull-requests: write
+      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@4ee9a00a62fe99b05cb81906301840b03f42407d  # ci#277 (branch head: re-pin to the merge SHA)
         with:
           product: rova
           env: dev
           services: api worker migrator
           tag: ${{ needs.publish.outputs.tag }}
           digests: ${{ needs.publish.outputs.digests }}
-          mode: commit
+          mode: pull-request
+          auto-merge: 'true'
           gitops-token: ${{ steps.app.outputs.token }}
