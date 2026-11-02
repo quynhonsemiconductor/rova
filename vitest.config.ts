@@ -87,7 +87,6 @@ export default defineConfig({
         'libs/modules/attachments/src/application/attachments.service.ts',
         'libs/modules/audit/src/interface/http/audit.controller.ts',
         'libs/modules/collaboration/src/application/collaboration.service.ts',
-        'libs/platform/src/aws/secrets-manager-secret-resolver.ts',
         'libs/platform/src/auth/session-auth.guard.ts',
         'libs/platform/src/mcp-call-token.ts',
         'libs/platform/src/rate-limit/pre-auth-rate-limit.guard.ts',

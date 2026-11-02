@@ -152,29 +152,14 @@ export const EnvSchema = z
     // SCM Phase 2 — GitHub App (backfill + authenticated REST). All optional so
     // the app boots without them; backfill no-ops until configured.
     GITHUB_APP_ID: z.string().optional(),
-    // App private key (PEM). Local/dev only — prod resolves it from Secrets
-    // Manager via GITHUB_APP_PRIVATE_KEY_SECRET_REF using the shared SECRET_RESOLVER.
+    // App private key (PEM), injected from the secret store as an env var.
     GITHUB_APP_PRIVATE_KEY: z.string().optional(),
-    GITHUB_APP_PRIVATE_KEY_SECRET_REF: z.string().optional(),
     // REST API base — github.com is https://api.github.com; a GHE host would be
     // https://<host>/api/v3. Defaults to github.com.
     GITHUB_API_BASE_URL: z.string().url().default('https://api.github.com'),
 
-    // AWS
+    /** Region of the S3 client when STORAGE_ENDPOINT is unset (plain AWS S3). With STORAGE_ENDPOINT (R2, Garage) the client uses `auto`. */
     AWS_REGION: z.string().default('ap-southeast-1'),
-    /**
-     * Custom AWS service endpoint. Set ONLY in local dev / CI to target an
-     * AWS emulator (none ships with the local stack; S3 is Garage via STORAGE_ENDPOINT).
-     * Leave UNSET in real AWS environments so the SDK uses the default regional endpoints.
-     */
-    AWS_ENDPOINT_URL: z.string().url().optional(),
-    /**
-     * Static AWS credentials. Set ONLY alongside AWS_ENDPOINT_URL for local dev /
-     * CI (LocalStack accepts any value, conventionally "test"). In real AWS the
-     * ECS task role / instance profile supplies credentials — leave these UNSET.
-     */
-    AWS_ACCESS_KEY_ID: z.string().optional(),
-    AWS_SECRET_ACCESS_KEY: z.string().optional(),
     /** PRIVATE bucket — every permission-gated upload. Served only via presigned GET. */
     S3_ATTACHMENTS_BUCKET: z.string().default('rova-attachments'),
 
