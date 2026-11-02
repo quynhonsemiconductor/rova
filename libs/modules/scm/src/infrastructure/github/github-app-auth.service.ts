@@ -1,10 +1,9 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { createPrivateKey, type KeyObject } from 'node:crypto';
 import { SignJWT } from 'jose';
 import { AppConfigService, RetryAfterError } from '@platform';
 import { githubCallSignal } from './github-http';
 import { rateLimitWaitMs } from './github-rest.client';
-import { SECRET_RESOLVER, type ISecretResolver } from '@platform';
 
 /**
  * Authenticates as the "Rally SCM" GitHub App (legacy physical name, do not rename) and mints short-lived installation
@@ -28,18 +27,11 @@ export class GithubAppAuthService {
   private readonly tokenCache = new Map<string, { token: string; expiresAt: number }>();
   private privateKey: KeyObject | null = null;
 
-  constructor(
-    private readonly config: AppConfigService,
-    @Optional() @Inject(SECRET_RESOLVER) private readonly secrets?: ISecretResolver,
-  ) {}
+  constructor(private readonly config: AppConfigService) {}
 
   /** True when App ID + a private-key source are configured. */
   isConfigured(): boolean {
-    return (
-      !!this.config.get('GITHUB_APP_ID') &&
-      (!!this.config.get('GITHUB_APP_PRIVATE_KEY') ||
-        !!this.config.get('GITHUB_APP_PRIVATE_KEY_SECRET_REF'))
-    );
+    return !!this.config.get('GITHUB_APP_ID') && !!this.config.get('GITHUB_APP_PRIVATE_KEY');
   }
 
   get apiBaseUrl(): string {
@@ -118,7 +110,7 @@ export class GithubAppAuthService {
   private async mintAppJwt(): Promise<string> {
     const appId = this.config.get('GITHUB_APP_ID');
     if (!appId) throw new Error('GITHUB_APP_ID not configured');
-    const key = await this.loadPrivateKey();
+    const key = this.loadPrivateKey();
     const now = Math.floor(Date.now() / 1000);
     return new SignJWT({})
       .setProtectedHeader({ alg: 'RS256' })
@@ -129,14 +121,9 @@ export class GithubAppAuthService {
   }
 
   /** Load + cache the App private key. Accepts PKCS#1 (GitHub's .pem) or PKCS#8. */
-  private async loadPrivateKey(): Promise<KeyObject> {
+  private loadPrivateKey(): KeyObject {
     if (this.privateKey) return this.privateKey;
-    const ref = this.config.get('GITHUB_APP_PRIVATE_KEY_SECRET_REF');
-    let pem = this.config.get('GITHUB_APP_PRIVATE_KEY');
-    if (!pem && ref) {
-      if (!this.secrets) throw new Error('SECRET_RESOLVER unavailable to load GitHub App key');
-      pem = await this.secrets.get(ref);
-    }
+    const pem = this.config.get('GITHUB_APP_PRIVATE_KEY');
     if (!pem) throw new Error('GitHub App private key not configured');
     // Secrets stored with literal "\n" — normalise to real newlines.
     this.privateKey = createPrivateKey(pem.replace(/\\n/g, '\n'));

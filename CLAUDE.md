@@ -1200,7 +1200,7 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
   `ValidationException: Invalid name`. So a value passed as a `secrets` entry is fine
   either way, but one passed as a plain **env var for the app to dereference at runtime**
   (`IDENTITY_HOME_SECRET_REF`, `GITHUB_APP_PRIVATE_KEY_SECRET_REF`) must be parsed.
-  `SecretsManagerSecretResolver` is the one place that happens — it splits the key off the
+  `SecretsManagerSecretResolver` (removed 2026-11-02 with the AWS exit) was the one place that happened — it splits the key off the
   7-field ARN and reads it out of the bundle's JSON, which is what lets `use_bundle` flip
   in either direction with no app change. **Never call `GetSecretValue` with a raw ref.**
   This broke SSO login on develop for a day: every `POST /v1/bff/login/sso` was a 500 while
