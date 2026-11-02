@@ -58,9 +58,19 @@ export function hasSessionCookie(request: Request): boolean {
 }
 
 /**
- * `/login?returnTo=/user-guide` on the SAME origin as the request. A refused request is a screenshot or
- * a script the guide page asked for, never a page the reader opened, so it is not the place to return
- * to — the guide is. The value is a constant, so the gate cannot be an open redirect.
+ * `/login?returnTo=/user-guide` on the SAME origin as the request. A refused URL is a screenshot or a
+ * script, so it is not the place to return to — the guide is. The value is a constant, so the gate
+ * cannot be an open redirect.
+ *
+ * A redirect, not a 401, because of the one case where the reader DOES open a gated URL as a page:
+ * "Open image in new tab" on a screenshot, or a copied link to one. The redirect takes them through
+ * sign-in to the guide; a 401 would leave them on a bare error page. For the requests the guide page
+ * makes itself, the redirect costs nothing a 401 would save — the browser receives the login page's
+ * HTML where it expected an image or a script, the request fails, and the page recovers:
+ * - a screenshot: `GuideShot`'s `onError` says in words that it could not load;
+ * - a chapter chunk: every chapter loader goes through Vite's preload helper, whose failure fires
+ *   `vite:preloadError`; `shared/lib/preload-error.ts` reloads once, and on that reload `requireAuth`
+ *   finds no session and sends the reader to `/login` with `returnTo` set to the chapter they were on.
  */
 export function loginRedirect(request: Request): Response {
   const login = new URL('/login', new URL(request.url).origin)

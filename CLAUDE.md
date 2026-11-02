@@ -1126,8 +1126,11 @@ reversing US-119 AC1's new-tab rule — and `/user-guide` picks the edition from
   `generateBundle` hook over the finished bundle, NOT `chunkFileName` — Vite always sets
   `entryFileNames`, so `chunkFileNames` never sees an entry, and a guard there cannot fire. Gated
   files are `private, no-cache`: revalidated on every use, so nothing is readable from the disk cache
-  after sign-out. A refused request redirects to `/login?returnTo=/user-guide` — a
-  constant, because the refused URL is a script or an image, never a page.
+  after sign-out. A refused request redirects to `/login?returnTo=/user-guide` — a constant, because
+  the refused URL is a script or an image. A redirect rather than a 401 because a screenshot opened in
+  its own tab IS a navigation; the guide page's own requests recover either way (`GuideShot`'s
+  `onError`, and `vite:preloadError` → one reload → `requireAuth` for a chapter chunk). See
+  `loginRedirect`.
 - **Screenshots are never imported into the bundle** — Vite would publish them under the public `/assets/`.
   `GuideShot` references `/guide-assets/<name>.png` by URL.
 - **Developers own the chapter files** (agreed with the BA, 2026-10-30). A chapter is semantic HTML inside
