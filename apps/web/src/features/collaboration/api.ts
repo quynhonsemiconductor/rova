@@ -63,6 +63,20 @@ export function useAttachments(subject: EntitySubject | undefined) {
 }
 
 /**
+ * The MIME type to declare for a file. Chrome and Firefox on Windows/Linux leave `File.type` empty for
+ * `.heic` / `.heif` (iPhone photos copied to a PC), and the API requires a non-empty type, so fall back
+ * to the extension for exactly those two. Anything else keeps what the browser said.
+ */
+export function declaredMimeType(file: Pick<File, 'name' | 'type'>): string {
+  if (file.type) return file.type
+  const dot = file.name.lastIndexOf('.')
+  const ext = dot < 0 ? '' : file.name.slice(dot + 1).toLowerCase()
+  if (ext === 'heic') return 'image/heic'
+  if (ext === 'heif') return 'image/heif'
+  return file.type
+}
+
+/**
  * Base64 SHA-256 of a file, computed in the browser.
  *
  * The API binds this into the presigned PUT signature, so the bucket itself
@@ -101,7 +115,7 @@ export function useUploadAttachment(subject: EntitySubject | undefined) {
         credentials: 'include',
         body: JSON.stringify({
           filename: file.name,
-          mimeType: file.type,
+          mimeType: declaredMimeType(file),
           sizeBytes: file.size,
           checksumSha256,
         }),
