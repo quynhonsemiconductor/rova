@@ -126,17 +126,48 @@ describe('the User Guide gate as a Worker', () => {
   })
 
   it('recognises the guide root and every path under it', async () => {
-    for (const path of ['/guide', '/guide/', '/guide/01-lam-quen', '/guide/assets/x.png']) {
+    for (const path of [
+      '/guide',
+      '/guide/',
+      '/guide/01-lam-quen',
+      '/guide/assets/x.png',
+      '/guide-assets',
+      '/guide-assets/03-backlog.png',
+    ]) {
       const res = await handleWorkerRequest(new Request(`${ORIGIN}${path}`), {
         ASSETS: assetsFetcher(),
       })
       expect(res.status, path).toBe(302)
     }
-    // A lookalike is NOT the guide.
-    const res = await handleWorkerRequest(new Request(`${ORIGIN}/guidebook`), {
-      ASSETS: assetsFetcher(),
+    // Lookalikes are NOT the guide.
+    for (const path of ['/guidebook', '/guide-assetsx/a.png']) {
+      const res = await handleWorkerRequest(new Request(`${ORIGIN}${path}`), {
+        ASSETS: assetsFetcher(),
+      })
+      expect(res.status, path).toBe(200)
+    }
+  })
+
+  it('gates the guide screenshots: a signed-out reader is sent to sign-in, never to the asset', async () => {
+    const assets = assetsFetcher()
+    const res = await handleWorkerRequest(new Request(`${ORIGIN}/guide-assets/03-backlog.png`), {
+      ASSETS: assets,
     })
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(302)
+    expect(assets.fetch).not.toHaveBeenCalled()
+  })
+
+  it('fails CLOSED on a guide screenshot when the session check errors', async () => {
+    const assets = assetsFetcher()
+    const res = await handleWorkerRequest(
+      new Request(`${ORIGIN}/guide-assets/03-backlog.png`, {
+        headers: { cookie: '__Host-rova_session=abc' },
+      }),
+      { ASSETS: assets },
+      { fetchImpl: vi.fn(async () => new Response('', { status: 500 })) },
+    )
+    expect(res.status).toBe(503)
+    expect(assets.fetch).not.toHaveBeenCalled()
   })
 
   it('hasSessionCookie ignores empty values and other cookies', () => {
