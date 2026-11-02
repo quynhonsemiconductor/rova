@@ -435,7 +435,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>To Do không giảm khi nhập Actual</strong>
               <p>
@@ -445,7 +445,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Giờ không đổi khi Completed</strong>
               <p>
@@ -454,7 +454,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>US/DE cha tự đổi trạng thái</strong>
               <p>

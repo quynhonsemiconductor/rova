@@ -565,14 +565,14 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Save Result is locked</strong>
               <p>Check Build, Date and Tester. Duration cannot be less than 0.</p>
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Last Verdict was not as expected</strong>
               <p>
@@ -582,7 +582,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Can't see the Type to select</strong>
               <p>

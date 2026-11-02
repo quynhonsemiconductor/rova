@@ -48,6 +48,29 @@ describe('NavigationLegend', () => {
   })
 })
 
+describe('numbered lists', () => {
+  // The numbers are written by hand (`<span>04</span>`), so deleting an item leaves a gap the reader
+  // sees — every troubleshooting list in the static guide skipped 04, in both editions.
+  const lists = readdirSync(CONTENT, { recursive: true, encoding: 'utf8' })
+    .filter((file) => file.endsWith('.tsx'))
+    .flatMap((file) => {
+      const text = readFileSync(join(CONTENT, file), 'utf8')
+      return [
+        ...text.matchAll(/<(TroubleshootList|InstructionList|ActionGrid)\b[^>]*>([\s\S]*?)<\/\1>/g),
+      ].map(([, part, body]) => ({
+        where: `${file} ${part}`,
+        numbers: [...body!.matchAll(/<span>(\d+)<\/span>/g)].map(([, n]) => Number(n)),
+      }))
+    })
+
+  it('are numbered from 1, with no gap', () => {
+    expect(lists.length).toBeGreaterThan(0)
+    for (const { where, numbers } of lists) {
+      expect(numbers, where).toEqual(numbers.map((_, i) => i + 1))
+    }
+  })
+})
+
 describe('IterationStateFlow', () => {
   it('is announced as one group, by the name the chapter gives it', () => {
     render(

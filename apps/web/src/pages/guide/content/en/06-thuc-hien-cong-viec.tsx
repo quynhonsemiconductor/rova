@@ -38,11 +38,11 @@ export default function Chapter() {
         <ChapterSummary aria-label="After this part you will be able to do it">
           <strong>After this chapter, you will be able to</strong>
           <ul>
-            <li>Opens the Task list of a US or DE.</li>
+            <li>Open the Task list of a US or DE.</li>
             <li>Create a child Task and assign it to the correct Owner.</li>
             <li>Update Task State according to actual progress.</li>
             <li>Distinguish between Estimate, To Do and Actual.</li>
-            <li>Added description, documentation, and view change history.</li>
+            <li>Add a description and documents, and view the change history.</li>
           </ul>
         </ChapterSummary>
       </ChapterIntro>
@@ -93,8 +93,8 @@ export default function Chapter() {
             <div>
               <strong>Open the Task to be processed</strong>
               <p>
-                Select ID as <b>TA-22</b> to open Task Detail. Here you can update content, status,
-                Owner and time.
+                Select an ID such as <b>TA-22</b> to open Task Detail. Here you can update content,
+                status, Owner and time.
               </p>
             </div>
           </li>
@@ -124,8 +124,8 @@ export default function Chapter() {
             <div>
               <strong>Open the Tasks tab and select Add Task</strong>
               <p>
-                A new task will be created under the correct open US or DE. Check the parent Work
-                Item before importing.
+                A new task will be created under the US or DE that is currently open. Check the
+                parent Work Item before filling in the form.
               </p>
             </div>
           </li>
@@ -190,8 +190,8 @@ export default function Chapter() {
             <div>
               <strong>Owner</strong>
               <p>
-                The person responsible for the Task. You can choose when creating or updating in
-                Task Detail and Tasks list.
+                The person responsible for the Task. You can set it when creating the Task, or
+                change it later in Task Detail and the Tasks list.
               </p>
             </div>
           </article>
@@ -200,8 +200,8 @@ export default function Chapter() {
             <div>
               <strong>Dev Owner</strong>
               <p>
-                Additional field on Task Detail to recognize the developer when the Team process
-                uses this role.
+                Additional field on Task Detail to record the person responsible for development
+                when the Team process uses this role.
               </p>
             </div>
           </article>
@@ -211,7 +211,7 @@ export default function Chapter() {
               <strong>— No Entry —</strong>
               <p>
                 Used when the Task owner has not been identified. The task is still created but
-                needs to be reassigned before tracking the individual.
+                needs to be assigned to someone before it can be tracked per person.
               </p>
             </div>
           </article>
@@ -272,7 +272,7 @@ export default function Chapter() {
         id="cap-nhat-gio-task"
         number="06.5"
         title="Update Estimate, To Do and Actual"
-        lead="Three schools use the same hour unit but answer three different questions."
+        lead="Three fields use the same hour unit but answer three different questions."
       >
         <GuideShot
           name="05-task-detail-production"
@@ -334,7 +334,7 @@ export default function Chapter() {
               <span>3</span>
               <div>
                 <strong>Estimate is still 6</strong>
-                <p>The system does not use the required formula Actual + To Do = Estimate.</p>
+                <p>The system does not enforce the formula Actual + To Do = Estimate.</p>
               </div>
             </li>
           </ScenarioFlow>
@@ -348,7 +348,7 @@ export default function Chapter() {
         id="bo-sung-task"
         number="06.6"
         title="Add information and view history"
-        lead="Use Task Detail when you need to specify actions, attach documents, or check changes."
+        lead="Use Task Detail when you need to describe how the work is done, attach documents, or check changes."
       >
         <ActionGrid>
           <article>
@@ -389,7 +389,7 @@ export default function Chapter() {
             <div>
               <strong>Revision History</strong>
               <p>
-                View Task updates, including changes to status, person in charge, or fields, that
+                View Task updates, including changes to status, person in charge or hour fields that
                 have now been recorded.
               </p>
             </div>
@@ -428,38 +428,38 @@ export default function Chapter() {
             <div>
               <strong>Can't find the person to select in Owner</strong>
               <p>
-                Check if that person is a valid member of the parent Team or not. If it cannot be
-                delivered, select No Entry and notify the Team manager.
+                Check if that person is a valid member of the parent Team or not. If you cannot
+                assign it to them yet, select No Entry and notify the Team manager.
+              </p>
+            </div>
+          </article>
+          <article>
+            <span>04</span>
+            <div>
+              <strong>To Do does not decrease when entering Actual</strong>
+              <p>
+                Two independent fields. Please update To Do according to your estimate of the
+                remaining work instead of waiting for the system to automatically subtract.
               </p>
             </div>
           </article>
           <article>
             <span>05</span>
             <div>
-              <strong>To Do does not decrease when entering Actual</strong>
+              <strong>Time does not change when Completed</strong>
               <p>
-                Two independent fields. Please update To Do according to the remaining reviews
-                instead of waiting for the system to automatically subtract.
+                This is expected under the current rules. The state does not automatically set To Do
+                to 0 or change Actual.
               </p>
             </div>
           </article>
           <article>
             <span>06</span>
             <div>
-              <strong>Time does not change when Completed</strong>
-              <p>
-                Correct according to current rules. The state does not automatically set To Do to 0
-                or change Actual.
-              </p>
-            </div>
-          </article>
-          <article>
-            <span>07</span>
-            <div>
-              <strong>US/DE failed to change status automatically</strong>
+              <strong>The parent US/DE changed status on its own</strong>
               <p>
                 When all child Tasks are Completed, the parent item is automatically Completed;
-                Reopening a Task will return the parent item to In-Progress.
+                reopening a Task will return the parent item to In-Progress.
               </p>
             </div>
           </article>

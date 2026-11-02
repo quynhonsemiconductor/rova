@@ -505,7 +505,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Item không có trong Release Artifacts</strong>
               <p>
@@ -515,7 +515,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Không thấy Milestone để chọn trên Work Item</strong>
               <p>
@@ -525,7 +525,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Burnup trống hoặc đứt đoạn</strong>
               <p>

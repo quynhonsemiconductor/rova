@@ -468,7 +468,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Tiến độ là 0%</strong>
               <p>
@@ -478,7 +478,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Không tạo được Capacity Plan</strong>
               <p>
@@ -488,7 +488,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Không sửa được allocation</strong>
               <p>
@@ -498,14 +498,14 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>08</span>
+            <span>07</span>
             <div>
               <strong>Feature biến mất sau khi gỡ Team</strong>
               <p>Kiểm tra tab Features và Not assigned. Gỡ Team phải giữ Feature trong Plan.</p>
             </div>
           </article>
           <article>
-            <span>09</span>
+            <span>08</span>
             <div>
               <strong>Tổng số bị lặp khi chia nhiều Team</strong>
               <p>

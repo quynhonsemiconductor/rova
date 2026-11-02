@@ -24,7 +24,7 @@ export default function Chapter() {
           <Lead>
             <strong>Release</strong> identifies a Project delivery window.{' '}
             <strong>Milestone</strong> records milestones and can link multiple Releases. Create and
-            edit these two objects at <strong>Plan → Timeboxes</strong>; See Release progress here{' '}
+            edit these two objects at <strong>Plan → Timeboxes</strong>; view Release progress in{' '}
             <strong>Portfolio → Release Tracking</strong>.
           </Lead>
         </div>
@@ -251,8 +251,8 @@ export default function Chapter() {
         </InstructionList>
         <p>
           <strong>Milestone status</strong> includes Planned, At Risk, Met, Missed, Cancelled and
-          Completed. This is the state of the mold; Do not use in place of Release status or Work
-          Item status.
+          Completed. This is the state of the milestone; do not use it in place of the Release
+          status or the Work Item status.
         </p>
         <p>Milestone has no velocity, Task Estimate or Iteration carry-over rules.</p>
       </Section>
@@ -276,13 +276,13 @@ export default function Chapter() {
                 <strong>There is no associated Release</strong>
               </td>
               <td>Target Start and Target End are entered manually.</td>
-              <td>Authorized users can edit directly for two days.</td>
+              <td>Authorized users can edit the two dates directly.</td>
             </tr>
             <tr>
               <td>
                 <strong>There is a Release</strong>
               </td>
-              <td>Get the Start Date and Release Date of that Release.</td>
+              <td>Uses the Start Date and Release Date of that Release.</td>
               <td>Milestone date becomes inferred value.</td>
             </tr>
             <tr>
@@ -296,7 +296,7 @@ export default function Chapter() {
             </tr>
             <tr>
               <td>
-                <strong>Uninstall all Release</strong>
+                <strong>Remove all Releases</strong>
               </td>
               <td>Milestone returns to manual date entry mode.</td>
               <td>Check and re-enter the appropriate date before saving.</td>
@@ -304,9 +304,9 @@ export default function Chapter() {
           </tbody>
         </DocTable>
         <p>
-          Release and Milestone are two independent relationships on Work Item. Change the Release
-          of a US/DE <strong>does not delete itself</strong> selected Milestones. When a Work Item
-          has a Release, the new Milestones to Add list displays only the Milestones associated with
+          Release and Milestone are two independent relationships on Work Item. Changing the Release
+          of a US/DE <strong>does not remove</strong> the Milestones already selected. When a Work
+          Item has a Release, the list of Milestones you can add shows only the Milestones linked to
           that Release.
         </p>
       </Section>
@@ -320,7 +320,7 @@ export default function Chapter() {
           <thead>
             <tr>
               <th>Scope</th>
-              <th>Artifacts are valid</th>
+              <th>Valid Artifacts</th>
               <th>Rules to remember</th>
             </tr>
           </thead>
@@ -422,7 +422,7 @@ export default function Chapter() {
               <strong>Select Release</strong>
               <p>
                 Use the previous button, the Release list and the following button at the top of the
-                page. The date range next to the name is what the Release window is reading.
+                page. The date range next to the name is the window of the Release you are viewing.
               </p>
             </div>
           </li>
@@ -431,8 +431,8 @@ export default function Chapter() {
             <div>
               <strong>Select Chart Unit</strong>
               <p>
-                <b>Points</b> plus Plan Estimate of Story/Defect; <b>Count</b> counts Story/Defect.
-                This selection applies to both the Status and Burnup columns.
+                <b>Points</b> sums the Plan Estimate of Story/Defect; <b>Count</b> counts
+                Story/Defect. This selection applies to both the Status and Burnup columns.
               </p>
             </div>
           </li>
@@ -476,7 +476,7 @@ export default function Chapter() {
         id="xu-ly-release-milestone"
         number="08.7"
         title="Troubleshooting"
-        lead="Check permissions, scope, and relationships before regenerating data."
+        lead="Check permissions, scope, and relationships before recreating data."
       >
         <TroubleshootList>
           <article>
@@ -504,13 +504,13 @@ export default function Chapter() {
             <div>
               <strong>Milestone date cannot be adjusted</strong>
               <p>
-                Milestone is binding at least one Release so the date is inferred. Check Associated
-                Releases before changing associations.
+                Milestone is linked to at least one Release so the date is inferred. Check
+                Associated Releases before changing associations.
               </p>
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Item not available in Release Artifacts</strong>
               <p>
@@ -520,7 +520,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>No Milestone to select on Work Item</strong>
               <p>
@@ -531,12 +531,12 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Burnup is blank or broken</strong>
               <p>
-                Check Release, Team scope, Unit Chart and history quality. Snapshot space is not
-                interpreted as zero.
+                Check Release, Team scope, Chart Unit and history quality. A snapshot gap must not
+                be interpreted as zero.
               </p>
             </div>
           </article>
@@ -546,7 +546,8 @@ export default function Chapter() {
         <strong>Check yourself before moving on to the next section</strong>
         <ul>
           <li>
-            Do you know where to create Release is different from where to read Release Tracking?
+            Do you know that Releases are created in a different place from where you read Release
+            Tracking?
           </li>
           <li>Do you know when the Milestone date was hand-entered or inferred?</li>
           <li>Have you distinguished Release Artifact from Milestone Artifact?</li>

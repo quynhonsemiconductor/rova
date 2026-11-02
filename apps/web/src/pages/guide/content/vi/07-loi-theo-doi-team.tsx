@@ -379,7 +379,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Không mở được Team Status</strong>
               <p>
@@ -389,7 +389,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Không thấy thành viên trong Team Status</strong>
               <p>
@@ -399,7 +399,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Tổng giờ không đổi khi đổi State</strong>
               <p>

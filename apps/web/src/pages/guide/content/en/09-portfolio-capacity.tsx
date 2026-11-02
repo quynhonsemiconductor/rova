@@ -25,7 +25,7 @@ export default function Chapter() {
             <strong>Portfolio Items</strong> organizes goals according to the sequence Epic →
             Feature → User Story/Defect. <strong>Capacity Planning</strong> allocates the Feature of
             a Release to Teams in the plan without changing the Feature's original Project or
-            Implementation Team.
+            delivery Team.
           </Lead>
         </div>
         <ChapterSummary aria-label="After this part you will be able to do it">
@@ -79,7 +79,9 @@ export default function Chapter() {
             <span>4</span>
             <div>
               <strong>Check the selected scope header</strong>
-              <p>Reconcile Project · Team on top before creating, editing or archiving.</p>
+              <p>
+                Check Project · Team at the top of the page before creating, editing or archiving.
+              </p>
             </div>
           </li>
         </InstructionList>
@@ -96,14 +98,14 @@ export default function Chapter() {
         id="phan-biet-epic-feature"
         number="09.2"
         title="Distinguishing between Epic and Feature"
-        lead="Choose the right level to avoid bringing a large target to the Team or creating a Feature that is too broad."
+        lead="Choose the right level to avoid pushing a large goal down to Team level or creating a Feature that is too broad."
       >
         <DocTable>
           <thead>
             <tr>
               <th>Object</th>
               <th>Used to describe</th>
-              <th>Scope and binding</th>
+              <th>Scope and links</th>
             </tr>
           </thead>
           <tbody>
@@ -112,7 +114,7 @@ export default function Chapter() {
                 <strong>Epic</strong>
               </td>
               <td>
-                Big goal at Project level, used to group Features with the same result direction.
+                Big goal at Project level, used to group Features that work toward the same outcome.
               </td>
               <td>
                 Belongs to a Project; There is no direct Team and Release. Can contain multiple
@@ -123,7 +125,7 @@ export default function Chapter() {
               <td>
                 <strong>Feature</strong>
               </td>
-              <td>Product capabilities can be deployed and progress tracked by the Team.</td>
+              <td>A product capability that a Team can implement and track progress on.</td>
               <td>
                 Belongs to a Project; You can choose Team, Epic, Release and Owner. US/DE links
                 directly to Feature.
@@ -132,12 +134,12 @@ export default function Chapter() {
           </tbody>
         </DocTable>
         <p>
-          <strong>Capacity Planning only allocates Features.</strong> Epic is used to guide and
-          synthesize progress; Do not include Epic in the Capacity Plan.
+          <strong>Capacity Planning only allocates Features.</strong> Epic is used to guide and roll
+          up progress; Do not include Epic in the Capacity Plan.
         </p>
         <p>
-          Archive still holds history. Epics are only archived when there are no active child
-          Features; This operation does not automatically archive child features.
+          Archive still holds history. An Epic can be archived only when it has no active child
+          Features; this operation does not automatically archive child features.
         </p>
       </Section>
       <Section
@@ -238,7 +240,7 @@ export default function Chapter() {
         <DocTable>
           <thead>
             <tr>
-              <th>Index</th>
+              <th>Metric</th>
               <th>How to understand</th>
               <th>When appropriate</th>
             </tr>
@@ -261,8 +263,8 @@ export default function Chapter() {
           </tbody>
         </DocTable>
         <p>
-          With Feature, data taken from US/DE links directly. With Epic, aggregated data from US/DE
-          belongs to active sub-Features. Tasks are not counted directly.
+          For a Feature, data comes from directly linked US/DE. For an Epic, data is aggregated from
+          US/DE under its active child Features. Tasks are not counted directly.
         </p>
         <p>
           <strong>Completed is not Accepted in Portfolio.</strong> US/DE only enters the numerator
@@ -324,7 +326,9 @@ export default function Chapter() {
             <span>5</span>
             <div>
               <strong>Select Create</strong>
-              <p>The new Plan is in Draft state and has not yet added Teams or Features.</p>
+              <p>
+                The new Plan is in Draft state and has no Teams or Features added automatically.
+              </p>
             </div>
           </li>
         </InstructionList>
@@ -351,7 +355,7 @@ export default function Chapter() {
             <div>
               <strong>Add Feature</strong>
               <p>
-                Add from the Features tab to include Not assigned, or add from an open Team to
+                Add from the Features tab to place it in Not assigned, or add from an open Team to
                 pre-assign that Team.
               </p>
             </div>
@@ -372,7 +376,7 @@ export default function Chapter() {
               <strong>Read Demand and Capacity</strong>
               <p>
                 Demand is the total allocation of the Team. Compare Complete, Rollup, Estimated and
-                Capacity to identify over- or under-estimation.
+                Capacity to identify overload or missing estimates.
               </p>
             </div>
           </li>
@@ -416,7 +420,7 @@ export default function Chapter() {
                 <strong>Publish Without Updating Fields</strong>
               </td>
               <td>Switch Plan to Published and change visibility.</td>
-              <td>Do not copy Release or planning date to Feature.</td>
+              <td>Does not copy Release or planned dates to the Feature.</td>
             </tr>
             <tr>
               <td>
@@ -426,14 +430,14 @@ export default function Chapter() {
                 Switch to Published and update the Feature fields allowed when the date condition is
                 valid.
               </td>
-              <td>Do not change Feature's Project/Team and do not update US/DE.</td>
+              <td>Does not change the Feature's Project/Team and does not update US/DE.</td>
             </tr>
             <tr>
               <td>
                 <strong>Revert to Draft</strong>
               </td>
               <td>Unlock Plan to continue editing.</td>
-              <td>Do not automatically undo values copied in the previous Publish.</td>
+              <td>Does not automatically undo values copied in the previous Publish.</td>
             </tr>
           </tbody>
         </DocTable>
@@ -451,7 +455,7 @@ export default function Chapter() {
         id="xu-ly-portfolio-capacity"
         number="09.8"
         title="Troubleshooting"
-        lead="Check scope, permissions, and status before regenerating data."
+        lead="Check scope, permissions, and status before recreating data."
       >
         <TroubleshootList>
           <article>
@@ -482,7 +486,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Progress is 0%</strong>
               <p>
@@ -492,17 +496,17 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Unable to create Capacity Plan</strong>
               <p>
-                Check for Release required, Admin and Plan rights may already exist for the same
-                Project + Release.
+                Check that Release is set, that you have Admin rights, and whether a Plan already
+                exists for the same Project + Release.
               </p>
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Unable to edit allocation</strong>
               <p>
@@ -512,7 +516,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>08</span>
+            <span>07</span>
             <div>
               <strong>Feature disappears after removing Team</strong>
               <p>
@@ -521,12 +525,12 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>09</span>
+            <span>08</span>
             <div>
               <strong>The total number is duplicated when dividing into multiple Teams</strong>
               <p>
-                Plan total only counts each allocation once; Do not add the total line of the
-                Feature.
+                Plan total only counts each allocation once; it does not also add the total line of
+                the Feature.
               </p>
             </div>
           </article>
@@ -536,7 +540,7 @@ export default function Chapter() {
         <strong>Check yourself before moving on to the next section</strong>
         <ul>
           <li>Do you know why Epic only appears in All Teams?</li>
-          <li>You distinguish % Done by Est. with % Done by Count?</li>
+          <li>Can you tell % Done by Est. apart from % Done by Count?</li>
           <li>Do you know that the Unit of Capacity Plan cannot be changed after creation?</li>
           <li>Have you distinguished between Unassign, Remove from Plan and Revert to Draft?</li>
         </ul>

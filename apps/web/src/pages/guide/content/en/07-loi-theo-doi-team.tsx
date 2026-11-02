@@ -23,9 +23,10 @@ export default function Chapter() {
           <ChapterEyebrow>PART 07 · ERRORS AND TEAM MONITORING</ChapterEyebrow>
           <h2>Track defects and Team progress</h2>
           <Lead>
-            <strong>Quality {'>'} Defects</strong> focuses all Defects of the currently selected
-            scope. <strong>Track {'>'} Team Status</strong> group Tasks according to the person in
-            charge so that the manager can see the volume and progress of the Team in an Iteration.
+            <strong>Quality {'>'} Defects</strong> brings together all Defects of the currently
+            selected scope. <strong>Track {'>'} Team Status</strong> group Tasks according to the
+            person in charge so that the manager can see the volume and progress of the Team in an
+            Iteration.
           </Lead>
         </div>
         <ChapterSummary aria-label="After this part you will be able to do it">
@@ -130,8 +131,8 @@ export default function Chapter() {
             <div>
               <strong>Select level and handler</strong>
               <p>
-                Select Severity, Priority, Assignee and related information if known. The undefined
-                field can be left blank and added later.
+                Select Severity, Priority, Assignee and related information if known. Any field you
+                do not know yet can be left blank and added later.
               </p>
             </div>
           </li>
@@ -140,8 +141,8 @@ export default function Chapter() {
             <div>
               <strong>Link User Story if appropriate</strong>
               <p>
-                User Story is optional. Only active Story links within the same Project; Don't
-                choose a Story just because the name is similar.
+                User Story is optional. Only link an active Story in the same Project; don't choose
+                a Story just because the name is similar.
               </p>
             </div>
           </li>
@@ -158,8 +159,8 @@ export default function Chapter() {
         </InstructionList>
         <p>
           <strong>Expected result:</strong> New Defect appears in Quality and Backlog with the same
-          ID. If you need to create more details from the beginning, you can also create a Defect
-          from the Backlog following the instructions in Part 03.
+          ID. If you want to enter more detail from the start, you can also create a Defect from the
+          Backlog following the instructions in Part 03.
         </p>
       </Section>
       <Section
@@ -171,7 +172,7 @@ export default function Chapter() {
         <p>
           <strong>Severity</strong> describes the level of impact of the error on the product: None,
           Critical, Major Problem, Minor Problem or Trivial. Choose according to the practical
-          consequences, for example data loss or main thread blocking is more serious than a small
+          consequences, for example data loss or blocking the main flow is more serious than a small
           display error.
         </p>
         <p>
@@ -241,8 +242,8 @@ export default function Chapter() {
         <p>
           <strong>Flow State</strong> uses the values Idea, Defined, In-Progress, Completed,
           Accepted and Release. Flow State serves the workflow; Defect State serves the defect
-          lifecycle. The two independent fields should change the Flow State but not the Defect
-          State themselves.
+          lifecycle. The two fields are independent, so changing Flow State does not change Defect
+          State.
         </p>
         <p>
           Closed and Closed Declined are used when you need to keep Defect as history. Deleting
@@ -285,8 +286,7 @@ export default function Chapter() {
               <strong>Select Iteration</strong>
               <p>
                 Use the previous button, the Iteration list and the following button at the top of
-                the page. Changing Iteration will change the entire group member, Task and total
-                number.
+                the page. Changing the Iteration changes all member groups, Tasks and the total.
               </p>
             </div>
           </li>
@@ -305,7 +305,7 @@ export default function Chapter() {
             <div>
               <strong>Open the member group</strong>
               <p>
-                Each group displays name, Task number, progress percentage and hours. Open the group
+                Each group displays name, Task count, progress percentage and hours. Open the group
                 to see Task ID, Task Name, Work Product, Release, State and Owner.
               </p>
             </div>
@@ -330,9 +330,9 @@ export default function Chapter() {
         </p>
         <p>
           When a Task moves to Completed, the system updates the progress of the parent Work Item.
-          If there is still a Task that has not been completed, the parent item has not completed
-          itself. When all child Tasks are Completed, the parent item automatically switches to
-          Completed.
+          If there is still a Task that has not been completed, the parent item does not yet switch
+          to Completed by itself. When all child Tasks are Completed, the parent item automatically
+          switches to Completed.
         </p>
         <p>
           If you reopen a Task to Defined or In-Progress, the parent item automatically switches
@@ -374,8 +374,8 @@ export default function Chapter() {
             <div>
               <strong>Defect is in Backlog but not in Quality</strong>
               <p>
-                Compare with Project/Team and remove filter. The two screens use the same Defect
-                data so no replacement items are created.
+                Check that both use the same Project/Team and clear filters. The two screens use the
+                same Defect data, so do not create a replacement item.
               </p>
             </div>
           </article>
@@ -390,7 +390,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Unable to open Team Status</strong>
               <p>
@@ -400,17 +400,17 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Can't see members in Team Status</strong>
               <p>
                 The list only takes active members of the currently selected Team. People outside
-                the Team cannot create a new member group.
+                the Team are not shown as a separate member group.
               </p>
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Total hours do not change when changing State</strong>
               <p>

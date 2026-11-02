@@ -387,8 +387,8 @@ export default function Chapter() {
           <article>
             <strong>Owner and Dev Owner</strong>
             <p>
-              Two independent schools but using the same pool of qualified people. You can leave it
-              blank and choose two different people.
+              Two independent fields that draw on the same pool of eligible people. You can leave
+              them blank or choose two different people.
             </p>
           </article>
         </DefinitionGrid>
@@ -479,7 +479,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>The newly created item is no longer in the list</strong>
               <p>
