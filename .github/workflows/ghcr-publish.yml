@@ -7,9 +7,9 @@
 # tag. It runs ALONGSIDE backend-deploy.yml (ECS), which keeps pushing to ECR
 # until the AWS cutover; the reusable refuses any ref except refs/heads/main.
 #
-# The reusable's `digests` output (JSON, service → sha256) is what the gitops
-# bump writes into tags.dev.yaml. Until that wiring lands, the run's step
-# summary records the digests.
+# The reusable's `digests` output (JSON, service → sha256) is what the
+# `bump-dev` job below writes into gitops values/rova/tags.dev.yaml (tag +
+# digest), so rova-dev follows main. Prod is promoted by release-promote.yml.
 #
 # ── ONE IMAGE PER DOCKERFILE STAGE ────────────────────────────────────────────
 # The reusable passes `build-target: <service>`, which the Dockerfile REQUIRES:
@@ -58,3 +58,37 @@ jobs:
       # this pnpm + Nest compile fails — see the reusable's build_runner note).
       platforms: linux/amd64
       build_runner: ubuntu-24.04
+
+  # rova-dev follows main: write tag + digest into gitops tags.dev.yaml (commit
+  # mode, no review — dev only). Prod never goes through here.
+  bump-dev:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    concurrency:
+      # Two bumps race on one file; serialise them (the action rebases on push).
+      group: gitops-bump-rova-dev
+      cancel-in-progress: false
+    steps:
+      # App token scoped to the gitops repo only. It must be able to push
+      # values/rova/tags.dev.yaml to gitops main (dev path) and nothing else.
+      - id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
+        with:
+          app-id: ${{ vars.QNSC_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.QNSC_AUTOMATION_PRIVATE_KEY }}
+          owner: quynhonsemiconductor
+          repositories: gitops
+          permission-contents: write
+      # Pinned to the ci#275 branch head until it merges; re-pin to the merge SHA.
+      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@7e9becc4f969538123041cf53c6800f01f5af8d6  # ci#275 (branch head)
+        with:
+          product: rova
+          env: dev
+          services: api worker migrator
+          tag: ${{ needs.publish.outputs.tag }}
+          digests: ${{ needs.publish.outputs.digests }}
+          mode: commit
+          gitops-token: ${{ steps.app.outputs.token }}
