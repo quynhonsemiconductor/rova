@@ -22,8 +22,8 @@ interface GuideShotProps {
  * A production screenshot.
  *
  * Deliberately NOT imported into the bundle: Vite would publish it under `/assets/`, which is
- * public. The guide's text is fine in a public chunk; its screenshots show production data, so they
- * stay behind the session gate at `/guide-assets/` and are referenced by URL.
+ * public. Screenshots show production data, so they sit behind the session gate at `/guide-assets/`
+ * — like the chunks carrying the guide's text — and are referenced by URL.
  *
  * The gate is the one part of the guide that can refuse — an expired session gets a redirect, which
  * an `<img>` cannot decode — so a failed load says so in words instead of showing a broken image.

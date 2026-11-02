@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  assertNoMissingMigrations,
   EDITED_AFTER_APPLY,
   strandedMigrations,
   type RecordedMigration,
@@ -166,5 +167,33 @@ describe('strandedMigrations — the real journal, on a database that ran 0006 a
     const report = strandedMigrations(journal.entries, rows, realHash);
     expect(report.knownEdits).toEqual([]);
     expect(report.mismatched).toEqual([expect.stringContaining('0068_app_role_least_privilege')]);
+  });
+});
+
+describe('assertNoMissingMigrations', () => {
+  it('passes when nothing is missing (mismatched and known edits never fail the Job)', () => {
+    expect(() => assertNoMissingMigrations({ missing: [] })).not.toThrow();
+  });
+
+  it('throws naming every stranded file', () => {
+    expect(() => assertNoMissingMigrations({ missing: ['0125_api_tokens', '0126_x'] })).toThrow(
+      /2 migration\(s\) in the journal never ran: 0125_api_tokens, 0126_x/,
+    );
+  });
+
+  it('fails end to end for a stranded entry and passes for a mismatch', () => {
+    const entries = [
+      { tag: '0005_a', when: 100 },
+      { tag: '0006_b', when: 200 },
+    ];
+    const stranded = strandedMigrations(entries, [row('0005_a', 100)], hashOf);
+    expect(() => assertNoMissingMigrations(stranded)).toThrow(/0006_b/);
+    const edited = strandedMigrations(
+      entries,
+      [row('0005_a', 100), { created_at: 200, hash: sha('other text') }],
+      hashOf,
+    );
+    expect(edited.mismatched).toEqual(['0006_b (when=200)']);
+    expect(() => assertNoMissingMigrations(edited)).not.toThrow();
   });
 });

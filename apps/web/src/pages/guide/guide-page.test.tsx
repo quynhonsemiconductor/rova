@@ -7,7 +7,7 @@
 /// <reference types="node" />
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import {
   createMemoryHistory,
@@ -19,7 +19,7 @@ import {
 } from '@tanstack/react-router'
 
 import '@/shared/i18n/i18n'
-import { GUIDE_CHAPTERS } from './model/chapters'
+import { CHAPTER_MODULES, GUIDE_CHAPTERS } from './model/chapters'
 import { chaptersOf } from './model/toc'
 import { GuidePage } from './guide-page'
 import { GuideLink } from './ui/guide-link'
@@ -44,6 +44,10 @@ const location = (router: Awaited<ReturnType<typeof renderGuide>>) =>
   `${router.state.location.pathname}${router.state.location.hash ? `#${router.state.location.hash}` : ''}`
 
 describe('GuidePage', () => {
+  // A chapter is a lazy chunk. Its first import is a cold transform, which under a full parallel run
+  // can outlast `findBy`'s wait and fail whichever test happens to come first. Load them all here.
+  beforeAll(() => Promise.all(Object.values(CHAPTER_MODULES).map((load) => load())), 30_000)
+
   // jsdom implements neither; the page scrolls its reading pane to the URL's section.
   const scrollIntoView = vi.fn()
   beforeEach(() => {
