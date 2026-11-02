@@ -289,7 +289,9 @@ export function DocTable({
   children: ReactNode
 }) {
   return (
-    <div className={cn('overflow-x-auto', columns === 'fields' && 'mt-4')}>
+    // Spaced only after a step list (`InstructionList`, an `<ol>`): its last row has no border, so a
+    // table set flush under it reads as one more step. After a heading or a lead, that already spaces it.
+    <div className="overflow-x-auto [ol+&]:mt-4">
       <table
         className={cn(
           'w-full border-collapse text-ui-sm [&_td]:border-t [&_td]:border-border-subtle [&_td]:px-3 [&_td]:py-4 [&_td]:align-top [&_td]:text-ui-lg [&_td]:leading-relaxed [&_td]:text-muted-foreground [&_td:first-child]:text-primary [&_th]:border-b [&_th]:border-border-strong [&_th]:p-3 [&_th]:text-left [&_th]:text-ui-xs [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:uppercase',

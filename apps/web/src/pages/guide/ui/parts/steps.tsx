@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 import { cn } from '@/shared/lib/utils'
 import { part } from './part'
 
@@ -62,6 +62,10 @@ export const ActionGrid = part(
 /**
  * The key to an annotated screenshot. Its number badges take the colours of the pins drawn ON the
  * image, in order, which is why they are the `guide-marker-*` tokens and not theme colours.
+ *
+ * EXACTLY four items, because the screenshot (`02-top-navigation-annotated`) has four pins: a fifth
+ * would get a badge with no colour, white text on nothing. A new pin needs a new image, a fifth
+ * `--guide-marker-*` token and a fifth `nth-child` rule here, together.
  */
 export const NavigationLegend = part(
   'div',
@@ -89,25 +93,17 @@ export const ToolIcon = part(
 )
 
 /** Labelled rows with a heading: `<article><span>LABEL</span><h3/><p/></article>`. */
-export const DetailGuide = part(
-  'div',
-  cn(
-    ROWS,
-    ROW_H3,
-    '[&>article>span]:text-ui-xs [&>article>span]:font-extrabold [&>article>span]:tracking-wider [&>article>span]:text-primary-light',
-  ),
-  'DetailGuide',
+const LABELLED_ROWS = cn(
+  ROWS,
+  ROW_H3,
+  '[&>article>span]:text-ui-xs [&>article>span]:font-extrabold [&>article>span]:tracking-wider [&>article>span]:text-primary-light',
 )
 
-export const IterationChangeGrid = part(
-  'div',
-  cn(
-    ROWS,
-    ROW_H3,
-    '[&>article>span]:text-ui-xs [&>article>span]:font-extrabold [&>article>span]:tracking-wider [&>article>span]:text-primary-light',
-  ),
-  'IterationChangeGrid',
-)
+/** What each part of a work item's detail page is for. */
+export const DetailGuide = part('div', LABELLED_ROWS, 'DetailGuide')
+
+/** What changes when an Iteration's dates or scope change. Same rows as `DetailGuide`, by design. */
+export const IterationChangeGrid = part('div', LABELLED_ROWS, 'IterationChangeGrid')
 
 export const HomeSections = part(
   'div',
@@ -145,7 +141,15 @@ export function RouteCard({
 
 // ── Iteration states ──────────────────────────────────────────────────────────
 
-export const IterationStateFlow = part('div', '', 'IterationStateFlow')
+/**
+ * The three state cards, as one named group: the chapter passes `aria-label`, and the role is what
+ * makes a screen reader announce it (on a bare `<div>` it is ignored). No styling of its own — the
+ * static guide laid the cards out in a row with arrows between them; here they stack as ruled rows,
+ * which the cards draw themselves.
+ */
+export function IterationStateFlow(props: ComponentPropsWithoutRef<'div'>) {
+  return <div role="group" {...props} />
+}
 
 const STATE_BADGE = {
   plain: '[&>span]:bg-muted-foreground',
@@ -154,6 +158,10 @@ const STATE_BADGE = {
   accepted: '[&>span]:bg-success',
 } as const
 
+/**
+ * One state: `<article><span>BADGE</span><h3/><p/></article>`. The card is a plain block, so the badge
+ * sits on its own line above the heading; the `grid` on the badge only centres its letters.
+ */
 export function IterationStateCard({
   state = 'plain',
   children,
