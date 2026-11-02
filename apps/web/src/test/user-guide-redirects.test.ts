@@ -1,10 +1,13 @@
 /// <reference types="node" />
 /**
  * Old User Guide links (`/guide/…`, the standalone HTML guide) still land on the right chapter of the
- * in-app guide, in the same edition — through `public/_redirects`, which Pages applies statically.
+ * in-app guide, in the same edition — through `public/_redirects`, which Cloudflare applies statically
+ * (Pages, and Workers Static Assets outside `run_worker_first`).
  *
- * The rules are read from the file and applied with Pages' own matching (top to bottom, first match
- * wins, a trailing `*` captured as `:splat`), then the destination is resolved the way the app
+ * The rules are read from the file and applied with a model of Cloudflare's matching (top to bottom,
+ * first match wins, a trailing `*` captured as `:splat`, and `/x/*` also matching `/x/`) — a model,
+ * not Cloudflare's code, so it was checked against the real thing once: `wrangler dev` over the built
+ * `dist/` answered every case below the same way. The destination is then resolved the way the app
  * resolves it: `/user-guide/<lang>` opens the start chapter, and `GuidePage` maps `index` and a
  * trailing `.html` onto a chapter slug.
  */

@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useRef, useState, type RefObject } from 'react'
+import { Suspense, useMemo, useRef, useState, type ComponentType, type RefObject } from 'react'
 import { Navigate, useParams, useRouterState } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -32,11 +32,13 @@ export function GuidePage() {
 
   const lang: GuideLang = isGuideLang(params.lang) ? params.lang : browserGuideLang()
   const slug = canonicalChapterSlug(params.chapter)
-  // A TOC entry always has its chapter file (`user-guide.integrity.test.tsx`); checking both keeps
-  // `GuideReader` from ever being handed a chapter it cannot render.
-  const chapter = GUIDE_CHAPTERS[lang][slug] ? findChapter(lang, slug) : undefined
+  // A TOC entry always has its chapter file (`user-guide.integrity.test.tsx`, which also pins the
+  // start chapter's — the fallback below, so it cannot redirect to itself). Resolved here, once, and
+  // handed down, so `GuideReader` can never be given a chapter it cannot render.
+  const Content = GUIDE_CHAPTERS[lang][slug]
+  const chapter = Content ? findChapter(lang, slug) : undefined
 
-  if (!chapter || lang !== params.lang || slug !== params.chapter) {
+  if (!Content || !chapter || lang !== params.lang || slug !== params.chapter) {
     return (
       <Navigate
         to="/user-guide/$lang/$chapter"
@@ -46,16 +48,19 @@ export function GuidePage() {
       />
     )
   }
-  return <GuideReader lang={lang} chapter={chapter} hash={hash} />
+  return <GuideReader lang={lang} chapter={chapter} Content={Content} hash={hash} />
 }
 
 function GuideReader({
   lang,
   chapter,
+  Content,
   hash,
 }: {
   lang: GuideLang
   chapter: GuideChapter
+  /** The chapter's own text, from `GUIDE_CHAPTERS` — a stable lazy component, never one built here. */
+  Content: ComponentType
   hash: string
 }) {
   const { t } = useTranslation('guide', { lng: lang })
@@ -69,8 +74,6 @@ function GuideReader({
   )
   const activeSection = useActiveSection(pane, sectionIds)
   const context = useMemo(() => ({ lang, chapter: chapter.slug, query }), [lang, chapter, query])
-  // Present: `GuidePage` only renders this for a chapter that has its file.
-  const Content = GUIDE_CHAPTERS[lang][chapter.slug]!
 
   return (
     <GuideContext.Provider value={context}>
