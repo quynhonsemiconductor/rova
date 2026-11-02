@@ -129,8 +129,9 @@ describe('StorageService — public/private credential separation', () => {
       resilience,
     );
 
-  it('refuses to start without STORAGE_ENDPOINT: there is no plain-AWS mode', () => {
-    expect(() => make({ STORAGE_ENDPOINT: undefined })).toThrow(/STORAGE_ENDPOINT is required/);
+  it('boots without STORAGE_ENDPOINT but refuses every storage call: there is no plain-AWS mode', async () => {
+    const svc = make({ STORAGE_ENDPOINT: undefined });
+    await expect(presign(svc, 'private')).rejects.toThrow(/STORAGE_ENDPOINT is required/);
   });
 
   /** Access key id out of the SigV4 credential scope on a presigned URL. */

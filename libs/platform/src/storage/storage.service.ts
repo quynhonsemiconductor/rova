@@ -44,6 +44,7 @@ import { DOWNLOAD_URL_TTL_SECONDS, UPLOAD_URL_TTL_SECONDS } from './storage.type
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly s3: S3Client;
+  private readonly endpointConfigured: boolean;
   /**
    * Client for the PUBLIC bucket. A distinct instance when public-scoped credentials
    * are configured, otherwise the same object as `s3` — so the unsplit case costs
@@ -65,13 +66,11 @@ export class StorageService {
     this.cdnBaseUrl = config.get('CDN_PUBLIC_ASSETS_BASE_URL') ?? null;
 
     // S3-compatible backend (Cloudflare R2 on-prem, Garage locally) with static credentials and
-    // path-style addressing. There is no plain-AWS mode any more: the endpoint is required.
+    // path-style addressing. There is no plain-AWS mode any more: without STORAGE_ENDPOINT every
+    // storage call refuses (see `clientFor`), but the process still boots, because the API starts
+    // without storage in CI (OpenAPI capture, Playwright) and nothing there uploads a file.
     const endpoint = config.get('STORAGE_ENDPOINT');
-    if (!endpoint) {
-      throw new Error(
-        'STORAGE_ENDPOINT is required (S3-compatible endpoint: Cloudflare R2, or Garage locally)',
-      );
-    }
+    this.endpointConfigured = Boolean(endpoint);
     const accessKeyId = config.get('STORAGE_ACCESS_KEY_ID');
     const secretAccessKey = config.get('STORAGE_SECRET_ACCESS_KEY');
 
@@ -81,7 +80,7 @@ export class StorageService {
     const makeClient = (id?: string, secret?: string) =>
       new S3Client({
         region: 'auto',
-        endpoint,
+        ...(endpoint ? { endpoint } : {}),
         forcePathStyle: config.get('STORAGE_FORCE_PATH_STYLE'),
         ...(id && secret ? { credentials: { accessKeyId: id, secretAccessKey: secret } } : {}),
         // SDK v3 defaults to auto-attaching a CRC32 checksum (x-amz-checksum-crc32 /
@@ -113,6 +112,11 @@ export class StorageService {
    * credential and R2 answers 403.
    */
   private clientFor(visibility: StorageVisibility): S3Client {
+    if (!this.endpointConfigured) {
+      throw new Error(
+        'STORAGE_ENDPOINT is required (S3-compatible endpoint: Cloudflare R2, or Garage locally)',
+      );
+    }
     return visibility === 'private' ? this.s3 : this.publicS3;
   }
 
