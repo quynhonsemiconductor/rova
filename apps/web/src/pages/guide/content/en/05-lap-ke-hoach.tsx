@@ -496,7 +496,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Work Item disappeared from Backlog</strong>
               <p>
@@ -506,7 +506,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Unable to assign Work Item</strong>
               <p>
@@ -516,7 +516,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Status is not as expected</strong>
               <p>
@@ -526,7 +526,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>08</span>
+            <span>07</span>
             <div>
               <strong>Planned Velocity remains unchanged after adding items</strong>
               <p>

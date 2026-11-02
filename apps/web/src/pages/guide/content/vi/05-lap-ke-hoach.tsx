@@ -491,7 +491,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>05</span>
+            <span>04</span>
             <div>
               <strong>Work Item biến mất khỏi Backlog</strong>
               <p>
@@ -501,7 +501,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>06</span>
+            <span>05</span>
             <div>
               <strong>Không gán được Work Item</strong>
               <p>
@@ -511,7 +511,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>07</span>
+            <span>06</span>
             <div>
               <strong>Trạng thái không như dự kiến</strong>
               <p>
@@ -521,7 +521,7 @@ export default function Chapter() {
             </div>
           </article>
           <article>
-            <span>08</span>
+            <span>07</span>
             <div>
               <strong>Planned Velocity không đổi sau khi thêm item</strong>
               <p>
