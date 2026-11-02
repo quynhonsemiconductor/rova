@@ -276,7 +276,7 @@ jobs:
           --health-retries 10
 
       redis:
-        image: valkey/valkey:8.1.10-alpine
+        image: valkey/valkey:8.1.11-alpine@sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a
         ports: ['6379:6379']
         options: >-
           --health-cmd "redis-cli ping"
