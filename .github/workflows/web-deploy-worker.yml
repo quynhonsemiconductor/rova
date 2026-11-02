@@ -5,10 +5,9 @@
 # WHY IT EXISTS: the on-prem design serves rova-dev.qnsc.vn SAME-ORIGIN. A Worker
 # named `rova-dev-web` holds `<host>/*`; `/api/*`, `/v1/*` and `/readyz` are
 # Workers routes WITHOUT a script, so Cloudflare sends them through the
-# qnsc-apps tunnel to the API (infra `live/edge/onprem.tf`). `web-deploy.yml`
-# publishes to Cloudflare Pages and only on a tag, and the AWS develop stack —
-# including the rova-dev Pages project — was destroyed on 2026-10-31. Without
-# this workflow nothing deploys the dev SPA at all.
+# qnsc-apps tunnel to the API (infra `live/edge/onprem.tf`). The old
+# Cloudflare Pages deploy (web-deploy.yml) is gone with the AWS stacks, so this
+# workflow is the only SPA deploy.
 #
 # TRIGGERS
 #   develop → push to main, after `Web · CI` passes on the same commit, and
@@ -24,15 +23,13 @@
 # Scripts: edit on the QNSC account and nothing else — `wrangler.jsonc`
 # deliberately declares no routes, so a deploy cannot race Terraform, and a
 # token without Zone permission cannot fail on one.
-#
-# The prod tag → Pages flow (`web-deploy.yml`) is untouched.
 # =============================================================================
 name: Web · Deploy Worker
 
 on:
   push:
     branches: [main]
-    # Same ignore list as web-deploy.yml, and for the same reason: a merge that
+    # A merge that
     # touches only docs or the backend cannot change the SPA bundle. Anything
     # shared (root lockfile, package.json) or web-adjacent (apps/web/**,
     # public/_headers, the wrangler config) is NOT ignored, so under-deploy is

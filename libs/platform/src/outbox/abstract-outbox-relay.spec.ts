@@ -43,7 +43,6 @@ import {
   type PostCommitTask,
 } from './abstract-outbox-relay';
 import type { DrizzleDB, DrizzleTx } from '../database/drizzle.provider';
-import { terraformFilesFilteringOn } from '../../../../test/helpers/terraform-filters';
 
 interface TestRow {
   id: string;
@@ -652,21 +651,9 @@ describe('AbstractOutboxRelay — pass coalescing', () => {
 });
 
 describe('DEAD_LETTER_FIELD', () => {
-  it('uses the field name the infra actually filters on', () => {
-    // Guards the rename: the alarm is worthless if the field drifts away from the pattern.
+  it('keeps the field name the dead-letter alert filters on', () => {
+    // Guards the rename: the alert (in gitops) matches this exact log field.
     expect(DEAD_LETTER_FIELD).toBe('outboxDeadLetter');
-
-    // Searches the whole infra tree rather than naming a file, for the same reason
-    // fail-open.spec.ts does: asserting on a path needs editing every time the Terraform is
-    // reorganised, which is how a guard quietly stops guarding. What matters is that SOME
-    // Terraform in this repo filters on the field the app emits.
-    const terraform = terraformFilesFilteringOn(DEAD_LETTER_FIELD);
-
-    expect(
-      terraform,
-      `No Terraform under infra/ filters on ${DEAD_LETTER_FIELD}; a relay can exhaust its ` +
-        `retries and lose work with nothing alarming, even though the app emits the field.`,
-    ).not.toEqual([]);
   });
 });
 
