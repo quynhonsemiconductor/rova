@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, pageInfoOf, pageArgs, result, type ToolContext } from './rest';
+import { denied, pageInfoOf, pageArgs, result, type ToolContext, pathSegment } from './rest';
 
 /**
  * `rova_iteration_status` — the Iteration Status read-model of one iteration
@@ -25,7 +25,7 @@ export function registerIterationStatus(server: McpServer, ctx: ToolContext) {
     async ({ iterationId, q, isBlocked, limit, cursor }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/iterations/${iterationId}/status`,
+        url: `/v1/iterations/${pathSegment(iterationId)}/status`,
         query: {
           q,
           ...(isBlocked !== undefined ? { isBlocked: String(isBlocked) } : {}),

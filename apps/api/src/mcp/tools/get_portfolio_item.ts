@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, type ToolContext } from './rest';
+import { denied, type ToolContext, pathSegment } from './rest';
 
 /** Shapes the detail body + paged children wrapper into the tool's small payload. */
 export function shapePortfolioDetail(
@@ -78,7 +78,7 @@ export function registerGetPortfolioItem(server: McpServer, ctx: ToolContext) {
     async ({ portfolioItemId }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/portfolio-items/${portfolioItemId}`,
+        url: `/v1/portfolio-items/${pathSegment(portfolioItemId)}`,
       });
       if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
         return denied(statusCode, json);
@@ -88,7 +88,7 @@ export function registerGetPortfolioItem(server: McpServer, ctx: ToolContext) {
       // wrapper { data, pageInfo } (@ApiPagedResponse(PortfolioChildResponseDto)).
       const children = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/portfolio-items/${portfolioItemId}/children`,
+        url: `/v1/portfolio-items/${pathSegment(portfolioItemId)}/children`,
         query: { limit: 50 },
       });
       if (children.statusCode >= 400 || children.json === null || typeof children.json !== 'object')

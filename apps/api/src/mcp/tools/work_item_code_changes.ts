@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, type ToolContext } from './rest';
+import { denied, pathSegment, type ToolContext } from './rest';
 
 /** Both routes page at the REST max; anything past the caps is flagged, not fetched. */
 export const MAX_CONNECTIONS = 50;
@@ -90,11 +90,15 @@ export function registerWorkItemCodeChanges(server: McpServer, ctx: ToolContext)
     async ({ workItemId }) => {
       const connections = await page(
         ctx,
-        `/v1/work-items/${workItemId}/connections`,
+        `/v1/work-items/${pathSegment(workItemId)}/connections`,
         MAX_CONNECTIONS,
       );
       if (connections.denial) return connections.denial;
-      const changesets = await page(ctx, `/v1/work-items/${workItemId}/changesets`, MAX_CHANGESETS);
+      const changesets = await page(
+        ctx,
+        `/v1/work-items/${pathSegment(workItemId)}/changesets`,
+        MAX_CHANGESETS,
+      );
       if (changesets.denial) return changesets.denial;
 
       return {

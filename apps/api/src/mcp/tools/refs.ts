@@ -1,4 +1,5 @@
 import type { ToolContext } from './rest';
+import { pathSegment } from './rest';
 
 /**
  * Resolves the ids inside tool results to the identity a person recognises (MCP-PLAN §11).
@@ -120,16 +121,21 @@ export function createRefResolver(ctx: ToolContext): RefResolver {
   }
 
   const teamFeed = () =>
-    feed('teams', `/v1/workspaces/${ctx.principal.workspaceId}/teams`, undefined, (row) => ({
-      id: String(row['id']),
-      name: str(row['name']),
-      key: str(row['key']),
-    }));
+    feed(
+      'teams',
+      `/v1/workspaces/${pathSegment(ctx.principal.workspaceId)}/teams`,
+      undefined,
+      (row) => ({
+        id: String(row['id']),
+        name: str(row['name']),
+        key: str(row['key']),
+      }),
+    );
 
   const peopleFeed = () =>
     feed(
       'people',
-      `/v1/workspaces/${ctx.principal.workspaceId}/member-options`,
+      `/v1/workspaces/${pathSegment(ctx.principal.workspaceId)}/member-options`,
       undefined,
       (row) => ({ id: String(row['userId']), name: str(row['displayName']), key: null }),
       'userId',
@@ -209,7 +215,7 @@ export function createRefResolver(ctx: ToolContext): RefResolver {
         try {
           const res = await ctx.callRest(ctx.principal, {
             method: 'GET',
-            url: `/v1/work-items/${ref}`,
+            url: `/v1/work-items/${pathSegment(ref)}`,
           });
           if (res.statusCode >= 400 || res.json === null || typeof res.json !== 'object') {
             return { id: ref, itemKey: null, title: null };

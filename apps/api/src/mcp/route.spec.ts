@@ -5,6 +5,7 @@ import {
   Injectable,
   Module,
   Param,
+  Post,
   Query,
   Req,
   UnauthorizedException,
@@ -13,10 +14,10 @@ import {
   type CanActivate,
   type ExecutionContext,
 } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { APP_FILTER, NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { FastifyInstance } from 'fastify';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { RequestContextService } from '@quynhonsemiconductor/observability';
 import { enableCorrelationId } from '@quynhonsemiconductor/platform-http';
@@ -28,7 +29,26 @@ import {
   UNCONFIGURED_MCP_ACCESS_VERIFIER,
 } from './index';
 import type { McpAccessVerifier } from './access-verifier';
-import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from '@platform';
+import { GlobalExceptionFilter, mintMcpCallToken, MCP_CALL_TOKEN_HEADER, Public } from '@platform';
+import { registerMcpWriteHook } from './write-hook';
+import { MCP_READ_ROUTES, MCP_WRITE_ROUTES, setMcpWritesEnabled } from './write-policy';
+
+/**
+ * The fixture's write route is allowlisted ONLY for this file, so the positive path (writes on +
+ * a listed route) can be exercised without adding a real write tool. The negative paths are
+ * unaffected: everything else stays unlisted.
+ */
+vi.mock('./write-policy', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./write-policy')>();
+  return {
+    ...actual,
+    MCP_WRITE_ROUTES: new Set([
+      ...actual.MCP_WRITE_ROUTES,
+      actual.mcpWriteRouteKey('POST', '/v1/projects/fixture-writes'),
+      actual.mcpWriteRouteKey('POST', '/raw-fixture-allowed'),
+    ]),
+  };
+});
 
 /**
  * `/mcp` against a live Fastify server (no port — `inject`), with the SAME wiring the bootstrap
@@ -81,6 +101,25 @@ const UNKNOWN_ID = '00000000-0000-7000-8000-0000000000e1';
 @Controller('projects')
 @UseGuards(RequirePrincipalGuard)
 class FixtureProjectsController {
+  /**
+   * A write route the fixture offers to prove the REST belt: it is NOT in the MCP write
+   * allowlist, so a bridged POST is refused before this handler runs.
+   */
+  @Post('fixture-writes')
+  createForbiddenWrite() {
+    return { created: true };
+  }
+
+  /**
+   * A @Public() POST: the principal guard returns before it consumes the call token, which is
+   * exactly the case the write gate must still fail closed on.
+   */
+  @Post('fixture-public')
+  @Public()
+  createPublic() {
+    return { created: true };
+  }
+
   @Get()
   list(@Req() req: { user: { sub: string; workspaceId: string } }) {
     if (req.user.workspaceId === RESTRICTED) {
@@ -253,16 +292,35 @@ class FixtureIterationsController {
   }
 }
 
+/**
+ * The REAL filter, so a refusal is asserted in the envelope a client actually receives:
+ * `{ error: { code, message, details, correlationId } }`. It is constructed unbound, which the
+ * filter supports (it reads the request context store itself).
+ */
+const globalFilter = new GlobalExceptionFilter();
+
+/** The fixture's kill switch, published to the process-wide flag the guard reads. */
+const fixtureConfig = { writesEnabled: false };
+
 @Module({
   imports: [McpModule],
   controllers: [FixtureProjectsController, FixtureWorkItemsController, FixtureIterationsController],
-  providers: [RequestContextService, RequirePrincipalGuard],
+  providers: [
+    RequestContextService,
+    RequirePrincipalGuard,
+    { provide: APP_FILTER, useValue: globalFilter },
+  ],
 })
 class TestModule {}
 
 let app: NestFastifyApplication | undefined;
 
-async function boot(routeVerifier: McpAccessVerifier = verifier): Promise<FastifyInstance> {
+async function boot(
+  routeVerifier: McpAccessVerifier = verifier,
+  options: { writesEnabled?: boolean; hook?: boolean } = {},
+): Promise<FastifyInstance> {
+  fixtureConfig.writesEnabled = options.writesEnabled ?? false;
+  setMcpWritesEnabled(fixtureConfig.writesEnabled);
   app = await NestFactory.create<NestFastifyApplication>(TestModule, new FastifyAdapter(), {
     logger: false,
   });
@@ -270,7 +328,26 @@ async function boot(routeVerifier: McpAccessVerifier = verifier): Promise<Fastif
   enableCorrelationId(app);
   await app.init();
   const fastify = app.getHttpAdapter().getInstance();
-  registerMcpRoute({ app, fastify, verifier: routeVerifier, cache, serverVersion: '0.0.0-test' });
+  // The bootstrap registers this hook for RAW Fastify routes; the fixture mirrors that so the
+  // raw-route test exercises the real behaviour. One test turns it off to exercise the GUARD
+  // (and the real GlobalExceptionFilter) alone.
+  if (options.hook !== false)
+    registerMcpWriteHook(fastify, {
+      writesEnabled: fixtureConfig.writesEnabled,
+      reads: MCP_READ_ROUTES,
+      writes: MCP_WRITE_ROUTES,
+    });
+  fastify.post('/raw-fixture', async () => ({ raw: true }));
+  fastify.post('/raw-fixture-allowed', async () => ({ raw: true }));
+  registerMcpRoute({
+    app,
+    fastify,
+    verifier: routeVerifier,
+    cache,
+    serverVersion: '0.0.0-test',
+    writesEnabled: fixtureConfig.writesEnabled,
+    idempotencySecret: 'x'.repeat(32),
+  });
   await fastify.ready();
   return fastify;
 }
@@ -396,6 +473,105 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     for (const t of tools) expect(t.annotations?.readOnlyHint).toBe(true);
   });
 
+  function beltToken(session: string) {
+    return {
+      [MCP_CALL_TOKEN_HEADER]: mintMcpCallToken({
+        userId: VICTIM,
+        workspaceId: WORKSPACE,
+        sessionId: session,
+      }),
+    };
+  }
+
+  it('refuses a bridged write while writes are OFF, even for an allowlisted route', async () => {
+    const fastify = await boot(verifier, { writesEnabled: false });
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/v1/projects/fixture-writes',
+      payload: {},
+      headers: beltToken('mcp:belt-off'),
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'MCP_WRITE_NOT_ALLOWED' });
+  });
+
+  it('the GUARD alone (hook off) refuses through the real GlobalExceptionFilter', async () => {
+    const fastify = await boot(verifier, { writesEnabled: false, hook: false });
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/v1/projects/fixture-writes',
+      payload: {},
+      headers: beltToken('mcp:guard-only'),
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ error: { code: 'MCP_WRITE_NOT_ALLOWED' } });
+  });
+
+  it('allows an allowlisted write through the full chain when writes are ON', async () => {
+    const fastify = await boot(verifier, { writesEnabled: true });
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/v1/projects/fixture-writes',
+      payload: {},
+      headers: beltToken('mcp:belt-on'),
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({ created: true });
+  });
+
+  it('fails closed on a @Public write that skips the principal guard', async () => {
+    const fastify = await boot(verifier, { writesEnabled: true });
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/v1/projects/fixture-public',
+      payload: {},
+      headers: beltToken('mcp:public'),
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'MCP_WRITE_NOT_ALLOWED' });
+  });
+
+  it('fails closed on a RAW non-GET route (the onRequest hook, not a Nest guard)', async () => {
+    const fastify = await boot(verifier, { writesEnabled: true });
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/raw-fixture',
+      payload: {},
+      headers: beltToken('mcp:raw'),
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'MCP_WRITE_NOT_ALLOWED' });
+  });
+
+  it('lets a NORMAL raw POST through: the hook only judges a carried MCP token', async () => {
+    const fastify = await boot(verifier, { writesEnabled: false });
+    const response = await fastify.inject({ method: 'POST', url: '/raw-fixture', payload: {} });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ raw: true });
+  });
+
+  it('allows an allowlisted raw POST when writes are ON', async () => {
+    const fastify = await boot(verifier, { writesEnabled: true });
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/raw-fixture-allowed',
+      payload: {},
+      headers: beltToken('mcp:raw-allowed'),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ raw: true });
+  });
+
+  it('lets a bridged HEAD through as a read', async () => {
+    const fastify = await boot(verifier, { writesEnabled: false });
+    const response = await fastify.inject({
+      method: 'HEAD',
+      url: '/v1/projects',
+      headers: beltToken('mcp:head'),
+    });
+    expect(response.statusCode).toBe(200);
+  });
+
   it('a tool returns exactly what the same person sees via the same REST route', async () => {
     const fastify = await boot();
 
@@ -448,10 +624,10 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     expect(body.result!.isError).toBe(true);
     const relayed = JSON.parse(body.result!.content![0].text);
     expect(relayed.statusCode).toBe(403);
-    expect(relayed.error).toEqual({
-      statusCode: 403,
-      message: 'Forbidden resource',
-      error: 'Forbidden',
+    // The REAL GlobalExceptionFilter envelope, relayed untouched (the tool adds no wrapper of
+    // its own beyond the status).
+    expect(relayed.error).toMatchObject({
+      error: { code: 'FORBIDDEN', message: 'Forbidden resource' },
     });
   });
 

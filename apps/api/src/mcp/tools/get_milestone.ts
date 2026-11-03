@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, type ToolContext } from './rest';
+import { denied, type ToolContext, pathSegment } from './rest';
 import { createRefResolver, type PersonRef, type Ref } from './refs';
 
 /** A companion feed is capped below any plausible answer; more gets a `truncated` flag. */
@@ -85,7 +85,7 @@ export function registerGetMilestone(server: McpServer, ctx: ToolContext) {
     async ({ milestoneId }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/milestones/${milestoneId}`,
+        url: `/v1/milestones/${pathSegment(milestoneId)}`,
       });
       if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
         return denied(statusCode, json);
@@ -100,11 +100,11 @@ export function registerGetMilestone(server: McpServer, ctx: ToolContext) {
           return { denial: denied(res.statusCode, res.json), ids: [] };
         return { ids: res.json as string[] };
       };
-      const artifacts = await feed(`/v1/milestones/${milestoneId}/artifacts`);
+      const artifacts = await feed(`/v1/milestones/${pathSegment(milestoneId)}/artifacts`);
       if (artifacts.denial) return artifacts.denial;
-      const releases = await feed(`/v1/milestones/${milestoneId}/releases`);
+      const releases = await feed(`/v1/milestones/${pathSegment(milestoneId)}/releases`);
       if (releases.denial) return releases.denial;
-      const projects = await feed(`/v1/milestones/${milestoneId}/projects`);
+      const projects = await feed(`/v1/milestones/${pathSegment(milestoneId)}/projects`);
       if (projects.denial) return projects.denial;
 
       const refs = await resolveMilestoneRefs(m, releases.ids, createRefResolver(ctx), [

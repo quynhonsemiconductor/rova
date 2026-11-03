@@ -372,3 +372,36 @@ describe('EnvSchema — platform admin roster', () => {
     if (result.success) expect(result.data.PLATFORM_ADMIN_EMAILS).toBe('devops@qnsc.vn');
   });
 });
+
+describe('EnvSchema — MCP write kill switch', () => {
+  it('defaults to false and accepts only the two literal strings', () => {
+    const off = EnvSchema.safeParse(env());
+    expect(off.success).toBe(true);
+    if (off.success) expect(off.data.MCP_WRITES_ENABLED).toBe(false);
+
+    const on = EnvSchema.safeParse(env({ MCP_WRITES_ENABLED: 'true' }));
+    expect(on.success).toBe(true);
+    if (on.success) expect(on.data.MCP_WRITES_ENABLED).toBe(true);
+  });
+
+  it('refuses anything that is not exactly true or false — a typo fails the boot', () => {
+    for (const value of ['1', 'yes', 'TRUE', 'on', '']) {
+      expect(EnvSchema.safeParse(env({ MCP_WRITES_ENABLED: value })).success).toBe(false);
+    }
+  });
+
+  it('treats a rendered-EMPTY secret as unset, so a writes-off deployment still boots', () => {
+    const result = EnvSchema.safeParse(
+      env({ MCP_IDEMPOTENCY_SECRET: '', MCP_WRITES_ENABLED: 'false' }),
+    );
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.MCP_IDEMPOTENCY_SECRET).toBeUndefined();
+  });
+
+  it('reads the idempotency secret when present and requires at least 32 characters', () => {
+    const short = EnvSchema.safeParse(env({ MCP_IDEMPOTENCY_SECRET: 'short' }));
+    expect(short.success).toBe(false);
+    const ok = EnvSchema.safeParse(env({ MCP_IDEMPOTENCY_SECRET: 's'.repeat(32) }));
+    expect(ok.success).toBe(true);
+  });
+});

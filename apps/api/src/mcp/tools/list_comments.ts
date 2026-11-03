@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, type ToolContext } from './rest';
+import { denied, type ToolContext, pathSegment } from './rest';
 import { createRefResolver, type PersonRef } from './refs';
 
 /** The REST comments route is unpaginated, so the tool caps the feed itself. */
@@ -76,7 +76,7 @@ export function registerListComments(server: McpServer, ctx: ToolContext) {
     async ({ workItemId }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/work-items/${workItemId}/comments`,
+        url: `/v1/work-items/${pathSegment(workItemId)}/comments`,
       });
       if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
       const { truncated, comments } = shapeComments(json as Record<string, unknown>[]);

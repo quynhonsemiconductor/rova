@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 import type { McpPrincipalContext } from '@platform';
 
@@ -8,11 +9,24 @@ import type { McpPrincipalContext } from '@platform';
  * ratchet; `register.ts` mounts them all.
  */
 
-/** One in-process REST call a tool composes. No headers, ever — see the ratchet. */
+export type McpReadMethod = 'GET';
+/** Every method a write tool may use. The REST-side allowlist decides which routes are reachable. */
+export type McpWriteMethod = 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+export type McpRestMethod = McpReadMethod | McpWriteMethod;
+
+/**
+ * One in-process REST call a tool composes. NO headers, ever — see the ratchet. A write carries
+ * a `body`, and an idempotent create carries the key {@link idempotencyKeyFor} builds; `route.ts`
+ * turns that key into the one header the bridge may add.
+ */
 export interface McpRestCall {
-  method: 'GET';
+  method: McpRestMethod;
   url: string;
   query?: Record<string, string | number | undefined>;
+  /** The JSON body of a write. Never sent on GET. */
+  body?: Record<string, unknown> | unknown[];
+  /** Only for an idempotent POST create; see idempotencyKeyFor. */
+  idempotencyKey?: string;
 }
 
 export interface McpRestResult {
@@ -30,6 +44,117 @@ export type McpRestCaller = (
 export interface ToolContext {
   principal: McpPrincipalContext;
   callRest: McpRestCaller;
+  /**
+   * Builds the `Idempotency-Key` for one idempotent create, bound by route.ts to the principal
+   * and the server's `MCP_IDEMPOTENCY_SECRET` (never exposed to a tool). Present whenever writes
+   * are enabled; a write tool must refuse to create without it rather than send no key.
+   */
+  idempotencyKey?: (tool: string, args: unknown) => string;
+}
+
+/** A write is one of the four mutating methods; the guard and the ratchets share this predicate. */
+export function isWriteMethod(method: string): method is McpWriteMethod {
+  return method === 'POST' || method === 'PATCH' || method === 'PUT' || method === 'DELETE';
+}
+
+/**
+ * The one way a tool may put a value into a PATH: percent-encode it. Query values go through the
+ * inject `query` object (never string-built), and a body is JSON, so this is the only place an
+ * argument touches a URL. `/`, `?`, `#` and `%` become inert, dots are encoded too, and an empty
+ * or dot-only segment (`.` / `..`) is refused outright — `encodeURIComponent` leaves those as
+ * path traversal, which is exactly what must not reach the router.
+ */
+export function pathSegment(value: string): string {
+  if (value === '' || value === '.' || value === '..') {
+    throw new Error('MCP bridge: an empty or dot-only path segment is refused');
+  }
+  return encodeURIComponent(value).replace(/\./g, '%2E');
+}
+
+/**
+ * Refuses, at RUNTIME, a read that carries write payload: only the TS types say a GET has no
+ * body and no idempotency key, and a tool is free to build its `McpRestCall` however it likes.
+ * Callers (route.ts) convert the throw into the tool's error result.
+ */
+export function assertReadCarriesNoWritePayload(call: McpRestCall): void {
+  if (isWriteMethod(call.method)) return;
+  if (call.body !== undefined || call.idempotencyKey !== undefined) {
+    throw new Error(`MCP bridge: ${call.method} ${call.url} carries a body or an Idempotency-Key`);
+  }
+}
+
+/**
+ * Refuses, at RUNTIME, a POST with no Idempotency-Key: a create is exactly the call whose
+ * duplicate is a new row, so the MCP side must always sign it. A tool that forgot the key fails
+ * loudly here instead of silently creating twice on an LLM retry.
+ */
+export function assertPostCarriesIdempotencyKey(call: McpRestCall): void {
+  if (call.method !== 'POST') return;
+  if (call.idempotencyKey === undefined || call.idempotencyKey === '') {
+    throw new Error(`MCP bridge: POST ${call.url} carries no Idempotency-Key`);
+  }
+}
+
+const CANONICAL_STRING = (value: string) => value.normalize('NFC');
+
+/**
+ * The canonical form hashed for idempotency: strings and object KEYS NFC-normalized (the same
+ * text typed as composed or decomposed Unicode must hash the same), keys sorted at every depth,
+ * `undefined` object fields dropped, objects with a NULL prototype (a JSON-parsed `__proto__` key
+ * cannot then mutate anything). `undefined` inside an ARRAY is REFUSED: dropping it would
+ * renumber a list (and [a, undefined, b] would collide with [a, b]).
+ */
+export function canonicalize(value: unknown): unknown {
+  if (typeof value === 'string') return CANONICAL_STRING(value);
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (item === undefined) {
+        throw new TypeError('MCP idempotency: an undefined array element has no canonical form');
+      }
+      return canonicalize(item);
+    });
+  }
+  if (value === null || typeof value !== 'object') return value;
+  const source = value as Record<string, unknown>;
+  const sorted: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  const entries = Object.keys(source)
+    .map((key) => [CANONICAL_STRING(key), source[key]] as const)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const [key, item] of entries) {
+    if (item !== undefined) sorted[key] = canonicalize(item);
+  }
+  return sorted;
+}
+
+/** The idempotency window: a retry of the same call inside one bucket replays the first result. */
+export const MCP_IDEMPOTENCY_BUCKET_MS = 10 * 60 * 1000;
+
+/**
+ * The `Idempotency-Key` an MCP create sends: HMAC-SHA256, keyed by the server-only
+ * `MCP_IDEMPOTENCY_SECRET`, over {principal, tool, canonical arguments, 10-minute bucket}.
+ *
+ * WHY HMAC and not a bare hash: the key is stored in Valkey and, on a dedup hit, the first
+ * response is replayed. A plain sha256 of low-entropy arguments ({"body":"lgtm"}) is guessable,
+ * so someone able to write that cache could pre-plant a response for a key the model would
+ * later compute. Without the secret the key cannot be predicted.
+ *
+ * The model never supplies the key, so an LLM retry of the SAME call replays the first response
+ * instead of creating a duplicate. KNOWN, ACCEPTED: the bucket is wall-clock aligned, so the
+ * same call made across a :59 -> :00 boundary produces two keys and can create twice; the
+ * window is a duplicate-reduction measure, not a uniqueness guarantee.
+ */
+export function idempotencyKeyFor(
+  secret: string,
+  principalId: string,
+  tool: string,
+  args: unknown,
+  nowMs: number = Date.now(),
+): string {
+  if (!secret) throw new Error('MCP idempotency: MCP_IDEMPOTENCY_SECRET is not set');
+  const bucket = Math.floor(nowMs / MCP_IDEMPOTENCY_BUCKET_MS);
+  return createHmac('sha256', secret)
+    .update(JSON.stringify({ principalId, tool, bucket, args: canonicalize(args) }))
+    .digest('hex');
 }
 
 /** Tools cap the page below the REST max: an agent re-asks with a cursor rather than reading 100 rows. */

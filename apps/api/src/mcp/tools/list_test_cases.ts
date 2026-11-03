@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { listResult, pageArgs, type ToolContext } from './rest';
+import { listResult, pageArgs, type ToolContext, pathSegment } from './rest';
 
 /**
  * `rova_list_test_cases` — a Work Item's Test Cases, in rank order
@@ -22,7 +22,7 @@ export function registerListTestCases(server: McpServer, ctx: ToolContext) {
     async ({ workItemId, limit, cursor }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/work-items/${workItemId}/test-cases`,
+        url: `/v1/work-items/${pathSegment(workItemId)}/test-cases`,
         query: { limit: limit ?? 20, cursor },
       });
       return listResult(

@@ -57,10 +57,43 @@ export interface MountedTool {
  * no tool to time and no principal-side work to audit; the only pre-dispatch refusal that IS
  * counted is the per-person rate limit, logged by route.ts.
  */
+/** One write tool: its stable name and the function that registers it. Grows one tool per PR. */
+export interface WriteToolRegistrar {
+  name: string;
+  register: (server: McpServer, ctx: ToolContext) => RegisteredTool;
+}
+
+/**
+ * The WRITE catalogue. Empty until the first write tool lands, and mounted ONLY when
+ * `MCP_WRITES_ENABLED` is on; `WRITE_TOOL_ROUTES` in registry.ts must name the same tools'
+ * routes, which is what the REST-side guard enforces.
+ */
+export const WRITE_TOOL_REGISTRARS: readonly WriteToolRegistrar[] = [];
+
+export interface RegisterToolsOptions {
+  /** Mount the write catalogue (MCP_WRITES_ENABLED). Default false: read-only server. */
+  writes?: boolean;
+}
+
+/**
+ * Mounts the catalogue on a fresh per-request server; returns what it mounted.
+ *
+ * With an `observe` sink, every handler is wrapped once, here, so no tool can forget the audit
+ * line: the SDK's `RegisteredTool.update({ callback })` replaces the handler in the registry the
+ * transport dispatches to. The sink receives the tool name, the principal id and the duration.
+ *
+ * NOT COUNTED, deliberately: a `tools/call` for an unknown tool name or with arguments that fail
+ * the input schema is rejected by the pinned SDK (@modelcontextprotocol/sdk 1.32.1,
+ * `server/mcp.js`, the tools/call handler's `validateToolInput` and the registry lookup) BEFORE
+ * the wrapped handler runs — it answers an `isError` result without dispatch. There is therefore
+ * no tool to time and no principal-side work to audit; the only pre-dispatch refusal that IS
+ * counted is the per-person rate limit, logged by route.ts.
+ */
 export function registerTools(
   server: McpServer,
   ctx: ToolContext,
   observe?: ToolCallObserver,
+  options: RegisterToolsOptions = {},
 ): MountedTool[] {
   const mounted: MountedTool[] = [
     { name: 'rova_whoami', tool: registerWhoami(server, ctx) },
@@ -98,6 +131,11 @@ export function registerTools(
     { name: 'rova_list_teams', tool: registerListTeams(server, ctx) },
     { name: 'rova_list_notifications', tool: registerListNotifications(server, ctx) },
   ];
+  if (options.writes) {
+    for (const writeTool of WRITE_TOOL_REGISTRARS) {
+      mounted.push({ name: writeTool.name, tool: writeTool.register(server, ctx) });
+    }
+  }
   if (observe) {
     for (const { name, tool } of mounted) {
       // The SDK's handler is a union (a plain callback or a task handler); the wrapper is a

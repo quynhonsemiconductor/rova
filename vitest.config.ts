@@ -178,6 +178,8 @@ export default defineConfig({
         'apps/api/src/mcp/access-jwt.adapter.ts',
         'apps/api/src/mcp/audit.ts',
         'apps/api/src/mcp/tools/refs.ts',
+        'apps/api/src/mcp/tools/rest.ts',
+        'apps/api/src/mcp/write.guard.ts',
       ],
       exclude: ['**/*.spec.ts'],
       // Ratchet: raise these incrementally as coverage improves, NEVER lower them.

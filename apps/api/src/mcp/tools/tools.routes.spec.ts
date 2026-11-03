@@ -1,7 +1,71 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { TOOL_ROUTES } from './registry';
+import { TOOL_ROUTES, WRITE_TOOL_ROUTES } from './registry';
+import { WRITE_TOOL_REGISTRARS } from './register';
+import {
+  MCP_READ_ROUTES,
+  MCP_WRITE_ROUTES,
+  mcpWriteRouteKey,
+  normalizeRouteTemplate,
+} from '../write-policy';
+
+/** Every `METHOD /v1/...` a controller file declares, with parameter names erased. */
+function controllerRoutes(): Set<string> {
+  const routes = new Set<string>();
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!entry.name.endsWith('.controller.ts')) continue;
+      const src = readFileSync(full, 'utf8');
+      const prefixes = [...src.matchAll(/@Controller\(([^)]*)\)/g)].flatMap((m) =>
+        [...m[1].matchAll(/'([^']*)'/g)].map((x) => x[1]),
+      );
+      const handlers = [...src.matchAll(/@(Get|Post|Patch|Put|Delete)\(([^)]*)\)/g)].map((m) => ({
+        method: m[1].toUpperCase(),
+        path: [...m[2].matchAll(/'([^']*)'/g)].map((x) => x[1])[0] ?? '',
+      }));
+      for (const prefix of prefixes.length > 0 ? prefixes : ['']) {
+        for (const handler of handlers) {
+          const path = handler.path.replace(/^\//, '');
+          const url = `/v1${prefix ? `/${prefix}` : ''}${path ? `/${path}` : ''}`;
+          routes.add(`${handler.method} ${normalizeRouteTemplate(url)}`);
+        }
+      }
+    }
+  };
+  walk(CONTROLLERS);
+  return routes;
+}
+
+/**
+ * Every `/v1/...` literal a tool file composes (template interpolations erased). This is what the
+ * gate must be able to allow: a tool that invents a route now fails here until it is added to the
+ * read or write allowlist in write-policy.ts.
+ */
+function toolRouteLiterals(): Array<{ file: string; path: string }> {
+  const found: Array<{ file: string; path: string }> = [];
+  for (const entry of readdirSync(__dirname, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.ts') || entry.name.endsWith('.spec.ts')) continue;
+    const src = readFileSync(join(__dirname, entry.name), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    for (const match of src.matchAll(/[`'](\/v1\/[^`']*)[`']/g)) {
+      found.push({ file: entry.name, path: match[1].replace(/\$\{[^}]*\}/g, ':param') });
+    }
+  }
+  return found;
+}
+
+function allowedPaths(): Set<string> {
+  return new Set(
+    [...MCP_READ_ROUTES, ...MCP_WRITE_ROUTES].map((key) => key.split(' ').slice(1).join(' ')),
+  );
+}
 
 /**
  * ROVA-MCP-DESIGN §7.2: every tool maps to a REAL route. The registry carries each tool's REST
@@ -328,6 +392,53 @@ describe('MCP tool catalogue maps to real routes', () => {
           `${name}: expected @SelfScoped on the mapped method`,
         ).toBe(true);
       }
+    }
+  });
+
+  it('the write catalogue names non-GET routes, and is exactly the REST write allowlist', () => {
+    const entries = Object.entries<{ method: string; url: string }>(WRITE_TOOL_ROUTES);
+    // The REST-side guard derives its set from this table; a tool whose route is missing there
+    // mounts but is refused 403 at the bridge, so the two must never drift.
+    const derived = new Set(entries.map(([, route]) => mcpWriteRouteKey(route.method, route.url)));
+    expect(derived).toEqual(new Set(MCP_WRITE_ROUTES));
+    // No allowlisted route without a tool AND no write tool without its listed route: the two
+    // tables are the same catalogue seen twice.
+    expect(WRITE_TOOL_REGISTRARS.map((tool) => tool.name).sort()).toEqual(
+      entries.map(([name]) => name).sort(),
+    );
+    for (const [name, route] of entries) {
+      expect(route.method, `${name}: a write tool cannot be a GET`).not.toBe('GET');
+      expect(route.url.startsWith('/v1/'), `${name}: route must stay under /v1`).toBe(true);
+    }
+  });
+
+  it('every WRITE_TOOL_ROUTES entry matches a real controller route', () => {
+    const real = controllerRoutes();
+    // The scanner must actually see the controllers; an empty set would make the loop vacuous.
+    expect(real.size).toBeGreaterThan(100);
+    for (const [name, route] of Object.entries<{ method: string; url: string }>(
+      WRITE_TOOL_ROUTES,
+    )) {
+      expect(
+        real.has(mcpWriteRouteKey(route.method, route.url)),
+        `${name}: no such REST route`,
+      ).toBe(true);
+    }
+  });
+
+  it('every /v1 route literal a tool composes is on the READ or WRITE allowlist', () => {
+    const allowed = allowedPaths();
+    const literals = toolRouteLiterals();
+    expect(literals.length).toBeGreaterThan(20);
+    const offenders = literals
+      .filter(({ path }) => !allowed.has(normalizeRouteTemplate(path)))
+      .map(({ file, path }) => `${file}: ${path}`);
+    expect(offenders).toEqual([]);
+
+    // And the read set is not silently empty: every tool's own registry route is in it.
+    for (const [name, route] of Object.entries<{ method: string; url: string }>(TOOL_ROUTES)) {
+      expect(route.method, `${name}: tools are read-only until a write PR`).toBe('GET');
+      expect(MCP_READ_ROUTES.has(`GET ${normalizeRouteTemplate(route.url)}`), name).toBe(true);
     }
   });
 });

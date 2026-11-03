@@ -12,6 +12,8 @@ import { enableHealth, registerRequestTiming } from '@quynhonsemiconductor/platf
 import { SseConnections, registerSseShutdown } from '@modules/notifications';
 import { enableCorrelationId } from '@quynhonsemiconductor/platform-http';
 import { assertPlatformAdminEmailsEnv } from './platform-admin-emails';
+import { registerMcpWriteHook } from '../mcp/write-hook';
+import { MCP_READ_ROUTES, MCP_WRITE_ROUTES, setMcpWritesEnabled } from '../mcp/write-policy';
 import { SESSION_COOKIE } from '@platform/auth';
 import { isSessionBody, redactSessionTokens } from '@platform/http/session-token-redaction';
 
@@ -98,6 +100,20 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // default instead of opting in and being forgotten.
   const fastify = app.getHttpAdapter().getInstance();
 
+  // The kill switch is a process fact read by the global guard; publish it once, before any
+  // route can receive a bridged call.
+  setMcpWritesEnabled(config.get('MCP_WRITES_ENABLED'));
+
+  // The MCP write gate's second enforcement point: an onRequest hook covers the RAW Fastify
+  // routes (probes, identity bearer endpoints, /mcp) that global Nest guards never see. It
+  // refuses a non-GET carrying a live MCP call token unless the route is allowlisted and writes
+  // are on; every other request passes untouched.
+  registerMcpWriteHook(fastify, {
+    writesEnabled: config.get('MCP_WRITES_ENABLED'),
+    reads: MCP_READ_ROUTES,
+    writes: MCP_WRITE_ROUTES,
+  });
+
   // identity answers get-session / list-sessions with each session's raw `token` in the JSON body, readable by script even though the
   // cookie is HttpOnly. Nothing in the SPA reads it: remove it on the way out (libs/platform/src/http/session-token-redaction.ts).
   fastify.addHook('onSend', async (request, reply, payload) => {
@@ -136,6 +152,14 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
           'MCP_ACCESS_AUD (the /mcp Access application AUD tag).',
       );
     }
+    // A write-enabled endpoint without its HMAC key would sign nothing: refuse to boot rather
+    // than start with a predictable Idempotency-Key.
+    if (config.get('MCP_WRITES_ENABLED') && !config.get('MCP_IDEMPOTENCY_SECRET')) {
+      throw new Error(
+        'MCP_WRITES_ENABLED=true requires MCP_IDEMPOTENCY_SECRET (>=32 chars, from Key Vault): ' +
+          'the key that HMACs the Idempotency-Key sent on MCP creates.',
+      );
+    }
     const { registerMcpRoute, createMcpAccessJwtAdapter } = await import('../mcp/index');
     registerMcpRoute({
       app,
@@ -149,6 +173,11 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
       // SERVICE_VERSION (the image's release, set by the deployment), not `npm_package_version`: that is only
       // set under `npm`/`pnpm run`, never under `node dist/main.js`, so the server reported 0.0.0.
       serverVersion: config.get('SERVICE_VERSION'),
+      // The write kill switch: off unless the environment turns it on, and also enforced at the
+      // REST layer by McpWriteGuard. Dev first; prod only on the owner's go.
+      writesEnabled: config.get('MCP_WRITES_ENABLED'),
+      // The HMAC key for MCP-generated Idempotency-Key values (asserted above when writes are on).
+      idempotencySecret: config.get('MCP_IDEMPOTENCY_SECRET'),
     });
   }
 
