@@ -70,7 +70,7 @@ export function hasSessionCookie(request: Request): boolean {
   if (!header) return false
   return header.split(';').some((part) => {
     const [name, ...rest] = part.trim().split('=')
-    return name !== undefined && SESSION_COOKIES.includes(name) && rest.join('=').length > 0
+    return SESSION_COOKIES.includes(name) && rest.join('=').length > 0
   })
 }
 
