@@ -30,7 +30,7 @@ env:
 jobs:
   promote:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
       # Adds the alias tag vX.Y.Z to existing GHCR packages.
@@ -56,11 +56,20 @@ jobs:
         run: |
           set -euo pipefail
           src="sha-${SHA::12}"
+          # GHCR · Publish builds the same commit on push to main, and
+          # release-please merges the release PR at the same moment, so this job
+          # can start before the build has pushed the sha-<commit12> images.
+          # Wait for them (30 s poll, 20 min budget) instead of failing at once.
+          deadline=$((SECONDS + 1200))
           json='{}'
           for svc in $SERVICES; do
             repo="$GHCR_NAMESPACE/rova-$svc"
-            digest=$(docker buildx imagetools inspect "$repo:$src" --format '{{.Manifest.Digest}}' 2>/dev/null) \
-              || { echo "::error::$repo:$src does not exist. GHCR · Publish did not build this commit; fix that first."; exit 1; }
+            while :; do
+              digest=$(docker buildx imagetools inspect "$repo:$src" --format '{{.Manifest.Digest}}' 2>/dev/null) && break
+              [[ $SECONDS -ge $deadline ]] && { echo "::error::$repo:$src does not exist. GHCR · Publish did not build this commit; fix that first."; exit 1; }
+              echo "waiting for $repo:$src (${SECONDS}s elapsed)"
+              sleep 30
+            done
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::bad digest for $svc"; exit 1; }
             json=$(jq -c --arg s "$svc" --arg d "$digest" '. + {($s): $d}' <<< "$json")
           done
