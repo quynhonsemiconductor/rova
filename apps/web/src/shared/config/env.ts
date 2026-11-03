@@ -15,9 +15,9 @@ import type { AppConfig, AppEnv } from './config'
 
 export interface Env {
   /**
-   * The API origin prefix, e.g. `''` for same-origin (what every deployment uses), or an absolute
-   * `https://` URL. Keep it same-origin: authentication rides a `__Host-` session cookie, which a
-   * cross-site request would not carry.
+   * The API origin prefix, e.g. `''` for same-origin (what every deployment uses) or a path on this
+   * origin such as `/api`. Never an absolute origin: authentication rides a `__Host-` session
+   * cookie, which a cross-site request would not carry, and the config schema refuses one.
    */
   API_BASE_URL: string
   APP_ENV: AppEnv

@@ -65,6 +65,12 @@ jobs:
   #
   # Not in `bump-dev` yet: gitops values/rova has no `web` image until D's chart lands, and a value
   # its chart does not know would be noise in every dev bump. It joins at the dev cutover.
+  #
+  # Permissions and registry token MATCH the `publish` job above exactly (contents: read, packages:
+  # write; `node-auth-token` unset, so the composite uses this job's GITHUB_TOKEN for the pnpm
+  # install). There is deliberately no `id-token: write` and no attestation input: the reusable
+  # attests nothing for ANY service yet (design §3.6 is phase 4), so asking for more here would not
+  # produce provenance — it would only widen this job beyond the API's.
   publish-web:
     permissions:
       contents: read

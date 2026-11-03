@@ -1,12 +1,18 @@
 /**
- * The screen the SPA shows when `/config.json` is missing or invalid.
+ * The screen the SPA shows when it cannot start: `/config.json` missing or invalid, or the app chunk
+ * itself failing to load.
  *
  * It is plain DOM on purpose: it runs BEFORE React, the i18n bundle and the stylesheet are loaded —
  * importing any of them is what the failed boot is not allowed to assume — and its job is simply to
  * replace the blank page with the reason. Values reach it through `textContent`, never HTML, because
  * the message quotes a server's answer.
  */
-export const CONFIG_ERROR_TITLE = 'Rova could not start'
+export const STARTUP_ERROR_TITLE = 'Rova could not start'
+
+export const CONFIG_ERROR_DESCRIPTION =
+  'The application configuration could not be loaded, so there is nothing to show.'
+export const APP_ERROR_DESCRIPTION =
+  'The application could not be loaded, so there is nothing to show.'
 
 function line(doc: Document, tag: 'h1' | 'p' | 'pre', text: string): HTMLElement {
   const element = doc.createElement(tag)
@@ -16,13 +22,13 @@ function line(doc: Document, tag: 'h1' | 'p' | 'pre', text: string): HTMLElement
 
 /**
  * Renders the error in `root`, replacing whatever is there, and renders a Reload button so a
- * transient failure (a rollout replacing config.json) costs one click.
+ * transient failure (a rollout replacing config.json, a chunk fetched mid-deploy) costs one click.
  */
-export function renderConfigError(root: HTMLElement, error: unknown): void {
+export function renderStartupError(root: HTMLElement, error: unknown, description: string): void {
   const doc = root.ownerDocument
   const container = doc.createElement('div')
   container.setAttribute('role', 'alert')
-  container.dataset.testid = 'config-error'
+  container.dataset.testid = 'startup-error'
   // System colours and no literal palette value: this runs before `globals.css`, so a `BRAND` token
   // (`var(--…)`) would resolve to nothing, and a raw hex is what the design-token ratchet forbids.
   // `color-scheme` lets the browser pick readable foreground/background in light and dark.
@@ -38,8 +44,8 @@ export function renderConfigError(root: HTMLElement, error: unknown): void {
   reload.addEventListener('click', () => window.location.reload())
 
   container.append(
-    line(doc, 'h1', CONFIG_ERROR_TITLE),
-    line(doc, 'p', 'The application configuration could not be loaded, so there is nothing to show.'),
+    line(doc, 'h1', STARTUP_ERROR_TITLE),
+    line(doc, 'p', description),
     line(doc, 'pre', message),
     reload,
   )

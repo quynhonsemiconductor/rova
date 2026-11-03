@@ -329,7 +329,7 @@ describe('the README and the "local quickstart" CI job run the same commands', (
 describe('the quickstart job gates the PR', () => {
   it('is a dependency of `Web CI required`', () => {
     expect(read('.github/workflows/web-ci.yml')).toMatch(
-      /needs: \[changes, quality, test, e2e, build, quickstart\]/,
+      /needs: \[changes, quality, test, e2e, build, container, quickstart\]/,
     );
   });
 });

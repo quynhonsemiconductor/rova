@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { boot } from './boot'
-import { CONFIG_ERROR_TITLE } from './config-error'
+import { APP_ERROR_DESCRIPTION, STARTUP_ERROR_TITLE } from './startup-error'
 import { ENV } from '@/shared/config/env'
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -44,9 +44,9 @@ describe('boot', () => {
     })
 
     expect(loadApp).not.toHaveBeenCalled()
-    expect(root.textContent).toContain(CONFIG_ERROR_TITLE)
+    expect(root.textContent).toContain(STARTUP_ERROR_TITLE)
     expect(root.textContent).toContain('HTTP 404')
-    expect(root.querySelector('[data-testid="config-error"]')).not.toBeNull()
+    expect(root.querySelector('[data-testid="startup-error"]')).not.toBeNull()
   })
 
   it('shows the error screen when the config is invalid', async () => {
@@ -61,7 +61,18 @@ describe('boot', () => {
     })
 
     expect(loadApp).not.toHaveBeenCalled()
-    expect(root.textContent).toContain(CONFIG_ERROR_TITLE)
+    expect(root.textContent).toContain(STARTUP_ERROR_TITLE)
     expect(root.textContent).toContain('appEnv')
+  })
+
+  it('shows the error screen, not a blank page, when the app chunk fails to load', async () => {
+    const loadApp = vi.fn().mockRejectedValue(new Error('Failed to fetch dynamically imported module'))
+
+    await boot({ root, fetchImpl: vi.fn().mockResolvedValue(jsonResponse(VALID)), loadApp })
+
+    expect(root.textContent).toContain(STARTUP_ERROR_TITLE)
+    expect(root.textContent).toContain(APP_ERROR_DESCRIPTION)
+    expect(root.textContent).toContain('Failed to fetch dynamically imported module')
+    expect(root.querySelector('[data-testid="startup-error"]')).not.toBeNull()
   })
 })

@@ -26,7 +26,8 @@
 # Only the web workspace's dependencies: the API's toolchain (Nest, Drizzle) is dead weight and
 # extra CVE surface for a static bundle.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:24-alpine3.22 AS build
+# node:24-alpine3.22 — the tag stays for Renovate and readers; the digest is what is built.
+FROM node:24-alpine3.22@sha256:191c9f0080fcbbc6547a85dc0ff7988072214a355aabdc1d2ec55a7dae5eea8a AS build
 RUN corepack enable
 
 WORKDIR /app
@@ -61,7 +62,8 @@ RUN pnpm --filter rova-web build
 # Stage 2 │ web  (the image)
 # Caddy, not nginx: see apps/web/Caddyfile for the reason.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM caddy:2.11.7-alpine AS web
+# caddy:2.11.7-alpine — tag for Renovate, digest for reproducibility.
+FROM caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5 AS web
 
 # Latest patches within the pinned Alpine: Trivy gates on fixable CRITICALs and the base's busybox
 # and libssl move faster than the tag.

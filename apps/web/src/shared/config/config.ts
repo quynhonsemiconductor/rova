@@ -4,7 +4,7 @@
  * The bundle is built ONCE and promoted by digest, so nothing environment-specific may be compiled
  * into it. The deploying environment (gitops, per env) mounts a `config.json` next to `dist/`; this
  * module fetches it, validates every field, and only then hands control to the app. A missing or
- * invalid config is an ERROR SCREEN (`app/config-error.ts`), never a blank page: the alternative is a
+ * invalid config is an ERROR SCREEN (`app/startup-error.ts`), never a blank page: the alternative is a
  * white window and a console nobody reads.
  *
  * The dev server answers `/config.json` itself (`vite.config.ts`, `devConfigPlugin`), so `pnpm dev`
@@ -18,13 +18,21 @@ export const CONFIG_PATH = '/config.json'
 
 export type AppEnv = 'development' | 'staging' | 'production'
 
-/** `''` (same origin), a path such as `/api`, or an absolute http(s) origin. Not `//host` — that is protocol-relative. */
+/**
+ * `''` (same origin) or a path on this origin (`/api`). Absolute origins are deliberately refused:
+ * the SPA must stay same-origin, because authentication rides a `__Host-` session cookie that a
+ * cross-site request would not carry, so a config naming another origin can only be a mistake.
+ *
+ * The path is resolved against a dummy origin and must land back on it: `//evil` (protocol-relative)
+ * and `/\evil` (a backslash is a slash to the URL parser) both leave it.
+ */
+const SAME_ORIGIN = 'http://same-origin.invalid'
+
 function isApiBaseUrl(value: string): boolean {
   if (value === '') return true
-  if (value.startsWith('/')) return !value.startsWith('//')
+  if (!value.startsWith('/') || value.startsWith('//')) return false
   try {
-    const url = new URL(value)
-    return url.protocol === 'https:' || url.protocol === 'http:'
+    return new URL(value, SAME_ORIGIN).origin === SAME_ORIGIN
   } catch {
     return false
   }
@@ -32,15 +40,15 @@ function isApiBaseUrl(value: string): boolean {
 
 /**
  * The whole contract, and it is strict in the ways that matter: an unknown `appEnv`, a `"true"`
- * string instead of a boolean, or an `apiBaseUrl` that is neither a path nor a URL is a
- * misconfigured deployment, and it fails at boot rather than at the first request.
+ * string instead of a boolean, or an `apiBaseUrl` that leaves this origin is a misconfigured
+ * deployment, and it fails at boot rather than at the first request.
  */
 export const configSchema = z.object({
   apiBaseUrl: z
     .string()
     .refine(
       isApiBaseUrl,
-      'must be "" (same origin), a path starting with a single "/", or an absolute http(s) URL',
+      'must be "" (same origin) or a path on this origin starting with a single "/"',
     ),
   appEnv: z.enum(['development', 'staging', 'production']),
   devLoginEnabled: z.boolean(),

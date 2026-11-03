@@ -6,12 +6,12 @@
  * which is why `main.tsx` loads the app with a dynamic `import()` AFTER `loadConfig` resolves,
  * instead of importing `App` at the top of the file.
  *
- * A missing or invalid config renders the error screen; it never leaves the window blank. If the app
- * chunk itself fails to load, that is a different failure and the app's own `preload-error` handling
- * reloads once.
+ * Neither failure may leave the window blank: a missing or invalid config, and a failed load of the
+ * app chunk itself (a deploy that replaced the hashed files under an open page), both render the
+ * startup error screen.
  */
 import { loadConfig } from '@/shared/config/config'
-import { renderConfigError } from './config-error'
+import { APP_ERROR_DESCRIPTION, CONFIG_ERROR_DESCRIPTION, renderStartupError } from './startup-error'
 
 /** The app, loaded after the config: `bootstrap.tsx` exports `render`. */
 export type AppLoader = () => Promise<{ render: (root: HTMLElement) => void }>
@@ -27,10 +27,16 @@ export async function boot({ root, fetchImpl, loadApp }: BootOptions): Promise<v
   try {
     await loadConfig(fetchImpl)
   } catch (error) {
-    renderConfigError(root, error)
+    renderStartupError(root, error, CONFIG_ERROR_DESCRIPTION)
     return
   }
 
-  const { render } = await loadApp()
-  render(root)
+  let app: Awaited<ReturnType<AppLoader>>
+  try {
+    app = await loadApp()
+  } catch (error) {
+    renderStartupError(root, error, APP_ERROR_DESCRIPTION)
+    return
+  }
+  app.render(root)
 }

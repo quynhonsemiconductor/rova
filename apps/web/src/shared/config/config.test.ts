@@ -18,14 +18,22 @@ beforeEach(() => {
 })
 
 describe('configSchema', () => {
-  it('accepts the same-origin, path and absolute forms of apiBaseUrl', () => {
-    for (const apiBaseUrl of ['', '/api', 'https://api.example.com', 'http://localhost:3000']) {
+  it('accepts the same-origin and path forms of apiBaseUrl', () => {
+    for (const apiBaseUrl of ['', '/', '/api', '/v1']) {
       expect(configSchema.safeParse({ ...VALID, apiBaseUrl }).success).toBe(true)
     }
   })
 
-  it('rejects an apiBaseUrl that is neither a path nor an absolute http(s) URL', () => {
-    for (const apiBaseUrl of ['api', '//evil.example.com', 'ftp://example.com', ' localhost']) {
+  it('rejects an apiBaseUrl that leaves this origin', () => {
+    for (const apiBaseUrl of [
+      'api',
+      '//evil.example.com',
+      '/\\evil.example.com',
+      'https://api.example.com',
+      'http://localhost:3000',
+      'ftp://example.com',
+      ' localhost',
+    ]) {
       expect(configSchema.safeParse({ ...VALID, apiBaseUrl }).success).toBe(false)
     }
   })
