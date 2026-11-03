@@ -49,6 +49,13 @@ export interface MountedTool {
  * With an `observe` sink, every handler is wrapped once, here, so no tool can forget the audit
  * line: the SDK's `RegisteredTool.update({ callback })` replaces the handler in the registry the
  * transport dispatches to. The sink receives the tool name, the principal id and the duration.
+ *
+ * NOT COUNTED, deliberately: a `tools/call` for an unknown tool name or with arguments that fail
+ * the input schema is rejected by the pinned SDK (@modelcontextprotocol/sdk 1.32.1,
+ * `server/mcp.js`, the tools/call handler's `validateToolInput` and the registry lookup) BEFORE
+ * the wrapped handler runs — it answers an `isError` result without dispatch. There is therefore
+ * no tool to time and no principal-side work to audit; the only pre-dispatch refusal that IS
+ * counted is the per-person rate limit, logged by route.ts.
  */
 export function registerTools(
   server: McpServer,

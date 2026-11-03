@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { instrumentToolHandler, type ToolCallObservation, type ToolContext } from './rest';
 import { registerTools } from './register';
@@ -89,5 +91,37 @@ describe('registerTools instrumentation', () => {
     const whoami = mounted.find((tool) => tool.name === 'rova_whoami')!;
 
     await expect(callTool(whoami)).resolves.toHaveProperty('content');
+  });
+
+  it('emits exactly one observation for a real tools/call round trip', async () => {
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const observe = vi.fn<(event: ToolCallObservation) => void>();
+    registerTools(server, context(), observe);
+    const client = new Client({ name: 'test-client', version: '0.0.0' });
+
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    try {
+      const result = await client.callTool({ name: 'rova_whoami', arguments: {} });
+      expect(result.isError).toBeFalsy();
+      expect(observe).toHaveBeenCalledTimes(1);
+      expect(observe.mock.calls[0][0]).toMatchObject({
+        tool: 'rova_whoami',
+        principalId: PRINCIPAL,
+        outcome: 'ok',
+      });
+
+      // The SDK rejects malformed arguments BEFORE the wrapped handler, so a refused call adds
+      // no second observation: that is the documented "not counted" case.
+      const refused = await client.callTool({
+        name: 'rova_get_work_item',
+        arguments: { workItemId: 'not-a-uuid' },
+      });
+      expect(refused.isError).toBe(true);
+      expect(observe).toHaveBeenCalledTimes(1);
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 });

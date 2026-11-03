@@ -159,9 +159,14 @@ A worker that starts with Graph half-configured fails at boot rather than queuei
   - with a signed-in `@qnsc.vn` identity, `claude mcp add --transport http rova-dev https://rova-dev.qnsc.vn/mcp`
     and ask it `rova_whoami`: it answers as the same person the web app shows, and the `initialize`
     result reports the deployed release (e.g. `v0.8.6` or `sha-<12>`), **never** `dev`;
-  - an identity Access accepts but rova has offboarded is **403**, and the call leaves exactly one
-    `MCP tool call` log line carrying `tool`, `principalId` (a user id, not an email), `durationMs`
-    and `outcome`.
+  - an identity Access accepts but rova has offboarded (or one with no employee row / no single
+    workspace) is **403**; that refusal happens in the verifier BEFORE any tool runs, so it leaves
+    one `MCP access denied` warn line carrying `accessSub` and a stable `reason`, and **no**
+    `MCP tool call` line;
+  - a signed-in tool call then leaves exactly one `MCP tool call` line carrying `tool`,
+    `principalId` (a user id, not an email), `durationMs` and `outcome`. A call the MCP SDK
+    rejects before dispatch (unknown tool name, malformed arguments) has no tool-call line:
+    there is no handler to time.
 - **User Guide (US-119)**: the guide is the app page `/user-guide`; signed in, the Help icon opens it.
   Its files — the screenshots and the chunks carrying its text — live under `/guide-assets/*`
   (production data): signed out, `curl -sI https://rova.qnsc.vn/guide-assets/02-top-navigation-annotated.png`
