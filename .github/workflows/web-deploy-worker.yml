@@ -153,7 +153,7 @@ jobs:
       actions: read
     steps:
       - name: Wait for Web · CI on this commit
-        uses: quynhonsemiconductor/ci/actions/wait-for-run@af30ee9edccfda320d0207c056a6c7271774857b # v1.33.0
+        uses: quynhonsemiconductor/ci/actions/wait-for-run@400b7e9868e9ba6d172d956a08041ba19b574689 # v1.33.1
         with:
           workflow: web-ci.yml
           branch: main
@@ -199,7 +199,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@af30ee9edccfda320d0207c056a6c7271774857b # v1.33.0
+      - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@400b7e9868e9ba6d172d956a08041ba19b574689 # v1.33.1
         with:
           node-version: ${{ env.NODE_VERSION }}
 
