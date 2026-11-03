@@ -5,6 +5,7 @@ import { AppConfigService } from '../config/app-config.service';
 import * as schema from '../../../../db/schema';
 import { resolvePoolConfig } from '../../../../db/pg-pool-config';
 import { DbPoolMetrics } from '@quynhonsemiconductor/observability';
+import { guardPool } from '@quynhonsemiconductor/platform-db';
 
 export const DRIZZLE = Symbol('DRIZZLE');
 
@@ -46,45 +47,53 @@ export class DrizzleProvider implements OnModuleInit, OnModuleDestroy {
     private readonly config: AppConfigService,
     poolMetrics: DbPoolMetrics,
   ) {
-    this.pool = new Pool({
-      // Composed from DATABASE_* parts when no complete URL is supplied, so the
-      // deployed path reads the RDS-managed secret directly and never holds a
-      // copy of a rotating password. See db/database-url.ts.
-      ...resolvePoolConfig({
-        DATABASE_URL: config.get('DATABASE_URL'),
-        DATABASE_HOST: config.get('DATABASE_HOST'),
-        DATABASE_PORT: config.get('DATABASE_PORT'),
-        DATABASE_NAME: config.get('DATABASE_NAME'),
-        DATABASE_USER: config.get('DATABASE_USER'),
-        DATABASE_PASSWORD: config.get('DATABASE_PASSWORD'),
-        DATABASE_SSLMODE: config.get('DATABASE_SSLMODE'),
-        DATABASE_SSL_CA: config.get('DATABASE_SSL_CA'),
-        NODE_ENV: config.get('NODE_ENV'),
+    // guardPool: an idle client dropped by a database restart no longer ends the process (pg-pool
+    // re-emits its error on the pool, which threw with no listener), and while the database is down
+    // connection attempts back off (250 ms doubling to 5 s) instead of every relay tick and probe
+    // dialing it. The pool keeps no failed state: one built before PostgreSQL is up serves queries,
+    // and `/readyz` turns 200, as soon as it is (2026-11-03 node-reboot incident).
+    this.pool = guardPool(
+      new Pool({
+        // Composed from DATABASE_* parts when no complete URL is supplied, so the
+        // deployed path reads the RDS-managed secret directly and never holds a
+        // copy of a rotating password. See db/database-url.ts.
+        ...resolvePoolConfig({
+          DATABASE_URL: config.get('DATABASE_URL'),
+          DATABASE_HOST: config.get('DATABASE_HOST'),
+          DATABASE_PORT: config.get('DATABASE_PORT'),
+          DATABASE_NAME: config.get('DATABASE_NAME'),
+          DATABASE_USER: config.get('DATABASE_USER'),
+          DATABASE_PASSWORD: config.get('DATABASE_PASSWORD'),
+          DATABASE_SSLMODE: config.get('DATABASE_SSLMODE'),
+          DATABASE_SSL_CA: config.get('DATABASE_SSL_CA'),
+          NODE_ENV: config.get('NODE_ENV'),
+        }),
+        // `min` DOES NOT PRE-CREATE CONNECTIONS, and this option used to be here on the
+        // belief that it did. Read pg-pool's source before changing it back: in
+        // pg-pool@3.14.0 the value is touched in exactly three places —
+        // `this.options.min = this.options.min || 0` in the constructor, and
+        // `_isAboveMin() { return this._clients.length > this.options.min }`, which is
+        // consulted only by the idle-timeout reaper (`if (this.options.idleTimeoutMillis
+        // && this._isAboveMin())`). Nothing anywhere dials out to reach `min`. A fresh
+        // pool therefore starts with ZERO clients whatever this says, which is why the
+        // warm-up in `onModuleInit` below exists.
+        //
+        // It is nevertheless KEPT, for the reaping behaviour it really does govern, and
+        // that behaviour is what makes the warm-up worth anything. Production serves a
+        // measured 1-4 requests/day against `idleTimeoutMillis: 30_000`; without a
+        // floor, the connections `onModuleInit` opens would be reaped 30 seconds after
+        // boot and the next request — the following morning — would pay the full TCP +
+        // TLS + SCRAM handshake again on a 0.25 vCPU task. `min` is what pins the warm
+        // clients in place between requests. Dropping it and keeping only the warm-up
+        // would fix the first request after a deploy and nothing else.
+        min: config.get('DATABASE_POOL_MIN'),
+        max: config.get('DATABASE_POOL_MAX'),
+        // Fail fast on idle connections to surface misconfiguration
+        idleTimeoutMillis: 30_000,
+        connectionTimeoutMillis: 5_000,
       }),
-      // `min` DOES NOT PRE-CREATE CONNECTIONS, and this option used to be here on the
-      // belief that it did. Read pg-pool's source before changing it back: in
-      // pg-pool@3.14.0 the value is touched in exactly three places —
-      // `this.options.min = this.options.min || 0` in the constructor, and
-      // `_isAboveMin() { return this._clients.length > this.options.min }`, which is
-      // consulted only by the idle-timeout reaper (`if (this.options.idleTimeoutMillis
-      // && this._isAboveMin())`). Nothing anywhere dials out to reach `min`. A fresh
-      // pool therefore starts with ZERO clients whatever this says, which is why the
-      // warm-up in `onModuleInit` below exists.
-      //
-      // It is nevertheless KEPT, for the reaping behaviour it really does govern, and
-      // that behaviour is what makes the warm-up worth anything. Production serves a
-      // measured 1-4 requests/day against `idleTimeoutMillis: 30_000`; without a
-      // floor, the connections `onModuleInit` opens would be reaped 30 seconds after
-      // boot and the next request — the following morning — would pay the full TCP +
-      // TLS + SCRAM handshake again on a 0.25 vCPU task. `min` is what pins the warm
-      // clients in place between requests. Dropping it and keeping only the warm-up
-      // would fix the first request after a deploy and nothing else.
-      min: config.get('DATABASE_POOL_MIN'),
-      max: config.get('DATABASE_POOL_MAX'),
-      // Fail fast on idle connections to surface misconfiguration
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
-    });
+      { logger: this.logger },
+    );
 
     this.db = drizzle(this.pool, { schema, logger: config.get('LOG_SQL') });
 
