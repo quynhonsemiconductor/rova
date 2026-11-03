@@ -35,9 +35,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # One GHCR publish per product at a time (the reusable declares the same
-  # group); a push racing a workflow_dispatch serialises instead of racing.
-  group: ghcr-publish-backend-rova
+  # One GHCR publish per product PER COMMIT, never one per product: GitHub keeps
+  # only ONE pending run per group, so a newer main push could REPLACE the queued
+  # run for the previous commit even with cancel-in-progress false — that commit
+  # would never be built. (The ci reusable declares its own product-wide group and
+  # has the same flaw; the per-sha form ships there in the next ci release.)
+  group: ghcr-publish-backend-rova-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -103,8 +106,11 @@ jobs:
   # services it is given).
   bump-dev:
     needs: [publish, publish-web]
-    # A web build failure must not stop the API/worker dev bump.
-    if: ${{ always() && needs.publish.result == 'success' }}
+    # Only a main push that fully published bumps dev. A dispatch from another
+    # branch runs the publishes (which guard themselves on refs/heads/main) but
+    # must not touch gitops; a failed web build leaves the services half-published
+    # at this sha, so it does not move dev either.
+    if: ${{ github.ref == 'refs/heads/main' && needs.publish.result == 'success' && needs.publish-web.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

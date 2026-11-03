@@ -24,7 +24,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # release-please pushes the tag on the SAME merge commit whose GHCR · Publish
+  # run is still building. release-retag looks for sha-<12> once and exits 1 if it
+  # is not there yet, so wait for that run first and propagate its conclusion:
+  # a failed or cancelled publish must fail the promotion, not race it.
+  wait-for-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read # wait-for-run reads the run list
+    steps:
+      - uses: quynhonsemiconductor/ci/actions/wait-for-run@af30ee9edccfda320d0207c056a6c7271774857b  # v1.33.0
+        with:
+          workflow: ghcr-publish.yml
+          sha: ${{ github.sha }}
+          branch: main
+          label: GHCR · Publish
+          max-wait-minutes: '45'
+          failure-message: "The GHCR · Publish run for this release commit did not succeed, so there is no sha-<12> image to retag. Fix the build, then re-run this release job."
+          missing-message: "No GHCR · Publish run exists for this commit. Cut the release from a commit that was published to main."
+
   promote:
+    needs: wait-for-publish
     # Ceiling for the reusable's jobs: the retag job pushes an image tag
     # (packages: write) and verifies attestations (attestations: read).
     permissions:
