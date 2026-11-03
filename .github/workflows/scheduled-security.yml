@@ -25,7 +25,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
-    uses: quynhonsemiconductor/ci/.github/workflows/actions-security.yml@af30ee9edccfda320d0207c056a6c7271774857b # v1.33.0
+    uses: quynhonsemiconductor/ci/.github/workflows/actions-security.yml@400b7e9868e9ba6d172d956a08041ba19b574689 # v1.33.1
     with:
       blocking: true
       combine: true
@@ -38,7 +38,7 @@ jobs:
       contents: read
       security-events: write
       packages: read
-    uses: quynhonsemiconductor/ci/.github/workflows/security.yml@af30ee9edccfda320d0207c056a6c7271774857b # v1.33.0
+    uses: quynhonsemiconductor/ci/.github/workflows/security.yml@400b7e9868e9ba6d172d956a08041ba19b574689 # v1.33.1
     with:
       product: rova
       scan_container: true # the only periodic container scan: builds+scans unchanged images too
