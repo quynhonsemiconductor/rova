@@ -48,6 +48,13 @@ export interface WorkItemParentRef {
 export interface RefResolver {
   iteration(id: unknown, projectId: unknown): Promise<Ref | null>;
   release(id: unknown, projectId: unknown): Promise<Ref | null>;
+  /**
+   * A release that may belong to ANY of `projectIds` — a milestone links releases from other
+   * projects in the workspace (milestones.service.ts), so its own `projectId` cannot name them.
+   * Each project's picker feed is consulted in order and the first hit wins; the caller must be
+   * authorized for that project (the feed enforces it), and a miss degrades to the bare id.
+   */
+  releaseInProjects(id: unknown, projectIds: unknown[]): Promise<Ref | null>;
   team(id: unknown): Promise<Ref | null>;
   person(id: unknown): Promise<PersonRef | null>;
   parent(id: unknown): Promise<WorkItemParentRef | null>;
@@ -70,14 +77,22 @@ export function createRefResolver(ctx: ToolContext): RefResolver {
     url: string,
     query?: Record<string, string | undefined>,
   ): Promise<Record<string, unknown>[] | null> {
-    const res = await ctx.callRest(ctx.principal, {
-      method: 'GET',
-      url,
-      ...(query ? { query } : {}),
-    });
-    if (res.statusCode >= 400) return null;
-    const body = Array.isArray(res.json) ? res.json : (res.json as { data?: unknown } | null)?.data;
-    return Array.isArray(body) ? (body as Record<string, unknown>[]) : null;
+    try {
+      const res = await ctx.callRest(ctx.principal, {
+        method: 'GET',
+        url,
+        ...(query ? { query } : {}),
+      });
+      if (res.statusCode >= 400) return null;
+      const body = Array.isArray(res.json)
+        ? res.json
+        : (res.json as { data?: unknown } | null)?.data;
+      return Array.isArray(body) ? (body as Record<string, unknown>[]) : null;
+    } catch {
+      // A rejected bridge call (the inject() itself failed) is a feed the resolver could not
+      // read: degrade to `{ id, name: null }` rather than fail the tool that was asked for.
+      return null;
+    }
   }
 
   /** One feed per key; a failed fetch is cached as `null` too (no retry storm on a 403). */
@@ -120,6 +135,14 @@ export function createRefResolver(ctx: ToolContext): RefResolver {
       'userId',
     );
 
+  /** One project's release picker feed; the map lookup alone tells a hit from a miss. */
+  const releaseFeed = (project: string) =>
+    feed(`releases:${project}`, '/v1/releases/options', { projectId: project }, (row) => ({
+      id: String(row['id']),
+      name: str(row['name']),
+      key: str(row['releaseKey']),
+    }));
+
   return {
     async iteration(id, projectId) {
       const ref = str(id);
@@ -144,17 +167,22 @@ export function createRefResolver(ctx: ToolContext): RefResolver {
       if (!ref) return null;
       const project = str(projectId);
       if (!project) return unknownRef(ref);
-      const map = await feed(
-        `releases:${project}`,
-        '/v1/releases/options',
-        { projectId: project },
-        (row) => ({
-          id: String(row['id']),
-          name: str(row['name']),
-          key: str(row['releaseKey']),
-        }),
-      );
+      const map = await releaseFeed(project);
       return map?.get(ref) ?? unknownRef(ref);
+    },
+
+    async releaseInProjects(id, projectIds) {
+      const ref = str(id);
+      if (!ref) return null;
+      const seen = new Set<string>();
+      for (const value of projectIds) {
+        const project = str(value);
+        if (!project || seen.has(project)) continue;
+        seen.add(project);
+        const hit = (await releaseFeed(project))?.get(ref);
+        if (hit) return hit;
+      }
+      return unknownRef(ref);
     },
 
     async team(id) {
@@ -178,15 +206,20 @@ export function createRefResolver(ctx: ToolContext): RefResolver {
       const cached = parents.get(ref);
       if (cached) return cached;
       const fetched = (async (): Promise<WorkItemParentRef | null> => {
-        const res = await ctx.callRest(ctx.principal, {
-          method: 'GET',
-          url: `/v1/work-items/${ref}`,
-        });
-        if (res.statusCode >= 400 || res.json === null || typeof res.json !== 'object') {
+        try {
+          const res = await ctx.callRest(ctx.principal, {
+            method: 'GET',
+            url: `/v1/work-items/${ref}`,
+          });
+          if (res.statusCode >= 400 || res.json === null || typeof res.json !== 'object') {
+            return { id: ref, itemKey: null, title: null };
+          }
+          const row = res.json as Record<string, unknown>;
+          return { id: ref, itemKey: str(row['itemKey']), title: str(row['title']) };
+        } catch {
+          // Same degradation as a feed: the parent is unnamed, the tool still answers.
           return { id: ref, itemKey: null, title: null };
         }
-        const row = res.json as Record<string, unknown>;
-        return { id: ref, itemKey: str(row['itemKey']), title: str(row['title']) };
       })();
       parents.set(ref, fetched);
       return fetched;

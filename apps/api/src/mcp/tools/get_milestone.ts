@@ -14,16 +14,23 @@ export interface MilestoneRefs {
 
 /**
  * Resolves the milestone's `ownerId` to a person and each linked release id to
- * `{ id, key, name }` through the project's own release picker feed.
+ * `{ id, key, name }`. A milestone may link releases from OTHER projects in the workspace
+ * (milestones.service.ts), so each release is resolved across every project the milestone is
+ * linked to — its own `projectId` plus the `:id/projects` feed — and the feed for each project
+ * enforces the caller's `project:view` as usual.
  */
 export async function resolveMilestoneRefs(
   m: Record<string, unknown>,
   releaseIds: string[],
   resolver: ReturnType<typeof createRefResolver>,
+  linkedProjectIds: unknown[],
 ): Promise<MilestoneRefs> {
+  const projectIds = [m['projectId'], ...linkedProjectIds];
   const [owner, releases] = await Promise.all([
     resolver.person(m['ownerId']),
-    Promise.all(releaseIds.slice(0, MAX_LINKS).map((id) => resolver.release(id, m['projectId']))),
+    Promise.all(
+      releaseIds.slice(0, MAX_LINKS).map((id) => resolver.releaseInProjects(id, projectIds)),
+    ),
   ]);
   return { owner, releases: releases.filter((r): r is Ref => r !== null) };
 }
@@ -100,7 +107,10 @@ export function registerGetMilestone(server: McpServer, ctx: ToolContext) {
       const projects = await feed(`/v1/milestones/${milestoneId}/projects`);
       if (projects.denial) return projects.denial;
 
-      const refs = await resolveMilestoneRefs(m, releases.ids, createRefResolver(ctx));
+      const refs = await resolveMilestoneRefs(m, releases.ids, createRefResolver(ctx), [
+        ...((m['projectIds'] as unknown[] | undefined) ?? []),
+        ...projects.ids,
+      ]);
       return {
         content: [
           {

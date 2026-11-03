@@ -91,20 +91,33 @@ describe('shapeMilestone (MilestoneResponseDto + junction feeds -> tool payload)
     expect(shapeMilestone(MILESTONE_BODY, exact, [], [])['truncated']).toBeUndefined();
   });
 
-  it('resolves the owner and each linked release through the reference feeds', async () => {
+  it('resolves the owner and each linked release across every linked project', async () => {
+    const otherProject = '0194a000-0000-7000-8000-0000000000ab';
+    const seenProjects: unknown[] = [];
     const resolver = {
       person: async (id: string) => ({ id, name: 'Ada Lovelace' }),
-      release: async (id: string) => ({ id, name: 'Autumn', key: 'RL-7' }),
+      // The release lives in the OTHER project: the milestone's own projectId must not be the
+      // only feed consulted.
+      releaseInProjects: async (id: string, projectIds: unknown[]) => {
+        seenProjects.push(...projectIds);
+        return projectIds.includes(otherProject)
+          ? { id, name: 'Autumn', key: 'RL-7' }
+          : { id, name: null, key: null };
+      },
     } as unknown as RefResolver;
+
     await expect(
       resolveMilestoneRefs(
         { ...MILESTONE_BODY, ownerId: 'u1' },
         ['0194a000-0000-7000-8000-000000000004'],
         resolver,
+        [otherProject],
       ),
     ).resolves.toEqual({
       owner: { id: 'u1', name: 'Ada Lovelace' },
       releases: [RELEASE_REF],
     });
+    expect(seenProjects).toContain(MILESTONE_BODY.projectId);
+    expect(seenProjects).toContain(otherProject);
   });
 });
