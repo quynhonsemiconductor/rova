@@ -52,7 +52,9 @@ const STRANGER_ITERATION = PAY_ITER_ID;
  *    `DEFAULT:uid:<person>` (the injected REST call) — and nothing else.
  */
 
-const VERIFIER_TOKEN_PREFIX = 'e2e-access.';
+// Three base64url segments: the route only accepts a bearer that is JWT-shaped (the Access JWT
+// itself); an opaque bearer alone is refused before the verifier.
+const VERIFIER_TOKEN_PREFIX = 'e2e.access.';
 
 describe('/mcp over the real guard chain (e2e)', () => {
   // CI runs the e2e suite with DISABLE_RATE_LIMIT=true and BOTH rate-limit guards read it at
