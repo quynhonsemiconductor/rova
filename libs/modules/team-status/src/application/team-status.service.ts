@@ -433,5 +433,5 @@ export class TeamStatusService {
 
 /** A numeric column read as text by the driver → a number, keeping "never entered" as `null`. */
 function hoursOrNull(value: string | null): number | null {
-  return value == null ? null : Number(value);
+  return value === null ? null : Number(value);
 }
