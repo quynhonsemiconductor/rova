@@ -11,19 +11,36 @@
  * on the static path without executing user code.
  *
  * The decision is the API's, never ours: the cookie's PRESENCE only saves a round trip; a present
- * cookie is checked against `GET /v1/bff/me` on the SAME origin (the subrequest is same-host and
+ * cookie is checked against `GET /v1/auth/me` on the SAME origin (the subrequest is same-host and
  * cloudflared forwards the reader's address). Fails CLOSED: any answer except a JSON 200 / 401 / 403 —
  * a 5xx, a timeout, a network error, an HTML page — serves 503 and never the content, and logs which
  * of those it was (`sessionCheckFailed`).
  *
  * `src/test/user-guide-gate-paths.test.ts` pins the gated path to the SPA, to the build's guide chunk
- * folder and to `wrangler.jsonc`.
+ * folder and to `wrangler.jsonc`, and the session cookie and the session check to the API.
  *
- * Guests pass: `/v1/bff/me` answers 200 for a guest session with `guest: true`, and the guide has no
- * role requirement.
+ * Guests pass: `/v1/auth/me` answers 200 for any valid session, a guest with no workspace included,
+ * and the guide has no role requirement.
  */
 
-export const SESSION_COOKIE = '__Host-rova_session'
+/**
+ * The identity 8 session cookie (`libs/platform/src/auth/session-cookie.ts`): `__Host-rova.session_token`
+ * where the API runs with `NODE_ENV=production` — develop as well as prod — and
+ * `__Secure-rova.session_token` everywhere else. Either one only means "worth asking the API".
+ *
+ * It was v7's `__Host-rova_session`, which identity 8 no longer issues: a gate still looking for it
+ * sent every reader to `/login`, and one whose browser kept the stale v7 cookie on to the retired
+ * `/v1/bff/me` and a 503 — the guide could not load at all on develop.
+ */
+export const SESSION_COOKIES: readonly string[] = [
+  '__Host-rova.session_token',
+  '__Secure-rova.session_token',
+]
+/**
+ * The session check: the SPA's own "who am I?" (`shared/api/auth-bootstrap.ts`). JSON 200 for a valid
+ * session, 401 without one.
+ */
+export const SESSION_CHECK_PATH = '/v1/auth/me'
 /** Where a refused reader lands after signing in: the SPA's guide route. */
 export const IN_APP_GUIDE = '/user-guide'
 /** The in-app guide's gated files: its screenshots, and under `js/` the chunks carrying its text. */
@@ -53,7 +70,7 @@ export function hasSessionCookie(request: Request): boolean {
   if (!header) return false
   return header.split(';').some((part) => {
     const [name, ...rest] = part.trim().split('=')
-    return name === SESSION_COOKIE && rest.join('=').length > 0
+    return SESSION_COOKIES.includes(name) && rest.join('=').length > 0
   })
 }
 
@@ -93,11 +110,11 @@ function isGuideFile(pathname: string): boolean {
   return pathname === GUIDE_ASSETS_ROOT.slice(0, -1) || pathname.startsWith(GUIDE_ASSETS_ROOT)
 }
 
-/** `GET /v1/bff/me` on this origin, carrying the reader's own headers (session cookie, visitor address). */
+/** `GET /v1/auth/me` on this origin, carrying the reader's own headers (session cookie, visitor address). */
 function sessionCheckRequest(request: Request): Request {
   const headers = new Headers(request.headers)
   headers.set('accept', 'application/json')
-  return new Request(new URL('/v1/bff/me', request.url), { method: 'GET', headers })
+  return new Request(new URL(SESSION_CHECK_PATH, request.url), { method: 'GET', headers })
 }
 
 function withGuideHeaders(response: Response, setCookies: readonly string[]): Response {
@@ -109,7 +126,7 @@ function withGuideHeaders(response: Response, setCookies: readonly string[]): Re
 }
 
 /**
- * `/v1/bff/me` answers `application/json`. Exactly that, deliberately: a `+json` type or anything else
+ * `/v1/auth/me` answers `application/json`. Exactly that, deliberately: a `+json` type or anything else
  * is not the API's answer to this question, so it fails closed.
  */
 function isJson(response: Response): boolean {

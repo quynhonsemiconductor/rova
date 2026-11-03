@@ -42,3 +42,34 @@ describe('User Guide gated path', () => {
     expect(patterns && JSON.parse(patterns)).toEqual([`${GUIDE_ASSETS_ROOT}*`])
   })
 })
+
+/**
+ * The gate's two facts about the API, pinned to the API. Both had gone stale before this existed: the
+ * gate looked for v7's `__Host-rova_session` and asked the retired `/v1/bff/me`, so on develop no reader
+ * could load the guide, while the gate's own tests — written with the same two values — all passed.
+ */
+describe('User Guide gate, against the API', () => {
+  it('looks for the session cookie under every name the API issues it', () => {
+    // Read from source: `libs/` is the API's code and not part of the SPA's build.
+    const source = readFileSync(join(WEB, '../../libs/platform/src/auth/session-cookie.ts'), 'utf8')
+    const product = /export const IDENTITY_PRODUCT = '([^']+)'/.exec(source)?.[1]
+    const name =
+      /export const SESSION_COOKIE = `\$\{HOST_COOKIES \? '([^']+)' : '([^']+)'\}\$\{IDENTITY_PRODUCT\}([^`]*)`/.exec(
+        source,
+      )
+    expect(product, 'IDENTITY_PRODUCT moved: update this test and the gate').toBeDefined()
+    expect(name, 'SESSION_COOKIE changed shape: update this test and the gate').not.toBeNull()
+    const [, hostPrefix, securePrefix, suffix] = name!
+    expect([...workerGate.SESSION_COOKIES].sort()).toEqual(
+      [`${hostPrefix}${product}${suffix}`, `${securePrefix}${product}${suffix}`].sort(),
+    )
+  })
+
+  it('asks the same "who am I?" as the SPA, and the API serves it', () => {
+    const bootstrap = readFileSync(join(WEB, 'src/shared/api/auth-bootstrap.ts'), 'utf8')
+    expect(bootstrap).toContain(`\${BASE}${workerGate.SESSION_CHECK_PATH}\``)
+    // The generated client is the API's OpenAPI document, committed: a removed route leaves it.
+    const client = readFileSync(join(WEB, 'src/shared/api/generated/api.ts'), 'utf8')
+    expect(client).toContain(`'${workerGate.SESSION_CHECK_PATH}': {`)
+  })
+})

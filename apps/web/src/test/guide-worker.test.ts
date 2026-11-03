@@ -1,7 +1,7 @@
 /**
  * The US-119 gate, a Worker in front of Workers Static Assets. These cases pin it: `/guide-assets/*`
  * is gated, everything else never executes user code, the session answer comes from the same-origin
- * `/v1/bff/me`, and every answer but a JSON 200/401/403 fails CLOSED.
+ * `/v1/auth/me`, and every answer but a JSON 200/401/403 fails CLOSED.
  */
 import { describe, expect, it, vi } from 'vitest'
 import * as entry from '@/shared/lib/guide-gate.worker'
@@ -27,7 +27,7 @@ function assetsFetcher() {
   return { fetch }
 }
 
-/** What `GET /v1/bff/me` answers for a signed-in reader. */
+/** What `GET /v1/auth/me` answers for a signed-in reader. */
 const signedIn = (headers: Record<string, string> = {}) =>
   new Response('{"user":{}}', {
     status: 200,
@@ -35,7 +35,7 @@ const signedIn = (headers: Record<string, string> = {}) =>
   })
 
 const withSession = (path: string) =>
-  new Request(`${ORIGIN}${path}`, { headers: { cookie: '__Host-rova_session=abc' } })
+  new Request(`${ORIGIN}${path}`, { headers: { cookie: '__Host-rova.session_token=abc' } })
 
 describe('the Worker entry', () => {
   it('exports its handler and nothing else', () => {
@@ -78,8 +78,8 @@ describe('the User Guide gate as a Worker', () => {
     const assets = assetsFetcher()
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const request = new Request(input)
-      expect(new URL(request.url).pathname).toBe('/v1/bff/me')
-      expect(request.headers.get('cookie')).toContain('__Host-rova_session=abc')
+      expect(new URL(request.url).pathname).toBe('/v1/auth/me')
+      expect(request.headers.get('cookie')).toContain('__Host-rova.session_token=abc')
       return signedIn({ 'set-cookie': 'refreshed=1; Path=/; Secure; HttpOnly' })
     })
     const res = await handleWorkerRequest(
@@ -138,7 +138,7 @@ describe('the User Guide gate as a Worker', () => {
             signal.addEventListener('abort', () => reject(signal.reason))
           }),
       ],
-      // Same-origin `/v1/bff/me` on the static path (wrangler dev, a missing route) is the SPA's
+      // Same-origin `/v1/auth/me` on the static path (wrangler dev, a missing route) is the SPA's
       // index.html, 200. Seen in `wrangler dev`: before this case the gate served the file.
       ['200 that is not JSON ("text/html; charset=utf-8")', ofType('text/html; charset=utf-8')],
       // Exactly `application/json`, deliberately: it is the only thing the API answers here.
@@ -225,11 +225,24 @@ describe('the User Guide gate as a Worker', () => {
     }
   })
 
+  it('hasSessionCookie accepts the identity 8 session cookie under either prefix', () => {
+    const req = (cookie: string) => new Request(`${ORIGIN}${SCREENSHOT}`, { headers: { cookie } })
+    // `__Host-` where the API runs with NODE_ENV=production (develop and prod), `__Secure-` elsewhere.
+    expect(hasSessionCookie(req('__Host-rova.session_token=v'))).toBe(true)
+    expect(hasSessionCookie(req('other=1; __Secure-rova.session_token=v'))).toBe(true)
+  })
+
+  it('hasSessionCookie refuses the retired v7 cookie: identity 8 never issues it', () => {
+    const req = (cookie: string) => new Request(`${ORIGIN}${SCREENSHOT}`, { headers: { cookie } })
+    expect(hasSessionCookie(req('__Host-rova_session=v'))).toBe(false)
+  })
+
   it('hasSessionCookie ignores empty values and other cookies', () => {
     const req = (cookie: string) => new Request(`${ORIGIN}${SCREENSHOT}`, { headers: { cookie } })
-    expect(hasSessionCookie(req('__Host-rova_session='))).toBe(false)
-    expect(hasSessionCookie(req('other=1; __Host-rova_session=v'))).toBe(true)
-    expect(hasSessionCookie(req('__Host-rova_session_x=v'))).toBe(false)
+    expect(hasSessionCookie(req('__Host-rova.session_token='))).toBe(false)
+    expect(hasSessionCookie(req('__Host-rova.session_token_x=v'))).toBe(false)
+    expect(hasSessionCookie(req('x__Secure-rova.session_token=v'))).toBe(false)
+    expect(hasSessionCookie(req('__Host-rova_csrf=v'))).toBe(false)
   })
 
   it('loginRedirect always returns to the in-app guide, on the same origin', () => {
