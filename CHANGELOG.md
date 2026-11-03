@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/quynhonsemiconductor/rova/compare/v0.8.1...v0.8.2) (2026-11-03)
+
+
+### 🐛 Bug Fixes
+
+* **db:** guard the pool so the API heals in place after a database outage ([#862](https://github.com/quynhonsemiconductor/rova/issues/862)) ([a8c350d](https://github.com/quynhonsemiconductor/rova/commit/a8c350d465eae03a5bda64e633d8e332ee03d94c))
+
 ## [0.8.1](https://github.com/quynhonsemiconductor/rova/compare/v0.8.0...v0.8.1) (2026-11-03)
 
 
