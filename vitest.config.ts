@@ -230,7 +230,7 @@ export default defineConfig({
       // fell 3.33 behind and the ratchet failed. Raised to 89.
       thresholds: {
         lines: 89,
-        functions: 84,
+        functions: 86,
         branches: 82,
         statements: 88,
       },
