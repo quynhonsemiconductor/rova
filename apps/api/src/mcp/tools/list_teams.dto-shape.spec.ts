@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_TEAMS, shapeTeam, shapeTeams } from './list_teams';
+import type { RefResolver } from './refs';
+
+/** The picker feed the lead comes from; these tests only care about the row mapping. */
+const NO_PEOPLE = { person: async () => null } as unknown as RefResolver;
 
 /**
  * The REAL response shape, from the producer (workspace/team.controller.ts
@@ -23,22 +27,25 @@ const TEAM_ROW = {
   projects: [{ id: 'p1', key: 'PAY', name: 'Payments' }],
 };
 
-describe('shapeTeams (toTeamWithStatsDto[] -> tool payload)', () => {
-  it('maps each row keeping the route field names, under the `teams` list key', () => {
-    const out = shapeTeams([TEAM_ROW]);
-    expect(out.teams).toEqual([
-      {
-        id: 't1',
-        name: 'Alpha',
-        key: 'ALP',
-        description: 'Platform team',
-        status: 'active',
-        leadId: 'u1',
-        memberCount: 4,
-        projects: TEAM_ROW.projects,
-      },
-    ]);
-    expect(out['truncated']).toBeUndefined();
+describe('shapeTeam (toTeamWithStatsDto -> tool payload)', () => {
+  it('maps each row keeping the route field names and the resolved lead', () => {
+    const out = shapeTeam(TEAM_ROW, { id: 'u1', name: 'Ada Lovelace' });
+    expect(out).toEqual({
+      id: 't1',
+      name: 'Alpha',
+      key: 'ALP',
+      description: 'Platform team',
+      status: 'active',
+      lead: { id: 'u1', name: 'Ada Lovelace' },
+      memberCount: 4,
+      projects: TEAM_ROW.projects,
+    });
+    // the raw id is not relayed beside its resolved ref
+    expect(out).not.toHaveProperty('leadId');
+  });
+
+  it('a team with no resolvable lead carries null, never a bare id', () => {
+    expect(shapeTeam({ ...TEAM_ROW, leadId: null })).toMatchObject({ lead: null });
   });
 
   it('a nullable key/description stays null', () => {
@@ -46,10 +53,17 @@ describe('shapeTeams (toTeamWithStatsDto[] -> tool payload)', () => {
     expect(shapeTeam(bare)).toMatchObject({ key: null, description: null });
   });
 
-  it('past the cap rows are cut and truncated is set', () => {
+  it('the cap is an agent-sized page', () => {
+    expect(MAX_TEAMS).toBe(100);
+  });
+
+  it('past the cap rows are cut and truncated is set', async () => {
     const many = Array.from({ length: MAX_TEAMS + 1 }, () => TEAM_ROW);
-    const out = shapeTeams(many);
+    const out = await shapeTeams(many, NO_PEOPLE);
     expect((out['teams'] as unknown[]).length).toBe(MAX_TEAMS);
     expect(out).toHaveProperty('truncated', true);
+
+    const exact = await shapeTeams([TEAM_ROW], NO_PEOPLE);
+    expect(exact).not.toHaveProperty('truncated');
   });
 });

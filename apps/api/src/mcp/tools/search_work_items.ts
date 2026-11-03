@@ -1,9 +1,16 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { listResult, pageArgs, type ToolContext } from './rest';
+import { listResultExpanded, pageArgs, type ToolContext } from './rest';
+import { createRefResolver, personRef, type PersonRef, type Ref } from './refs';
+
+/** The identity a list row adds once its ids are resolved (refs.ts). */
+export interface ToolWorkItemRefs {
+  assignee?: PersonRef | null;
+  iteration?: Ref | null;
+}
 
 /** The small work-item shape the search/get tools return. */
-export function toToolWorkItem(p: Record<string, unknown>) {
+export function toToolWorkItem(p: Record<string, unknown>, refs: ToolWorkItemRefs = {}) {
   return {
     id: p['id'],
     itemKey: p['itemKey'],
@@ -11,9 +18,21 @@ export function toToolWorkItem(p: Record<string, unknown>) {
     type: p['type'],
     scheduleState: p['scheduleState'],
     priority: p['priority'],
-    assigneeName: p['assigneeName'] ?? null,
-    iterationId: p['iterationId'] ?? null,
+    assignee: refs.assignee ?? null,
+    iteration: refs.iteration ?? null,
   };
+}
+
+/** Resolves one row's refs. The DTO's joined `assigneeName` wins over the picker feed. */
+export async function resolveToolWorkItemRefs(
+  p: Record<string, unknown>,
+  resolver: ReturnType<typeof createRefResolver>,
+): Promise<ToolWorkItemRefs> {
+  const [person, iteration] = await Promise.all([
+    resolver.person(p['assigneeId']),
+    resolver.iteration(p['iterationId'], p['projectId']),
+  ]);
+  return { assignee: personRef(p['assigneeId'], p['assigneeName'], person), iteration };
 }
 
 /**
@@ -42,6 +61,7 @@ export function registerSearchWorkItems(server: McpServer, ctx: ToolContext) {
       },
     },
     async ({ projectId, q, assigneeId, iterationId, statusId, priority, limit, cursor }) => {
+      const resolver = createRefResolver(ctx);
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
         url: '/v1/work-items',
@@ -56,7 +76,12 @@ export function registerSearchWorkItems(server: McpServer, ctx: ToolContext) {
           cursor,
         },
       });
-      return listResult(statusCode, json, toToolWorkItem, 'items');
+      return listResultExpanded(
+        statusCode,
+        json,
+        async (p) => toToolWorkItem(p, await resolveToolWorkItemRefs(p, resolver)),
+        'items',
+      );
     },
   );
 }

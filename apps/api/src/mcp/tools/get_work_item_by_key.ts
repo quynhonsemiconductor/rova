@@ -1,7 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { denied, result, type ToolContext } from './rest';
-import { toToolWorkItem } from './search_work_items';
+import { createRefResolver } from './refs';
+import { resolveToolWorkItemRefs, toToolWorkItem } from './search_work_items';
 
 /**
  * `rova_get_work_item_by_key` — one work item by its human key (e.g. `OBSE-42`)
@@ -19,6 +20,7 @@ export function registerGetWorkItemByKey(server: McpServer, ctx: ToolContext) {
       },
     },
     async ({ itemKey }) => {
+      const resolver = createRefResolver(ctx);
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
         url: '/v1/work-items/by-key',
@@ -27,7 +29,11 @@ export function registerGetWorkItemByKey(server: McpServer, ctx: ToolContext) {
       if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
         return denied(statusCode, json);
       const p = json as Record<string, unknown>;
-      return result(statusCode, json, toToolWorkItem(p));
+      return result(
+        statusCode,
+        json,
+        toToolWorkItem(p, await resolveToolWorkItemRefs(p, resolver)),
+      );
     },
   );
 }
