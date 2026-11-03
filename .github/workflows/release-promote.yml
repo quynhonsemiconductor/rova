@@ -1,11 +1,16 @@
 # =============================================================================
-# Release · Promote — a vX.Y.Z tag builds NOTHING and deploys NOTHING by itself.
+# Release · Promote — a vX.Y.Z tag builds no image and rolls no API by itself.
 #
 # It takes the image GHCR · Publish already built from the tagged commit
 # (sha-<commit12>), adds the alias tag vX.Y.Z to the SAME digests (no rebuild),
 # and opens a gitops PR that sets values/rova/tags.prod.yaml to tag + digest.
-# A reviewed merge of that PR is the prod deploy (ArgoCD PreSync migrator, then
-# the Deployments roll). Rollback = revert that gitops PR.
+# A reviewed merge of that PR is the prod API/worker deploy (ArgoCD PreSync
+# migrator, then the Deployments roll). Rollback = revert that gitops PR.
+#
+# It also deploys the PROD SPA from the same tag, in the same run and after the
+# image check above (the deploy-web job calls web-deploy-worker.yml), so the
+# web follows every release instead of waiting for a manual dispatch. Rollback
+# of the web alone = dispatch that workflow with an older tag.
 #
 # Fails, and opens no PR, if any of the three images is missing for the tagged
 # commit (publish did not run or failed for it).
@@ -105,3 +110,20 @@ jobs:
           digests: ${{ steps.images.outputs.digests }}
           mode: pull-request
           gitops-token: ${{ steps.app.outputs.token }}
+
+  # The prod SPA follows the tag in the SAME run. `needs: promote` is the
+  # ordering gate: that job returns only once GHCR holds all three images for
+  # this commit (the wait added in #864), so the web cannot ship ahead of the
+  # API release it belongs to. The called workflow keeps its own
+  # WEB_WORKER_PROD_ENABLED check and per-environment concurrency group.
+  deploy-web:
+    name: Deploy prod web
+    needs: promote
+    permissions:
+      contents: read
+      actions: read # wait-for-run reads the Web · CI run
+      packages: read # @quynhonsemiconductor/* from GitHub Packages
+    uses: ./.github/workflows/web-deploy-worker.yml
+    with:
+      environment: production
+      tag: ${{ github.ref_name }}

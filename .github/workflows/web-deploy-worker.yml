@@ -12,11 +12,14 @@
 # TRIGGERS
 #   develop → push to main, after `Web · CI` passes on the same commit, and
 #             workflow_dispatch (default target).
-#   prod    → workflow_dispatch with environment=production ONLY, and only while
-#             the repository variable WEB_WORKER_PROD_ENABLED is `true`. That
-#             variable stays unset until the prod move (ONPREM-PLAN M-11): prod
-#             is still served by Pages, and a Worker deployed there would have no
-#             route until the live/edge cutover applies one.
+#   prod    → release-promote.yml calls this workflow (workflow_call) for every
+#             release tag, in the same run that promotes the API, so prod follows
+#             the tag instead of waiting for a manual dispatch; and
+#             workflow_dispatch with environment=production, kept for rollback
+#             (dispatch an older tag). Both paths require the repository
+#             variable WEB_WORKER_PROD_ENABLED to be `true`: it is the prod-move
+#             switch, true since 2026-11-01, when rova.qnsc.vn was routed to
+#             rova-prod-web. A deploy while the edge has no route would be dark.
 #
 # WHAT IT DOES NOT DO: no DNS, no Workers routes, no Access. Those are `infra`
 # `live/edge`, applied (and reviewed) by the SA. The token here is Workers
@@ -55,6 +58,22 @@ on:
         type: choice
         options: [develop, production]
         default: develop
+  # Called by release-promote.yml on every release tag. `tag` is the tag the
+  # promote validated; the build and deploy check out exactly that commit, so the
+  # SPA and the API in one release are the same commit.
+  workflow_call:
+    inputs:
+      environment:
+        description: >-
+          Cloudflare target. `production` is refused unless the
+          WEB_WORKER_PROD_ENABLED repository variable is true.
+        type: string
+        default: develop
+      tag:
+        description: Release tag to build and deploy (vX.Y.Z). Empty means the caller's ref.
+        type: string
+        required: false
+        default: ''
 
 concurrency:
   # One deploy per TARGET environment; never cancel a running one. Keyed on the
@@ -74,10 +93,10 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   # Resolve the target script and hold the prod gate.
   #
-  # The gate is a VARIABLE, not the input alone: a workflow_dispatch can name
-  # `production`, and until the prod move that would deploy a script nothing
-  # routes to (and, worse, teach people the target works). `WEB_WORKER_PROD_ENABLED`
-  # is unset until the move, which keeps prod off by default.
+  # The gate is a VARIABLE, not the input alone: a dispatch or a release call can
+  # name `production`, and an environment whose edge route is absent would get a
+  # script nothing serves (and, worse, teach people the target works).
+  # `WEB_WORKER_PROD_ENABLED` is the prod-move switch and stays the only way in.
   # ───────────────────────────────────────────────────────────────────────────
   target:
     name: Resolve target
@@ -96,6 +115,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
           INPUT_ENV: ${{ inputs.environment }}
+          INPUT_TAG: ${{ inputs.tag }}
           PROD_ENABLED: ${{ vars.WEB_WORKER_PROD_ENABLED }}
         run: |
           set -euo pipefail
@@ -109,6 +129,14 @@ jobs:
             environment=develop
           else
             environment="${INPUT_ENV:-develop}"
+            # A release call deploys a release tag, never a branch: validate the
+            # tag the promote passed, so a malformed input cannot ship a random ref.
+            if [ "${EVENT}" = "workflow_call" ]; then
+              [[ "${INPUT_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+                echo "::error::workflow_call needs a release tag (vX.Y.Z), got '${INPUT_TAG}'."
+                exit 1
+              }
+            fi
           fi
 
           case "${environment}" in
@@ -118,7 +146,7 @@ jobs:
               ;;
             production)
               if [ "${PROD_ENABLED}" != "true" ]; then
-                echo "::error::production is refused: the on-prem prod move has not happened. Set the vars.WEB_WORKER_PROD_ENABLED repository variable to true only in the prod-move change (ONPREM-PLAN M-11), after live/edge routes rova.qnsc.vn to rova-prod-web."
+                echo "::error::production is refused: the vars.WEB_WORKER_PROD_ENABLED repository variable is not true. It has been the prod-move switch since 2026-11-01; flipping it off also disables release deploys."
                 exit 1
               fi
               wrangler_env=prod
@@ -198,6 +226,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          # A release call builds the release TAG's commit (the same one the API
+          # promote used), not whichever branch happened to call it.
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: quynhonsemiconductor/ci/actions/setup-node-pnpm@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
         with:

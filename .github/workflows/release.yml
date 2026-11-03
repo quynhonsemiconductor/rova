@@ -1,7 +1,8 @@
 # =============================================================================
 # Release Please — auto-creates a "chore(release): vX.Y.Z" PR on every
 # main push, then auto-tags when that PR is merged.
-# The tag deploys nothing by itself: prod moves only through a reviewed gitops PR.
+# The tag rolls no API by itself: that waits for the reviewed gitops PR. It does
+# deploy the prod SPA: release-promote.yml calls web-deploy-worker.yml per tag.
 #
 # Delegates to the shared reusable workflow in ci so release logic stays
 # DRY across products. QNSC_AUTOMATION_APP_ID (org var) is read automatically;
