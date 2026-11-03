@@ -204,15 +204,16 @@ describe('TeamStatusService', () => {
       expect(alice.todoHours).toBe(5); // 2 + 3
       expect(alice.actualHours).toBe(7); // 2 + 5
       expect(alice.capacityHours).toBe(40);
-      // progress = round(actual/estimate * 100) = round(7/10 * 100) = 70
-      expect(alice.progressPercent).toBe(70);
+      // load = round(estimate/capacity * 100) = round(10/40 * 100) = 25 (US-145)
+      expect(alice.progressPercent).toBe(25);
 
       // Bob's group
       const bob = result.groups.find((g) => g.owner.id === 'bob')!;
       expect(bob.taskCount).toBe(1);
       expect(bob.estimateHours).toBe(3);
-      // progress = round(actual/estimate * 100) = round(0/3 * 100) = 0
-      expect(bob.progressPercent).toBe(0);
+      // load ignores Actuals: 3h planned against 40h reads 8% with nothing logged yet —
+      // under the old actual/estimate formula this member read 0% (the US-145 report).
+      expect(bob.progressPercent).toBe(8);
 
       // Totals
       expect(result.totals.estimateHours).toBe(13); // 10 + 3
@@ -307,6 +308,25 @@ describe('TeamStatusService', () => {
       expect(result.groups[0].capacityHours).toBe(0);
     });
 
+    it('passes a never-entered hour through as null, and counts it as 0 only in the sums', async () => {
+      repo.getTaskRows.mockResolvedValue([
+        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: null, todoHours: '2' }),
+        makeRawRow({ id: 't2', assigneeId: 'alice', estimateHours: '4', actualHours: null }),
+      ]);
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
+      repo.getCapacities.mockResolvedValue(new Map([['alice', 40]]));
+
+      const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
+      const [t1, t2] = result.groups[0].tasks;
+      // A cleared cell must refetch as "not entered", never as a 0 nobody typed.
+      expect(t1.estimateHours).toBeNull();
+      expect(t2.actualHours).toBeNull();
+      // A sum has to be a number: the null contributes 0.
+      expect(result.groups[0].estimateHours).toBe(4);
+      expect(result.groups[0].actualHours).toBe(5); // t1's default '5' + t2's null
+      expect(result.totals.estimateHours).toBe(4);
+    });
+
     it('returns empty groups and zero totals when no tasks exist', async () => {
       repo.getTaskRows.mockResolvedValue([]);
 
@@ -326,24 +346,36 @@ describe('TeamStatusService', () => {
       expect(result.iteration.endDate).toBe('2024-06-11');
     });
 
-    it('caps progressPercent at 100 when actual exceeds estimate', async () => {
+    it("reads the BA's example: 8h estimated against 60h capacity is 13% load (US-145)", async () => {
       repo.getTaskRows.mockResolvedValue([
-        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '5', actualHours: '8' }),
+        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '8', actualHours: '0' }),
+      ]);
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
+      repo.getCapacities.mockResolvedValue(new Map([['alice', 60]]));
+
+      const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
+      // round(8/60 * 100) = round(13.33) = 13
+      expect(result.groups[0].progressPercent).toBe(13);
+    });
+
+    it('does NOT cap load at 100 — an over-committed member reads above it', async () => {
+      repo.getTaskRows.mockResolvedValue([
+        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '50', actualHours: '0' }),
       ]);
       repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
       repo.getCapacities.mockResolvedValue(new Map([['alice', 40]]));
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
-      // progress = min(100, round(8/5 * 100)) = min(100, 160) = 100
-      expect(result.groups[0].progressPercent).toBe(100);
+      // round(50/40 * 100) = 125
+      expect(result.groups[0].progressPercent).toBe(125);
     });
 
-    it('returns 0% progress when estimate is 0', async () => {
+    it('returns 0% load when no capacity is entered, whatever the estimate', async () => {
       repo.getTaskRows.mockResolvedValue([
-        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '0', actualHours: '3' }),
+        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '6', actualHours: '3' }),
       ]);
       repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
-      repo.getCapacities.mockResolvedValue(new Map([['alice', 40]]));
+      repo.getCapacities.mockResolvedValue(new Map());
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
       expect(result.groups[0].progressPercent).toBe(0);

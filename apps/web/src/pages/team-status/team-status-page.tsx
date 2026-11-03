@@ -2,7 +2,8 @@
  * Track › Team Status — P3.1
  *
  * Dense grouped table of task-level rows per iteration, grouped by
- * owner/member. Features inline editing for Capacity, Task Name, and Task State.
+ * owner/member. Inline editing: Capacity (member row); Task Name, Task State, Estimate,
+ * To Do and Actuals (task row).
  * Iteration selector reuses the same pattern as Iteration Status.
  */
 /* eslint-disable react-hooks/set-state-in-effect */
@@ -20,6 +21,8 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { PERMISSION } from '@/shared/config/permissions'
 import { useIterationOptions } from '@/features/iterations/api'
+import { useUpdateWorkItem } from '@/features/work-items/api'
+import { useFieldCommit } from '@/shared/lib/hooks/use-field-commit'
 import {
   useTeamStatus,
   useUpdateCapacity,
@@ -65,14 +68,17 @@ const TEAM_TASK_STATES: TeamTaskState[] = ['Defined', 'In-Progress', 'Completed'
  * cannot be reused — it emits a canonical `ScheduleState`, and this surface's PATCH
  * takes `Defined | In-Progress | Completed` (P3-TS-FR-022).
  *
- * `letter` is deliberately EMPTY. The stepper prints it inside the active box, and
- * SRS §5:87 / `P3-TS-FR-045` forbid the value collapsing to `D` / `P` / `C` — the
- * full label is rendered beside the track instead (see the cell).
+ * `letter` is the SAME first-letter rule `SIMPLIFIED_STATE_STEPS` uses (D / I / C), so the
+ * track is identical to Iteration Status' task rows (US-145: "the state bar must match the
+ * rest of the app"). It used to be EMPTY with the full label printed beside the track, on
+ * `P3-TS-FR-045`'s "no collapse to D / P / C" — which made this the one grid that drew the
+ * control differently. The full label is still every segment's tooltip, and the group's
+ * accessible name carries the current value.
  */
 const TEAM_TASK_STATE_STEPS: StateStep<TeamTaskState>[] = SIMPLIFIED_STATE_ORDER.map((s) => ({
   value: SIMPLIFIED_STATE_LABEL[s] as TeamTaskState,
   label: SIMPLIFIED_STATE_LABEL[s],
-  letter: '',
+  letter: SIMPLIFIED_STATE_LABEL[s].charAt(0).toUpperCase(),
   activeBg: SIMPLIFIED_STATE_CONFIG[s].activeBg,
 }))
 
@@ -95,10 +101,9 @@ const TEAM_STATUS_COLUMNS: ColumnSpec<TeamStatusTaskRow, unknown, ColKey>[] = [
   { key: 'name', label: 'Task Name', defaultWidth: 240, minWidth: 150, locked: true },
   { key: 'workProduct', label: 'Work Product', defaultWidth: 140 },
   { key: 'release', label: 'Release', defaultWidth: 96 },
-  // 150, not 112: the cell is now the 48px segmented track plus a 6px gap plus the
-  // full state label, and "In-Progress" needs ~78px at 12px — at 112 the label that
-  // `P3-TS-FR-045` requires was the part that truncated.
-  { key: 'state', label: 'State', defaultWidth: 150, minWidth: 132 },
+  // Task rows hold only the 48px stepper now; the width is for the MEMBER row, whose
+  // load bar and its "125%" label sit in this column.
+  { key: 'state', label: 'State', defaultWidth: 136, minWidth: 104 },
   {
     key: 'capacity',
     label: 'Capacity',
@@ -124,23 +129,49 @@ const TEAM_STATUS_COLUMNS: ColumnSpec<TeamStatusTaskRow, unknown, ColKey>[] = [
     align: 'right',
     sortCol: 'actuals',
   },
-  { key: 'owner', label: 'Owner', defaultWidth: 96 },
+  // 180, not 96: at 96 an ordinary Vietnamese full name ("Nam Nguyen Hao") wrapped to
+  // three lines and set the height of every task row. The cell also clips (`truncate`)
+  // with the full name as its tooltip, so a longer name still costs one line.
+  { key: 'owner', label: 'Owner', defaultWidth: 180, minWidth: 120 },
 ]
 
 /**
- * Member progress bar — Rally Team Status style: a percentage label above a
- * green fill bar. The percentage is task completion (actual / estimate hours,
- * capped at 100) per Team_Status SRS §10, shown for each member group row.
+ * Member LOAD bar — a percentage label above a fill bar: planned Estimate as a share of
+ * Capacity (US-145, see `memberProgressPercent`).
+ *
+ * - Over 100% is over-commitment: the label keeps the real number and both turn red,
+ *   while the fill clamps at the track's width.
+ * - No capacity entered reads `--`, not `0%` — "nothing to measure against" and "nothing
+ *   planned" are different claims, and the first is fixed by typing a Capacity.
  */
-function ProgressBar({ percent }: { percent: number }) {
-  const clamped = Math.min(Math.max(percent, 0), 100)
+function ProgressBar({
+  percent,
+  capacityHours,
+  estimateHours,
+}: {
+  percent: number
+  capacityHours: number
+  estimateHours: number
+}) {
+  const noCapacity = !(capacityHours > 0)
+  const over = !noCapacity && percent > 100
+  const clamped = noCapacity ? 0 : Math.min(Math.max(percent, 0), 100)
+  const title = noCapacity
+    ? 'Capacity not set — enter a Capacity to measure load'
+    : `${estimateHours}h estimated of ${capacityHours}h capacity`
+  let tone = 'text-success'
+  if (noCapacity) tone = 'text-foreground-subtle'
+  else if (over) tone = 'text-destructive'
   return (
-    <div className="flex w-full flex-col gap-[3px]">
-      <span className="text-ui-xs leading-none font-semibold text-success tabular-nums">
-        {percent}%
+    <div className="flex w-full flex-col gap-[3px]" title={title}>
+      <span className={`text-ui-xs leading-none font-semibold tabular-nums ${tone}`}>
+        {noCapacity ? EMPTY_VALUE : `${percent}%`}
       </span>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-border-subtle">
-        <div className="h-full rounded-full bg-success" style={{ width: `${clamped}%` }} />
+        <div
+          className={`h-full rounded-full ${over ? 'bg-destructive' : 'bg-success'}`}
+          style={{ width: `${clamped}%` }}
+        />
       </div>
     </div>
   )
@@ -153,6 +184,9 @@ export function TeamStatusPage() {
   const teamId = team?.teamId
   const { can } = useProjectPermissions(projectId)
   const canEdit = can('team_status:edit')
+  // Task hours are written through `PATCH /v1/work-items/:id` (the route the Tasks tab and
+  // Iteration Status use), so they are gated on THAT route's code, not on `team_status:edit`.
+  const canEditHours = can(PERMISSION.WORK_ITEM_EDIT)
 
   // ── Shared table engine (identical to projects/releases): resize + reorder + show/hide ──
   // Must be declared before any early returns to satisfy Rules of Hooks.
@@ -303,18 +337,16 @@ export function TeamStatusPage() {
           const sumH = (key: 'estimateHours' | 'todoHours' | 'actualHours') =>
             tasks.reduce((s, t) => s + (Number(t[key]) || 0), 0)
           const estimateHours = sumH('estimateHours')
-          const actualHours = sumH('actualHours')
           return {
             ...g,
             tasks,
             taskCount: tasks.length,
             estimateHours,
             todoHours: sumH('todoHours'),
-            actualHours,
-            // The SAME §10 formula the server applies to the unfiltered group — see
-            // `memberProgressPercent`. This used to be a task-COUNT ratio, so the
-            // bar changed definition the moment a filter was applied.
-            progressPercent: memberProgressPercent(estimateHours, actualHours),
+            actualHours: sumH('actualHours'),
+            // The SAME load formula the server applies to the unfiltered group — see
+            // `memberProgressPercent`. Capacity is the member's, not the filter's.
+            progressPercent: memberProgressPercent(estimateHours, g.capacityHours),
           }
         })
         .filter((g) => g.tasks.length > 0)
@@ -455,6 +487,7 @@ export function TeamStatusPage() {
             teamId={teamId}
             iterationId={selectedId!}
             canEdit={canEdit}
+            canEditHours={canEditHours}
             colStyles={colStyles}
             onOpenItem={(itemKey) => {
               if (itemKey) navigate({ to: '/item/$itemKey', params: { itemKey } })
@@ -477,6 +510,7 @@ function MemberGroup({
   teamId,
   iterationId,
   canEdit,
+  canEditHours,
   colStyles,
   onOpenItem,
   onOpenRelease,
@@ -486,6 +520,7 @@ function MemberGroup({
   teamId: string | undefined
   iterationId: string
   canEdit: boolean
+  canEditHours: boolean
   colStyles: Record<string, React.CSSProperties>
   onOpenItem: (itemKey: string) => void
   onOpenRelease: (releaseId: string) => void
@@ -570,9 +605,13 @@ function MemberGroup({
         </div>
         <div className="shrink-0" style={colStyles.workProduct} />
         <div className="shrink-0" style={colStyles.release} />
-        {/* State column shows the member task-completion progress bar. */}
+        {/* State column shows the member's load bar (Estimate / Capacity). */}
         <div className="flex shrink-0 flex-col justify-center px-2" style={colStyles.state}>
-          <ProgressBar percent={group.progressPercent} />
+          <ProgressBar
+            percent={group.progressPercent}
+            capacityHours={group.capacityHours}
+            estimateHours={group.estimateHours}
+          />
         </div>
         {/* Capacity (editable on group row — P3-TS-FR-017) */}
         <div
@@ -618,6 +657,7 @@ function MemberGroup({
             key={task.id}
             task={task}
             canEdit={canEdit}
+            canEditHours={canEditHours}
             colStyles={colStyles}
             onOpenItem={onOpenItem}
             onOpenRelease={onOpenRelease}
@@ -632,17 +672,38 @@ function MemberGroup({
 function TaskRow({
   task,
   canEdit,
+  canEditHours,
   colStyles,
   onOpenItem,
   onOpenRelease,
 }: {
   task: TeamStatusTaskRow
   canEdit: boolean
+  canEditHours: boolean
   colStyles: Record<string, React.CSSProperties>
   onOpenItem: (itemKey: string) => void
   onOpenRelease: (releaseId: string) => void
 }) {
   const updateTask = useUpdateTeamTask()
+  // Hours go through the WORK-ITEM route, never the Team Status task route (which refuses
+  // them, `.strict()`), so the once-only Estimate -> To Do copy and the completion auto-zero
+  // stay in `WorkItemsService` — see CLAUDE.md, "Editing Estimate on Team Status must send
+  // `estimateHours` ALONE". Each cell sends its OWN field and nothing else.
+  const updateHours = useUpdateWorkItem(task.id)
+  const { saveNumber } = useFieldCommit(updateHours)
+  const commitHours = (
+    field: 'estimateHours' | 'todoHours' | 'actualHours',
+    label: string,
+    raw: string,
+  ) => {
+    if (raw.trim() === String(task[field] ?? '')) return
+    saveNumber(
+      raw,
+      (n) => ({ [field]: n }),
+      `${label} updated`,
+      `${label} must be a positive number`,
+    )
+  }
 
   function commitTitle(raw: string) {
     const trimmed = raw.trim()
@@ -768,7 +829,7 @@ function TaskRow({
           is how they drift. The label is what makes this surface's rendering different
           from theirs, and it is required here. */}
       <div
-        className="flex shrink-0 items-center gap-1.5 px-2"
+        className="flex shrink-0 items-center px-2"
         style={colStyles.state}
         onClick={(e) => e.stopPropagation()}
       >
@@ -777,42 +838,76 @@ function TaskRow({
           value={task.state}
           canEdit={canEdit}
           onChange={handleStateChange}
-          ariaLabel="Task state"
+          ariaLabel={`Task state: ${task.state}`}
         />
-        <span className="truncate text-ui-xs text-foreground">{task.state}</span>
       </div>
       {/* Capacity (empty on task row — P3-TS-FR-024) */}
       <div className="shrink-0 px-2" style={colStyles.capacity} />
-      {/* Estimate / ToDo / Actuals — READ-ONLY here (P3-TS-FR-026: "shown as
-          numeric hour values"; §11 gives this surface Capacity, Task Name and Task
-          State and nothing else; §9.3's patch accepts `title` and/or `state`). They
-          are inline editable on the Task Dashboard — Work Item Detail › Tasks tab,
-          P3-TS-FR-038 — which writes through the work-item route. */}
-      <div className="shrink-0 px-2 text-right" style={colStyles.estimate}>
-        <HoursCell value={task.estimateHours} />
+      {/* Estimate / To Do / Actuals — inline editable (US-145, BA). This REVERSES the
+          read-only reading of P3-TS-FR-026 / §11; the write goes through the work-item
+          route exactly as the Tasks tab and Iteration Status do (see `commitHours`). */}
+      <div className="shrink-0 px-0 text-right" style={colStyles.estimate}>
+        <HoursCell
+          value={task.estimateHours}
+          canEdit={canEditHours}
+          ariaLabel="Estimate"
+          onCommit={(v) => commitHours('estimateHours', 'Estimate', v)}
+        />
       </div>
-      <div className="shrink-0 px-2 text-right" style={colStyles.todo}>
-        <HoursCell value={task.todoHours} />
+      <div className="shrink-0 px-0 text-right" style={colStyles.todo}>
+        <HoursCell
+          value={task.todoHours}
+          canEdit={canEditHours}
+          ariaLabel="To Do"
+          onCommit={(v) => commitHours('todoHours', 'To Do', v)}
+        />
       </div>
-      <div className="shrink-0 px-2 text-right" style={colStyles.actuals}>
-        <HoursCell value={task.actualHours} />
+      <div className="shrink-0 px-0 text-right" style={colStyles.actuals}>
+        <HoursCell
+          value={task.actualHours}
+          canEdit={canEditHours}
+          ariaLabel="Actuals"
+          onCommit={(v) => commitHours('actualHours', 'Actuals', v)}
+        />
       </div>
       {/* Owner — READ-ONLY (P3-TS-FR-027: the column "displays the task owner
           name"). Reassignment happens on the Task Dashboard: the rows here are
           GROUPED by owner, so editing it from inside a member's own group moves the
           row out of the group it is drawn in. */}
-      <div className="shrink-0 px-2" style={colStyles.owner}>
-        <OwnerCell name={task.owner.id ? task.owner.displayName : null} />
+      <div className="shrink-0 overflow-hidden px-2" style={colStyles.owner}>
+        <OwnerCell name={task.owner.id ? task.owner.displayName : null} truncate />
       </div>
     </div>
   )
 }
 
-/** One absent-safe hours cell — `EMPTY_VALUE`, never `0`, when there is no number. */
-function HoursCell({ value }: { value: number | null }) {
+/**
+ * One absent-safe, inline-editable hours cell — `EMPTY_VALUE`, never `0`, when there is no
+ * number. Blank on commit CLEARS the field (`useFieldCommit.saveNumber`); it does not write 0.
+ */
+function HoursCell({
+  value,
+  canEdit,
+  ariaLabel,
+  onCommit,
+}: {
+  value: number | null
+  canEdit: boolean
+  ariaLabel: string
+  onCommit: (raw: string) => void
+}) {
   return (
-    <span className="font-mono text-ui-sm text-muted-foreground tabular-nums">
-      {value ?? EMPTY_VALUE}
-    </span>
+    <div onClick={(e) => e.stopPropagation()}>
+      <InlineEditableCell
+        fullCell
+        value={value == null ? '' : String(value)}
+        displayValue={value ?? EMPTY_VALUE}
+        canEdit={canEdit}
+        onCommit={onCommit}
+        className="font-mono text-ui-sm text-muted-foreground tabular-nums"
+        inputClassName="text-right font-mono text-ui-sm text-foreground"
+        ariaLabel={ariaLabel}
+      />
+    </div>
   )
 }

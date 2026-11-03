@@ -1,12 +1,14 @@
 /**
- * Team Status — the read-only contract, and the one progress formula (P23-14).
+ * Team Status — what is editable, the state control, and the one load formula.
  *
- * Two defects are pinned here. The grid offered inline editors for Estimate, ToDo, Actuals and
- * Owner, which the SRS makes reads on this surface: §9.3's patch accepts "`title` and/or `state`",
- * §11's editable columns are Capacity / Task Name / Task State, FR-026 SHOWS the hours and FR-027
- * DISPLAYS the owner. (They stay editable on the Task Dashboard — Work Item Detail › Tasks tab,
- * FR-038 — which writes through the work-item route.) And the member progress bar switched FORMULA
- * under the State filter: hours-burned unfiltered, completed-task-COUNT filtered.
+ * US-145 (BA) reverses two earlier readings that this file used to pin:
+ * - Estimate / To Do / Actuals are inline editable on the task rows (were reads per FR-026 / §11).
+ *   They write through `PATCH /v1/work-items/:id`, never the Team Status task route. Owner stays a
+ *   read (FR-027): the rows are grouped by it.
+ * - The member bar is LOAD — Estimate / Capacity — not hours burned (SRS §10's actual / estimate),
+ *   which read 0% for every member with planned work and no Actuals logged.
+ * And the bar must keep ONE formula under the State filter: it once switched to a completed-task
+ * COUNT when filtered.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -69,11 +71,13 @@ import { apiClient } from '@/shared/api/http-client'
 import { TeamStatusPage } from './team-status-page'
 
 const mockGET = apiClient.GET as ReturnType<typeof vi.fn>
+const mockPATCH = apiClient.PATCH as ReturnType<typeof vi.fn>
 
 /**
- * Alice owns two tasks. The numbers are chosen so the two candidate progress formulas DISAGREE
- * under the filter: over the Completed task alone, hours give 3/6 = 50% while the completed-count
- * ratio gives 1/1 = 100%. Unfiltered, the server's own §10 value is 3/10 = 30%.
+ * Alice owns two tasks against 40h of capacity. The numbers are chosen so every candidate formula
+ * DISAGREES under the filter: over the Completed task alone, load is 6/40 = 15%, the old
+ * actual / estimate is 3/6 = 50% and the completed-count ratio 1/1 = 100%. Unfiltered, the
+ * server's load is 10/40 = 25%.
  */
 const TEAM_STATUS = {
   projectId: 'p-1',
@@ -88,7 +92,7 @@ const TEAM_STATUS = {
       estimateHours: 10,
       todoHours: 7,
       actualHours: 3,
-      progressPercent: 30,
+      progressPercent: 25,
       tasks: [
         {
           id: 'ta-1',
@@ -170,47 +174,123 @@ describe('Team Status — a failed iteration feed is not an empty project', () =
   })
 })
 
-describe('Team Status read-only fields', () => {
-  it('opens an editor for Task Name but NOT for Estimate, ToDo or Actuals', async () => {
+describe('Team Status task hours are inline editable (US-145)', () => {
+  it('opens an editor for Task Name AND for Estimate, To Do and Actuals; Owner stays a read', async () => {
     const { container } = renderPage()
     await expandAlice()
     await screen.findByText('DEV - wire SSO')
 
     /**
      * `.inline-edit-cell` is the hover affordance `InlineEditableCell` adds only when the cell is
-     * editable, so counting it counts the editors on screen. Expected: the member group's Capacity
-     * (FR-017) plus one Task Name per task row (FR-019) — three. It was seven: each task row also
-     * carried Estimate, ToDo and Actuals.
+     * editable, so counting it counts the editors on screen: the member group's Capacity, then per
+     * task row Task Name + Estimate + To Do + Actuals — 1 + 2 × 4 = 9. It was 3 while the BA's
+     * earlier reading kept the hours read-only on this surface.
      */
-    expect(container.querySelectorAll('.inline-edit-cell')).toHaveLength(3)
-
-    // The Task State control stays (FR-021/AC-17); the Owner picker is gone (FR-027).
-    // It is the shared segmented stepper now, so it is a `group`, not a `combobox`.
-    expect(screen.getAllByRole('group', { name: 'Task state' })).toHaveLength(2)
+    expect(container.querySelectorAll('.inline-edit-cell')).toHaveLength(9)
+    // Owner is still a read: the rows are GROUPED by owner (FR-027).
     expect(screen.queryByRole('combobox', { name: /owner/i })).toBeNull()
-
-    /**
-     * FR-045 / SRS §5:87 — the state must read as a FULL label, never as a bare `D` / `P` / `C`.
-     * Asserting the words is what pins the rule; asserting the control TYPE only pinned one way of
-     * satisfying it, which is what this test used to do. The two fixture tasks are Completed and
-     * Defined, so both labels must be on screen.
-     */
-    expect(screen.getByText('Completed')).toBeTruthy()
-    expect(screen.getByText('Defined')).toBeTruthy()
   })
 
-  it('renders the hours as values, not inputs, and never as a zero it cannot prove', async () => {
+  it('writes Estimate through the work-item route, ALONE', async () => {
+    mockPATCH.mockResolvedValue({
+      data: { id: 'ta-1', itemKey: 'TA-1', projectId: 'p-1' },
+      error: undefined,
+      response: { status: 200 },
+    })
     renderPage()
     await expandAlice()
     await screen.findByText('DEV - wire SSO')
 
-    // The numbers are still THERE — read-only is not invisible.
-    expect(screen.getByText('6')).toBeTruthy()
-    expect(screen.getByText('5')).toBeTruthy()
-    // Clicking a value opens nothing: with the editors in place this rendered an
-    // <input aria-label="Estimate hours">.
+    fireEvent.click(screen.getByText('6'))
+    const input = await screen.findByRole('textbox', { name: 'Estimate' })
+    fireEvent.change(input, { target: { value: '8' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    /**
+     * `estimateHours` and nothing else — CLAUDE.md, "Editing Estimate on Team Status must send
+     * `estimateHours` ALONE": a `todoHours` beside it would bypass the service's once-only copy gate
+     * and re-inflate a completed task's auto-zeroed To Do. And the WORK-ITEM route, not
+     * `/team-status/tasks/:id`, which refuses hours (`.strict()`).
+     */
+    await waitFor(() =>
+      expect(mockPATCH).toHaveBeenCalledWith('/v1/work-items/{id}', {
+        params: { path: { id: 'ta-1' } },
+        body: { estimateHours: 8 },
+      }),
+    )
+  })
+
+  it('renders a never-entered hour as `--`, not 0 — the state a cleared cell refetches into', async () => {
+    const [alice] = TEAM_STATUS.groups
+    mockGET.mockResolvedValue({
+      data: {
+        ...TEAM_STATUS,
+        groups: [
+          {
+            ...alice,
+            tasks: [{ ...alice.tasks[0], estimateHours: null }, alice.tasks[1]],
+          },
+        ],
+      },
+      error: undefined,
+      response: { status: 200 },
+    })
+    renderPage()
+    await expandAlice()
+    await screen.findByText('DEV - wire SSO')
+
+    // TA-1's Estimate cell shows the empty marker; its old value (6) is gone from the grid.
+    expect(screen.getAllByText('--').length).toBeGreaterThan(0)
+    expect(screen.queryByText('6')).toBeNull()
+  })
+
+  it('sends null, not 0, when an hour cell is cleared', async () => {
+    mockPATCH.mockResolvedValue({
+      data: { id: 'ta-1', itemKey: 'TA-1', projectId: 'p-1' },
+      error: undefined,
+      response: { status: 200 },
+    })
+    renderPage()
+    await expandAlice()
+    await screen.findByText('DEV - wire SSO')
+
+    fireEvent.click(screen.getByText('6'))
+    const input = await screen.findByRole('textbox', { name: 'Estimate' })
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(mockPATCH).toHaveBeenCalledWith('/v1/work-items/{id}', {
+        params: { path: { id: 'ta-1' } },
+        body: { estimateHours: null },
+      }),
+    )
+  })
+
+  it('offers no hours editor to a caller without work_item:edit', async () => {
+    grantedCodes.deny = 'work_item:edit'
+    const { container } = renderPage()
+    await expandAlice()
+    await screen.findByText('DEV - wire SSO')
+
+    // Capacity + two Task Names (team_status:edit) remain; the six hour cells are values.
+    expect(container.querySelectorAll('.inline-edit-cell')).toHaveLength(3)
     fireEvent.click(screen.getByText('6'))
     expect(screen.queryByRole('textbox')).toBeNull()
+  })
+})
+
+describe('Team Status task state matches the rest of the app', () => {
+  it('renders the shared stepper with its letter in the current box, like Iteration Status', async () => {
+    renderPage()
+    await expandAlice()
+    await screen.findByText('DEV - wire SSO')
+
+    // Same D / I / C first-letter rule as `SIMPLIFIED_STATE_STEPS`; the value is in the name.
+    const completed = screen.getByRole('group', { name: 'Task state: Completed' })
+    const defined = screen.getByRole('group', { name: 'Task state: Defined' })
+    expect(completed.querySelector('[data-current="true"]')?.textContent).toBe('C')
+    expect(defined.querySelector('[data-current="true"]')?.textContent).toBe('D')
   })
 })
 
@@ -229,11 +309,12 @@ describe('the Unassigned group has no capacity to plan', () => {
         ...TEAM_STATUS.groups[0],
         owner: { id: 'unassigned', displayName: 'Unassigned', avatarUrl: null },
         capacityHours: 0,
+        progressPercent: 0,
       },
     ],
   }
 
-  it('renders its Capacity as a value, not an editor, for a caller with full rights', async () => {
+  it('renders its Capacity as a value, not an editor, and its load as unmeasurable', async () => {
     mockGET.mockResolvedValue({
       data: UNASSIGNED_GROUP,
       error: undefined,
@@ -243,21 +324,24 @@ describe('the Unassigned group has no capacity to plan', () => {
     fireEvent.click(await screen.findByText('Unassigned'))
     await screen.findByText('DEV - wire SSO')
 
-    // Only the two Task Name cells remain editable — the group Capacity is gone from the count.
-    expect(container.querySelectorAll('.inline-edit-cell')).toHaveLength(2)
+    // Two Task Names + 2 × 3 hour cells remain editable — the group Capacity is gone from the count.
+    expect(container.querySelectorAll('.inline-edit-cell')).toHaveLength(8)
     expect(screen.queryByRole('textbox', { name: 'Capacity' })).toBeNull()
+    // No capacity → no load to measure: `--` with a reason, never a `0%` that reads as "nothing planned".
+    expect(screen.getByTitle(/Capacity not set/)).toBeTruthy()
+    expect(screen.queryByText('0%')).toBeNull()
   })
 })
 
-describe('the member progress bar keeps ONE formula under a filter', () => {
-  it('shows the §10 hours ratio unfiltered', async () => {
+describe('the member load bar is Estimate / Capacity, and keeps ONE formula under a filter', () => {
+  it("shows the server's load unfiltered", async () => {
     renderPage()
-    expect(await screen.findByText('30%')).toBeTruthy()
+    expect(await screen.findByText('25%')).toBeTruthy()
   })
 
-  it('re-measures the SAME formula over the filtered rows — not a task count', async () => {
+  it('re-measures the SAME formula over the filtered rows — not a task count, not Actuals', async () => {
     renderPage()
-    await screen.findByText('30%')
+    await screen.findByText('25%')
 
     // The State filter lives behind the shared toolbar's Filters disclosure (FR-007A).
     fireEvent.click(screen.getByRole('button', { name: /filters/i }))
@@ -265,10 +349,25 @@ describe('the member progress bar keeps ONE formula under a filter', () => {
       target: { value: 'Completed' },
     })
 
-    // 3 actual / 6 estimate over the one visible task. The count ratio the page used to switch to
-    // would read 100% — one Completed task out of one visible.
-    await waitFor(() => expect(screen.getByText('50%')).toBeTruthy())
+    // 6h estimate / 40h capacity over the one visible task = 15%. The task-count ratio would read
+    // 100% and the old actual / estimate formula 50%.
+    await waitFor(() => expect(screen.getByText('15%')).toBeTruthy())
     expect(screen.queryByText('100%')).toBeNull()
+    expect(screen.queryByText('50%')).toBeNull()
+  })
+
+  it('reads an over-committed member above 100%, in red', async () => {
+    mockGET.mockResolvedValue({
+      data: {
+        ...TEAM_STATUS,
+        groups: [{ ...TEAM_STATUS.groups[0], capacityHours: 8, progressPercent: 125 }],
+      },
+      error: undefined,
+      response: { status: 200 },
+    })
+    renderPage()
+    const label = await screen.findByText('125%')
+    expect(label.className).toMatch(/text-destructive/)
   })
 })
 
@@ -281,6 +380,10 @@ describe('P3-TS-FR-039 — an Editor gets Team Status read-only', () => {
    * this screen (`PATCH /team-status/capacity`, `PATCH /team-status/tasks/:taskId`) answer 403. This
    * asserts the SCREEN agrees: a control that is offered and then refused is the failure mode this
    * repo keeps finding, and it reads to the user as the save silently not sticking.
+   *
+   * The task HOURS are not a Team Status mutation: they write through `PATCH /v1/work-items/:id`,
+   * gated on `work_item:edit`, which an Editor holds — the same cells they already edit on Iteration
+   * Status and the Tasks tab. So they stay editable here, and that is asserted, not tolerated.
    */
   it('offers no capacity editor, no task-name editor and a disabled Task State control', async () => {
     grantedCodes.deny = 'team_status:edit'
@@ -293,9 +396,8 @@ describe('P3-TS-FR-039 — an Editor gets Team Status read-only', () => {
     await expandAlice()
     await screen.findByText('DEV - wire SSO')
 
-    // No cell carries the editable affordance at all — capacity on the member row, task name on the
-    // task rows. The class is what `InlineEditableCell` adds only when `canEdit`.
-    expect(container.querySelectorAll('.inline-edit-cell')).toHaveLength(0)
+    // Only the 2 × 3 hour cells carry the editable affordance — no Capacity, no Task Name.
+    expect(container.querySelectorAll('.inline-edit-cell')).toHaveLength(6)
     expect(screen.queryByRole('textbox', { name: 'Capacity' })).toBeNull()
     /**
      * Task State is the shared segmented stepper. Its read-only form still RENDERS — the reader
@@ -303,13 +405,10 @@ describe('P3-TS-FR-039 — an Editor gets Team Status read-only', () => {
      * `StateStepper` emits a `<span>` per segment when it cannot act, deliberately, so a read-only
      * stepper does not put six dead buttons per row into the accessibility tree.
      */
-    const steppers = screen.getAllByRole('group', { name: 'Task state' })
+    const steppers = screen.getAllByRole('group', { name: /^Task state/ })
     expect(steppers).toHaveLength(2)
     for (const stepper of steppers) {
       expect(stepper.querySelectorAll('button')).toHaveLength(0)
     }
-    // And the full label is still shown (FR-045), read-only or not.
-    expect(screen.getByText('Completed')).toBeTruthy()
-    expect(screen.getByText('Defined')).toBeTruthy()
   })
 })
