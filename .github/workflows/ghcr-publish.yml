@@ -35,9 +35,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # One GHCR publish per product at a time (the reusable declares the same
-  # group); a push racing a workflow_dispatch serialises instead of racing.
-  group: ghcr-publish-backend-rova
+  # One GHCR publish per product PER COMMIT, never one per product: GitHub keeps
+  # only ONE pending run per group, so a newer main push could REPLACE the queued
+  # run for the previous commit even with cancel-in-progress false — that commit
+  # would never be built. (The ci reusable declares its own product-wide group and
+  # has the same flaw; the per-sha form ships there in the next ci release.)
+  group: ghcr-publish-backend-rova-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -53,7 +56,7 @@ jobs:
       attestations: write
     # SHA-pinned, NOT @v1 — ci's v1 tag moves on every merge, and a moving ref
     # would let a ci merge change this product's publish pipeline unseen.
-    uses: quynhonsemiconductor/ci/.github/workflows/ghcr-publish.yml@7e8f6136a017c7b1f57a2e9a288dae3cd008950f # v1.31.1
+    uses: quynhonsemiconductor/ci/.github/workflows/ghcr-publish.yml@af30ee9edccfda320d0207c056a6c7271774857b # v1.33.0
     with:
       product: rova
       services-json: '["api","worker","migrator"]'
@@ -80,7 +83,7 @@ jobs:
       packages: write
       id-token: write
       attestations: write
-    uses: quynhonsemiconductor/ci/.github/workflows/ghcr-publish.yml@7e8f6136a017c7b1f57a2e9a288dae3cd008950f # v1.31.1
+    uses: quynhonsemiconductor/ci/.github/workflows/ghcr-publish.yml@af30ee9edccfda320d0207c056a6c7271774857b # v1.33.0
     with:
       product: rova
       services-json: '["web"]'
@@ -88,12 +91,26 @@ jobs:
       platforms: linux/amd64
       build_runner: ubuntu-24.04
 
-  # rova-dev follows main: the bot opens a PR `bump/rova-dev-sha-<12>` that sets tag + digest in
-  # gitops values/rova/tags.dev.yaml and enables auto-merge (squash). gitops `bot-scope` lets a bot
-  # PR merge without a human only when it touches nothing but values/*/tags.dev.yaml. Prod never
-  # goes through here.
+  # rova-dev follows main: ONE dev bump per product.
+  #
+  # Why not the reusable's `bump-dev` input on both publish calls: both calls are
+  # the same commit, so both would target the SAME branch `bump/rova-dev-<tag>`;
+  # the concurrency group serialises them, but the action creates+pushes the
+  # branch (no force, no ls-remote check), so the second push is rejected and the
+  # run is red. One job that needs both calls and makes ONE bump call is the
+  # "merge web into one call" option.
+  #
+  # Only services that exist in gitops values/rova are written. `web` is built and
+  # published but gitops has no web image yet (D's chart); it joins the list when
+  # the chart lands. Extra digests in the map are harmless (the action writes the
+  # services it is given).
   bump-dev:
-    needs: publish
+    needs: [publish, publish-web]
+    # Only a main push that fully published bumps dev. A dispatch from another
+    # branch runs the publishes (which guard themselves on refs/heads/main) but
+    # must not touch gitops; a failed web build leaves the services half-published
+    # at this sha, so it does not move dev either.
+    if: ${{ github.ref == 'refs/heads/main' && needs.publish.result == 'success' && needs.publish-web.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -113,13 +130,23 @@ jobs:
           repositories: gitops
           permission-contents: write
           permission-pull-requests: write
-      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@7e8f6136a017c7b1f57a2e9a288dae3cd008950f  # v1.31.1
+      # The two publish calls reduce to one digest map. `*` is a shallow merge:
+      # api/worker/migrator and web never share a key.
+      - id: digests
+        env:
+          SERVICES_DIGESTS: ${{ needs.publish.outputs.digests }}
+          WEB_DIGESTS: ${{ needs.publish-web.outputs.digests }}
+        run: |
+          set -euo pipefail
+          merged=$(jq -c -n --argjson a "${SERVICES_DIGESTS:-{}}" --argjson b "${WEB_DIGESTS:-{}}" '$a * $b')
+          echo "digests=$merged" >> "$GITHUB_OUTPUT"
+      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@af30ee9edccfda320d0207c056a6c7271774857b  # v1.33.0
         with:
           product: rova
           env: dev
           services: api worker migrator
           tag: ${{ needs.publish.outputs.tag }}
-          digests: ${{ needs.publish.outputs.digests }}
+          digests: ${{ steps.digests.outputs.digests }}
           mode: pull-request
           auto-merge: 'true'
           gitops-token: ${{ steps.app.outputs.token }}
