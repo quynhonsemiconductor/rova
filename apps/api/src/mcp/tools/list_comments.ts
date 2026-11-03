@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { denied, type ToolContext } from './rest';
+import { createRefResolver, type PersonRef } from './refs';
 
 /** The REST comments route is unpaginated, so the tool caps the feed itself. */
 const MAX_COMMENTS = 100;
@@ -36,6 +37,26 @@ export function shapeComments(all: Record<string, unknown>[]) {
 }
 
 /**
+ * Replaces each comment's `authorId` with `author: { id, name }`. One workspace picker feed
+ * serves the whole page, and a person the feed does not name degrades to `{ id, name: null }`.
+ */
+export async function attachCommentAuthors(
+  comments: Record<string, unknown>[],
+  resolver: ReturnType<typeof createRefResolver>,
+): Promise<Record<string, unknown>[]> {
+  const ids = [
+    ...new Set(comments.map((c) => c['authorId']).filter((id) => typeof id === 'string')),
+  ];
+  const people = new Map<string, PersonRef | null>(
+    await Promise.all(ids.map(async (id) => [id, await resolver.person(id)] as const)),
+  );
+  return comments.map((c) => {
+    const { authorId, ...rest } = c;
+    return { ...rest, author: people.get(String(authorId)) ?? null };
+  });
+}
+
+/**
  * `rova_list_comments` — the comments on one work item (GET /v1/work-items/:workItemId/comments,
  * `work_item:view` on the item). The REST route returns ALL of an item's comments (no page
  * args, no ordering guarantee), so the tool sorts newest-first, caps to 100, truncates
@@ -59,7 +80,9 @@ export function registerListComments(server: McpServer, ctx: ToolContext) {
       });
       if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
       const { truncated, comments } = shapeComments(json as Record<string, unknown>[]);
-      const payload: Record<string, unknown> = { comments };
+      const payload: Record<string, unknown> = {
+        comments: await attachCommentAuthors(comments, createRefResolver(ctx)),
+      };
       if (truncated) payload['truncated'] = true;
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(payload) }],

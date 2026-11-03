@@ -91,6 +91,37 @@ export function listResult(
   };
 }
 
+/**
+ * The async twin of {@link listResult}, for a list whose rows carry ids resolved through a
+ * reference feed before they are relayed (refs.ts). The denial check still happens FIRST, so a
+ * 403 never reaches the mapper.
+ */
+export async function listResultExpanded(
+  statusCode: number,
+  json: unknown,
+  mapItem: (item: Record<string, unknown>) => Promise<Record<string, unknown>>,
+  listKey: string,
+) {
+  if (statusCode >= 400) return denied(statusCode, json);
+  const rows = Array.isArray(json) ? json : (json as { data?: unknown } | null)?.data;
+  if (!Array.isArray(rows)) return denied(statusCode, json);
+  const pageInfo =
+    Array.isArray(json) || (json as { pageInfo?: unknown }).pageInfo === undefined
+      ? {}
+      : { pageInfo: (json as { pageInfo: unknown }).pageInfo };
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({
+          [listKey]: await Promise.all((rows as Record<string, unknown>[]).map(mapItem)),
+          ...pageInfo,
+        }),
+      },
+    ],
+  };
+}
+
 /** Fields a paged REST response may carry; `pageInfo` is passed through untouched. */
 export function pageInfoOf(json: unknown): Record<string, unknown> {
   const page = json as { pageInfo?: unknown };

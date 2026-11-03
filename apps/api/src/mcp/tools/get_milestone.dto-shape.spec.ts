@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MilestoneResponseSchema } from '@modules/milestones/interface/http/dto/milestone-response.dto';
-import { MAX_LINKS, shapeMilestone } from './get_milestone';
+import { MAX_LINKS, resolveMilestoneRefs, shapeMilestone } from './get_milestone';
+import type { RefResolver } from './refs';
 
 /**
  * `rova_get_milestone` composes the MilestoneResponseDto (GET /v1/milestones/:id —
@@ -34,20 +35,29 @@ const MILESTONE_BODY = MilestoneResponseSchema.parse({
   updatedAt: '2026-06-02T00:00:00.000Z',
 });
 
+const RELEASE_REF = {
+  id: '0194a000-0000-7000-8000-000000000004',
+  name: 'Autumn',
+  key: 'RL-7',
+};
+
+const REFS = { owner: null, releases: [RELEASE_REF] };
+
 describe('shapeMilestone (MilestoneResponseDto + junction feeds -> tool payload)', () => {
-  it('maps the milestone row and attaches the three id feeds', () => {
+  it('maps the milestone row and attaches the three feeds, owner and releases by name', () => {
     const out = shapeMilestone(
       MILESTONE_BODY,
       ['0194a000-0000-7000-8000-000000000005'],
       ['0194a000-0000-7000-8000-000000000004'],
       ['0194a000-0000-7000-8000-000000000003'],
+      REFS,
     );
     expect(out).toMatchObject({
       id: MILESTONE_BODY.id,
       milestoneKey: 'MS-1',
       name: 'Beta',
       status: 'planned',
-      ownerId: null,
+      owner: null,
       targetStartDate: '2026-06-01',
       targetEndDate: '2026-06-30',
       progress: {
@@ -59,9 +69,11 @@ describe('shapeMilestone (MilestoneResponseDto + junction feeds -> tool payload)
       },
     });
     expect(out.artifacts).toEqual(['0194a000-0000-7000-8000-000000000005']);
-    expect(out.releases).toEqual(['0194a000-0000-7000-8000-000000000004']);
+    expect(out.releases).toEqual([RELEASE_REF]);
     expect(out.projects).toEqual(['0194a000-0000-7000-8000-000000000003']);
     expect(out['truncated']).toBeUndefined();
+    // the raw ids are not relayed beside their resolved refs
+    expect(out).not.toHaveProperty('ownerId');
   });
 
   it('a nullable milestoneKey stays null, never undefined', () => {
@@ -77,5 +89,35 @@ describe('shapeMilestone (MilestoneResponseDto + junction feeds -> tool payload)
     // exactly AT the cap is not truncated — the route returned everything there was
     const exact = Array.from({ length: MAX_LINKS }, (_, i) => `w${i}`);
     expect(shapeMilestone(MILESTONE_BODY, exact, [], [])['truncated']).toBeUndefined();
+  });
+
+  it('resolves the owner and each linked release across every linked project', async () => {
+    const otherProject = '0194a000-0000-7000-8000-0000000000ab';
+    const seenProjects: unknown[] = [];
+    const resolver = {
+      person: async (id: string) => ({ id, name: 'Ada Lovelace' }),
+      // The release lives in the OTHER project: the milestone's own projectId must not be the
+      // only feed consulted.
+      releaseInProjects: async (id: string, projectIds: unknown[]) => {
+        seenProjects.push(...projectIds);
+        return projectIds.includes(otherProject)
+          ? { id, name: 'Autumn', key: 'RL-7' }
+          : { id, name: null, key: null };
+      },
+    } as unknown as RefResolver;
+
+    await expect(
+      resolveMilestoneRefs(
+        { ...MILESTONE_BODY, ownerId: 'u1' },
+        ['0194a000-0000-7000-8000-000000000004'],
+        resolver,
+        [otherProject],
+      ),
+    ).resolves.toEqual({
+      owner: { id: 'u1', name: 'Ada Lovelace' },
+      releases: [RELEASE_REF],
+    });
+    expect(seenProjects).toContain(MILESTONE_BODY.projectId);
+    expect(seenProjects).toContain(otherProject);
   });
 });

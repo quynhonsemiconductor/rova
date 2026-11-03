@@ -1,7 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { listResult, pageArgs, type ToolContext } from './rest';
-import { toToolWorkItem } from './search_work_items';
+import { listResultExpanded, pageArgs, type ToolContext } from './rest';
+import { createRefResolver } from './refs';
+import { resolveToolWorkItemRefs, toToolWorkItem } from './search_work_items';
 
 /**
  * `rova_list_backlog` — the backlog (stories + defects) of one project the person can read
@@ -29,6 +30,7 @@ export function registerListBacklog(server: McpServer, ctx: ToolContext) {
       },
     },
     async ({ projectId, q, assigneeId, iterationId, statusId, priority, limit, cursor }) => {
+      const resolver = createRefResolver(ctx);
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
         url: '/v1/work-items/backlog',
@@ -43,7 +45,12 @@ export function registerListBacklog(server: McpServer, ctx: ToolContext) {
           cursor,
         },
       });
-      return listResult(statusCode, json, toToolWorkItem, 'items');
+      return listResultExpanded(
+        statusCode,
+        json,
+        async (p) => toToolWorkItem(p, await resolveToolWorkItemRefs(p, resolver)),
+        'items',
+      );
     },
   );
 }

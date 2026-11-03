@@ -71,19 +71,29 @@ const DEFECT_ROW = WorkItemResponseSchema.parse({
 });
 
 describe('shapeWorkItem (WorkItemResponseDto -> tool payload)', () => {
+  const REFS = {
+    assignee: { id: '0194a000-0000-7000-8000-000000000005', name: 'Ada' },
+    devOwner: { id: '0194a000-0000-7000-8000-00000000000c', name: 'Grace' },
+    parent: null,
+    team: { id: '0194a000-0000-7000-8000-000000000006', name: 'Platform', key: 'PLT' },
+    iteration: { id: '0194a000-0000-7000-8000-000000000007', name: 'Sprint 42', key: 'IT-42' },
+    release: { id: '0194a000-0000-7000-8000-000000000008', name: 'Autumn', key: 'RL-7' },
+  };
+
   it('maps the story fields including the extended schedule/rollup ones', () => {
-    const out = shapeWorkItem(storyFixture());
+    const out = shapeWorkItem(storyFixture(), REFS);
     expect(out).toMatchObject({
       id: storyFixture().id,
       itemKey: 'US-1',
       type: 'story',
       scheduleState: 'in_progress',
-      devOwnerName: 'Grace',
+      assignee: { id: '0194a000-0000-7000-8000-000000000005', name: 'Ada' },
+      devOwner: { id: '0194a000-0000-7000-8000-00000000000c', name: 'Grace' },
       estimateHours: 8,
       todoHours: 4,
-      teamId: '0194a000-0000-7000-8000-000000000006',
-      iterationId: '0194a000-0000-7000-8000-000000000007',
-      releaseId: '0194a000-0000-7000-8000-000000000008',
+      team: { id: '0194a000-0000-7000-8000-000000000006', name: 'Platform', key: 'PLT' },
+      iteration: { name: 'Sprint 42', key: 'IT-42' },
+      release: { name: 'Autumn', key: 'RL-7' },
       isBlocked: false,
       startDate: '2026-06-17',
       targetEndDate: '2026-06-25',
@@ -92,6 +102,20 @@ describe('shapeWorkItem (WorkItemResponseDto -> tool payload)', () => {
     // defect fields exist but are null on a story — never undefined
     expect(out.severity).toBeNull();
     expect(out.defectState).toBeNull();
+  });
+
+  it('without refs every relationship is null, and no raw id is relayed', () => {
+    const out = shapeWorkItem(storyFixture());
+    expect(out).toMatchObject({
+      assignee: null,
+      devOwner: null,
+      parent: null,
+      team: null,
+      iteration: null,
+      release: null,
+    });
+    expect(out).not.toHaveProperty('iterationId');
+    expect(out).not.toHaveProperty('assigneeName');
   });
 
   it('maps the defect-specific fields with the DTO names', () => {

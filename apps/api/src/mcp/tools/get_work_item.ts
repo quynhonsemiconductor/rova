@@ -1,9 +1,26 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { result, type ToolContext } from './rest';
+import { denied, result, type ToolContext } from './rest';
+import {
+  createRefResolver,
+  personRef,
+  type PersonRef,
+  type Ref,
+  type WorkItemParentRef,
+} from './refs';
+
+/** The identity a detail row adds once its ids are resolved (refs.ts). */
+export interface WorkItemRefs {
+  assignee?: PersonRef | null;
+  devOwner?: PersonRef | null;
+  parent?: WorkItemParentRef | null;
+  team?: Ref | null;
+  iteration?: Ref | null;
+  release?: Ref | null;
+}
 
 /** The WorkItemResponseDto fields an agent acts on, across item types (story/task/defect). */
-export function shapeWorkItem(p: Record<string, unknown>) {
+export function shapeWorkItem(p: Record<string, unknown>, refs: WorkItemRefs = {}) {
   return {
     id: p['id'],
     itemKey: p['itemKey'],
@@ -12,16 +29,18 @@ export function shapeWorkItem(p: Record<string, unknown>) {
     description: p['description'] ?? null,
     scheduleState: p['scheduleState'],
     priority: p['priority'],
-    assigneeName: p['assigneeName'] ?? null,
-    devOwnerName: p['devOwnerName'] ?? null,
+    // Both names are joined server-side on the record read; a person with no picker row (a
+    // Workspace Admin) keeps that name even when the workspace feed cannot resolve the id.
+    assignee: refs.assignee ?? null,
+    devOwner: refs.devOwner ?? null,
     storyPoints: p['storyPoints'] ?? null,
     estimateHours: p['estimateHours'] ?? null,
     todoHours: p['todoHours'] ?? null,
-    parentId: p['parentId'] ?? null,
+    parent: refs.parent ?? null,
     featureId: p['featureId'] ?? null,
-    teamId: p['teamId'] ?? null,
-    iterationId: p['iterationId'] ?? null,
-    releaseId: p['releaseId'] ?? null,
+    team: refs.team ?? null,
+    iteration: refs.iteration ?? null,
+    release: refs.release ?? null,
     isBlocked: p['isBlocked'],
     blockedReason: p['blockedReason'] ?? null,
     // defect-specific (null on stories/tasks)
@@ -34,6 +53,30 @@ export function shapeWorkItem(p: Record<string, unknown>) {
     targetEndDate: p['targetEndDate'] ?? null,
     actualEndDate: p['actualEndDate'] ?? null,
     updatedAt: p['updatedAt'],
+  };
+}
+
+/** Resolves the record's ids through the app's own reference feeds (one fetch per kind). */
+export async function resolveWorkItemRefs(
+  p: Record<string, unknown>,
+  resolver: ReturnType<typeof createRefResolver>,
+): Promise<WorkItemRefs> {
+  const projectId = p['projectId'];
+  const [assignee, devOwner, parent, team, iteration, release] = await Promise.all([
+    resolver.person(p['assigneeId']),
+    resolver.person(p['devOwnerId']),
+    resolver.parent(p['parentId']),
+    resolver.team(p['teamId']),
+    resolver.iteration(p['iterationId'], projectId),
+    resolver.release(p['releaseId'], projectId),
+  ]);
+  return {
+    assignee: personRef(p['assigneeId'], p['assigneeName'], assignee),
+    devOwner: personRef(p['devOwnerId'], p['devOwnerName'], devOwner),
+    parent,
+    team,
+    iteration,
+    release,
   };
 }
 
@@ -54,12 +97,15 @@ export function registerGetWorkItem(server: McpServer, ctx: ToolContext) {
       },
     },
     async ({ workItemId }) => {
+      const resolver = createRefResolver(ctx);
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
         url: `/v1/work-items/${workItemId}`,
       });
+      if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
+        return denied(statusCode, json);
       const p = json as Record<string, unknown>;
-      return result(statusCode, json, shapeWorkItem(p));
+      return result(statusCode, json, shapeWorkItem(p, await resolveWorkItemRefs(p, resolver)));
     },
   );
 }

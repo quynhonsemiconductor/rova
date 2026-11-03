@@ -1,31 +1,63 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { denied, type ToolContext } from './rest';
+import { createRefResolver, type PersonRef, type Ref } from './refs';
 
 /** A companion feed is capped below any plausible answer; more gets a `truncated` flag. */
 export const MAX_LINKS = 100;
 
+/** The identity a milestone adds once its person and release ids are resolved (refs.ts). */
+export interface MilestoneRefs {
+  owner: PersonRef | null;
+  releases: Ref[];
+}
+
+/**
+ * Resolves the milestone's `ownerId` to a person and each linked release id to
+ * `{ id, key, name }`. A milestone may link releases from OTHER projects in the workspace
+ * (milestones.service.ts), so each release is resolved across every project the milestone is
+ * linked to — its own `projectId` plus the `:id/projects` feed — and the feed for each project
+ * enforces the caller's `project:view` as usual.
+ */
+export async function resolveMilestoneRefs(
+  m: Record<string, unknown>,
+  releaseIds: string[],
+  resolver: ReturnType<typeof createRefResolver>,
+  linkedProjectIds: unknown[],
+): Promise<MilestoneRefs> {
+  const projectIds = [m['projectId'], ...linkedProjectIds];
+  const [owner, releases] = await Promise.all([
+    resolver.person(m['ownerId']),
+    Promise.all(
+      releaseIds.slice(0, MAX_LINKS).map((id) => resolver.releaseInProjects(id, projectIds)),
+    ),
+  ]);
+  return { owner, releases: releases.filter((r): r is Ref => r !== null) };
+}
+
 /**
  * The MilestoneResponseDto fields an agent acts on, with the three junction feeds attached
- * (each a bare id array, capped) and `truncated` when a RAW feed exceeded the cap.
+ * (each a bare id array, capped) and `truncated` when a RAW feed exceeded the cap. The owner and
+ * the linked releases are relayed by NAME (`refs`), because the ids alone name nothing.
  */
 export function shapeMilestone(
   m: Record<string, unknown>,
   artifacts: string[],
   releases: string[],
   projects: string[],
+  refs: MilestoneRefs = { owner: null, releases: [] },
 ) {
   const payload: Record<string, unknown> = {
     id: m['id'],
     milestoneKey: m['milestoneKey'] ?? null,
     name: m['name'],
     status: m['status'],
-    ownerId: m['ownerId'] ?? null,
+    owner: refs.owner,
     targetStartDate: m['targetStartDate'] ?? null,
     targetEndDate: m['targetEndDate'] ?? null,
     progress: m['progress'] ?? null,
     artifacts: artifacts.slice(0, MAX_LINKS),
-    releases: releases.slice(0, MAX_LINKS),
+    releases: refs.releases,
     projects: projects.slice(0, MAX_LINKS),
   };
   if ([artifacts, releases, projects].some((ids) => ids.length > MAX_LINKS))
@@ -75,11 +107,17 @@ export function registerGetMilestone(server: McpServer, ctx: ToolContext) {
       const projects = await feed(`/v1/milestones/${milestoneId}/projects`);
       if (projects.denial) return projects.denial;
 
+      const refs = await resolveMilestoneRefs(m, releases.ids, createRefResolver(ctx), [
+        ...((m['projectIds'] as unknown[] | undefined) ?? []),
+        ...projects.ids,
+      ]);
       return {
         content: [
           {
             type: 'text' as const,
-            text: JSON.stringify(shapeMilestone(m, artifacts.ids, releases.ids, projects.ids)),
+            text: JSON.stringify(
+              shapeMilestone(m, artifacts.ids, releases.ids, projects.ids, refs),
+            ),
           },
         ],
       };
