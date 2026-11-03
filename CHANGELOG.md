@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.3](https://github.com/quynhonsemiconductor/rova/compare/v0.8.2...v0.8.3) (2026-11-03)
+
+
+### ✨ Features
+
+* **team-status:** member load is Estimate/Capacity; task hours edit inline (US-145) ([#866](https://github.com/quynhonsemiconductor/rova/issues/866)) ([ab9d78f](https://github.com/quynhonsemiconductor/rova/commit/ab9d78f5e01f148329e3823da71de8612180a376))
+
+
+### 🐛 Bug Fixes
+
+* **release:** promote waits for GHCR · Publish to finish ([#864](https://github.com/quynhonsemiconductor/rova/issues/864)) ([f22aec2](https://github.com/quynhonsemiconductor/rova/commit/f22aec220445bdfbe9cb10d8b3774f306c239a20))
+
 ## [0.8.2](https://github.com/quynhonsemiconductor/rova/compare/v0.8.1...v0.8.2) (2026-11-03)
 
 
