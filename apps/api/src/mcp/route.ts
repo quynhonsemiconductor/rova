@@ -7,7 +7,13 @@ import { RateLimitedException } from '@platform';
 import type { McpAccessPrincipal, McpAccessVerifier } from './access-verifier';
 import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER, type McpPrincipalContext } from '@platform';
 import { registerTools } from './tools/register';
-import type { McpRestCaller } from './tools/rest';
+import {
+  assertPostCarriesIdempotencyKey,
+  assertReadCarriesNoWritePayload,
+  idempotencyKeyFor,
+  type McpRestCaller,
+  type ToolContext,
+} from './tools/rest';
 import { createMcpAudit } from './audit';
 
 /**
@@ -58,6 +64,11 @@ export interface McpRouteDeps {
    * existing caller and test stays read-only.
    */
   writesEnabled?: boolean;
+  /**
+   * HMAC key for the idempotency keys MCP creates send (MCP_IDEMPOTENCY_SECRET). Required when
+   * writes are enabled (asserted at boot); never reaches a tool, only the key builder below.
+   */
+  idempotencySecret?: string;
 }
 
 export function registerMcpRoute(deps: McpRouteDeps): void {
@@ -72,6 +83,10 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
   // idempotency key (built by the tool through idempotencyKeyFor) travel with it; this is the
   // ONLY place a header is built, so no tool file can set one.
   const callRest: McpRestCaller = async (principal, rest) => {
+    // The TS types already say a GET carries neither, but a tool can build its call object
+    // freely; refuse at runtime rather than silently dropping the payload.
+    assertReadCarriesNoWritePayload(rest);
+    assertPostCarriesIdempotencyKey(rest);
     const injected = await app.inject({
       method: rest.method,
       url: rest.url,
@@ -169,7 +184,21 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
       void transport.close();
       void server.close();
     });
-    registerTools(server, { principal, callRest }, (event) => audit.onToolCall(event), {
+    // The tool context: one principal, the REST bridge, and — only when writes are enabled and
+    // the secret is configured — a key builder bound to THIS request's principal. The secret
+    // itself never reaches a tool.
+    const secret = deps.idempotencySecret;
+    const toolCtx: ToolContext = {
+      principal,
+      callRest,
+      ...(writesEnabled && secret
+        ? {
+            idempotencyKey: (tool: string, args: unknown) =>
+              idempotencyKeyFor(secret, principal.userId, tool, args),
+          }
+        : {}),
+    };
+    registerTools(server, toolCtx, (event) => audit.onToolCall(event), {
       writes: writesEnabled,
     });
     await server.connect(transport);

@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, type ToolContext } from './rest';
+import { denied, type ToolContext, pathSegment } from './rest';
 
 const MAX_MEMBERS = 100;
 
@@ -24,7 +24,7 @@ export function registerListProjectMembers(server: McpServer, ctx: ToolContext) 
     async ({ projectId }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/projects/${projectId}/member-options`,
+        url: `/v1/projects/${pathSegment(projectId)}/member-options`,
       });
       if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
       const all = json as Record<string, unknown>[];

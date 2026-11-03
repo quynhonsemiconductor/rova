@@ -132,11 +132,25 @@ export const EnvSchema = z
      * Whether `/mcp` exposes WRITE tools (create/update/delete) at all. Default OFF in every
      * environment: a host that turns MCP_ENABLED on still gets the read-only catalogue until this
      * is set. It is enforced TWICE — register.ts mounts no write tool while it is false, and the
-     * global McpWriteGuard refuses any MCP-bridged non-GET request whose route is not on the
-     * write allowlist — so a bug in a tool cannot reach a route the list does not name. Rollout:
-     * dev first, prod only on the owner's go.
+     * write gate (guard + onRequest hook) refuses any MCP-loaded non-GET request whose route is
+     * not on the write allowlist — so a bug in a tool cannot reach a route the list does not
+     * name. STRICT on purpose: only the literal strings `true`/`false` are accepted (a typo like
+     * `1`/`yes` fails the boot instead of silently reading as "off"). Rollout: dev first, prod
+     * only on the owner's go.
      */
-    MCP_WRITES_ENABLED: booleanish(false),
+    MCP_WRITES_ENABLED: z
+      .enum(['true', 'false'], {
+        error: 'MCP_WRITES_ENABLED must be exactly "true" or "false"',
+      })
+      .default('false')
+      .transform((value) => value === 'true'),
+
+    /**
+     * The server-only HMAC key that signs MCP-generated Idempotency-Key values (see
+     * `idempotencyKeyFor`). Required only when MCP_WRITES_ENABLED is true; the bootstrap asserts
+     * that pairing. Value comes from Key Vault through External Secrets; never committed.
+     */
+    MCP_IDEMPOTENCY_SECRET: emptyToUndefined(z.string().min(32).optional()),
 
     // The MCP Access application's origin settings (MCP-PLAN §5). Required only when MCP_ENABLED
     // is true (asserted at boot); test fixtures only until the owner sets the real values.

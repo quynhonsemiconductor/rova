@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, type ToolContext } from './rest';
+import { denied, type ToolContext, pathSegment } from './rest';
 
 /** The artifacts dashboard is fetched one page at a time; `pageInfo.hasNextPage` says if more exist. */
 const MAX_ARTIFACTS = 100;
@@ -52,7 +52,7 @@ export function registerGetRelease(server: McpServer, ctx: ToolContext) {
     async ({ releaseId }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/releases/${releaseId}`,
+        url: `/v1/releases/${pathSegment(releaseId)}`,
       });
       if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
         return denied(statusCode, json);
@@ -60,7 +60,7 @@ export function registerGetRelease(server: McpServer, ctx: ToolContext) {
 
       const page = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/releases/${releaseId}/artifacts`,
+        url: `/v1/releases/${pathSegment(releaseId)}/artifacts`,
         query: { limit: MAX_ARTIFACTS },
       });
       if (

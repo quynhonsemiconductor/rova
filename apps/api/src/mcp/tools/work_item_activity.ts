@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, result, type ToolContext } from './rest';
+import { denied, result, type ToolContext, pathSegment } from './rest';
 
 /**
  * `rova_work_item_activity` — the revision history of one work item
@@ -30,7 +30,7 @@ export function registerWorkItemActivity(server: McpServer, ctx: ToolContext) {
     async ({ workItemId, page }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/work-items/${workItemId}/activity`,
+        url: `/v1/work-items/${pathSegment(workItemId)}/activity`,
         query: { page: page ?? 1, pageSize: MAX_PAGE_SIZE },
       });
       if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))

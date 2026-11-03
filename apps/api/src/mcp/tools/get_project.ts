@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, result, type ToolContext } from './rest';
+import { denied, result, type ToolContext, pathSegment } from './rest';
 
 /**
  * `rova_get_project` — one project by id, if the person can read it
@@ -20,7 +20,7 @@ export function registerGetProject(server: McpServer, ctx: ToolContext) {
     async ({ projectId }) => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/projects/${projectId}`,
+        url: `/v1/projects/${pathSegment(projectId)}`,
       });
       if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
         return denied(statusCode, json);

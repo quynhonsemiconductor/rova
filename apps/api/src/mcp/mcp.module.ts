@@ -2,7 +2,12 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { McpPrincipalGuard } from './principal.guard';
 import { McpWriteGuard } from './write.guard';
-import { MCP_WRITE_ROUTE_SET, MCP_WRITE_ROUTES } from './write-policy';
+import {
+  MCP_READ_ROUTE_SET,
+  MCP_READ_ROUTES,
+  MCP_WRITE_ROUTE_SET,
+  MCP_WRITE_ROUTES,
+} from './write-policy';
 
 /**
  * The MCP module: the principal bridge and (via the bootstrap, not a controller) the raw `/mcp`
@@ -20,6 +25,7 @@ import { MCP_WRITE_ROUTE_SET, MCP_WRITE_ROUTES } from './write-policy';
 @Module({
   providers: [
     { provide: APP_GUARD, useClass: McpPrincipalGuard },
+    { provide: MCP_READ_ROUTE_SET, useValue: MCP_READ_ROUTES },
     { provide: MCP_WRITE_ROUTE_SET, useValue: MCP_WRITE_ROUTES },
     { provide: APP_GUARD, useClass: McpWriteGuard },
   ],

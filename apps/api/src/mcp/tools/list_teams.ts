@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { denied, type ToolContext } from './rest';
+import { denied, type ToolContext, pathSegment } from './rest';
 import { createRefResolver, type PersonRef } from './refs';
 
 /** The workspace team list is an unpaginated reference feed; the tool caps it. */
@@ -52,7 +52,7 @@ export function registerListTeams(server: McpServer, ctx: ToolContext) {
     async () => {
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/workspaces/${ctx.principal.workspaceId}/teams`,
+        url: `/v1/workspaces/${pathSegment(ctx.principal.workspaceId)}/teams`,
       });
       if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
       const payload = await shapeTeams(json as Record<string, unknown>[], createRefResolver(ctx));
