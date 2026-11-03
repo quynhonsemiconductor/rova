@@ -4,7 +4,8 @@
 # One org-wide security standard: Trivy (container CVEs, CRITICAL blocks),
 # Semgrep (SAST — replaces CodeQL, no GHAS needed), Gitleaks (secrets) and
 # osv-scanner (dependency CVEs — replaces dependency-review). Runs on every PR,
-# every push to main, and weekly to catch newly disclosed CVEs between pushes.
+# every push to main, and on merge_group. Newly disclosed CVEs between pushes
+# are caught by Scheduled · Security Scan — ONE schedule per repo, not two.
 # =============================================================================
 name: Security · Scan
 
@@ -24,14 +25,12 @@ on:
     #
     # `main` is this repo's only long-lived branch, so the filter skipped nothing anyone
     # wanted skipped. It had no upside and one silent failure mode.
-  schedule:
-    - cron: "0 4 * * 1" # weekly Monday 04:00 UTC — catch new CVEs between pushes
 
 concurrency:
   # A PUSH TO MAIN IS NEVER CANCELLED, and that takes a group of its own per commit. The group used to be
   # `security-${{ github.ref }}` with cancel-in-progress, so two commits landing on main close together shared
   # `security-refs/heads/main` and the second CANCELLED the first's scan: that commit was left with no scan on record,
-  # and the weekly scheduled run (also `refs/heads/main`) could cancel, or be cancelled by, a push.
+  # and a scheduled run (also `refs/heads/main`) could cancel, or be cancelled by, a push.
   #
   # `cancel-in-progress: false` alone would NOT have fixed it: GitHub keeps ONE pending run per group and cancels
   # every other pending one. Only a distinct group per commit keeps them all.
@@ -76,9 +75,8 @@ jobs:
       # `security / Security scans (Gitleaks, osv-scanner, Semgrep)`.
       combine: true
       # Trivy runs in `Backend CI`'s Docker build job, on the image that job already builds, instead of building it again here.
-      # EXCEPT on the weekly schedule: Backend CI never runs on a schedule, so without this a new CVE in an unchanged image would
-      # go unseen until the next code change. The scheduled run builds and scans the image itself, as before.
-      scan_container: ${{ github.event_name == 'schedule' }}
+      # The daily Scheduled · Security Scan builds and scans the image too; that is the periodic container-CVE net now.
+      scan_container: false
       # Semgrep runs report-only for now: the current 23 findings are all in
       # shared infra/config (workflow action tags, dependabot/pnpm/npm supply-
       # chain hardening, pg-ssl TLS, editor sanitisation) and are being addressed
