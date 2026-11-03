@@ -149,6 +149,9 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
       // SERVICE_VERSION (the image's release, set by the deployment), not `npm_package_version`: that is only
       // set under `npm`/`pnpm run`, never under `node dist/main.js`, so the server reported 0.0.0.
       serverVersion: config.get('SERVICE_VERSION'),
+      // The write kill switch: off unless the environment turns it on, and also enforced at the
+      // REST layer by McpWriteGuard. Dev first; prod only on the owner's go.
+      writesEnabled: config.get('MCP_WRITES_ENABLED'),
     });
   }
 

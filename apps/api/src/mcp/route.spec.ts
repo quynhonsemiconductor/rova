@@ -1,19 +1,23 @@
 import {
+  Catch,
   Controller,
   ForbiddenException,
   Get,
   Injectable,
   Module,
   Param,
+  Post,
   Query,
   Req,
   UnauthorizedException,
   UseGuards,
   NotFoundException,
+  type ArgumentsHost,
   type CanActivate,
+  type ExceptionFilter,
   type ExecutionContext,
 } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { APP_FILTER, NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -28,7 +32,7 @@ import {
   UNCONFIGURED_MCP_ACCESS_VERIFIER,
 } from './index';
 import type { McpAccessVerifier } from './access-verifier';
-import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from '@platform';
+import { DomainException, mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from '@platform';
 
 /**
  * `/mcp` against a live Fastify server (no port — `inject`), with the SAME wiring the bootstrap
@@ -81,6 +85,15 @@ const UNKNOWN_ID = '00000000-0000-7000-8000-0000000000e1';
 @Controller('projects')
 @UseGuards(RequirePrincipalGuard)
 class FixtureProjectsController {
+  /**
+   * A write route the fixture offers to prove the REST belt: it is NOT in the MCP write
+   * allowlist, so a bridged POST is refused before this handler runs.
+   */
+  @Post('fixture-writes')
+  createForbiddenWrite() {
+    return { created: true };
+  }
+
   @Get()
   list(@Req() req: { user: { sub: string; workspaceId: string } }) {
     if (req.user.workspaceId === RESTRICTED) {
@@ -253,10 +266,30 @@ class FixtureIterationsController {
   }
 }
 
+/**
+ * The real GlobalExceptionFilter is not part of this fixture; this is the smallest filter that
+ * maps a DomainException (what the belt guard throws) to its status + code, so the spec can
+ * assert the refusal the way a client sees it.
+ */
+@Catch(DomainException)
+class FixtureDomainFilter implements ExceptionFilter {
+  catch(error: DomainException, host: ArgumentsHost) {
+    host
+      .switchToHttp()
+      .getResponse<{ status(code: number): { send(body: unknown): void } }>()
+      .status(error.httpStatus)
+      .send({ code: error.code, message: error.message });
+  }
+}
+
 @Module({
   imports: [McpModule],
   controllers: [FixtureProjectsController, FixtureWorkItemsController, FixtureIterationsController],
-  providers: [RequestContextService, RequirePrincipalGuard],
+  providers: [
+    RequestContextService,
+    RequirePrincipalGuard,
+    { provide: APP_FILTER, useClass: FixtureDomainFilter },
+  ],
 })
 class TestModule {}
 
@@ -394,6 +427,24 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       'rova_work_item_code_changes',
     ]);
     for (const t of tools) expect(t.annotations?.readOnlyHint).toBe(true);
+  });
+
+  it('a bridged write to a route outside the allowlist is refused by the REST belt', async () => {
+    const fastify = await boot();
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/v1/projects/fixture-writes',
+      payload: {},
+      headers: {
+        [MCP_CALL_TOKEN_HEADER]: mintMcpCallToken({
+          userId: VICTIM,
+          workspaceId: WORKSPACE,
+          sessionId: 'mcp:belt',
+        }),
+      },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'MCP_WRITE_NOT_ALLOWED' });
   });
 
   it('a tool returns exactly what the same person sees via the same REST route', async () => {

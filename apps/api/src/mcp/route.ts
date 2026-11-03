@@ -53,16 +53,24 @@ export interface McpRouteDeps {
   cache: CacheService;
   /** Server version reported at `initialize` — the rova package version. */
   serverVersion: string;
+  /**
+   * Whether the WRITE catalogue mounts (MCP_WRITES_ENABLED). Absent reads as false, so every
+   * existing caller and test stays read-only.
+   */
+  writesEnabled?: boolean;
 }
 
 export function registerMcpRoute(deps: McpRouteDeps): void {
   const { app, fastify, verifier, cache } = deps;
+  const writesEnabled = deps.writesEnabled ?? false;
   // One audit sink per app: the instruments are process-wide and the logger is the shared pino
   // instance, so a per-request copy would only rebuild the same instruments.
   const audit = createMcpAudit();
 
   // Runs each tool's REST call with the request's ONE principal. The call token is minted here
-  // (never in a tool) and is the only thing the inject() carries.
+  // (never in a tool) and is the only credential the inject() carries. A write's body and the
+  // idempotency key (built by the tool through idempotencyKeyFor) travel with it; this is the
+  // ONLY place a header is built, so no tool file can set one.
   const callRest: McpRestCaller = async (principal, rest) => {
     const injected = await app.inject({
       method: rest.method,
@@ -74,7 +82,11 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
             ) as Record<string, string>,
           }
         : {}),
-      headers: { [MCP_CALL_TOKEN_HEADER]: mintMcpCallToken(principal) },
+      ...(rest.body !== undefined ? { payload: rest.body } : {}),
+      headers: {
+        [MCP_CALL_TOKEN_HEADER]: mintMcpCallToken(principal),
+        ...(rest.idempotencyKey !== undefined ? { 'idempotency-key': rest.idempotencyKey } : {}),
+      },
     });
     let json: Record<string, unknown> | unknown[] | undefined;
     try {
@@ -143,7 +155,11 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
     // Stateless: one McpServer + transport per request, no session id ever issued.
     const server = new McpServer(
       { name: 'rova', version: deps.serverVersion },
-      { instructions: 'Rova — read-only tools. Every result is what the person themselves sees.' },
+      {
+        instructions: writesEnabled
+          ? 'Rova. Writes act as you, with your permissions; confirm destructive or bulk changes with the user first. Every result is what the person themselves sees.'
+          : 'Rova — read-only tools. Every result is what the person themselves sees.',
+      },
     );
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
@@ -153,7 +169,9 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
       void transport.close();
       void server.close();
     });
-    registerTools(server, { principal, callRest }, (event) => audit.onToolCall(event));
+    registerTools(server, { principal, callRest }, (event) => audit.onToolCall(event), {
+      writes: writesEnabled,
+    });
     await server.connect(transport);
     reply.hijack();
     await transport.handleRequest(request.raw, reply.raw, request.body);

@@ -42,4 +42,15 @@ export const TOOL_ROUTES = {
   rova_list_notifications: { method: 'GET', url: '/v1/notifications' },
 } as const;
 
+/**
+ * The write catalogue, empty until the first write tool lands. Every entry is a NON-GET route
+ * the MCP bridge may reach, and it is the SOURCE of the REST-side allowlist (`write-policy.ts`
+ * derives `MCP_WRITE_ROUTES` from this table): a write tool that is not listed here mounts, but
+ * its injected request is refused 403 by `McpWriteGuard`. The routes spec keeps the two in step.
+ */
+export const WRITE_TOOL_ROUTES = {} as const satisfies Record<
+  string,
+  { method: 'POST' | 'PATCH' | 'PUT' | 'DELETE'; url: string }
+>;
+
 export type ToolName = keyof typeof TOOL_ROUTES;

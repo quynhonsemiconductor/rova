@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { TOOL_ROUTES } from './registry';
+import { TOOL_ROUTES, WRITE_TOOL_ROUTES } from './registry';
+import { MCP_WRITE_ROUTES, mcpWriteRouteKey } from '../write-policy';
 
 /**
  * ROVA-MCP-DESIGN §7.2: every tool maps to a REAL route. The registry carries each tool's REST
@@ -328,6 +329,18 @@ describe('MCP tool catalogue maps to real routes', () => {
           `${name}: expected @SelfScoped on the mapped method`,
         ).toBe(true);
       }
+    }
+  });
+
+  it('the write catalogue names non-GET routes, and is exactly the REST write allowlist', () => {
+    const entries = Object.entries<{ method: string; url: string }>(WRITE_TOOL_ROUTES);
+    // The REST-side guard derives its set from this table; a tool whose route is missing there
+    // mounts but is refused 403 at the bridge, so the two must never drift.
+    const derived = new Set(entries.map(([, route]) => mcpWriteRouteKey(route.method, route.url)));
+    expect(derived).toEqual(new Set(MCP_WRITE_ROUTES));
+    for (const [name, route] of entries) {
+      expect(route.method, `${name}: a write tool cannot be a GET`).not.toBe('GET');
+      expect(route.url.startsWith('/v1/'), `${name}: route must stay under /v1`).toBe(true);
     }
   });
 });

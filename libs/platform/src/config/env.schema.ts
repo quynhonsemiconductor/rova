@@ -128,6 +128,16 @@ export const EnvSchema = z
      */
     MCP_ENABLED: booleanish(false),
 
+    /**
+     * Whether `/mcp` exposes WRITE tools (create/update/delete) at all. Default OFF in every
+     * environment: a host that turns MCP_ENABLED on still gets the read-only catalogue until this
+     * is set. It is enforced TWICE — register.ts mounts no write tool while it is false, and the
+     * global McpWriteGuard refuses any MCP-bridged non-GET request whose route is not on the
+     * write allowlist — so a bug in a tool cannot reach a route the list does not name. Rollout:
+     * dev first, prod only on the owner's go.
+     */
+    MCP_WRITES_ENABLED: booleanish(false),
+
     // The MCP Access application's origin settings (MCP-PLAN §5). Required only when MCP_ENABLED
     // is true (asserted at boot); test fixtures only until the owner sets the real values.
     // `iss` of the Access JWT must equal this origin. DEPLOYMENT REQUIREMENT: the /mcp Access

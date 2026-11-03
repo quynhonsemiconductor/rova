@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { McpPrincipalContext } from '@platform';
 
@@ -8,11 +9,24 @@ import type { McpPrincipalContext } from '@platform';
  * ratchet; `register.ts` mounts them all.
  */
 
-/** One in-process REST call a tool composes. No headers, ever — see the ratchet. */
+export type McpReadMethod = 'GET';
+/** Every method a write tool may use. The REST-side allowlist decides which routes are reachable. */
+export type McpWriteMethod = 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+export type McpRestMethod = McpReadMethod | McpWriteMethod;
+
+/**
+ * One in-process REST call a tool composes. NO headers, ever — see the ratchet. A write carries
+ * a `body`, and an idempotent create carries the key {@link idempotencyKeyFor} builds; `route.ts`
+ * turns that key into the one header the bridge may add.
+ */
 export interface McpRestCall {
-  method: 'GET';
+  method: McpRestMethod;
   url: string;
   query?: Record<string, string | number | undefined>;
+  /** The JSON body of a write. Never sent on GET. */
+  body?: Record<string, unknown> | unknown[];
+  /** Only for an idempotent POST create; see idempotencyKeyFor. */
+  idempotencyKey?: string;
 }
 
 export interface McpRestResult {
@@ -30,6 +44,44 @@ export type McpRestCaller = (
 export interface ToolContext {
   principal: McpPrincipalContext;
   callRest: McpRestCaller;
+}
+
+/** A write is one of the four mutating methods; the guard and the ratchets share this predicate. */
+export function isWriteMethod(method: string): method is McpWriteMethod {
+  return method === 'POST' || method === 'PATCH' || method === 'PUT' || method === 'DELETE';
+}
+
+/** Object keys sorted at every depth, so the same arguments always hash the same. */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value === null || typeof value !== 'object') return value;
+  const source = value as Record<string, unknown>;
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(source).sort()) {
+    if (source[key] !== undefined) sorted[key] = canonical(source[key]);
+  }
+  return sorted;
+}
+
+/** The idempotency window: a retry of the same call inside one bucket replays the first result. */
+export const MCP_IDEMPOTENCY_BUCKET_MS = 10 * 60 * 1000;
+
+/**
+ * The `Idempotency-Key` an MCP create sends: sha256 of principal + tool + canonical arguments +
+ * the current 10-minute bucket. The model never supplies it, so an LLM retry of the SAME call
+ * replays the first response instead of creating a duplicate; a deliberate second create (a
+ * minute later in a new bucket, or with different arguments) gets a fresh key.
+ */
+export function idempotencyKeyFor(
+  principalId: string,
+  tool: string,
+  args: unknown,
+  nowMs: number = Date.now(),
+): string {
+  const bucket = Math.floor(nowMs / MCP_IDEMPOTENCY_BUCKET_MS);
+  return createHash('sha256')
+    .update(JSON.stringify({ principalId, tool, bucket, args: canonical(args) }))
+    .digest('hex');
 }
 
 /** Tools cap the page below the REST max: an agent re-asks with a cursor rather than reading 100 rows. */
