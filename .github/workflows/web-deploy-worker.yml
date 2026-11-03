@@ -13,13 +13,20 @@
 #   develop → push to main, after `Web · CI` passes on the same commit, and
 #             workflow_dispatch (default target).
 #   prod    → release-promote.yml calls this workflow (workflow_call) for every
-#             release tag, in the same run that promotes the API, so prod follows
-#             the tag instead of waiting for a manual dispatch; and
-#             workflow_dispatch with environment=production, kept for rollback
-#             (dispatch an older tag). Both paths require the repository
-#             variable WEB_WORKER_PROD_ENABLED to be `true`: it is the prod-move
-#             switch, true since 2026-11-01, when rova.qnsc.vn was routed to
+#             release tag, in the same run that opens the API promote PR, so prod
+#             follows the tag instead of waiting for a manual dispatch; and
+#             workflow_dispatch with environment=production, kept for rollback:
+#               gh workflow run web-deploy-worker.yml --ref v0.8.3 -f environment=production
+#             github.ref is the tag then, and the production environment only
+#             admits `v*` tags. Both paths require the repository variable
+#             WEB_WORKER_PROD_ENABLED to be `true`: it is the prod-move switch,
+#             true since 2026-11-01, when rova.qnsc.vn was routed to
 #             rova-prod-web. A deploy while the edge has no route would be dark.
+#
+# ORDERING: the call runs after GHCR holds the release images, but the gitops
+# promote job only OPENS the PR that moves the prod API. Approve the web deploy
+# AFTER merging that gitops promote PR: the API rolls on the merge, the web on
+# the production-environment approval.
 #
 # WHAT IT DOES NOT DO: no DNS, no Workers routes, no Access. Those are `infra`
 # `live/edge`, applied (and reviewed) by the SA. The token here is Workers
@@ -60,7 +67,8 @@ on:
         default: develop
   # Called by release-promote.yml on every release tag. `tag` is the tag the
   # promote validated; the build and deploy check out exactly that commit, so the
-  # SPA and the API in one release are the same commit.
+  # SPA and the API in one release are the same commit. The caller only OPENS the
+  # API promote PR, so approve this deploy after merging that PR.
   workflow_call:
     inputs:
       environment:
@@ -119,7 +127,23 @@ jobs:
           PROD_ENABLED: ${{ vars.WEB_WORKER_PROD_ENABLED }}
         run: |
           set -euo pipefail
-          if [ "${EVENT}" = "push" ]; then
+          # In a CALLED workflow, github.event_name and github.ref are the CALLER's:
+          # Release · Promote runs on a tag push, so a call arrives as
+          # EVENT=push, REF=refs/tags/vX.Y.Z and must not take the push-to-main
+          # branch below. The presence of inputs.tag identifies a release call.
+          if [ -n "${INPUT_TAG}" ]; then
+            # A release call deploys a release tag, never a branch: validate the
+            # tag the promote passed, so a malformed input cannot ship a random ref.
+            [[ "${INPUT_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+              echo "::error::a release call needs a release tag (vX.Y.Z), got '${INPUT_TAG}'."
+              exit 1
+            }
+            [ "${INPUT_ENV:-}" = "production" ] || {
+              echo "::error::a release call is only valid with environment=production, got '${INPUT_ENV:-}'."
+              exit 1
+            }
+            environment=production
+          elif [ "${EVENT}" = "push" ]; then
             # A push to main is ALWAYS the dev host. (`paths-ignore` keeps docs
             # and backend merges from triggering it at all.)
             [ "${REF}" = "refs/heads/main" ] || {
@@ -129,14 +153,6 @@ jobs:
             environment=develop
           else
             environment="${INPUT_ENV:-develop}"
-            # A release call deploys a release tag, never a branch: validate the
-            # tag the promote passed, so a malformed input cannot ship a random ref.
-            if [ "${EVENT}" = "workflow_call" ]; then
-              [[ "${INPUT_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-                echo "::error::workflow_call needs a release tag (vX.Y.Z), got '${INPUT_TAG}'."
-                exit 1
-              }
-            fi
           fi
 
           case "${environment}" in

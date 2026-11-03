@@ -9,8 +9,10 @@
 #
 # It also deploys the PROD SPA from the same tag, in the same run and after the
 # image check above (the deploy-web job calls web-deploy-worker.yml), so the
-# web follows every release instead of waiting for a manual dispatch. Rollback
-# of the web alone = dispatch that workflow with an older tag.
+# web follows every release instead of waiting for a manual dispatch. The
+# promote job only OPENS the gitops PR: merge it first, then approve the web
+# deploy at the production environment. Rollback of the web alone:
+#   gh workflow run web-deploy-worker.yml --ref v0.8.3 -f environment=production
 #
 # Fails, and opens no PR, if any of the three images is missing for the tagged
 # commit (publish did not run or failed for it).
@@ -111,11 +113,13 @@ jobs:
           mode: pull-request
           gitops-token: ${{ steps.app.outputs.token }}
 
-  # The prod SPA follows the tag in the SAME run. `needs: promote` is the
-  # ordering gate: that job returns only once GHCR holds all three images for
-  # this commit (the wait added in #864), so the web cannot ship ahead of the
-  # API release it belongs to. The called workflow keeps its own
-  # WEB_WORKER_PROD_ENABLED check and per-environment concurrency group.
+  # The prod SPA follows the tag in the SAME run. `needs: promote` waits for
+  # GHCR to hold all three images for this commit (the wait added in #864), but
+  # that job only OPENS the gitops promote PR: the prod API moves when the owner
+  # merges it, while this job waits at the production environment. MERGE THE
+  # GITOPS PROMOTE PR FIRST, then approve the web deploy. The called workflow
+  # keeps its own WEB_WORKER_PROD_ENABLED check and per-environment concurrency
+  # group.
   deploy-web:
     name: Deploy prod web
     needs: promote
