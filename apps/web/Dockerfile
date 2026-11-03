@@ -12,11 +12,13 @@
 #   docker build -f apps/web/Dockerfile --target web \
 #     --secret id=node_auth_token,env=NODE_AUTH_TOKEN -t rova-web:local .
 #
-# Runtime contract (the deployment supplies it):
+# Runtime contract (the qnsc-service chart's `web:` block supplies it):
+#   - listens on 8080, doc root /srv (index.html at its root), health /healthz
 #   - config.json at /srv/config.json — a gitops-rendered ConfigMap, mounted as a file over the
 #     read-only root filesystem. Absent = the SPA shows its "could not start" screen, by design.
-#   - writable /tmp (emptyDir): Caddy's only writes (its config autosave), under XDG_* below.
-#   - port 8080, non-root, no package manager or build tooling in the runtime layer.
+#   - /tmp is the ONLY writable path (emptyDir): Caddy's only writes (its config autosave), under
+#     XDG_* below. The image therefore runs as ANY non-root uid (it defaults to 1001).
+#   - the User Guide gate calls the API in-cluster (`WEB_API_UPSTREAM`, default http://api:3000).
 # =============================================================================
 
 # ─────────────────────────────────────────────────────────────────────────────

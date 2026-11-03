@@ -7,20 +7,36 @@
 # root filesystem; Caddy's only writes go to the `XDG_*` directories under /tmp, which a deployment
 # mounts as emptyDir (see the Dockerfile).
 #
-# It serves what the Cloudflare Worker serves today, so the cutover changes the deploy system and
-# nothing a browser can see:
+# IMAGE CONTRACT (the qnsc-service chart, `web:` block):
+#
+#   listens on 8080             (web.port)
+#   doc root   /srv             (dist/ at its root)
+#   config     /srv/config.json (ConfigMap, mounted with subPath — replacing this one file)
+#   health     /healthz         (both probes)
+#   /tmp        the ONLY writable path (read-only root filesystem, any non-root uid)
+#
+# It serves what the Cloudflare Worker served, so the cutover changes the deploy system and nothing
+# a browser can see:
 #
 #   /config.json            the runtime config a deployment mounts (gitops ConfigMap), no-cache
 #   /assets/*               content-hashed build output, immutable
+#   /guide-assets/*         the User Guide's files, behind the US-119 session gate below
 #   everything else         the built files; an unknown path falls back to index.html (SPA route)
 #   /guide/…                the old standalone User Guide's redirects (apps/web/public/_redirects)
 #   /healthz                liveness/readiness for the probes
 #
-# NOT yet replicated, and a BLOCKER for the cutover, not for this image: the US-119 User Guide gate
-# (`guide-gate.worker.ts`) — a session check in front of /guide-assets/*. A static server cannot
-# answer it alone: the check needs the API (`GET /v1/auth/me`), so it needs an in-cluster upstream
-# and a Caddy `forward_auth` (or an edge route) decided with the chart. Until then `/guide-assets/*`
-# is PUBLIC HERE, and the Worker keeps being the only gated deploy path.
+# THE GUIDE GATE. `/guide-assets/*` (the guide's screenshots and the chunks carrying its text) is
+# signed-in-only, and static files are public. `guide-gate.worker.ts` answered that with a session
+# check in front of the Worker; here `forward_auth` makes the SAME check against the API on this
+# origin: `GET /v1/auth/me` with the reader's own cookie, JSON 200 = signed in, 401/403 = not.
+# The decision stays the API's. Fail CLOSED, as the Worker did: a 401/403 sends the reader to
+# `/login?returnTo=/user-guide`; any other non-2xx, an unreachable API or a timeout is a 503 — never
+# the file. The gated responses carry the guide's own headers (private, narrow CSP), not the app's.
+#
+# The upstream is the in-cluster `api` Service (the chart names Services by their `services` key and
+# rova's API listens on 3000); it is overrideable per deployment with WEB_API_UPSTREAM.
+# NOTE: the chart's network policy must allow web -> api and api <- web, and the upstream must be
+# right, or the guide answers 503 (by design — it does not leak the files instead).
 #
 # HEADERS: apps/web/public/_headers is the Cloudflare manifest of the same policy. Both files must
 # change together while the Worker is the fallback; the CSP and its long "why" comment live there.
@@ -36,8 +52,21 @@
 	root * /srv
 	encode zstd gzip
 
-	# The security policy of the Worker (`_headers`), header for header.
-	header {
+	# A failed forward_auth (the API is down, DNS is wrong, the network policy blocks the call) is a
+	# reverse-proxy error — 502/504 — and never reaches handle_response. Map exactly those to the
+	# gate's fail-closed 503; nothing else in this server proxies, so no other path can produce them.
+	handle_errors {
+		@authUpstreamDown expression {err.status_code} in [502, 504]
+		handle @authUpstreamDown {
+			respond "The User Guide is temporarily unavailable. Please try again shortly." 503
+		}
+	}
+
+	# The security policy of the Worker (`_headers`), header for header — for every path but the
+	# guide's files, which carry their own (narrower) policy in the gate below. A site-wide deferred
+	# header block would override theirs, hence the matcher.
+	@notGuideFiles not path /guide-assets /guide-assets/*
+	header @notGuideFiles {
 		-Server
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
@@ -67,6 +96,41 @@
 		file_server
 	}
 
+	# US-119: the User Guide's files are for signed-in readers only. Response matchers are declared
+	# here because `handle_response` requires one; 401/403 redirect, every other non-2xx is unavailable.
+	@guideFiles path /guide-assets /guide-assets/*
+	handle @guideFiles {
+		forward_auth {$WEB_API_UPSTREAM:http://api:3000} {
+			uri /v1/auth/me
+			method GET
+			header_up Accept "application/json"
+			# 5 s, the Worker's own budget for the session check.
+			transport http {
+				response_header_timeout 5s
+			}
+			@sessionRefused status 401 403
+			@sessionUnavailable status 3xx 4xx 5xx
+			handle_response @sessionRefused {
+				redir * /login?returnTo=/user-guide 302
+			}
+			handle_response @sessionUnavailable {
+				respond "The User Guide is temporarily unavailable. Please try again shortly." 503
+			}
+		}
+		# The Worker's GUIDE_SECURITY_HEADERS. `private` so no shared cache hands a gated file to the
+		# next reader; `no-cache` so the browser revalidates (and re-runs the gate) after sign-out.
+		header {
+			-Server
+			Cache-Control "private, no-cache"
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+			Referrer-Policy "same-origin"
+			X-Frame-Options "DENY"
+			X-Content-Type-Options "nosniff"
+			X-Robots-Tag "noindex, nofollow"
+		}
+		file_server
+	}
+
 	# The old standalone User Guide (apps/web/public/_redirects), still served by the Worker fallback.
 	# ORDER MATTERS: the assets rule, then English, then Vietnamese — the reverse of what a broad
 	# /guide/* rule would do to /guide/en/… and /guide/assets/….
@@ -87,9 +151,9 @@
 
 	# Every SPA route is a client-side route with no file behind it.
 	handle {
-		# Everything here is either a file whose name carries no content hash (index.html, favicon,
-		# the guide's screenshots) or a rewritten SPA route, so it always revalidates. The hashed
-		# assets keep their own immutable header above; a deferred site-wide header would override it.
+		# Everything here is either a file whose name carries no content hash (index.html, favicon)
+		# or a rewritten SPA route, so it always revalidates. The hashed assets keep their own
+		# immutable header above; a deferred site-wide header would override it.
 		header Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
