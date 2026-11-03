@@ -43,13 +43,17 @@ concurrency:
 jobs:
   publish:
     # Ceiling for the reusable's inner grants: packages: write is the GHCR
-    # push AND the Dockerfile's pull of private @quynhonsemiconductor/*.
+    # push AND the Dockerfile's pull of private @quynhonsemiconductor/*; the
+    # scan path attests the pushed digest, which needs an OIDC token and the
+    # attestation store, so the reusable's job permissions must be granted here.
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     # SHA-pinned, NOT @v1 — ci's v1 tag moves on every merge, and a moving ref
     # would let a ci merge change this product's publish pipeline unseen.
-    uses: quynhonsemiconductor/ci/.github/workflows/ghcr-publish.yml@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
+    uses: quynhonsemiconductor/ci/.github/workflows/ghcr-publish.yml@7e8f6136a017c7b1f57a2e9a288dae3cd008950f # v1.31.1
     with:
       product: rova
       services-json: '["api","worker","migrator"]'
@@ -67,15 +71,16 @@ jobs:
   # its chart does not know would be noise in every dev bump. It joins at the dev cutover.
   #
   # Permissions and registry token MATCH the `publish` job above exactly (contents: read, packages:
-  # write; `node-auth-token` unset, so the composite uses this job's GITHUB_TOKEN for the pnpm
-  # install). There is deliberately no `id-token: write` and no attestation input: the reusable
-  # attests nothing for ANY service yet (design §3.6 is phase 4), so asking for more here would not
-  # produce provenance — it would only widen this job beyond the API's.
+  # write, id-token: write, attestations: write; `node-auth-token` unset, so the composite uses this
+  # job's GITHUB_TOKEN for the pnpm install). The web image is attested the same way as the
+  # services: the scan path attests the pushed digest.
   publish-web:
     permissions:
       contents: read
       packages: write
-    uses: quynhonsemiconductor/ci/.github/workflows/ghcr-publish.yml@3b998f73d2fd4648aa1d22f1c2c3354c323de590 # v1.29.0
+      id-token: write
+      attestations: write
+    uses: quynhonsemiconductor/ci/.github/workflows/ghcr-publish.yml@7e8f6136a017c7b1f57a2e9a288dae3cd008950f # v1.31.1
     with:
       product: rova
       services-json: '["web"]'
@@ -108,7 +113,7 @@ jobs:
           repositories: gitops
           permission-contents: write
           permission-pull-requests: write
-      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@db42e37e2f62255b27dadd301d585d8edac1c62b  # ci#281
+      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@7e8f6136a017c7b1f57a2e9a288dae3cd008950f  # v1.31.1
         with:
           product: rova
           env: dev
