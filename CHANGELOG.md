@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.4](https://github.com/quynhonsemiconductor/rova/compare/v0.8.3...v0.8.4) (2026-11-03)
+
+
+### 🐛 Bug Fixes
+
+* **mcp:** read the Access identity from Cf-Access-Jwt-Assertion ([#868](https://github.com/quynhonsemiconductor/rova/issues/868)) ([b499d2b](https://github.com/quynhonsemiconductor/rova/commit/b499d2b47eb97ea3e7dc3b895d3c89abbe3626ad))
+
 ## [0.8.3](https://github.com/quynhonsemiconductor/rova/compare/v0.8.2...v0.8.3) (2026-11-03)
 
 
