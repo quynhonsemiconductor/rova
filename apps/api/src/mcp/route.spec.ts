@@ -42,8 +42,10 @@ const VICTIM = '0194a000-0000-7000-8000-0000000000aa';
 const ATTACKER = '0194a000-0000-7000-8000-0000000000ff';
 const WORKSPACE = '0194a000-0000-7000-8000-000000000003';
 const RESTRICTED = '0194a000-0000-7000-8000-000000000004';
-const VICTIM_TOKEN = 'access.victim.token';
-const ATTACKER_TOKEN = 'access.attacker.token';
+// JWT-shaped on purpose: an opaque bearer alone is no longer accepted, and direct clients (this
+// spec included) send the Access JWT itself as the bearer.
+const VICTIM_TOKEN = 'victim-header.victim-payload.victim-signature';
+const ATTACKER_TOKEN = 'attacker-header.attacker-payload.attacker-signature';
 
 const verifier: McpAccessVerifier = {
   verify: async (bearer) => {
@@ -275,7 +277,13 @@ async function boot(routeVerifier: McpAccessVerifier = verifier): Promise<Fastif
 // ── JSON-RPC helpers ─────────────────────────────────────────────────────────
 
 let rpcId = 0;
-function rpc(fastify: FastifyInstance, method: string, params?: object, token = VICTIM_TOKEN) {
+function rpc(
+  fastify: FastifyInstance,
+  method: string,
+  params?: object,
+  token = VICTIM_TOKEN,
+  accessJwt?: string,
+) {
   rpcId += 1;
   return fastify.inject({
     method: 'POST',
@@ -285,6 +293,7 @@ function rpc(fastify: FastifyInstance, method: string, params?: object, token = 
       // the Streamable HTTP transport refuses (406) without both media types
       accept: 'application/json, text/event-stream',
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(accessJwt ? { 'cf-access-jwt-assertion': accessJwt } : {}),
     },
     payload: { jsonrpc: '2.0', id: rpcId, method, ...(params ? { params } : {}) },
   });
@@ -468,8 +477,72 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
 
   it('an unverified Access token is one uniform 401', async () => {
     const fastify = await boot();
-    const bad = await rpc(fastify, 'initialize', { protocolVersion: '2025-06-18' }, 'garbage');
+    const bad = await rpc(fastify, 'initialize', { protocolVersion: '2025-06-18' }, 'garbage.x.y');
     expect(bad.statusCode).toBe(401);
+  });
+
+  describe('Access identity source (Cf-Access-Jwt-Assertion under Managed OAuth)', () => {
+    const INITIALIZE = { protocolVersion: '2025-06-18', capabilities: {} };
+
+    it('the header JWT is accepted and verified', async () => {
+      consumedKeys.length = 0;
+      const fastify = await boot();
+      const res = await rpc(fastify, 'initialize', INITIALIZE, '', VICTIM_TOKEN);
+      expect(res.statusCode).toBe(200);
+      expect(consumedKeys).toEqual([`mcp:uid:${VICTIM}`]);
+    });
+
+    it('an opaque bearer without the header is refused 401 before the verifier', async () => {
+      consumedKeys.length = 0;
+      const seen: string[] = [];
+      const recording: McpAccessVerifier = {
+        verify: async (value) => {
+          seen.push(value);
+          return { userId: VICTIM, workspaceId: WORKSPACE };
+        },
+      };
+      const fastify = await boot(recording);
+      // an Access OAuth token under Managed OAuth is opaque: it is not the JWT this origin verifies
+      const res = await rpc(fastify, 'initialize', INITIALIZE, 'opaque-access-oauth-token');
+      expect(res.statusCode).toBe(401);
+      expect(res.json<{ error?: string }>().error).toBe(
+        'MCP requires a Cloudflare Access identity',
+      );
+      expect(seen).toEqual([]);
+      expect(consumedKeys).toEqual([]);
+    });
+
+    it('the header wins over a bearer', async () => {
+      consumedKeys.length = 0;
+      const fastify = await boot();
+      const res = await rpc(fastify, 'initialize', INITIALIZE, ATTACKER_TOKEN, VICTIM_TOKEN);
+      expect(res.statusCode).toBe(200);
+      expect(consumedKeys).toEqual([`mcp:uid:${VICTIM}`]);
+    });
+
+    it('a forged header JWT is refused 401 BY the verifier (no fallback to the bearer)', async () => {
+      const seen: string[] = [];
+      const rejecting: McpAccessVerifier = {
+        verify: async (value) => {
+          seen.push(value);
+          return null;
+        },
+      };
+      const fastify = await boot(rejecting);
+      const res = await rpc(fastify, 'initialize', INITIALIZE, VICTIM_TOKEN, 'forged.a.b');
+      expect(res.statusCode).toBe(401);
+      expect(res.json<{ error?: string }>().error).toBe('Unverified Access token');
+      // the header alone was checked — the valid bearer was not tried as a fallback
+      expect(seen).toEqual(['forged.a.b']);
+    });
+
+    it('a JWT-shaped bearer without the header is still verified (direct clients)', async () => {
+      consumedKeys.length = 0;
+      const fastify = await boot();
+      const res = await rpc(fastify, 'initialize', INITIALIZE, VICTIM_TOKEN);
+      expect(res.statusCode).toBe(200);
+      expect(consumedKeys).toEqual([`mcp:uid:${VICTIM}`]);
+    });
   });
 
   it('the unconfigured verifier (no identity/access-jwt adapter yet) answers 503', async () => {

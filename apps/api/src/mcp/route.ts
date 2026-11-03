@@ -13,14 +13,21 @@ import type { McpRestCaller } from './tools/rest';
  * The `/mcp` route: stateless MCP transport — one request, one server, no session.
  *
  * Registered as a RAW Fastify route — outside `/v1`, the session guards, the CSRF gate and the
- * OpenAPI document — because its authentication is the Cloudflare Access JWT, not a cookie, and
- * because the edge scopes the Access application to exactly this path (MCP-PLAN §5; §12 covers
- * the discovery paths and the edge rate-limit row). MCP_ENABLED=false (the default everywhere)
- * registers nothing at all.
+ * OpenAPI document — because its authentication is the Cloudflare Access identity, not a cookie,
+ * and because the edge scopes the Access application to exactly this path (MCP-PLAN §5; §12
+ * covers the discovery paths and the edge rate-limit row). MCP_ENABLED=false (the default
+ * everywhere) registers nothing at all.
+ *
+ * With Access Managed OAuth the client's `Authorization` bearer is an OPAQUE Access OAuth token:
+ * Access validates it at the edge and forwards the identity to the origin as the Access JWT in
+ * the `Cf-Access-Jwt-Assertion` header, which is what this route verifies. A bearer is read only
+ * when it is itself a JWT (direct clients and the existing tests); an opaque bearer alone is
+ * never accepted.
  *
  * Per POST, in order:
- *  1. verify the Access JWT via the {@link McpAccessVerifier} (the app-platform
- *     `identity/access-jwt` adapter; the unconfigured stub answers 503);
+ *  1. verify the Access JWT from `Cf-Access-Jwt-Assertion` (or a JWT-shaped bearer) via the
+ *     {@link McpAccessVerifier} (the app-platform `identity/access-jwt` adapter; the
+ *     unconfigured stub answers 503);
  *  2. resolve the principal ONCE — oid → rova user + bound workspace, by the adapter — and hold
  *     it as the one {@link McpPrincipalContext} for every tool call of this request;
  *  3. rate-limit PER PERSON from that principal (never per IP: `inject()` traffic arrives from
@@ -75,9 +82,9 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
   };
 
   fastify.post('/mcp', async (request, reply) => {
-    const bearer = bearerOf(request.headers['authorization']);
-    if (!bearer) {
-      return reply.code(401).send({ error: 'MCP requires a Cloudflare Access bearer token' });
+    const token = accessTokenOf(request.headers);
+    if (!token) {
+      return reply.code(401).send({ error: 'MCP requires a Cloudflare Access identity' });
     }
 
     // The principal is resolved ONCE, here: Access JWT → rova user + bound workspace. Nothing
@@ -93,7 +100,7 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
 
     let verified: McpAccessPrincipal;
     try {
-      const result = await verifier.verify(bearer);
+      const result = await verifier.verify(token);
       if (!result) return reply.code(401).send({ error: 'Unverified Access token' });
       verified = result;
     } catch (err) {
@@ -163,9 +170,33 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
   }
 }
 
+/**
+ * The token the verifier checks. Cloudflare Access forwards the user identity to the origin as
+ * the Access JWT in `Cf-Access-Jwt-Assertion` (under Managed OAuth the client's own bearer is an
+ * opaque Access OAuth token the edge consumes, not a JWT this origin can verify). It wins: when
+ * the header is present, nothing else is considered, so a forged header fails closed. Direct
+ * clients that send the Access JWT itself as a bearer keep working, but only when that value is
+ * JWT-shaped (three base64url segments); an opaque bearer alone is never accepted.
+ */
+function accessTokenOf(headers: Record<string, string | string[] | undefined>): string | undefined {
+  const assertion = firstHeader(headers['cf-access-jwt-assertion']);
+  if (assertion) return assertion;
+  const bearer = bearerOf(headers['authorization']);
+  return bearer && isJwtShaped(bearer) ? bearer : undefined;
+}
+
+function firstHeader(value: string | string[] | undefined): string | undefined {
+  const first = Array.isArray(value) ? value[0] : value;
+  return typeof first === 'string' && first.trim() !== '' ? first.trim() : undefined;
+}
+
+function isJwtShaped(token: string): boolean {
+  return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token);
+}
+
 function bearerOf(authorization: string | string[] | undefined): string | undefined {
-  const value = Array.isArray(authorization) ? authorization[0] : authorization;
-  if (typeof value !== 'string') return undefined;
-  const match = /^Bearer\s+(.+)$/i.exec(value.trim());
+  const value = firstHeader(authorization);
+  if (!value) return undefined;
+  const match = /^Bearer\s+(.+)$/i.exec(value);
   return match?.[1];
 }

@@ -1,6 +1,7 @@
 /**
- * The MCP access adapter: verifies the Cloudflare Access JWT (`Cf-Access-Jwt-Assertion` carried
- * as a Bearer value) and maps its Entra `oid` to the rova identity user + bound workspace.
+ * The MCP access adapter: verifies the Cloudflare Access JWT (the `Cf-Access-Jwt-Assertion`
+ * header the edge forwards to the origin; a direct client may also send that JWT itself as a
+ * Bearer value) and maps its Entra `oid` to the rova identity user + bound workspace.
  *
  * STUB UNTIL app-platform ships the real verifier (`identity/access-jwt` subpath: JWKS fetch,
  * `iss`/`aud` pinned, RS256, `exp` + `nbf`, then the oid → user/workspace mapping). Until that
@@ -25,10 +26,10 @@ export interface McpAccessPrincipal {
 
 export interface McpAccessVerifier {
   /**
-   * Verifies the bearer value fully (signature, issuer, audience, window) and maps it to the
+   * Verifies the token value fully (signature, issuer, audience, window) and maps it to the
    * rova user. Returns `null` when anything fails to verify — the caller answers one uniform 401.
    */
-  verify(bearer: string): Promise<McpAccessPrincipal | null>;
+  verify(token: string): Promise<McpAccessPrincipal | null>;
 }
 
 /** Thrown when the route was booted without a real verifier (MCP_ENABLED=true, adapter absent). */
