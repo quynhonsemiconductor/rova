@@ -122,7 +122,6 @@ describe('.env.example boots the API and the worker', () => {
       'BOOTSTRAP_WORKSPACE_NAME',
       'BOOTSTRAP_WORKSPACE_SLUG',
       'VITE_DEV_LOGIN',
-      'VITE_APP_ENV',
       'SHUTDOWN_TIMEOUT_MS',
       'SHUTDOWN_ENDPOINT_DELAY_MS',
     ]);

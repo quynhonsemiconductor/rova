@@ -1,0 +1,97 @@
+# =============================================================================
+# The rova web image's server — Caddy as an unprivileged static server.
+#
+# Why Caddy over nginx-unprivileged: one static binary that parses and validates its own config
+# (`caddy validate`, run at image build) instead of a root-master/worker process model, no writable
+# directory it insists on owning, and a single `/healthz` to answer. The image runs with a read-only
+# root filesystem; Caddy's only writes go to the `XDG_*` directories under /tmp, which a deployment
+# mounts as emptyDir (see the Dockerfile).
+#
+# It serves what the Cloudflare Worker serves today, so the cutover changes the deploy system and
+# nothing a browser can see:
+#
+#   /config.json            the runtime config a deployment mounts (gitops ConfigMap), no-cache
+#   /assets/*               content-hashed build output, immutable
+#   everything else         the built files; an unknown path falls back to index.html (SPA route)
+#   /guide/…                the old standalone User Guide's redirects (apps/web/public/_redirects)
+#   /healthz                liveness/readiness for the probes
+#
+# NOT yet replicated, and a BLOCKER for the cutover, not for this image: the US-119 User Guide gate
+# (`guide-gate.worker.ts`) — a session check in front of /guide-assets/*. A static server cannot
+# answer it alone: the check needs the API (`GET /v1/auth/me`), so it needs an in-cluster upstream
+# and a Caddy `forward_auth` (or an edge route) decided with the chart. Until then `/guide-assets/*`
+# is PUBLIC HERE, and the Worker keeps being the only gated deploy path.
+#
+# HEADERS: apps/web/public/_headers is the Cloudflare manifest of the same policy. Both files must
+# change together while the Worker is the fallback; the CSP and its long "why" comment live there.
+# =============================================================================
+{
+	admin off
+	# Everything arrives from cloudflared over plain HTTP inside the cluster; TLS ends at the edge
+	# (Cloudflare). A local certificate would be noise, and Caddy would try to bind :443.
+	auto_https off
+}
+
+:8080 {
+	root * /srv
+	encode zstd gzip
+
+	# The security policy of the Worker (`_headers`), header for header.
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com https://rova-assets-dev.qnsc.vn https://rova-assets.qnsc.vn; connect-src 'self' blob: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com; worker-src blob:; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://login.microsoftonline.com;"
+	}
+
+	# Probe endpoint. No log line, no dependency: a probe must say "the process answers", not "the
+	# API is healthy" (ArgoCD and the API have their own).
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	# The runtime config, mounted over the app root by the deployment. It is absent in the image on
+	# purpose: a baked copy would be correct in exactly one environment. A missing file is a 404, which
+	# the SPA reports on its error screen instead of booting with defaults.
+	handle /config.json {
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	# Content-hashed filenames: the bytes behind a given URL never change.
+	handle /assets/* {
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# The old standalone User Guide (apps/web/public/_redirects), still served by the Worker fallback.
+	# ORDER MATTERS: the assets rule, then English, then Vietnamese — the reverse of what a broad
+	# /guide/* rule would do to /guide/en/… and /guide/assets/….
+	@guideAssets path_regexp guideAssets ^/guide/assets(/.+)$
+	handle @guideAssets {
+		redir * /guide-assets{re.guideAssets.1} 301
+	}
+
+	@guideEn path_regexp guideEn ^/guide/en(/.*)?$
+	handle @guideEn {
+		redir * /user-guide/en{re.guideEn.1} 301
+	}
+
+	@guide path_regexp guide ^/guide(/.+)?$
+	handle @guide {
+		redir * /user-guide/vi{re.guide.1} 301
+	}
+
+	# Every SPA route is a client-side route with no file behind it.
+	handle {
+		# Everything here is either a file whose name carries no content hash (index.html, favicon,
+		# the guide's screenshots) or a rewritten SPA route, so it always revalidates. The hashed
+		# assets keep their own immutable header above; a deferred site-wide header would override it.
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}
