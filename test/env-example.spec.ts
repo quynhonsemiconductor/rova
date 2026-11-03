@@ -122,7 +122,6 @@ describe('.env.example boots the API and the worker', () => {
       'BOOTSTRAP_WORKSPACE_NAME',
       'BOOTSTRAP_WORKSPACE_SLUG',
       'VITE_DEV_LOGIN',
-      'VITE_APP_ENV',
       'SHUTDOWN_TIMEOUT_MS',
       'SHUTDOWN_ENDPOINT_DELAY_MS',
     ]);
@@ -330,7 +329,7 @@ describe('the README and the "local quickstart" CI job run the same commands', (
 describe('the quickstart job gates the PR', () => {
   it('is a dependency of `Web CI required`', () => {
     expect(read('.github/workflows/web-ci.yml')).toMatch(
-      /needs: \[changes, quality, test, e2e, build, quickstart\]/,
+      /needs: \[changes, quality, test, e2e, build, container, quickstart\]/,
     );
   });
 });

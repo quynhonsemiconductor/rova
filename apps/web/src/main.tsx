@@ -1,39 +1,20 @@
-import { BRAND } from '@/shared/config/brand'
-import { StrictMode, Component } from 'react'
-import type { ReactNode } from 'react'
-import { createRoot } from 'react-dom/client'
+/**
+ * The SPA's entry point.
+ *
+ * It loads NO app code itself: `app/boot.ts` fetches `/config.json`, validates it and fills `ENV`
+ * first, and only then does this file `import('./bootstrap')`. Keep the static imports here to plain
+ * modules that read no configuration — an early import of `App` would evaluate the module graph
+ * (the router, the API client) before the config exists.
+ */
+import { boot } from './app/boot'
+// The stylesheet is static so the build links it in index.html: the first paint (and the config error
+// screen) then has the app's colours instead of waiting for the app chunk.
 import './app/styles/globals.css'
-import './shared/i18n/i18n'
-import { registerPreloadErrorReload } from './shared/lib/preload-error'
-import App from './App'
 
-class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  state = { error: null }
-  static getDerivedStateFromError(error: Error) {
-    return { error }
-  }
-  render() {
-    if (this.state.error) {
-      return (
-        <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
-          <h1 style={{ color: BRAND.danger }}>Something went wrong</h1>
-          <pre style={{ color: BRAND.textSecondary, fontSize: '0.875rem' }}>
-            {(this.state.error as Error).message}
-          </pre>
-          <button onClick={() => this.setState({ error: null })}>Try again</button>
-        </div>
-      )
-    }
-    return this.props.children
-  }
+const root = document.getElementById('root')
+
+if (!root) {
+  throw new Error('The SPA entry is missing #root in index.html')
 }
 
-registerPreloadErrorReload()
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </StrictMode>,
-)
+void boot({ root, loadApp: () => import('./bootstrap') })

@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Connect, type Plugin } from 'vite'
 import path from 'node:path'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -113,9 +113,50 @@ const securityHeadersPlugin: Plugin = {
   },
 }
 
+/**
+ * `/config.json` for the dev server and for `vite preview`.
+ *
+ * A deployment mounts the real file next to the build (the web image serves it from `/srv`); there
+ * is nothing to mount locally, and a checked-in copy would be one accident away from being deployed
+ * as if it were real. So the dev server answers the same path, from the same root `.env` value the
+ * bundle used to be built with. `apply: 'serve'` covers `vite` and `vite preview`; a build never
+ * contains this file.
+ */
+export const DEV_CONFIG = {
+  apiBaseUrl: '',
+  appEnv: 'development',
+  devLoginEnabled: dotenv.VITE_DEV_LOGIN === 'true',
+}
+
+const devConfigMiddleware: Connect.NextHandleFunction = (req, res, next) => {
+  if ((req.url ?? '').split('?')[0] !== '/config.json') return next()
+  res.statusCode = 200
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.end(JSON.stringify(DEV_CONFIG))
+}
+
+const devConfigPlugin: Plugin = {
+  name: 'dev-config',
+  apply: 'serve',
+  configureServer(server) {
+    server.middlewares.use(devConfigMiddleware)
+  },
+  configurePreviewServer(server) {
+    server.middlewares.use(devConfigMiddleware)
+  },
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => ({
-  plugins: [react(), tailwindcss(), securityHeadersPlugin, devOriginsPlugin, guideChunkGuard],
+  plugins: [
+    react(),
+    tailwindcss(),
+    securityHeadersPlugin,
+    devOriginsPlugin,
+    guideChunkGuard,
+    devConfigPlugin,
+  ],
   // The repo-root `.env` serves the SPA too, BUT ONLY FOR THE DEV SERVER (`vite`, mode `development`): Vite exposes only
   // `VITE_`-prefixed variables to the browser, so the API's secrets in that file never reach it, and `cp .env.example
   // .env` is the whole setup (VITE_DEV_LOGIN lives there). A `vite build` (any mode) and the unit tests keep the default

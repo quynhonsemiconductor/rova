@@ -1,0 +1,209 @@
+# =============================================================================
+# The rova web image's server — Caddy as an unprivileged static server.
+#
+# Why Caddy over nginx-unprivileged: one static binary that parses and validates its own config
+# (`caddy validate`, run at image build) instead of a root-master/worker process model, no writable
+# directory it insists on owning, and a single `/healthz` to answer. The image runs with a read-only
+# root filesystem; Caddy's only writes go to the `XDG_*` directories under /tmp, which a deployment
+# mounts as emptyDir (see the Dockerfile).
+#
+# IMAGE CONTRACT (the qnsc-service chart, `web:` block):
+#
+#   listens on 8080             (web.port)
+#   doc root   /srv             (dist/ at its root)
+#   config     /srv/config.json (ConfigMap, mounted with subPath — replacing this one file)
+#   health     /healthz         (both probes)
+#   /tmp        the ONLY writable path (read-only root filesystem, any non-root uid)
+#
+# It serves what the Cloudflare Worker served, so the cutover changes the deploy system and nothing
+# a browser can see:
+#
+#   /config.json            the runtime config a deployment mounts (gitops ConfigMap), no-cache
+#   /assets/*               content-hashed build output, immutable
+#   /guide-assets/*         the User Guide's files, behind the US-119 session gate below
+#   everything else         the built files; an unknown path falls back to index.html (SPA route)
+#   /guide/…                the old standalone User Guide's redirects (apps/web/public/_redirects)
+#   /healthz                liveness/readiness for the probes
+#
+# THE GUIDE GATE. `/guide-assets/*` (the guide's screenshots and the chunks carrying its text) is
+# signed-in-only, and static files are public. `guide-gate.worker.ts` answered that with a session
+# check in front of the Worker; here `forward_auth` makes the SAME check against the API on this
+# origin: `GET /v1/auth/me` with the reader's own cookie, JSON 200 = signed in, 401/403 = not.
+# The decision stays the API's. Fail CLOSED, as the Worker did: a 401/403 sends the reader to
+# `/login?returnTo=/user-guide`; any other non-2xx, an unreachable API or a timeout is a 503 — never
+# the file. The gated responses carry the guide's own headers (private, narrow CSP), not the app's.
+#
+# The upstream is the in-cluster `api` Service (the chart names Services by their `services` key and
+# rova's API listens on 3000); it is overrideable per deployment with WEB_API_UPSTREAM.
+# NOTE: the chart's network policy must allow web -> api and api <- web, and the upstream must be
+# right, or the guide answers 503 (by design — it does not leak the files instead).
+#
+# HEADERS: apps/web/public/_headers is the Cloudflare manifest of the same policy. Both files must
+# change together while the Worker is the fallback; the CSP and its long "why" comment live there.
+# =============================================================================
+{
+	admin off
+	# Everything arrives from cloudflared over plain HTTP inside the cluster; TLS ends at the edge
+	# (Cloudflare). A local certificate would be noise, and Caddy would try to bind :443.
+	auto_https off
+}
+
+:8080 {
+	root * /srv
+	encode zstd gzip
+
+	# A failed forward_auth (the API is down, DNS is wrong, the network policy blocks the call) is a
+	# reverse-proxy error — 502/504 — and never reaches handle_response. Map exactly those to the
+	# gate's fail-closed 503; nothing else in this server proxies, so no other path can produce them.
+	handle_errors {
+		@authUpstreamDown expression {err.status_code} in [502, 504]
+		handle @authUpstreamDown {
+			respond "The User Guide is temporarily unavailable. Please try again shortly." 503
+		}
+	}
+
+	# Any request whose RAW uri carries an encoded separator (`%2F`, `%5C`) is refused: Caddy decodes
+	# and cleans paths before routing, so `/guide-assets%2F..%2Fx` would otherwise be routed as some
+	# OTHER path (it became a public `/x` in testing). Static files never need an encoded separator.
+	@encodedSeparator expression {http.request.uri}.contains('%2F') || {http.request.uri}.contains('%2f') || {http.request.uri}.contains('%5C') || {http.request.uri}.contains('%5c')
+	handle @encodedSeparator {
+		respond "" 404
+	}
+
+	# The security policy of the Worker (`_headers`), header for header — for every path but the
+	# guide's files. Those add the guide's own overrides in the gate below, so this matcher keeps a
+	# site-wide deferred header from stomping them.
+	@notGuideFiles not path /guide-assets /guide-assets/*
+	header @notGuideFiles {
+		-Server
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com https://rova-assets-dev.qnsc.vn https://rova-assets.qnsc.vn; connect-src 'self' blob: https://69e52835cf2d08edde5b6ebd741d30fa.r2.cloudflarestorage.com; worker-src blob:; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://login.microsoftonline.com;"
+	}
+
+	# Probe endpoint. No log line, no dependency: a probe must say "the process answers", not "the
+	# API is healthy" (ArgoCD and the API have their own).
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	# The runtime config, mounted over the app root by the deployment. It is absent in the image on
+	# purpose: a baked copy would be correct in exactly one environment. A missing file is a 404, which
+	# the SPA reports on its error screen instead of booting with defaults.
+	handle /config.json {
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	# Content-hashed filenames: the bytes behind a given URL never change. `immutable` is asserted
+	# only when the file EXISTS: a missing /assets/* is a 404, and a 404 promising immutability would
+	# be cached by the browser for a year.
+	handle /assets/* {
+		@exists file {path}
+		header @exists Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# US-119: the User Guide's files are for signed-in readers only.
+	#
+	# `reverse_proxy`, not `forward_auth`, on purpose: forward_auth treats EVERY 2xx as "signed in" and
+	# cannot intercept one (tested: a 204 or a 200 text/html passed through and the file was served).
+	# Here the check is the same request the Worker made — `GET /v1/auth/me` — and only a 200 whose
+	# Content-Type is the API's JSON continues; the gated file is then served from /srv, and every
+	# other answer fails closed. Response matchers test status and headers only: the API's JSON SHAPE
+	# itself is not parseable here, so the contract enforced is exactly "200 + application/json".
+	#
+	# Only the reader's Cookie is sent upstream (`header_up -*` first; the transport's own User-Agent
+	# and Accept-Encoding are disabled below), plus an Accept of our own. `/v1/auth/me` authenticates
+	# from the identity session cookie — libs/platform SessionGuard resolves that cookie and puts the
+	# session on the request; the other credentials it accepts (an API token) arrive as an
+	# Authorization header, which is NOT forwarded, so no request this gate makes can be authenticated
+	# by anything but a session cookie.
+	@guideFiles path /guide-assets /guide-assets/*
+	handle @guideFiles {
+		reverse_proxy {$WEB_API_UPSTREAM:http://api:3000} {
+			method GET
+			rewrite /v1/auth/me
+			header_up -*
+			header_up User-Agent ""
+			header_up Cookie {http.request.header.Cookie}
+			header_up Accept "application/json"
+			# 5 s for both legs — connect and the answer's first byte — the Worker's own budget.
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 5s
+				compression off
+			}
+			# First matching block wins, in this order: the only success is 200 + the API's JSON;
+			# 401/403 mean "not signed in"; every other status is unavailable.
+			@sessionOk {
+				status 200
+				header Content-Type "application/json*"
+			}
+			@sessionRefused status 401 403
+			@sessionUnavailable status 2xx 3xx 4xx 5xx
+			handle_response @sessionOk {
+				# The API's Set-Cookie (it plants the CSRF secret on /v1/auth/me) reaches the reader,
+				# as it did through the Worker's gate.
+				copy_response_headers {
+					include Set-Cookie
+				}
+				root * /srv
+				rewrite * {http.request.orig_uri}
+				file_server
+			}
+			handle_response @sessionRefused {
+				redir * /login?returnTo=/user-guide 302
+			}
+			handle_response @sessionUnavailable {
+				respond "The User Guide is temporarily unavailable. Please try again shortly." 503
+			}
+		}
+		# `_headers`' policy plus the Worker's GUIDE_SECURITY_HEADERS overrides: same HSTS,
+		# Permissions-Policy, frame protection and nosniff as every other path; the narrow CSP,
+		# `private, no-cache` (so no shared cache hands a gated file to the next reader, and the
+		# browser re-runs the gate after sign-out), `same-origin` referrer and noindex, as before.
+		header {
+			-Server
+			Cache-Control "private, no-cache"
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+			Referrer-Policy "same-origin"
+			X-Frame-Options "DENY"
+			X-Content-Type-Options "nosniff"
+			X-Robots-Tag "noindex, nofollow"
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		}
+	}
+
+	# The old standalone User Guide (apps/web/public/_redirects), still served by the Worker fallback.
+	# ORDER MATTERS: the assets rule, then English, then Vietnamese — the reverse of what a broad
+	# /guide/* rule would do to /guide/en/… and /guide/assets/….
+	@guideAssets path_regexp guideAssets ^/guide/assets(/.+)$
+	handle @guideAssets {
+		redir * /guide-assets{re.guideAssets.1} 301
+	}
+
+	@guideEn path_regexp guideEn ^/guide/en(/.*)?$
+	handle @guideEn {
+		redir * /user-guide/en{re.guideEn.1} 301
+	}
+
+	@guide path_regexp guide ^/guide(/.+)?$
+	handle @guide {
+		redir * /user-guide/vi{re.guide.1} 301
+	}
+
+	# Every SPA route is a client-side route with no file behind it.
+	handle {
+		# Everything here is either a file whose name carries no content hash (index.html, favicon)
+		# or a rewritten SPA route, so it always revalidates. The hashed assets keep their own
+		# immutable header above; a deferred site-wide header would override it.
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}

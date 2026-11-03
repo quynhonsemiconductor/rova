@@ -1,17 +1,42 @@
 /**
- * Centralised environment configuration.
- * All `import.meta.env.*` access should go through here — never inline env reads.
+ * The SPA's runtime environment, as the rest of the app reads it.
+ *
+ * The DEPLOYED values are not baked into the bundle: the SPA fetches `/config.json` once, before it
+ * bootstraps (`shared/config/config.ts`), and `applyConfig` fills this object in. One image therefore
+ * serves every environment, and a value changes with a ConfigMap, not a rebuild.
+ *
+ * `IS_DEV` is the exception: it is the Vite dev server itself (`import.meta.env.DEV`), a build-time
+ * fact of the bundle, not an environment of the product.
+ *
+ * The defaults below are what a module sees when it is imported before (or without) a config — the
+ * unit tests — and they match the old build-time defaults.
  */
-export const ENV = {
-  // Empty string → relative URLs; works in dev (Vite proxy handles /v1) and prod (CloudFront proxy handles /v1).
-  API_BASE_URL: import.meta.env.VITE_API_URL ?? '',
-  APP_ENV: (import.meta.env.VITE_APP_ENV ?? 'development') as
-    'development' | 'staging' | 'production',
-  IS_DEV: import.meta.env.DEV,
+import type { AppConfig, AppEnv } from './config'
 
-  // Passwordless dev-login affordance (seeded accounts, no Entra). OFF by
-  // default so it never ships to production; enable per NON-PROD deployment via
-  // VITE_DEV_LOGIN=true so QA can sign in the same way in every environment. The
-  // API independently hard-blocks dev-login when NODE_ENV==='production'.
-  DEV_LOGIN_ENABLED: (import.meta.env.VITE_DEV_LOGIN ?? 'false') === 'true',
-} as const
+export interface Env {
+  /**
+   * The API origin prefix, e.g. `''` for same-origin (what every deployment uses) or a path on this
+   * origin such as `/api`. Never an absolute origin: authentication rides a `__Host-` session
+   * cookie, which a cross-site request would not carry, and the config schema refuses one.
+   */
+  API_BASE_URL: string
+  APP_ENV: AppEnv
+  /** The Vite dev server (`vite`), never true in a build. */
+  IS_DEV: boolean
+  /** The passwordless dev-login affordance (seeded accounts, no Entra). */
+  DEV_LOGIN_ENABLED: boolean
+}
+
+export const ENV: Env = {
+  API_BASE_URL: '',
+  APP_ENV: 'development',
+  IS_DEV: import.meta.env.DEV,
+  DEV_LOGIN_ENABLED: false,
+}
+
+/** Fills `ENV` from a validated `/config.json`. Called once, by `loadConfig`. */
+export function applyConfig(config: AppConfig): void {
+  ENV.API_BASE_URL = config.apiBaseUrl
+  ENV.APP_ENV = config.appEnv
+  ENV.DEV_LOGIN_ENABLED = config.devLoginEnabled
+}
