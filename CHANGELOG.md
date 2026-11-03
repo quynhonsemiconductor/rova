@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.8.1](https://github.com/quynhonsemiconductor/rova/compare/v0.8.0...v0.8.1) (2026-11-03)
+
+
+### ✨ Features
+
+* **attachments:** accept HEIC/HEIF uploads as-is on download-only surfaces ([#854](https://github.com/quynhonsemiconductor/rova/issues/854)) ([3151a46](https://github.com/quynhonsemiconductor/rova/commit/3151a4644c51434232a1bd844a64efad83eebc0d))
+* **release:** dev bump after publish and tag-to-gitops promote, both by digest ([#856](https://github.com/quynhonsemiconductor/rova/issues/856)) ([967297c](https://github.com/quynhonsemiconductor/rova/commit/967297c7ab117e212129251aa54791eaa71458dc))
+* **web:** in-app User Guide chapters 02-05 (US-119) ([#823](https://github.com/quynhonsemiconductor/rova/issues/823)) ([b87ddeb](https://github.com/quynhonsemiconductor/rova/commit/b87ddeb52d22b8cbb0b4d76d46aacd04a9ae68e7))
+* **web:** in-app User Guide chapters 06-09 (US-119) ([#824](https://github.com/quynhonsemiconductor/rova/issues/824)) ([726a20e](https://github.com/quynhonsemiconductor/rova/commit/726a20e5bd67f6af88a090f4470627ce7c348553))
+* **web:** in-app User Guide chapters 10-12 (US-119) ([#825](https://github.com/quynhonsemiconductor/rova/issues/825)) ([4fa3b78](https://github.com/quynhonsemiconductor/rova/commit/4fa3b788a88da5b5e0e0d4f5b8619c426a5ed242))
+* **web:** open the in-app User Guide from Help; retire the static guide (US-119) ([#826](https://github.com/quynhonsemiconductor/rova/issues/826)) ([ba6c259](https://github.com/quynhonsemiconductor/rova/commit/ba6c259cab105e9bf1bba7812c5e3e97a7cc0e22))
+* **web:** serve the User Guide's text from the gated guide-assets path (US-119) ([#822](https://github.com/quynhonsemiconductor/rova/issues/822)) ([0202d35](https://github.com/quynhonsemiconductor/rova/commit/0202d35b62546498cd9228cf6cfb523d89218bf3))
+
+
+### 🐛 Bug Fixes
+
+* **db:** migrator lock_timeout, statement_timeout, fail on stranded entries ([#852](https://github.com/quynhonsemiconductor/rova/issues/852)) ([eadf9be](https://github.com/quynhonsemiconductor/rova/commit/eadf9bea20db6197f133de0c2138fcb07bd074e3))
+* **mcp:** report SERVICE_VERSION as the MCP server version ([#853](https://github.com/quynhonsemiconductor/rova/issues/853)) ([9cb7b58](https://github.com/quynhonsemiconductor/rova/commit/9cb7b58191d53af68f82f1ec9fbb4ea0785f7887))
+* **web:** gate /guide-assets/* in the Worker like /guide/* ([#849](https://github.com/quynhonsemiconductor/rova/issues/849)) ([d87bd7b](https://github.com/quynhonsemiconductor/rova/commit/d87bd7bf3e3fd8de8c730913dc462f1329047f04))
+* **web:** the guide gate checks identity 8's session, not v7's (US-119) ([#863](https://github.com/quynhonsemiconductor/rova/issues/863)) ([c3bf56c](https://github.com/quynhonsemiconductor/rova/commit/c3bf56c2441c12bf64d7f3e69738227bd6c46b28))
+
 ## [0.8.0](https://github.com/quynhonsemiconductor/rova/compare/v0.7.18...v0.8.0) (2026-11-01)
 
 
