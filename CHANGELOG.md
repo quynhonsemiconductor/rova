@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.5](https://github.com/quynhonsemiconductor/rova/compare/v0.8.4...v0.8.5) (2026-11-03)
+
+
+### 🐛 Bug Fixes
+
+* **mcp:** a blank or repeated access header fails closed ([#870](https://github.com/quynhonsemiconductor/rova/issues/870)) ([7c36d2e](https://github.com/quynhonsemiconductor/rova/commit/7c36d2ef8e8f0fd6835ef726d71525cc51f64f8c))
+
 ## [0.8.4](https://github.com/quynhonsemiconductor/rova/compare/v0.8.3...v0.8.4) (2026-11-03)
 
 
