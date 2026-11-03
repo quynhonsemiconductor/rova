@@ -376,9 +376,10 @@ export class TeamStatusService {
     capacityHours: number,
     tasks: TeamStatusTaskRow[],
   ): TeamStatusMemberGroup {
-    const estimateHours = tasks.reduce((s, t) => s + t.estimateHours, 0);
-    const todoHours = tasks.reduce((s, t) => s + t.todoHours, 0);
-    const actualHours = tasks.reduce((s, t) => s + t.actualHours, 0);
+    // A task's hour may be `null` (never entered); a SUM has to be a number, so it counts as 0.
+    const estimateHours = tasks.reduce((s, t) => s + (t.estimateHours ?? 0), 0);
+    const todoHours = tasks.reduce((s, t) => s + (t.todoHours ?? 0), 0);
+    const actualHours = tasks.reduce((s, t) => s + (t.actualHours ?? 0), 0);
     // LOAD, not completion: estimate / capacity * 100 (BA, US-145 — "capacity 60h, a task
     // estimated 8h → the State bar reads 8/60"). This REVERSES Team_Status SRS §10's
     // actual / estimate, which left the bar at 0% for every member who had planned work but had
@@ -415,9 +416,11 @@ export class TeamStatusService {
       },
       release: row.releaseId ? { id: row.releaseId, name: row.releaseName ?? '' } : null,
       state: STATE_NORMALIZE[row.scheduleState as WorkItemScheduleState] ?? 'Defined',
-      estimateHours: Number(row.estimateHours ?? 0),
-      todoHours: Number(row.todoHours ?? 0),
-      actualHours: Number(row.actualHours ?? 0),
+      // `null` passes through: coercing it to 0 made a cell the user had just CLEARED refetch
+      // as `0` — a value nobody entered. See `TeamStatusTaskRow.estimateHours`.
+      estimateHours: hoursOrNull(row.estimateHours),
+      todoHours: hoursOrNull(row.todoHours),
+      actualHours: hoursOrNull(row.actualHours),
       owner: {
         id: row.assigneeId ?? '',
         displayName: row.assigneeDisplayName ?? 'Unassigned',
@@ -426,4 +429,9 @@ export class TeamStatusService {
       rank: row.rank,
     };
   }
+}
+
+/** A numeric column read as text by the driver → a number, keeping "never entered" as `null`. */
+function hoursOrNull(value: string | null): number | null {
+  return value == null ? null : Number(value);
 }

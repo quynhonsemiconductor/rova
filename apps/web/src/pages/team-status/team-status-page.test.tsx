@@ -220,6 +220,53 @@ describe('Team Status task hours are inline editable (US-145)', () => {
     )
   })
 
+  it('renders a never-entered hour as `--`, not 0 — the state a cleared cell refetches into', async () => {
+    const [alice] = TEAM_STATUS.groups
+    mockGET.mockResolvedValue({
+      data: {
+        ...TEAM_STATUS,
+        groups: [
+          {
+            ...alice,
+            tasks: [{ ...alice.tasks[0], estimateHours: null }, alice.tasks[1]],
+          },
+        ],
+      },
+      error: undefined,
+      response: { status: 200 },
+    })
+    renderPage()
+    await expandAlice()
+    await screen.findByText('DEV - wire SSO')
+
+    // TA-1's Estimate cell shows the empty marker; its old value (6) is gone from the grid.
+    expect(screen.getAllByText('--').length).toBeGreaterThan(0)
+    expect(screen.queryByText('6')).toBeNull()
+  })
+
+  it('sends null, not 0, when an hour cell is cleared', async () => {
+    mockPATCH.mockResolvedValue({
+      data: { id: 'ta-1', itemKey: 'TA-1', projectId: 'p-1' },
+      error: undefined,
+      response: { status: 200 },
+    })
+    renderPage()
+    await expandAlice()
+    await screen.findByText('DEV - wire SSO')
+
+    fireEvent.click(screen.getByText('6'))
+    const input = await screen.findByRole('textbox', { name: 'Estimate' })
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(mockPATCH).toHaveBeenCalledWith('/v1/work-items/{id}', {
+        params: { path: { id: 'ta-1' } },
+        body: { estimateHours: null },
+      }),
+    )
+  })
+
   it('offers no hours editor to a caller without work_item:edit', async () => {
     grantedCodes.deny = 'work_item:edit'
     const { container } = renderPage()

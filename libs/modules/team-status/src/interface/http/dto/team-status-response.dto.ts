@@ -11,10 +11,12 @@ const WorkProductSchema = z.object({
   status: z.string(),
 });
 
-const ReleaseRefSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string(),
-}).nullable();
+const ReleaseRefSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+  })
+  .nullable();
 
 const OwnerSchema = z.object({
   id: z.string().uuid(),
@@ -30,9 +32,10 @@ const TaskRowSchema = z.object({
   workProduct: WorkProductSchema,
   release: ReleaseRefSchema,
   state: z.enum(TEAM_TASK_STATES),
-  estimateHours: z.number(),
-  todoHours: z.number(),
-  actualHours: z.number(),
+  // Nullable: `null` = never entered, not 0 (see `TeamStatusTaskRow`). Group and totals stay numbers.
+  estimateHours: z.number().nullable(),
+  todoHours: z.number().nullable(),
+  actualHours: z.number().nullable(),
   owner: OwnerSchema,
   rank: z.string().nullable(),
 });

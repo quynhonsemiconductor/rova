@@ -42,9 +42,15 @@ export interface TeamStatusTaskRow {
   workProduct: TeamStatusWorkProduct;
   release: TeamStatusRelease | null;
   state: TeamTaskState;
-  estimateHours: number;
-  todoHours: number;
-  actualHours: number;
+  /**
+   * `null` = never entered, which is a different claim from `0` (the repo-wide rule for typed
+   * numbers — `useFieldCommit.saveNumber` clears a blank cell to `null`). The row passes it
+   * through so a cleared cell reads `--` rather than a zero nobody typed; only the GROUP and
+   * TOTALS sums treat it as 0, because a sum has to be a number.
+   */
+  estimateHours: number | null;
+  todoHours: number | null;
+  actualHours: number | null;
   owner: TeamStatusOwner;
   rank: string | null;
 }
@@ -105,9 +111,10 @@ export interface UpdateCapacityInput {
 
 /** Input for updating a task from Team Status. */
 /**
- * Team Status writes Task Name and Task State only (SRS §9.3, §11). Hours and Owner are read-only
- * on this surface and are edited from the Task Dashboard through `WorkItemsService`; passing one
- * here is a compile error rather than a silently-dropped field. See `UpdateTeamTaskSchema`.
+ * The Team Status TASK route writes Task Name and Task State only (SRS §9.3). Hours are edited on
+ * this screen too (US-145), but through `PATCH /v1/work-items/:id` and `WorkItemsService` — never
+ * here — so the once-only Estimate → To Do copy stays in one place. Passing hours or an owner here
+ * is a compile error rather than a silently-dropped field. See `UpdateTeamTaskSchema`.
  */
 export interface UpdateTaskFromTeamStatusInput {
   title?: string;

@@ -159,7 +159,9 @@ function ProgressBar({
   const title = noCapacity
     ? 'Capacity not set — enter a Capacity to measure load'
     : `${estimateHours}h estimated of ${capacityHours}h capacity`
-  const tone = noCapacity ? 'text-foreground-subtle' : over ? 'text-destructive' : 'text-success'
+  let tone = 'text-success'
+  if (noCapacity) tone = 'text-foreground-subtle'
+  else if (over) tone = 'text-destructive'
   return (
     <div className="flex w-full flex-col gap-[3px]" title={title}>
       <span className={`text-ui-xs leading-none font-semibold tabular-nums ${tone}`}>
@@ -184,7 +186,7 @@ export function TeamStatusPage() {
   const canEdit = can('team_status:edit')
   // Task hours are written through `PATCH /v1/work-items/:id` (the route the Tasks tab and
   // Iteration Status use), so they are gated on THAT route's code, not on `team_status:edit`.
-  const canEditHours = can('work_item:edit')
+  const canEditHours = can(PERMISSION.WORK_ITEM_EDIT)
 
   // ── Shared table engine (identical to projects/releases): resize + reorder + show/hide ──
   // Must be declared before any early returns to satisfy Rules of Hooks.

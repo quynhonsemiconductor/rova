@@ -78,6 +78,9 @@ export const PERMISSION = {
   // so it gates the nav's presence rather than any privilege; the other two are the §3.2 admin
   // surfaces (Portfolio Items, Capacity Planning) an Editor does not see.
   WORK_ITEM_VIEW: 'work_item:view',
+  // The code `PATCH /v1/work-items/:id` requires — Team Status gates its inline task hours on it.
+  // Several older grids still pass the bare string; move them here as they are touched.
+  WORK_ITEM_EDIT: 'work_item:edit',
   PORTFOLIO_VIEW: 'portfolio:view',
   CAPACITY_VIEW: 'capacity:view',
 

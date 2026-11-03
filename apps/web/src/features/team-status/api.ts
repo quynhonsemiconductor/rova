@@ -37,9 +37,10 @@ export interface TeamStatusTaskRow {
   workProduct: TeamStatusWorkProduct
   release: TeamStatusRelease | null
   state: TeamTaskState
-  estimateHours: number
-  todoHours: number
-  actualHours: number
+  /** `null` = never entered (a cleared cell), never coerced to 0. Group/total sums count it as 0. */
+  estimateHours: number | null
+  todoHours: number | null
+  actualHours: number | null
   owner: TeamStatusOwner
   rank: string | null
 }
@@ -130,13 +131,12 @@ export function useUpdateCapacity(
 }
 
 /**
- * Team Status edits Task Name and Task State only.
+ * The Team Status TASK route edits Task Name and Task State only.
  *
- * SRS §9.3 accepts a patch of "`title` and/or `state`", and §11 gives this surface three editable
- * things: Capacity, Task Name, Task State. Estimate / ToDo / Actuals / Owner are reads here
- * (P3-TS-FR-026/027) and are edited on the Task Dashboard through `useUpdateWorkItem`. The route now
- * REFUSES the other four (`.strict()` on `UpdateTeamTaskSchema`), so keeping them in this type would
- * only buy a 400 at runtime instead of a compile error.
+ * SRS §9.3 accepts a patch of "`title` and/or `state`", and the route REFUSES anything else
+ * (`.strict()` on `UpdateTeamTaskSchema`), so keeping more fields in this type would only buy a 400
+ * at runtime instead of a compile error. Estimate / To Do / Actuals ARE editable on this screen
+ * (US-145), but through `useUpdateWorkItem` — see `TaskRow.commitHours` on the page.
  */
 export function useUpdateTeamTask() {
   return useMutation({

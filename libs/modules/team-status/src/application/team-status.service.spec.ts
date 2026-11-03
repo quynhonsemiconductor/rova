@@ -308,6 +308,25 @@ describe('TeamStatusService', () => {
       expect(result.groups[0].capacityHours).toBe(0);
     });
 
+    it('passes a never-entered hour through as null, and counts it as 0 only in the sums', async () => {
+      repo.getTaskRows.mockResolvedValue([
+        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: null, todoHours: '2' }),
+        makeRawRow({ id: 't2', assigneeId: 'alice', estimateHours: '4', actualHours: null }),
+      ]);
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
+      repo.getCapacities.mockResolvedValue(new Map([['alice', 40]]));
+
+      const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
+      const [t1, t2] = result.groups[0].tasks;
+      // A cleared cell must refetch as "not entered", never as a 0 nobody typed.
+      expect(t1.estimateHours).toBeNull();
+      expect(t2.actualHours).toBeNull();
+      // A sum has to be a number: the null contributes 0.
+      expect(result.groups[0].estimateHours).toBe(4);
+      expect(result.groups[0].actualHours).toBe(5); // t1's default '5' + t2's null
+      expect(result.totals.estimateHours).toBe(4);
+    });
+
     it('returns empty groups and zero totals when no tasks exist', async () => {
       repo.getTaskRows.mockResolvedValue([]);
 
