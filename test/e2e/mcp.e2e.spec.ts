@@ -84,6 +84,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
   async function rpc(
     token: string,
     body: object,
+    opts: { accessHeaderOnly?: boolean } = {},
   ): Promise<{ statusCode: number; json: JsonRpcResponse }> {
     const res = await fastify.inject({
       method: 'POST',
@@ -91,7 +92,11 @@ describe('/mcp over the real guard chain (e2e)', () => {
       headers: {
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
-        authorization: `Bearer ${token}`,
+        // The production shape under Access Managed OAuth: the edge forwards the identity as this
+        // header and the client's own bearer is opaque, so no authorization header is sent.
+        ...(opts.accessHeaderOnly
+          ? { 'cf-access-jwt-assertion': token }
+          : { authorization: `Bearer ${token}` }),
       },
       payload: body,
     });
@@ -204,6 +209,40 @@ describe('/mcp over the real guard chain (e2e)', () => {
     const { token, userId } = await bindPerson('mcp-whoami');
     const { out } = await callWhoami(token);
     // the profile id IS the identity user id; the bridge delivered exactly this principal
+    expect(out.id).toBe(userId);
+  });
+
+  it('the production path: Cf-Access-Jwt-Assertion ALONE authenticates the request', async () => {
+    const { token, userId } = await bindPerson('mcp-access-header');
+    // no authorization header at all: under Managed OAuth the edge sends only this one
+    const init = await rpc(
+      token,
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'e2e', version: '0.0.0' },
+        },
+      },
+      { accessHeaderOnly: true },
+    );
+    expect(init.statusCode, JSON.stringify(init.json)).toBe(200);
+
+    const res = await rpc(
+      token,
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'rova_whoami', arguments: {} },
+      },
+      { accessHeaderOnly: true },
+    );
+    expect(res.statusCode, JSON.stringify(res.json)).toBe(200);
+    const out = JSON.parse(res.json.result!.content![0].text) as { id?: string };
     expect(out.id).toBe(userId);
   });
 

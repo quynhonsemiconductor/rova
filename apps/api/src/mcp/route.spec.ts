@@ -21,6 +21,7 @@ import type { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { RequestContextService } from '@quynhonsemiconductor/observability';
 import { enableCorrelationId } from '@quynhonsemiconductor/platform-http';
 import {
+  accessTokenOf,
   McpAccessDeniedError,
   McpModule,
   registerMcpRoute,
@@ -484,6 +485,20 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
   describe('Access identity source (Cf-Access-Jwt-Assertion under Managed OAuth)', () => {
     const INITIALIZE = { protocolVersion: '2025-06-18', capabilities: {} };
 
+    /** A raw POST, so a test can send header values the `rpc` helper's truthiness checks skip. */
+    function postRaw(fastify: FastifyInstance, headers: Record<string, string | string[]>) {
+      return fastify.inject({
+        method: 'POST',
+        url: '/mcp',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+          ...headers,
+        },
+        payload: { jsonrpc: '2.0', id: 1, method: 'initialize', params: INITIALIZE },
+      });
+    }
+
     it('the header JWT is accepted and verified', async () => {
       consumedKeys.length = 0;
       const fastify = await boot();
@@ -542,6 +557,70 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       const res = await rpc(fastify, 'initialize', INITIALIZE, VICTIM_TOKEN);
       expect(res.statusCode).toBe(200);
       expect(consumedKeys).toEqual([`mcp:uid:${VICTIM}`]);
+    });
+
+    it('accepts a lowercase bearer scheme (scheme names are case-insensitive)', async () => {
+      const fastify = await boot();
+      const res = await postRaw(fastify, { authorization: `bearer ${VICTIM_TOKEN}` });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it.each(['a.b', 'a.b.c.d', 'a..c', 'a.b.', 'a.b.c d'])(
+      'a bearer that is not JWT-shaped (%j) is refused 401 before the verifier',
+      async (token) => {
+        const seen: string[] = [];
+        const recording: McpAccessVerifier = {
+          verify: async (value) => {
+            seen.push(value);
+            return { userId: VICTIM, workspaceId: WORKSPACE };
+          },
+        };
+        const fastify = await boot(recording);
+        const res = await postRaw(fastify, { authorization: `Bearer ${token}` });
+        expect(res.statusCode).toBe(401);
+        expect(res.json<{ error?: string }>().error).toBe(
+          'MCP requires a Cloudflare Access identity',
+        );
+        expect(seen).toEqual([]);
+      },
+    );
+
+    it.each(['', '   '])(
+      'a present-but-blank header (%j) is refused 401, never the valid bearer behind it',
+      async (blank) => {
+        const seen: string[] = [];
+        const recording: McpAccessVerifier = {
+          verify: async (value) => {
+            seen.push(value);
+            return { userId: VICTIM, workspaceId: WORKSPACE };
+          },
+        };
+        const fastify = await boot(recording);
+        const res = await postRaw(fastify, {
+          authorization: `Bearer ${VICTIM_TOKEN}`,
+          'cf-access-jwt-assertion': blank,
+        });
+        expect(res.statusCode).toBe(401);
+        expect(res.json<{ error?: string }>().error).toBe(
+          'MCP requires a Cloudflare Access identity',
+        );
+        expect(seen).toEqual([]);
+      },
+    );
+
+    it('a repeated header (an array) yields no token, never its first value', async () => {
+      // Node joins a duplicate header into one comma-separated string before Fastify sees it, so
+      // the array shape is pinned on the reader directly; the request below pins the wire path.
+      expect(
+        accessTokenOf({ 'cf-access-jwt-assertion': [VICTIM_TOKEN, ATTACKER_TOKEN] }),
+      ).toBeUndefined();
+
+      const fastify = await boot();
+      const res = await postRaw(fastify, {
+        'cf-access-jwt-assertion': [VICTIM_TOKEN, ATTACKER_TOKEN],
+      });
+      expect(res.statusCode).toBe(401);
+      expect(res.json<{ error?: string }>().error).toBe('Unverified Access token');
     });
   });
 

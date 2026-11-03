@@ -173,14 +173,22 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
 /**
  * The token the verifier checks. Cloudflare Access forwards the user identity to the origin as
  * the Access JWT in `Cf-Access-Jwt-Assertion` (under Managed OAuth the client's own bearer is an
- * opaque Access OAuth token the edge consumes, not a JWT this origin can verify). It wins: when
- * the header is present, nothing else is considered, so a forged header fails closed. Direct
- * clients that send the Access JWT itself as a bearer keep working, but only when that value is
- * JWT-shaped (three base64url segments); an opaque bearer alone is never accepted.
+ * opaque Access OAuth token the edge consumes, not a JWT this origin can verify). PRESENCE is
+ * final: Cloudflare only forwards this header for a request Access authenticated, so a forged,
+ * repeated (an array: no canonical order) or blank header fails closed and never falls back to
+ * the bearer. Direct clients that send the Access JWT itself as a bearer keep working, but only
+ * when that value is JWT-shaped (three base64url segments); an opaque bearer alone is never
+ * accepted.
  */
-function accessTokenOf(headers: Record<string, string | string[] | undefined>): string | undefined {
-  const assertion = firstHeader(headers['cf-access-jwt-assertion']);
-  if (assertion) return assertion;
+export function accessTokenOf(
+  headers: Record<string, string | string[] | undefined>,
+): string | undefined {
+  const assertion = headers['cf-access-jwt-assertion'];
+  if (assertion !== undefined) {
+    if (typeof assertion !== 'string') return undefined;
+    const value = assertion.trim();
+    return value === '' ? undefined : value;
+  }
   const bearer = bearerOf(headers['authorization']);
   return bearer && isJwtShaped(bearer) ? bearer : undefined;
 }
