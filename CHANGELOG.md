@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.6](https://github.com/quynhonsemiconductor/rova/compare/v0.8.5...v0.8.6) (2026-11-03)
+
+
+### ✨ Features
+
+* **web:** runtime config and a web image for the cluster ([#873](https://github.com/quynhonsemiconductor/rova/issues/873)) ([7bc6bef](https://github.com/quynhonsemiconductor/rova/commit/7bc6befe87953a1bf9299910092210f66db47106))
+
 ## [0.8.5](https://github.com/quynhonsemiconductor/rova/compare/v0.8.4...v0.8.5) (2026-11-03)
 
 
