@@ -1154,7 +1154,11 @@ reversing US-119 AC1's new-tab rule — and `/user-guide` picks the edition from
   `guide-gate.worker.ts`, run first for `/guide-assets/*` ONLY (`wrangler.jsonc`). Never widen that to
   `/guide/*`: the Worker would answer before `_redirects` and old links would stop working. The entry
   must export nothing but its handler — workerd reads every named export as an entrypoint and refuses
-  to start on a constant. Its session check is same-origin, so it accepts only a JSON 200: anything
+  to start on a constant. It looks for identity 8's session cookie (`__Host-rova.session_token` on
+  develop and prod, `__Secure-` elsewhere) and asks `GET /v1/auth/me`, the SPA's own call; both are
+  pinned to the API by `user-guide-gate-paths.test.ts`, because the gate shipped with v7's
+  `__Host-rova_session` and `/v1/bff/me` and no reader on develop could load the guide. Its session
+  check is same-origin, so it accepts only a JSON 200: anything
   that puts `/v1/*` on the static path (`wrangler dev`) answers with the SPA's `index.html`, 200. A
   refusal is logged with its reason, never the cookie or the path (the only header it names is the
   check's own Content-Type, quoted and capped). `src/test/user-guide-gate-paths.test.ts` pins the gate,
