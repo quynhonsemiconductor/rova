@@ -176,6 +176,7 @@ export default defineConfig({
         'apps/api/src/mcp/principal.guard.ts',
         'apps/api/src/mcp/route.ts',
         'apps/api/src/mcp/access-jwt.adapter.ts',
+        'apps/api/src/mcp/audit.ts',
         'apps/api/src/mcp/tools/refs.ts',
       ],
       exclude: ['**/*.spec.ts'],

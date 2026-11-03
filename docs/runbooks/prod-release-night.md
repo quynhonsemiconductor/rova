@@ -152,6 +152,21 @@ A worker that starts with Graph half-configured fails at boot rather than queuei
 - **SCM webhook**: `curl -s -o /dev/null -w '%{http_code}' -X POST https://rova.qnsc.vn/v1/scm/webhook/<provider>`
   → a 4xx from the API (bad signature), **never** a 302 to `cloudflareaccess.com` (0.7).
 - **`/readyz`**: 200, database and cache green; the uptime alert sees it.
+- **MCP** (only on a host whose deployment sets `MCP_ENABLED=true`; rova-dev today, prod when
+  turned on — a host with the flag off registers no route and correctly answers 404):
+  - without an identity, `curl -s -o /dev/null -w '%{http_code}' -X POST https://rova-dev.qnsc.vn/mcp`
+    is **401**, never 200;
+  - with a signed-in `@qnsc.vn` identity, `claude mcp add --transport http rova-dev https://rova-dev.qnsc.vn/mcp`
+    and ask it `rova_whoami`: it answers as the same person the web app shows, and the `initialize`
+    result reports the deployed release (e.g. `v0.8.6` or `sha-<12>`), **never** `dev`;
+  - an identity Access accepts but rova has offboarded (or one with no employee row / no single
+    workspace) is **403**; that refusal happens in the verifier BEFORE any tool runs, so it leaves
+    one `MCP access denied` warn line carrying `accessSub` and a stable `reason`, and **no**
+    `MCP tool call` line;
+  - a signed-in tool call then leaves exactly one `MCP tool call` line carrying `tool`,
+    `principalId` (a user id, not an email), `durationMs` and `outcome`. A call the MCP SDK
+    rejects before dispatch (unknown tool name, malformed arguments) has no tool-call line:
+    there is no handler to time.
 - **User Guide (US-119)**: the guide is the app page `/user-guide`; signed in, the Help icon opens it.
   Its files — the screenshots and the chunks carrying its text — live under `/guide-assets/*`
   (production data): signed out, `curl -sI https://rova.qnsc.vn/guide-assets/02-top-navigation-annotated.png`

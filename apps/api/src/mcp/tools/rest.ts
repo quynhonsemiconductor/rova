@@ -122,6 +122,48 @@ export async function listResultExpanded(
   };
 }
 
+/** What one finished tool call reports to the audit sink (see ../audit.ts). */
+export interface ToolCallObservation {
+  tool: string;
+  principalId: string;
+  durationMs: number;
+  outcome: 'ok' | 'error';
+}
+
+export type ToolCallObserver = (observation: ToolCallObservation) => void;
+
+/**
+ * Times one tool handler and reports it, whatever it returns or throws. `isError` results are
+ * reported as an error outcome: MCP marks a REST denial that way, and the error count should
+ * track refusals as well as failures.
+ *
+ * Lives here, not in ../audit.ts, because the tool-file ratchet only lets files in this
+ * directory import `./sibling` modules; the audit sink itself is built in route.ts.
+ */
+export function instrumentToolHandler<Args extends unknown[], Result>(
+  tool: string,
+  principalId: string,
+  handler: (...args: Args) => Promise<Result>,
+  observe: ToolCallObserver,
+): (...args: Args) => Promise<Result> {
+  return async (...args: Args) => {
+    const startedAt = Date.now();
+    let outcome: ToolCallObservation['outcome'] = 'ok';
+    try {
+      const result = await handler(...args);
+      if (result !== null && typeof result === 'object' && 'isError' in result) {
+        if ((result as { isError?: unknown }).isError === true) outcome = 'error';
+      }
+      return result;
+    } catch (error) {
+      outcome = 'error';
+      throw error;
+    } finally {
+      observe({ tool, principalId, durationMs: Date.now() - startedAt, outcome });
+    }
+  };
+}
+
 /** Fields a paged REST response may carry; `pageInfo` is passed through untouched. */
 export function pageInfoOf(json: unknown): Record<string, unknown> {
   const page = json as { pageInfo?: unknown };
