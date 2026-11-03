@@ -1,14 +1,14 @@
 # =============================================================================
-# Release · Promote — a vX.Y.Z tag builds NOTHING and deploys NOTHING by itself.
+# Release · Promote — a vX.Y.Z tag RETAGS the digests already published for that
+# commit and opens the reviewed gitops prod PR. It builds NOTHING.
 #
-# It takes the image GHCR · Publish already built from the tagged commit
-# (sha-<commit12>), adds the alias tag vX.Y.Z to the SAME digests (no rebuild),
-# and opens a gitops PR that sets values/rova/tags.prod.yaml to tag + digest.
-# A reviewed merge of that PR is the prod deploy (ArgoCD PreSync migrator, then
-# the Deployments roll). Rollback = revert that gitops PR.
+# The work lives in ci's reusable (v1.33.0): release-retag verifies each digest's
+# build attestation and adds vX.Y.Z to the SAME digest, then the promote job
+# writes values/rova/tags.prod.yaml and opens the PR. Not auto-merged: merging
+# that PR is the production gate. Rollback = revert that PR.
 #
-# Fails, and opens no PR, if any of the three images is missing for the tagged
-# commit (publish did not run or failed for it).
+# `web` is NOT in `services`: gitops values/rova has no web image yet (D's
+# chart). When it lands, add `web` here and to ghcr-publish's bump-dev list.
 # =============================================================================
 name: Release · Promote
 
@@ -23,85 +23,22 @@ concurrency:
   group: release-promote-rova
   cancel-in-progress: false
 
-env:
-  GHCR_NAMESPACE: ghcr.io/quynhonsemiconductor
-  SERVICES: api worker migrator
-
 jobs:
   promote:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Ceiling for the reusable's jobs: the retag job pushes an image tag
+    # (packages: write) and verifies attestations (attestations: read).
     permissions:
       contents: read
-      # Adds the alias tag vX.Y.Z to existing GHCR packages.
       packages: write
-    steps:
-      - name: Validate the tag
-        env:
-          VERSION: ${{ github.ref_name }}
-        run: |
-          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::not a release tag: $VERSION"; exit 1; }
-
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6  # v4.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-
-      - name: Resolve digests of the tagged commit and add the version tag
-        id: images
-        env:
-          VERSION: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          src="sha-${SHA::12}"
-          # GHCR · Publish builds the same commit on push to main, and
-          # release-please merges the release PR at the same moment, so this job
-          # can start before the build has pushed the sha-<commit12> images.
-          # Wait for them (30 s poll, 20 min budget) instead of failing at once.
-          deadline=$((SECONDS + 1200))
-          json='{}'
-          for svc in $SERVICES; do
-            repo="$GHCR_NAMESPACE/rova-$svc"
-            while :; do
-              digest=$(docker buildx imagetools inspect "$repo:$src" --format '{{.Manifest.Digest}}' 2>/dev/null) && break
-              [[ $SECONDS -ge $deadline ]] && { echo "::error::$repo:$src does not exist. GHCR · Publish did not build this commit; fix that first."; exit 1; }
-              echo "waiting for $repo:$src (${SECONDS}s elapsed)"
-              sleep 30
-            done
-            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::bad digest for $svc"; exit 1; }
-            json=$(jq -c --arg s "$svc" --arg d "$digest" '. + {($s): $d}' <<< "$json")
-          done
-          # Alias only after ALL three resolved, so a missing image never leaves a half-tagged release.
-          for svc in $SERVICES; do
-            repo="$GHCR_NAMESPACE/rova-$svc"
-            docker buildx imagetools create -t "$repo:$VERSION" "$repo@$(jq -r --arg s "$svc" '.[$s]' <<< "$json")"
-          done
-          echo "digests=$json" >> "$GITHUB_OUTPUT"
-          {
-            echo "### Promote $VERSION (commit ${SHA::12})"
-            jq -r 'to_entries[] | "- \(.key): `\(.value)`"' <<< "$json"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # App token scoped to the gitops repo. It opens a PR (branch push + PR);
-      # it must NOT be able to bypass the review on main.
-      - id: app
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
-        with:
-          app-id: ${{ vars.QNSC_AUTOMATION_APP_ID }}
-          private-key: ${{ secrets.QNSC_AUTOMATION_PRIVATE_KEY }}
-          owner: quynhonsemiconductor
-          repositories: gitops
-          permission-contents: write
-          permission-pull-requests: write
-
-      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@7e8f6136a017c7b1f57a2e9a288dae3cd008950f  # v1.31.1
-        with:
-          product: rova
-          env: prod
-          services: api worker migrator
-          tag: ${{ github.ref_name }}
-          digests: ${{ steps.images.outputs.digests }}
-          mode: pull-request
-          gitops-token: ${{ steps.app.outputs.token }}
+      attestations: read
+    # SHA-pinned, NOT @v1 — a moving ref would let a ci merge change this product's
+    # release pipeline unseen.
+    uses: quynhonsemiconductor/ci/.github/workflows/release-promote.yml@af30ee9edccfda320d0207c056a6c7271774857b  # v1.33.0
+    with:
+      product: rova
+      gitops-product: rova
+      release-tag: ${{ github.ref_name }}
+      commit: ${{ github.sha }}
+      services: api worker migrator
+    secrets:
+      QNSC_AUTOMATION_PRIVATE_KEY: ${{ secrets.QNSC_AUTOMATION_PRIVATE_KEY }}
