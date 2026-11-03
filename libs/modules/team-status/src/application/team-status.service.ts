@@ -379,11 +379,15 @@ export class TeamStatusService {
     const estimateHours = tasks.reduce((s, t) => s + t.estimateHours, 0);
     const todoHours = tasks.reduce((s, t) => s + t.todoHours, 0);
     const actualHours = tasks.reduce((s, t) => s + t.actualHours, 0);
-    // Completion percentage per Team_Status SRS §10: actual / estimate * 100,
-    // capped at 100; 0 when there is no estimate to measure against. Capacity is
-    // a planning number (member availability), not a progress denominator.
+    // LOAD, not completion: estimate / capacity * 100 (BA, US-145 — "capacity 60h, a task
+    // estimated 8h → the State bar reads 8/60"). This REVERSES Team_Status SRS §10's
+    // actual / estimate, which left the bar at 0% for every member who had planned work but had
+    // logged no Actuals yet — i.e. the whole team on day one of a sprint. Deliberately NOT capped:
+    // an over-committed member (estimate > capacity) must read above 100%, which is the signal the
+    // bar exists for. 0 when no capacity is entered — there is nothing to measure load against.
+    // `memberProgressPercent` in the SPA is the same formula for the filtered view; keep both.
     const progressPercent =
-      estimateHours > 0 ? Math.min(100, Math.round((actualHours / estimateHours) * 100)) : 0;
+      capacityHours > 0 ? Math.round((estimateHours / capacityHours) * 100) : 0;
     return {
       owner,
       capacityHours,

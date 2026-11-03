@@ -119,9 +119,11 @@ test.describe('Role conformance — per-project Editor', () => {
     await page.goto('/team-status', { waitUntil: 'domcontentloaded' })
     await settle(page)
 
-    const stateControls = page.getByRole('combobox', { name: 'Task state' })
+    // Task State is the shared segmented stepper (a `group` named "Task state: <value>"), and its
+    // read-only form renders a span per segment — so "disabled" means it holds no button at all.
+    const stateControls = page.getByRole('group', { name: /^Task state/ })
     for (let i = 0; i < (await stateControls.count()); i++) {
-      await expect(stateControls.nth(i)).toBeDisabled()
+      await expect(stateControls.nth(i).getByRole('button')).toHaveCount(0)
     }
     // Capacity is the other mutation on this screen (`PATCH /team-status/capacity`). Its control is
     // an `InlineEditableCell`, which renders a plain span until clicked, so its absence for an
