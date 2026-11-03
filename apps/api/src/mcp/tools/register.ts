@@ -34,7 +34,8 @@ import { registerQualityDefects } from './quality_defects';
 import { registerTeamStatus } from './team_status';
 import { registerWhoami } from './whoami';
 import { registerWorkItemActivity } from './work_item_activity';
-import type { ToolContext } from './rest';
+import type { ToolCallObserver, ToolContext } from './rest';
+import { instrumentToolHandler } from './rest';
 
 /** One mounted tool, with its stable name (RegisteredTool itself carries no name). */
 export interface MountedTool {
@@ -42,9 +43,19 @@ export interface MountedTool {
   tool: RegisteredTool;
 }
 
-/** Mounts the P1 read-only catalogue on a fresh per-request server; returns what it mounted. */
-export function registerTools(server: McpServer, ctx: ToolContext): MountedTool[] {
-  return [
+/**
+ * Mounts the P1 read-only catalogue on a fresh per-request server; returns what it mounted.
+ *
+ * With an `observe` sink, every handler is wrapped once, here, so no tool can forget the audit
+ * line: the SDK's `RegisteredTool.update({ callback })` replaces the handler in the registry the
+ * transport dispatches to. The sink receives the tool name, the principal id and the duration.
+ */
+export function registerTools(
+  server: McpServer,
+  ctx: ToolContext,
+  observe?: ToolCallObserver,
+): MountedTool[] {
+  const mounted: MountedTool[] = [
     { name: 'rova_whoami', tool: registerWhoami(server, ctx) },
     { name: 'rova_list_projects', tool: registerListProjects(server, ctx) },
     { name: 'rova_get_project', tool: registerGetProject(server, ctx) },
@@ -80,4 +91,19 @@ export function registerTools(server: McpServer, ctx: ToolContext): MountedTool[
     { name: 'rova_list_teams', tool: registerListTeams(server, ctx) },
     { name: 'rova_list_notifications', tool: registerListNotifications(server, ctx) },
   ];
+  if (observe) {
+    for (const { name, tool } of mounted) {
+      // The SDK's handler is a union (a plain callback or a task handler); the wrapper is a
+      // plain callback and is what this catalogue registers everywhere.
+      tool.update({
+        callback: instrumentToolHandler(
+          name,
+          ctx.principal.userId,
+          tool.handler as (...args: unknown[]) => Promise<unknown>,
+          observe,
+        ) as unknown as NonNullable<Parameters<RegisteredTool['update']>[0]['callback']>,
+      });
+    }
+  }
+  return mounted;
 }

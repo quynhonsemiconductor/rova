@@ -8,6 +8,7 @@ import type { McpAccessPrincipal, McpAccessVerifier } from './access-verifier';
 import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER, type McpPrincipalContext } from '@platform';
 import { registerTools } from './tools/register';
 import type { McpRestCaller } from './tools/rest';
+import { createMcpAudit } from './audit';
 
 /**
  * The `/mcp` route: stateless MCP transport — one request, one server, no session.
@@ -56,6 +57,9 @@ export interface McpRouteDeps {
 
 export function registerMcpRoute(deps: McpRouteDeps): void {
   const { app, fastify, verifier, cache } = deps;
+  // One audit sink per app: the instruments are process-wide and the logger is the shared pino
+  // instance, so a per-request copy would only rebuild the same instruments.
+  const audit = createMcpAudit();
 
   // Runs each tool's REST call with the request's ONE principal. The call token is minted here
   // (never in a tool) and is the only thing the inject() carries.
@@ -130,6 +134,7 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
       MCP_RATE_LIMIT.windowSeconds,
     );
     if (!allowed) {
+      audit.onRateLimited(principal.userId, MCP_RATE_LIMIT.limit, MCP_RATE_LIMIT.windowSeconds);
       throw new RateLimitedException(
         `Rate limit exceeded (MCP). Retry after ${Math.max(resetAt - Math.floor(Date.now() / 1000), 1)}s.`,
       );
@@ -148,7 +153,7 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
       void transport.close();
       void server.close();
     });
-    registerTools(server, { principal, callRest });
+    registerTools(server, { principal, callRest }, (event) => audit.onToolCall(event));
     await server.connect(transport);
     reply.hijack();
     await transport.handleRequest(request.raw, reply.raw, request.body);
