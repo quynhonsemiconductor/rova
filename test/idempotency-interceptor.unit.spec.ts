@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { lastValueFrom, of, throwError } from 'rxjs';
+import { Subject, lastValueFrom, of, throwError } from 'rxjs';
 import type { CallHandler, ExecutionContext } from '@nestjs/common';
 import type { Reflector } from '@nestjs/core';
 import type { CacheService } from '@quynhonsemiconductor/platform-cache';
@@ -199,6 +199,41 @@ describe('IdempotencyInterceptor — body reuse, in-flight, cache failure', () =
       lastValueFrom(interceptor.intercept(context(request({ a: 1 })), handler)),
     ).resolves.toEqual({ ok: true, winner: true });
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('an unsubscribe mid-handler does NOT release the lock; completion caches, a retry replays', async () => {
+    let stored: string | null = null;
+    const cache = {
+      get: async () => stored,
+      set: vi.fn(async (...args: unknown[]) => {
+        if (args[0] === `${redisKey}:inflight`) return 'OK';
+        stored = String(args[1]);
+        return 'OK';
+      }),
+      del: vi.fn(async () => 1),
+    };
+    const interceptor = interceptorWith(cache);
+    const subject = new Subject<unknown>();
+    const handler: CallHandler = { handle: () => subject };
+
+    const subscription = interceptor.intercept(context(request({ a: 1 })), handler).subscribe();
+    await flush(); // the pipeline has taken the NX lock and is subscribed to the handler
+    subscription.unsubscribe(); // the client's connection drops
+
+    // The handler commits anyway; its OWN completion writes the cache and releases the lock.
+    subject.next({ ok: true });
+    subject.complete();
+    await flush();
+
+    expect(stored).toContain('"ok":true');
+    expect(cache.del).toHaveBeenCalledWith(`${redisKey}:inflight`);
+
+    // A retry replays the answer instead of creating a second time.
+    const retry = nextWith({ ok: false });
+    await expect(
+      lastValueFrom(interceptor.intercept(context(request({ a: 1 })), retry.handler)),
+    ).resolves.toEqual({ ok: true });
+    expect(retry.spy).not.toHaveBeenCalled();
   });
 
   it('replays the cached ETag header with the response', async () => {

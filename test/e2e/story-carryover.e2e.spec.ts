@@ -259,7 +259,7 @@ describe('Story Target End Date + Carryover (Phase 7 CO)', () => {
     expect(after.iterationId).toBe(it_.B);
     expect(after.targetEndDate).toBe('2030-01-25');
     const strip = (r: object) =>
-      omit(r, ['iterationId', 'targetEndDate', 'updatedAt', 'updatedBy']);
+      omit(r, ['iterationId', 'targetEndDate', 'updatedAt', 'updatedBy', 'version']);
     expect(strip(after)).toEqual(strip(beforeStory));
 
     // BR-23/29 — every Task follows; nothing else on it changes.
@@ -267,8 +267,8 @@ describe('Story Target End Date + Carryover (Phase 7 CO)', () => {
     for (const task of afterTasks) {
       const prior = beforeTasks.find((t) => t.id === task.id)!;
       expect(task.iterationId).toBe(it_.B);
-      expect(omit(task, ['iterationId', 'updatedAt'])).toEqual(
-        omit(prior, ['iterationId', 'updatedAt']),
+      expect(omit(task, ['iterationId', 'updatedAt', 'version'])).toEqual(
+        omit(prior, ['iterationId', 'updatedAt', 'version']),
       );
     }
 

@@ -10,7 +10,7 @@ import {
 import { createHash } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import { Observable, from, of, throwError } from 'rxjs';
-import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
+import { catchError, switchMap } from 'rxjs/operators';
 import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { clientIp, currentUserId } from '@quynhonsemiconductor/platform-http';
@@ -98,6 +98,14 @@ export class IdempotencyInterceptor implements NestInterceptor {
       (Reflect.getMetadata(HTTP_CODE_METADATA, context.getHandler()) as number | undefined) ??
       (req.method === 'POST' ? 201 : 200);
 
+    // The reply object in unit fixtures may be a minimal stub; a missing header API must not
+    // turn a cached replay into an unhandled error.
+    const getEtag = (): unknown =>
+      typeof reply.getHeader === 'function' ? reply.getHeader('etag') : undefined;
+    const setEtag = (etag: string): void => {
+      if (typeof reply.header === 'function') reply.header('ETag', etag);
+    };
+
     const release = async () => {
       try {
         await this.cache.instance.del(inFlightKey);
@@ -135,7 +143,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
         if (typeof entry['status'] === 'number') reply.status(entry['status']);
         // The concurrency token must replay with the answer: a client that retries a create
         // needs the ETag of the row that was actually created, not a fresh read.
-        if (typeof entry['etag'] === 'string') reply.header('ETag', entry['etag']);
+        if (typeof entry['etag'] === 'string') setEtag(entry['etag']);
         return of(entry['response']);
       }
       // An entry written before {hash,status} existed: replay its body, route status.
@@ -188,46 +196,54 @@ export class IdempotencyInterceptor implements NestInterceptor {
                   void release();
                   return replay(raced);
                 }
-                // Capture the response on the way out and persist in FINALIZE: finalize runs on
-                // complete, error AND unsubscribe (a client tearing down mid-request), so the
-                // cache write and the lock release are not skipped by a torn-down subscriber.
-                // The persistence itself AWAITS the cache SET before releasing the lock, so a
-                // duplicate arriving right after a release finds the cached answer.
-                let captured: { response?: unknown } = {};
-                return next.handle().pipe(
-                  tap({
+                // Persistence is driven by the HANDLER's own completion, not by the
+                // subscriber: a client that tears down mid-request must not release the lock
+                // (the async handler can still commit — a retry would then create twice). The
+                // inner subscription is deliberately NOT torn down on unsubscribe; when the
+                // handler completes, the cache entry is written and the lock released, so a
+                // retry replays. A handler that never completes leaves the lock to its TTL.
+                let lastResponse: unknown;
+                return new Observable<unknown>((subscriber) => {
+                  next.handle().subscribe({
                     next: (response: unknown) => {
-                      captured = { response };
+                      lastResponse = response;
+                      if (!subscriber.closed) subscriber.next(response);
                     },
-                  }),
-                  finalize(() => {
-                    const response = captured.response;
-                    const etag = reply.getHeader('etag');
-                    const status = reply.statusCode !== 200 ? reply.statusCode : defaultStatus;
-                    void (async () => {
-                      if (response !== undefined) {
-                        try {
-                          await this.cache.instance.set(
-                            redisKey,
-                            JSON.stringify({
-                              v: 1,
-                              hash: requestHash,
-                              status,
-                              ...(typeof etag === 'string' ? { etag } : {}),
-                              response,
-                            }),
-                            'EX',
-                            IDEMPOTENCY_TTL_SECONDS,
-                          );
-                        } catch (err) {
-                          // Cache failure must NOT fail the request
-                          this.logger.warn({ msg: 'idempotency: failed to cache response', err });
+                    error: (err: unknown) => {
+                      void release();
+                      if (!subscriber.closed) subscriber.error(err);
+                    },
+                    complete: () => {
+                      void (async () => {
+                        const etag = getEtag();
+                        const status = reply.statusCode !== 200 ? reply.statusCode : defaultStatus;
+                        if (lastResponse !== undefined) {
+                          try {
+                            await this.cache.instance.set(
+                              redisKey,
+                              JSON.stringify({
+                                v: 1,
+                                hash: requestHash,
+                                status,
+                                ...(typeof etag === 'string' ? { etag } : {}),
+                                response: lastResponse,
+                              }),
+                              'EX',
+                              IDEMPOTENCY_TTL_SECONDS,
+                            );
+                          } catch (err) {
+                            // Cache failure must NOT fail the request
+                            this.logger.warn({ msg: 'idempotency: failed to cache response', err });
+                          }
                         }
-                      }
-                      await release();
-                    })();
-                  }),
-                );
+                        await release();
+                      })().finally(() => {
+                        if (!subscriber.closed) subscriber.complete();
+                      });
+                    },
+                  });
+                  // No teardown: unsubscribe leaves the handler running on purpose.
+                });
               }),
             );
           }),
