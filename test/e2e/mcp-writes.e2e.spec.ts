@@ -122,6 +122,21 @@ describe('/mcp write tools (e2e)', () => {
     }
   }
 
+  /**
+   * A story of this test's OWN. Test cases hung off the seeded story change fixtures other specs
+   * assert (its Test Case list is exactly TC-1, TC-2), so every case here gets its own parent.
+   */
+  async function freshStory(): Promise<string> {
+    const story = await adminRest('POST', '/work-items', {
+      projectId: NXP,
+      type: 'story',
+      title: `qa story ${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      teamId: TEAM_ALPHA_ID,
+    });
+    expect(story.statusCode, story.body).toBe(201);
+    return story.json().id as string;
+  }
+
   beforeAll(async () => {
     app = await NestFactory.create<NestFastifyApplication>(
       AppModule,
@@ -1102,8 +1117,9 @@ describe('/mcp write tools (e2e)', () => {
     // database, same Valkey) would replay a row that no longer exists.
     const requestId = `req-${Date.now()}`;
     const name = `mcp test case ${Date.now()}`;
+    const parentId = await freshStory();
     const args = {
-      workItemKey: NXP_STORY_1_ID,
+      workItemKey: parentId,
       name,
       type: 'Functional',
       priority: 'high',
@@ -1124,7 +1140,7 @@ describe('/mcp write tools (e2e)', () => {
     const rows = await db
       .select({ n: sql<number>`count(*)::int` })
       .from(testCases)
-      .where(and(eq(testCases.workItemId, NXP_STORY_1_ID), eq(testCases.name, name)));
+      .where(and(eq(testCases.workItemId, parentId), eq(testCases.name, name)));
     expect(rows[0].n, 'a retried create must not add a second test case').toBe(1);
   });
 
@@ -1132,8 +1148,9 @@ describe('/mcp write tools (e2e)', () => {
     people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
     await ensureTestCaseType();
     const name = `mcp content ${Date.now()}`;
+    const parentId = await freshStory();
     const created = await tool('rova_save_test_case', {
-      workItemKey: NXP_STORY_1_ID,
+      workItemKey: parentId,
       name,
       objective: 'Verify the voltage rail holds',
       validationInput: '3.3V',
@@ -1223,6 +1240,16 @@ describe('/mcp write tools (e2e)', () => {
 
   it('rova_record_test_results records the good entries and reports the unknown key per item', async () => {
     people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    await ensureTestCaseType();
+    // A test case of its OWN: recording against a seeded one would move its trigger-maintained
+    // Last Run and break other specs that assert the fixture's stored value.
+    const contextStory = await freshStory();
+    const ownCase = await adminRest('POST', `/work-items/${contextStory}/test-cases`, {
+      name: `record probe ${Date.now()}`,
+    });
+    expect(ownCase.statusCode, ownCase.body).toBe(201);
+    const ownKey = ownCase.json().testCaseKey as string;
+
     const build = `mcp-build-${Date.now()}`;
     const requestId = `req-${build}`;
     const recorded = await tool('rova_record_test_results', {
@@ -1230,7 +1257,7 @@ describe('/mcp write tools (e2e)', () => {
       runDate: '2026-11-04',
       requestId,
       results: [
-        { testCaseKey: 'TC-1', verdict: 'pass', durationMinutes: 2 },
+        { testCaseKey: ownKey, verdict: 'pass', durationMinutes: 2 },
         { testCaseKey: 'TC-999999', verdict: 'fail' },
       ],
     });
@@ -1238,7 +1265,7 @@ describe('/mcp write tools (e2e)', () => {
     expect(recorded.body.created).toBe(1);
     expect(recorded.body.failed).toBe(1);
     const [good, bad] = recorded.body.results as Array<Record<string, unknown>>;
-    expect(good).toMatchObject({ testCaseKey: 'TC-1', ok: true, verdict: 'pass' });
+    expect(good).toMatchObject({ testCaseKey: ownKey, ok: true, verdict: 'pass' });
     expect(bad).toMatchObject({ testCaseKey: 'TC-999999', ok: false });
 
     // A retry of the SAME request id replays the row that landed instead of recording it twice.
@@ -1247,7 +1274,7 @@ describe('/mcp write tools (e2e)', () => {
       runDate: '2026-11-04',
       requestId,
       results: [
-        { testCaseKey: 'TC-1', verdict: 'pass', durationMinutes: 2 },
+        { testCaseKey: ownKey, verdict: 'pass', durationMinutes: 2 },
         { testCaseKey: 'TC-999999', verdict: 'fail' },
       ],
     });
