@@ -26,6 +26,7 @@ import {
   NXP_RELEASE_1_ID,
   TEAM_BETA_ID,
   NXP_STORY_1_ID,
+  PAY_STORY_ID,
   SEED_PROJECTS,
   WORKSPACE_ID,
 } from '../../db/seeds/constants';
@@ -707,6 +708,198 @@ describe('/mcp write tools (e2e)', () => {
     expect(viaMcpTask.body.error).toMatchObject({
       error: { code: restTask.json().error.code },
     });
+  });
+
+  it('rova_plan_work_items DRY RUN writes nothing; dryRun:false moves the item once', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const created = await adminRest('POST', '/work-items', {
+      projectId: NXP,
+      type: 'story',
+      title: `plan probe ${Date.now()}`,
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const id = created.json().id as string;
+
+    const iterations = await app.inject({
+      method: 'GET',
+      url: '/v1/iterations/options',
+      query: { projectId: NXP },
+      headers: { cookie: adminCookie },
+    });
+    const iterationName = iterations
+      .json<{ id: string; name: string }[]>()
+      .find((i) => i.id === NXP_ITER_CURRENT_ID)?.name as string;
+
+    const before = await db
+      .select({ iterationId: workItems.iterationId })
+      .from(workItems)
+      .where(eq(workItems.id, id));
+    expect(before[0].iterationId).toBeNull();
+
+    // Default is a dry run: a preview, and NOTHING written.
+    const preview = await tool('rova_plan_work_items', {
+      project: 'NXP',
+      itemKeys: [id],
+      iteration: iterationName,
+    });
+    expect(preview.isError, JSON.stringify(preview.body)).toBeFalsy();
+    expect(preview.body).toMatchObject({ dryRun: true, wouldChange: 1 });
+    const afterPreview = await db
+      .select({ iterationId: workItems.iterationId })
+      .from(workItems)
+      .where(eq(workItems.id, id));
+    expect(afterPreview[0].iterationId, 'the dry run wrote nothing').toBeNull();
+
+    // The user agreed: the real call is ONE bulk PATCH.
+    const moved = await tool('rova_plan_work_items', {
+      project: 'NXP',
+      itemKeys: [id],
+      iteration: iterationName,
+      dryRun: false,
+    });
+    expect(moved.isError, JSON.stringify(moved.body)).toBeFalsy();
+    expect(moved.body).toMatchObject({ dryRun: false, updated: 1, changed: ['iterationId'] });
+    const afterMove = await db
+      .select({ iterationId: workItems.iterationId })
+      .from(workItems)
+      .where(eq(workItems.id, id));
+    expect(afterMove[0].iterationId).toBe(NXP_ITER_CURRENT_ID);
+  });
+
+  it('rova_plan_work_items refuses 26 items at the schema and a mixed-project selection at the tool', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const tooMany = await mcp('tools/call', {
+      name: 'rova_plan_work_items',
+      arguments: {
+        project: 'NXP',
+        itemKeys: Array.from({ length: 26 }, (_, i) => `US-${900 + i}`),
+        release: null,
+      },
+    });
+    expect(tooMany.body.result?.isError).toBe(true);
+    expect(JSON.stringify(tooMany.body)).toContain('25');
+
+    const mixed = await tool('rova_plan_work_items', {
+      project: 'NXP',
+      itemKeys: [NXP_STORY_1_ID, PAY_STORY_ID],
+      release: null,
+    });
+    expect(mixed.isError).toBe(true);
+    expect(JSON.stringify(mixed.body)).toContain('another project');
+  });
+
+  it('an Editor is refused a bulk RELEASE by MCP exactly as by REST', async () => {
+    people.set(TOKEN, { userId: devId, workspaceId: WORKSPACE_ID });
+    const releases = await app.inject({
+      method: 'GET',
+      url: '/v1/releases/options',
+      query: { projectId: NXP },
+      headers: { cookie: devCookie },
+    });
+    const releaseName = releases
+      .json<{ id: string; name: string }[]>()
+      .find((r) => r.id === NXP_RELEASE_1_ID)?.name as string;
+
+    const rest = await app.inject({
+      method: 'PATCH',
+      url: '/v1/work-items/bulk-release',
+      headers: { cookie: devCsrf.cookie, [CSRF_HEADER]: devCsrf.token },
+      payload: { projectId: NXP, itemIds: [NXP_STORY_1_ID], releaseId: NXP_RELEASE_1_ID },
+    });
+    expect(rest.statusCode, rest.body).toBe(403);
+
+    const viaMcp = await tool('rova_plan_work_items', {
+      project: 'NXP',
+      itemKeys: [NXP_STORY_1_ID],
+      release: releaseName,
+      dryRun: false,
+    });
+    expect(viaMcp.isError).toBe(true);
+    expect(viaMcp.body.statusCode).toBe(rest.statusCode);
+    expect(viaMcp.body.error).toMatchObject({ error: { code: rest.json().error.code } });
+  });
+
+  it('rova_link_work_items creates one relation, and a duplicate is refused exactly as REST', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const mk = async (label: string) => {
+      const res = await adminRest('POST', '/work-items', {
+        projectId: NXP,
+        type: 'story',
+        title: `${label} ${Date.now()}`,
+      });
+      return res.json().id as string;
+    };
+    const from = await mk('link from');
+    const to = await mk('link to');
+
+    const first = await tool('rova_link_work_items', {
+      fromKey: from,
+      toKey: to,
+      relationType: 'relates_to',
+    });
+    expect(first.isError, JSON.stringify(first.body)).toBeFalsy();
+    expect(first.body).toMatchObject({ relationType: 'relates_to', changed: ['relation'] });
+    expect((first.body.relations as unknown[]).length).toBeGreaterThan(0);
+
+    const rest = await adminRest('POST', `/work-items/${from}/relations`, {
+      targetId: to,
+      relationType: 'relates_to',
+    });
+    expect(rest.statusCode, rest.body).toBe(412);
+    const duplicate = await tool('rova_link_work_items', {
+      fromKey: from,
+      toKey: to,
+      relationType: 'relates_to',
+    });
+    expect(duplicate.isError).toBe(true);
+    expect(duplicate.body.statusCode).toBe(rest.statusCode);
+    expect(duplicate.body.error).toMatchObject({
+      error: { code: 'WORK_ITEM_RELATION_EXISTS' },
+    });
+  });
+
+  it('rova_label_work_item adds and removes an existing project label by name', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const labelName = `mcp-label-${Date.now()}`;
+    const label = await adminRest('POST', `/projects/${NXP}/labels`, {
+      name: labelName,
+      color: '#336699',
+    });
+    expect(label.statusCode, label.body).toBeLessThan(300);
+
+    const created = await adminRest('POST', '/work-items', {
+      projectId: NXP,
+      type: 'story',
+      title: `label probe ${Date.now()}`,
+    });
+    const itemId = created.json().id as string;
+
+    const added = await tool('rova_label_work_item', { key: itemId, add: [labelName] });
+    expect(added.isError, JSON.stringify(added.body)).toBeFalsy();
+    expect(added.body.added).toEqual([labelName]);
+    const afterAdd = await app.inject({
+      method: 'GET',
+      url: `/v1/work-items/${itemId}/labels`,
+      headers: { cookie: adminCookie },
+    });
+    expect(afterAdd.json<{ name: string }[]>().map((l) => l.name)).toContain(labelName);
+
+    const removed = await tool('rova_label_work_item', { key: itemId, remove: [labelName] });
+    expect(removed.isError, JSON.stringify(removed.body)).toBeFalsy();
+    expect(removed.body.removed).toEqual([labelName]);
+    const afterRemove = await app.inject({
+      method: 'GET',
+      url: `/v1/work-items/${itemId}/labels`,
+      headers: { cookie: adminCookie },
+    });
+    expect(afterRemove.json<{ name: string }[]>().map((l) => l.name)).not.toContain(labelName);
+
+    const unknown = await tool('rova_label_work_item', {
+      key: itemId,
+      add: ['no-such-label'],
+    });
+    expect(unknown.isError).toBe(true);
+    expect(JSON.stringify(unknown.body)).toContain('Candidates');
   });
 
   it('rova_log_time refuses 2026-02-30 at the tool schema, before any write', async () => {

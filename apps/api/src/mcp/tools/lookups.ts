@@ -31,6 +31,9 @@ export interface ResolvedWorkItem {
   type: string;
   version: number;
   projectId: string;
+  /** The item's current timeboxes, for a plan PREVIEW (read from the same record). */
+  iterationId: string | null;
+  releaseId: string | null;
 }
 
 export interface ResolvedPortfolioItem {
@@ -196,6 +199,8 @@ export async function resolveWorkItem(
     type: str(item['type']) ?? '',
     version: versionOfEtag(res, item['version']),
     projectId: str(item['projectId']) ?? '',
+    iterationId: str(item['iterationId']),
+    releaseId: str(item['releaseId']),
   };
 }
 
@@ -519,5 +524,57 @@ export async function resolveStatus(
   return {
     ok: false,
     message: `No status matches "${reference}". Candidates: ${candidates.join(', ') || 'none'}.`,
+  };
+}
+
+export interface ResolvedLabel {
+  ok: true;
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+/**
+ * A project label by exact name or id (`GET /v1/projects/:id/labels`, the project's catalogue).
+ * Labels are project reference data — `work_item.label_*` is the assignment, and the server
+ * checks the label belongs to the item's project on every write.
+ */
+export async function resolveLabel(
+  ctx: ToolContext,
+  projectId: string,
+  reference: string,
+): Promise<Lookup<ResolvedLabel>> {
+  const res = await ctx.callRest(ctx.principal, {
+    method: 'GET',
+    url: `/v1/projects/${pathSegment(projectId)}/labels`,
+  });
+  if (res.statusCode >= 400) return { ok: false, statusCode: res.statusCode, json: res.json };
+  const rows = rowsOf(res.json);
+  if (!rows) return { ok: false, message: `Unexpected response from the project labels feed.` };
+  const wanted = reference.trim().toLowerCase();
+  const matches = rows.filter(
+    (row) => str(row['id']) === reference.trim() || str(row['name'])?.toLowerCase() === wanted,
+  );
+  if (matches.length === 1) {
+    return {
+      ok: true,
+      id: String(matches[0]['id']),
+      name: str(matches[0]['name']) ?? '',
+      color: str(matches[0]['color']),
+    };
+  }
+  const candidates = rows
+    .map((row) => str(row['name']))
+    .filter((name): name is string => name !== null)
+    .slice(0, 30);
+  if (matches.length > 1) {
+    return {
+      ok: false,
+      message: `"${reference}" matches ${matches.length} labels: ${candidates.join(', ')}. Use the id.`,
+    };
+  }
+  return {
+    ok: false,
+    message: `No label matches "${reference}". Candidates: ${candidates.join(', ') || 'none'}.`,
   };
 }
