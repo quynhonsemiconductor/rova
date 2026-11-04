@@ -32,6 +32,12 @@ export interface McpRestCall {
 export interface McpRestResult {
   statusCode: number;
   json: unknown;
+  /**
+   * Response headers the REST layer returned. Tools read the ones that are the CONTRACT of a
+   * route — `etag` (the work-item concurrency token) — and ignore the rest; the MCP response
+   * never reflects them.
+   */
+  headers?: Record<string, string | string[] | number | undefined>;
 }
 
 /** Runs one call through `app.inject()` with the tool request's principal (built in route.ts). */
@@ -171,6 +177,17 @@ export const pageArgs = {
     .describe(`Page size (default ${MCP_TOOL_PAGE_LIMIT})`),
   cursor: z.string().optional().describe('Opaque cursor from the previous page'),
 };
+
+/**
+ * The strong ETag a REST response carried (`"<n>"`), read from the result's headers. Lives here
+ * — and nowhere else in this package — because the tool-file ratchet bans a tool from touching
+ * headers; this is the ONE sanctioned read (a RESPONSE header, never a request one).
+ */
+export function responseEtag(result: McpRestResult): string | undefined {
+  const raw = result.headers?.['etag'];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === 'string' ? value : undefined;
+}
 
 /** A tool-level refusal (an unresolvable reference, an ambiguous name): an MCP error result. */
 export function toolError(message: string) {

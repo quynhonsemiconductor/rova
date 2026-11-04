@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, result, toolError, type ToolContext } from './rest';
-import { resolveProject } from './lookups';
+import { denied, pathSegment, result, type ToolContext } from './rest';
+import { failureResult, resolveProject } from './lookups';
 
 /** The tool payload; pure so a spec can feed rows parsed through ActivityResponseSchema. */
 export function shapeProjectActivity(
@@ -37,6 +37,9 @@ export function shapeProjectActivity(
   };
 }
 
+const SCAN_PAGES = 5;
+const SCAN_SIZE = 100;
+
 /**
  * `rova_project_activity` — what changed in a project (who, what, when), for stand-ups and
  * "since yesterday" questions. The route pages by page/pageSize; `since` filters the rows of
@@ -70,25 +73,71 @@ export function registerProjectActivity(server: McpServer, ctx: ToolContext) {
     },
     async ({ project, since, page, pageSize }) => {
       const resolved = await resolveProject(ctx, project);
-      if (!resolved.ok) return toolError(resolved.message);
+      if (!resolved.ok) return failureResult(resolved);
 
-      const { statusCode, json } = await ctx.callRest(ctx.principal, {
-        method: 'GET',
-        url: `/v1/projects/${resolved.id}/activity`,
-        query: { page: page ?? 1, pageSize: pageSize ?? 25 },
-      });
-      if (statusCode >= 400 || json === null || typeof json !== 'object') {
-        return denied(statusCode, json);
+      const projectRef = { id: resolved.id, key: resolved.key, name: resolved.name };
+      const url = `/v1/projects/${pathSegment(resolved.id)}/activity`;
+
+      if (!since) {
+        const { statusCode, json } = await ctx.callRest(ctx.principal, {
+          method: 'GET',
+          url,
+          query: { page: page ?? 1, pageSize: pageSize ?? 25 },
+        });
+        if (statusCode >= 400 || json === null || typeof json !== 'object') {
+          return denied(statusCode, json);
+        }
+        return result(200, {}, shapeProjectActivity(projectRef, json, { page, pageSize }));
       }
-      return result(
-        200,
-        {},
-        shapeProjectActivity({ id: resolved.id, key: resolved.key, name: resolved.name }, json, {
-          since,
-          page,
-          pageSize,
-        }),
+
+      // `since` means "everything NEWER than this", and the route pages newest-first with no time
+      // filter: follow pages until a row is older than `since` (or the history ends), capped at
+      // 5 × 100 rows. The cap stopping first is reported as `truncated`, and only then can there
+      // be more matching rows — `hasMore` describes the FILTERED window, not the raw feed.
+      const sinceMs = Date.parse(since);
+      const collected: Record<string, unknown>[] = [];
+      let scannedPages = 0;
+      let truncated = false;
+      let olderSeen = false;
+      for (let p = 1; p <= SCAN_PAGES; p += 1) {
+        const res = await ctx.callRest(ctx.principal, {
+          method: 'GET',
+          url,
+          query: { page: p, pageSize: SCAN_SIZE },
+        });
+        if (res.statusCode >= 400 || res.json === null || typeof res.json !== 'object') {
+          return denied(res.statusCode, res.json);
+        }
+        scannedPages = p;
+        const body = res.json as { data?: unknown; total?: unknown };
+        const rows = Array.isArray(body.data) ? (body.data as Record<string, unknown>[]) : [];
+        for (const row of rows) {
+          if (Date.parse(String(row['createdAt'])) < sinceMs) {
+            olderSeen = true;
+            break;
+          }
+          collected.push(row);
+        }
+        const total = typeof body.total === 'number' ? body.total : rows.length;
+        const morePages = p * SCAN_SIZE < total;
+        if (olderSeen || !morePages) break;
+        if (p === SCAN_PAGES) truncated = true;
+      }
+
+      const shaped = shapeProjectActivity(
+        projectRef,
+        {
+          data: collected,
+          total: collected.length,
+          page: 1,
+          pageSize: Math.max(collected.length, 1),
+        },
+        { since },
       );
+      shaped['scannedPages'] = scannedPages;
+      shaped['hasMore'] = truncated;
+      if (truncated) shaped['truncated'] = true;
+      return result(200, {}, shaped);
     },
   );
 }

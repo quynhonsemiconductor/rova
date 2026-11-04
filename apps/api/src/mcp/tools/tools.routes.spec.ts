@@ -5,6 +5,7 @@ import { TOOL_ROUTES, WRITE_TOOL_ROUTES } from './registry';
 import { WRITE_TOOL_REGISTRARS } from './register';
 import {
   MCP_READ_ROUTES,
+  MCP_REFERENCE_READ_ROUTES,
   MCP_WRITE_ROUTES,
   mcpWriteRouteKey,
   normalizeRouteTemplate,
@@ -464,6 +465,16 @@ describe('MCP tool catalogue maps to real routes', () => {
       .filter(({ path }) => !allowed.has(normalizeRouteTemplate(path)))
       .map(({ file, path }) => `${file}: ${path}`);
     expect(offenders).toEqual([]);
+
+    // Every hand-written reference entry is PROVEN by a literal some tool composes. An entry
+    // nothing calls is drift waiting to 403 the first tool that tries it.
+    const literalPaths = new Set(literals.map(({ path }) => normalizeRouteTemplate(path)));
+    for (const referencePath of MCP_REFERENCE_READ_ROUTES) {
+      expect(
+        literalPaths.has(normalizeRouteTemplate(referencePath)),
+        `${referencePath}: allowlisted but no tool composes it`,
+      ).toBe(true);
+    }
 
     // And the read set is not silently empty: every tool's own registry route is in it.
     for (const [name, route] of Object.entries<{ method: string; url: string }>(TOOL_ROUTES)) {

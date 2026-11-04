@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { denied, pathSegment, toolError, type ToolContext } from './rest';
 import { createRefResolver, type PersonRef } from './refs';
-import { resolvePortfolioItem } from './lookups';
+import { failureResult, resolvePortfolioItem } from './lookups';
 
 /** The REST comments route is unpaginated, so the tool caps the feed itself. */
 const MAX_COMMENTS = 100;
@@ -90,7 +90,7 @@ export function registerListComments(server: McpServer, ctx: ToolContext) {
         url = `/v1/work-items/${pathSegment(workItemId)}/comments`;
       } else {
         const portfolio = await resolvePortfolioItem(ctx, portfolioItemKey as string);
-        if (!portfolio.ok) return toolError(portfolio.message);
+        if (!portfolio.ok) return failureResult(portfolio);
         url = `/v1/portfolio-items/${pathSegment(portfolio.id)}/comments`;
       }
       const { statusCode, json } = await ctx.callRest(ctx.principal, { method: 'GET', url });

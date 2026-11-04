@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, result, toolError, type ToolContext } from './rest';
-import { resolveTestCase } from './lookups';
+import { denied, pathSegment, result, type ToolContext } from './rest';
+import { failureResult, resolveTestCase } from './lookups';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -58,11 +58,11 @@ export function registerListTestResults(server: McpServer, ctx: ToolContext) {
     },
     async ({ testCaseKey, limit }) => {
       const testCase = await resolveTestCase(ctx, testCaseKey);
-      if (!testCase.ok) return toolError(testCase.message);
+      if (!testCase.ok) return failureResult(testCase);
 
       const { statusCode, json } = await ctx.callRest(ctx.principal, {
         method: 'GET',
-        url: `/v1/test-cases/${testCase.id}/test-results`,
+        url: `/v1/test-cases/${pathSegment(testCase.id)}/test-results`,
       });
       if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
 

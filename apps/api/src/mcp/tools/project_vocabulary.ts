@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { result, toolError, type ToolContext } from './rest';
-import { resolveProject } from './lookups';
+import { pathSegment, result, type ToolContext } from './rest';
+import { failureResult, resolveProject } from './lookups';
 
 type FeedResult = { rows: Record<string, unknown>[] | null; status: number };
 
@@ -72,8 +72,8 @@ export function registerProjectVocabulary(server: McpServer, ctx: ToolContext) {
     },
     async ({ project }) => {
       const resolved = await resolveProject(ctx, project);
-      if (!resolved.ok) return toolError(resolved.message);
-      const base = `/v1/projects/${resolved.id}`;
+      if (!resolved.ok) return failureResult(resolved);
+      const projectPath = pathSegment(resolved.id);
 
       const feed = async (url: string): Promise<FeedResult> => {
         const res = await ctx.callRest(ctx.principal, { method: 'GET', url });
@@ -88,11 +88,11 @@ export function registerProjectVocabulary(server: McpServer, ctx: ToolContext) {
       };
 
       const [statuses, transitions, labels, testCaseTypes, teams] = await Promise.all([
-        feed(`${base}/statuses`),
-        feed(`${base}/transitions`),
-        feed(`${base}/labels`),
-        feed(`${base}/test-case-types`),
-        feed(`${base}/teams`),
+        feed(`/v1/projects/${projectPath}/statuses`),
+        feed(`/v1/projects/${projectPath}/transitions`),
+        feed(`/v1/projects/${projectPath}/labels`),
+        feed(`/v1/projects/${projectPath}/test-case-types`),
+        feed(`/v1/projects/${projectPath}/teams`),
       ]);
 
       const payload = buildVocabulary(

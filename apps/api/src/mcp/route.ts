@@ -109,7 +109,7 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
     } catch {
       json = undefined;
     }
-    return { statusCode: injected.statusCode, json };
+    return { statusCode: injected.statusCode, json, headers: injected.headers };
   };
 
   fastify.post('/mcp', async (request, reply) => {

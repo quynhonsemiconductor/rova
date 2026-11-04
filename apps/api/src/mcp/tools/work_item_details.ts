@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { result, toolError, type McpRestResult, type ToolContext } from './rest';
-import { resolveWorkItem } from './lookups';
+import { pathSegment, result, type McpRestResult, type ToolContext } from './rest';
+import { failureResult, resolveWorkItem } from './lookups';
 
 const SECTIONS = [
   'tasks',
@@ -49,9 +49,9 @@ export function registerWorkItemDetails(server: McpServer, ctx: ToolContext) {
     },
     async ({ key, include }) => {
       const item = await resolveWorkItem(ctx, key);
-      if (!item.ok) return toolError(item.message);
+      if (!item.ok) return failureResult(item);
       const wanted = new Set<Section>(include ?? SECTIONS);
-      const base = `/v1/work-items/${item.id}`;
+      const itemPath = pathSegment(item.id);
 
       const fetchSection = async (
         url: string,
@@ -68,15 +68,20 @@ export function registerWorkItemDetails(server: McpServer, ctx: ToolContext) {
 
       const [tasks, relations, labels, timeLogs, testCases, watchers, attachments] =
         await Promise.all([
-          wanted.has('tasks') ? fetchSection(`${base}/tasks`) : null,
-          wanted.has('relations') ? fetchSection(`${base}/relations`) : null,
-          wanted.has('labels') ? fetchSection(`${base}/labels`) : null,
+          wanted.has('tasks') ? fetchSection(`/v1/work-items/${itemPath}/tasks`) : null,
+          wanted.has('relations') ? fetchSection(`/v1/work-items/${itemPath}/relations`) : null,
+          wanted.has('labels') ? fetchSection(`/v1/work-items/${itemPath}/labels`) : null,
           wanted.has('timeLogs')
-            ? fetchSection(`${base}/time-logs`, { page: 1, pageSize: PAGE_CAP })
+            ? fetchSection(`/v1/work-items/${itemPath}/time-logs`, {
+                page: 1,
+                pageSize: PAGE_CAP,
+              })
             : null,
-          wanted.has('testCases') ? fetchSection(`${base}/test-cases`, { limit: PAGE_CAP }) : null,
-          wanted.has('watchers') ? fetchSection(`${base}/watchers`) : null,
-          wanted.has('attachments') ? fetchSection(`${base}/attachments`) : null,
+          wanted.has('testCases')
+            ? fetchSection(`/v1/work-items/${itemPath}/test-cases`, { limit: PAGE_CAP })
+            : null,
+          wanted.has('watchers') ? fetchSection(`/v1/work-items/${itemPath}/watchers`) : null,
+          wanted.has('attachments') ? fetchSection(`/v1/work-items/${itemPath}/attachments`) : null,
         ]);
 
       const unavailable: Section[] = [];
@@ -91,7 +96,10 @@ export function registerWorkItemDetails(server: McpServer, ctx: ToolContext) {
           unavailable.push(name);
           return null;
         }
-        return rows.slice(0, ARRAY_CAP);
+        const items = rows.slice(0, ARRAY_CAP);
+        // A cap that bit is reported per SECTION: the caller can page the specific feed it needs
+        // (the REST routes carry their own paging) instead of guessing which list was cut.
+        return rows.length > items.length ? { items, truncated: true } : { items };
       };
       const timeLogSection = (raw: Raw | null) => {
         if (raw === null) return undefined;
@@ -101,7 +109,8 @@ export function registerWorkItemDetails(server: McpServer, ctx: ToolContext) {
           return null;
         }
         const items = (body.items as Record<string, unknown>[]).slice(0, ARRAY_CAP);
-        return { items, total: typeof body.total === 'number' ? body.total : items.length };
+        const total = typeof body.total === 'number' ? body.total : items.length;
+        return total > items.length ? { items, total, truncated: true } : { items, total };
       };
       const testCaseSection = (raw: Raw | null) => {
         if (raw === null) return undefined;
