@@ -90,7 +90,11 @@ Linking needs no repo→project mapping: work-item keys are unique per **workspa
 (FormattedID, Rally's key format), so any `US-42` in a PR title / description / branch / commit
 resolves workspace-wide — Rally's org-scoped model. A PR edit re-runs the extraction, so a key
 added to the description later links on the next `edited` event; links are only ever added (a key
-removed from the description keeps its existing link).
+removed from the description keeps its existing link). Two bounds keep this safe: a **bot-authored**
+PR (`user.type === "Bot"`) is read from its title and branch only, never its description — a
+release-please body lists every key in the release and is rewritten on each push — and at most
+**50 distinct keys per PR** are resolved (title and branch first, then the description), in one
+query, with a warning logged when the cap is hit.
 
 **Add manually** (fallback) — for a repo outside a connected installation, add it
 as `owner/name`; same backfill-on-add behaviour.

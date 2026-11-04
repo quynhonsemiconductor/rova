@@ -54,6 +54,33 @@ describe('mapRestPullRequest', () => {
     expect(pr?.keys).toEqual(['US-162']);
   });
 
+  it('does not read a bot PR description, but keeps title and branch keys', () => {
+    const pr = mapRestPullRequest(
+      {
+        ...base,
+        user: { login: 'release-please[bot]', type: 'Bot' },
+        body: 'Release notes for DE-7',
+      },
+      'acme/demo',
+    );
+    expect(pr?.keys).toEqual(['US-1']);
+  });
+
+  it('returns null for a bot PR whose only keys are in the description', () => {
+    expect(
+      mapRestPullRequest(
+        {
+          ...base,
+          title: 'chore(main): release 0.9.0',
+          head: { ref: 'release-please--branches--main' },
+          user: { login: 'release-please[bot]', type: 'Bot' },
+          body: 'Includes DE-7.',
+        },
+        'acme/demo',
+      ),
+    ).toBeNull();
+  });
+
   it('matches description keys inside code blocks and URLs, and ignores unknown keys', () => {
     const pr = mapRestPullRequest(
       {

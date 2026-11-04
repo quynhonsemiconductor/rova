@@ -6,6 +6,14 @@ import { parsePullRequestEvent, parsePushEvent } from './github-webhook.parser';
 export type LinkOutcome = 'processed' | 'ignored';
 
 /**
+ * A PR body is arbitrary user text: a long one can name thousands of keys, and
+ * each one used to cost its own DB round-trip. Title and branch keys come
+ * first in `pr.keys`, so the cap keeps the keys the author typed deliberately
+ * and drops the tail of the description.
+ */
+export const MAX_KEYS_PER_PULL_REQUEST = 50;
+
+/**
  * Turns a raw webhook event into linked connections/changesets. Called by the
  * worker relay (once per inbox row). Resolution: repo→workspace, then
  * key → work item (keys are workspace-unique, Rally FormattedID), so linking is
@@ -42,8 +50,20 @@ export class ScmLinkerService {
   async linkPullRequest(provider: ScmProvider, pr: NormalizedPullRequest): Promise<LinkOutcome> {
     const repo = await this.store.findRepository(provider, pr.repositoryFullName);
     if (!repo) return this.unmapped(pr.repositoryFullName);
+    const keys = pr.keys.slice(0, MAX_KEYS_PER_PULL_REQUEST);
+    if (keys.length < pr.keys.length) {
+      this.logger.warn(
+        {
+          repository: pr.repositoryFullName,
+          externalId: pr.externalId,
+          found: pr.keys.length,
+          kept: keys.length,
+        },
+        'PR references more work-item keys than the cap — linking the first ones only',
+      );
+    }
     let linked = false;
-    for (const { workItemId } of await this.resolve(repo, pr.keys)) {
+    for (const { workItemId } of await this.resolve(repo, keys)) {
       await this.store.upsertConnection({
         workspaceId: repo.workspaceId,
         workItemId,
@@ -85,14 +105,15 @@ export class ScmLinkerService {
     return linked ? 'processed' : 'ignored';
   }
 
-  /** Resolve each key to a work item id, workspace-wide (skips misses). */
+  /** Resolve the keys to work-item ids in ONE query, workspace-wide (skips misses). */
   private async resolve(
     repo: { workspaceId: string },
     keys: string[],
   ): Promise<Array<{ workItemId: string }>> {
+    const ids = await this.store.resolveWorkItemIds(keys, repo.workspaceId);
     const out: Array<{ workItemId: string }> = [];
     for (const key of keys) {
-      const workItemId = await this.store.resolveWorkItemId(key, repo.workspaceId);
+      const workItemId = ids.get(key);
       if (workItemId) out.push({ workItemId });
     }
     return out;

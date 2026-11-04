@@ -12,7 +12,7 @@ export interface GhRestPull {
   state: string;
   merged_at: string | null;
   created_at: string;
-  user: { login: string } | null;
+  user: { login: string; type?: string } | null;
   head: { ref: string } | null;
 }
 

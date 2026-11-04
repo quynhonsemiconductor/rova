@@ -141,6 +141,32 @@ describe('parsePullRequestEvent', () => {
     });
     expect(pr).toBeNull();
   });
+
+  it('does not read the description of a bot-authored PR, but still reads title and branch', () => {
+    const pr = parsePullRequestEvent({
+      ...base,
+      pull_request: {
+        ...base.pull_request,
+        user: { login: 'release-please[bot]', type: 'Bot' },
+        body: 'Release notes for US-2, US-3 and DE-4.',
+      },
+    });
+    expect(pr?.keys).toEqual(['US-1']);
+  });
+
+  it('ignores a bot PR whose only keys are in the description', () => {
+    const pr = parsePullRequestEvent({
+      ...base,
+      pull_request: {
+        ...base.pull_request,
+        title: 'chore(main): release 0.9.0',
+        head: { ref: 'release-please--branches--main' },
+        user: { login: 'release-please[bot]', type: 'Bot' },
+        body: 'Includes US-2, US-3 and DE-4.',
+      },
+    });
+    expect(pr).toBeNull();
+  });
 });
 
 describe('parsePushEvent', () => {
