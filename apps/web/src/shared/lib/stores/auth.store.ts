@@ -38,10 +38,17 @@ interface AuthState {
   isAuthenticated: boolean
   isLoading: boolean
   isSwitchingWorkspace: boolean
+  /**
+   * The session could not be established for a TRANSIENT reason (429/5xx/network after the
+   * bootstrap retries). Distinct from "signed out": the token may still be valid, so the app must
+   * show a recovery screen, never `/login` — the router sends `requireAuth` here.
+   */
+  authError: 'unavailable' | null
 
   setUser: (user: AuthUser, memberships?: WorkspaceMembership[]) => void
   clearAuth: () => void
   setLoading: (loading: boolean) => void
+  setAuthError: (error: 'unavailable' | null) => void
   switchWorkspace: (workspaceId: string) => Promise<void>
 
   /** True if the user has the given permission code in their current role. */
@@ -59,10 +66,18 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: true,
       isSwitchingWorkspace: false,
+      authError: null,
 
       setUser: (user, memberships = []) => {
         const activeWorkspaceId = memberships[0]?.workspaceId ?? null
-        set({ user, memberships, activeWorkspaceId, isAuthenticated: true, isLoading: false })
+        set({
+          user,
+          memberships,
+          activeWorkspaceId,
+          isAuthenticated: true,
+          isLoading: false,
+          authError: null,
+        })
       },
 
       clearAuth: () => {
@@ -72,10 +87,15 @@ export const useAuthStore = create<AuthState>()(
           activeWorkspaceId: null,
           isAuthenticated: false,
           isLoading: false,
+          authError: null,
         })
       },
 
       setLoading: (isLoading) => set({ isLoading }),
+
+      // Deliberately leaves `user`/`isAuthenticated` alone: a transient failure is not a
+      // sign-out, and the recovery screen (selected by `authError`) is what the router shows.
+      setAuthError: (authError) => set({ authError, isLoading: false }),
 
       switchWorkspace: async (workspaceId: string) => {
         const { activeWorkspaceId } = get()

@@ -10,6 +10,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { bootstrapAuth } from '@/shared/api/auth-bootstrap'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
+import { safeReturnTo } from '@/shared/lib/safe-return-to'
 import { START_CHAPTER, browserGuideLang, isGuideLang } from '@/pages/guide/model/guide-url'
 
 // ── Extend staticData for breadcrumb support (SHELL-FR-007) ──────────────────
@@ -39,12 +40,21 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
 // ── Auth guard helper ─────────────────────────────────────────────────────────
 async function requireAuth() {
   await bootstrapAuth()
-  const { isAuthenticated } = useAuthStore.getState()
+  const { isAuthenticated, authError } = useAuthStore.getState()
+  if (authError) {
+    // The session check failed for a TRANSIENT reason (429/5xx/network). Not a sign-out: show
+    // the recovery screen rather than bouncing a signed-in user to /login. The page it was on
+    // travels along, so a successful retry returns the reader where they were.
+    const returnTo = safeReturnTo(window.location.pathname + window.location.search)
+    throw redirect({
+      to: '/auth-unavailable',
+      search: returnTo === '/' ? {} : { returnTo },
+    } as Parameters<typeof redirect>[0])
+  }
   if (!isAuthenticated) {
     // AUTH-FR-012: preserve requested URL so login can redirect back after session expiry
-    const returnTo = window.location.pathname + window.location.search
-    const search =
-      returnTo && returnTo !== '/' && !returnTo.startsWith('/login') ? { returnTo } : undefined
+    const returnTo = safeReturnTo(window.location.pathname + window.location.search)
+    const search = returnTo !== '/' && !returnTo.startsWith('/login') ? { returnTo } : undefined
     throw redirect({ to: '/login', search } as Parameters<typeof redirect>[0])
   }
 }
@@ -132,6 +142,17 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: lazyPage(() => import('@/pages/login/login-page'), 'LoginPage'),
+})
+
+const authUnavailableRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/auth-unavailable',
+  validateSearch: (search: Record<string, unknown>): { returnTo?: string } =>
+    typeof search.returnTo === 'string' ? { returnTo: search.returnTo } : {},
+  component: lazyPage(
+    () => import('@/pages/auth-unavailable/auth-unavailable-page'),
+    'AuthUnavailablePage',
+  ),
 })
 
 // ── Authenticated layout route ────────────────────────────────────────────────
@@ -547,6 +568,7 @@ const notFoundRoute = createRoute({
 // ── Route tree ────────────────────────────────────────────────────────────────
 const routeTree = rootRoute.addChildren([
   loginRoute,
+  authUnavailableRoute,
   authRoute.addChildren([
     homeRoute,
     projectsRoute,

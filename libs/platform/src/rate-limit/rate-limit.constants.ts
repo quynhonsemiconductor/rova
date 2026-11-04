@@ -18,18 +18,39 @@ export const RATE_LIMIT_METADATA_KEY = 'rova:rate_limit:tier';
 export const SKIP_RATE_LIMIT_KEY = 'rova:rate_limit:skip';
 
 export const RATE_LIMIT_TIERS = {
-  /** All routes without an explicit @RateLimit() decorator: 100 req/min */
-  DEFAULT: { limit: 100, windowSeconds: 60 },
+  /**
+   * All routes without an explicit @RateLimit() decorator: 600 req/min per user.
+   *
+   * 100 was the per-USER ceiling, but a single page refresh fires a burst of queries (the shell,
+   * the notifications feed, the active project's lists), so an ordinary user clicking around could
+   * approach it and a slow client retrying could reach it. 600 is still far below what one person
+   * can send abusively, and the per-address PRE_AUTH floor is a separate, NAT-sized bucket.
+   */
+  DEFAULT: { limit: 600, windowSeconds: 60 },
+
+  /**
+   * `GET /v1/auth/me`: 120 req/min per user.
+   *
+   * The SPA calls it once per page load (and each guide asset asks the Worker, which calls it
+   * too), so it is cheap in isolation — but it is also the endpoint every stuck client retries
+   * first. Its own, lower ceiling keeps a retry loop from spending the user's whole DEFAULT
+   * budget on one read, and the client's 429 retry policy honours the window.
+   */
+  AUTH_ME: { limit: 120, windowSeconds: 60 },
 
   /** Sensitive write operations: 20 req/min */
   STRICT: { limit: 20, windowSeconds: 60 },
 
   /**
-   * Everything one address sends, before anyone is authenticated: 1,200 per minute per IP.
+   * Everything one address sends that does NOT authenticate: 1,200 per minute per IP.
    *
    * The user-keyed DEFAULT bucket cannot see traffic that never authenticates (a flood of requests with no session answers 401 from
    * identity's SessionGuard before DEFAULT is consulted). This is the cheap floor under it: generous on purpose, because a whole
-   * office shares one address and each of its users is already held to DEFAULT.
+   * office shares one address.
+   *
+   * An AUTHENTICATED request gives its slot back (`RateLimitGuard` refunds it once the principal is known), so a signed-in user
+   * spends only their own tier and a day's normal office traffic cannot fill the shared address. What keeps a slot is traffic that
+   * never proves who it is: failed logins, forged cookies, a sweep of guessed tokens.
    */
   PRE_AUTH: { limit: 1200, windowSeconds: 60 },
 

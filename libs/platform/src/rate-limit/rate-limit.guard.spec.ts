@@ -15,7 +15,12 @@ import { Reflector } from '@nestjs/core';
 import { requestContextStorage, type RequestContext } from '@quynhonsemiconductor/observability';
 import { KEYED_BY_ADDRESS } from '@quynhonsemiconductor/platform-http';
 import { RateLimitGuard } from './rate-limit.guard';
-import { RATE_LIMIT_METADATA_KEY, RATE_LIMIT_TIERS } from './rate-limit.constants';
+import { PRE_AUTH_RESERVATION, type PreAuthReservation } from './pre-auth-rate-limit.guard';
+import {
+  RATE_LIMIT_METADATA_KEY,
+  RATE_LIMIT_TIERS,
+  SKIP_RATE_LIMIT_KEY,
+} from './rate-limit.constants';
 
 const TUNNEL = '172.16.0.9'; // cloudflared: what req.ip is for every visitor
 
@@ -54,17 +59,20 @@ function context(req: Req, handlerTier?: string): ExecutionContext {
 describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
   let keys: string[];
   let consumed: Array<{ limit: number; window: number }>;
+  let refund: ReturnType<typeof vi.fn>;
   let guard: RateLimitGuard;
 
   beforeEach(() => {
     keys = [];
     consumed = [];
+    refund = vi.fn().mockResolvedValue(undefined);
     const cache = {
       consumeRateLimit: vi.fn((key: string, limit: number, window: number) => {
         keys.push(key);
         consumed.push({ limit, window });
         return Promise.resolve({ allowed: true, remaining: limit - 1, resetAt: 0 });
       }),
+      refundRateLimit: refund,
     };
     const metrics = { recordFailOpen: vi.fn() };
     delete process.env['DISABLE_RATE_LIMIT'];
@@ -145,12 +153,165 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     await guard.canActivate(
       context(request({ headers: { 'cf-connecting-ip': '1.1.1.1' } }), 'STRICT'),
     );
+    await guard.canActivate(
+      context(request({ headers: { 'cf-connecting-ip': '1.1.1.1' } }), 'AUTH_ME'),
+    );
 
     expect(consumed).toEqual([
-      { limit: 100, window: 60 },
+      { limit: 600, window: 60 },
       { limit: 20, window: 60 },
+      { limit: 120, window: 60 },
     ]);
-    expect(RATE_LIMIT_TIERS.DEFAULT).toEqual({ limit: 100, windowSeconds: 60 });
+    expect(RATE_LIMIT_TIERS.DEFAULT).toEqual({ limit: 600, windowSeconds: 60 });
     expect(RATE_LIMIT_TIERS.STRICT).toEqual({ limit: 20, windowSeconds: 60 });
+    expect(RATE_LIMIT_TIERS.AUTH_ME).toEqual({ limit: 120, windowSeconds: 60 });
+  });
+
+  it('an AUTHENTICATED request gives back the address slot the pre-auth guard reserved', async () => {
+    const req = request({ headers: { 'cf-connecting-ip': '203.0.113.7' } });
+    const reservation: PreAuthReservation = {
+      key: 'PRE_AUTH:ip:203.0.113.7',
+      id: 'slot-7',
+      settled: false,
+    };
+    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = reservation;
+
+    await requestContextStorage.run(principalStore('user-1'), () =>
+      guard.canActivate(context(req)),
+    );
+
+    expect(refund).toHaveBeenCalledTimes(1);
+    expect(refund).toHaveBeenCalledWith('PRE_AUTH:ip:203.0.113.7', 'slot-7');
+    expect(reservation.settled).toBe(true);
+    // the user's own bucket is still consumed: the refund moves the COUNT, not the budget
+    expect(keys).toEqual(['DEFAULT:uid:user-1']);
+  });
+
+  it('a request that never authenticates KEEPS its slot: a forged cookie must still cost its address', async () => {
+    const req = request({ headers: { 'cf-connecting-ip': '203.0.113.7' } });
+    const reservation: PreAuthReservation = {
+      key: 'PRE_AUTH:ip:203.0.113.7',
+      id: 'slot-8',
+      settled: false,
+    };
+    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = reservation;
+
+    await requestContextStorage.run(principalStore(), () => guard.canActivate(context(req)));
+
+    expect(refund).not.toHaveBeenCalled();
+    expect(reservation.settled).toBe(false);
+    expect(keys).toEqual(['DEFAULT:ip:203.0.113.7']);
+  });
+
+  it('a failed refund is LOGGED and the request is still admitted', async () => {
+    refund.mockRejectedValue(new Error('valkey down'));
+    const logger = (guard as unknown as { logger: { error: (...a: unknown[]) => void } }).logger;
+    const logError = vi.spyOn(logger, 'error');
+    const req = request({ headers: { 'cf-connecting-ip': '203.0.113.7' } });
+    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = {
+      key: 'PRE_AUTH:ip:203.0.113.7',
+      id: 'slot-9',
+      settled: false,
+    } satisfies PreAuthReservation;
+
+    const allowed = await requestContextStorage.run(principalStore('user-1'), () =>
+      guard.canActivate(context(req)),
+    );
+    // The refund is awaited, so no setImmediate dance is needed and the log is there.
+    expect(allowed).toBe(true);
+    expect(refund).toHaveBeenCalledTimes(1);
+    expect(logError).toHaveBeenCalled();
+    logError.mockRestore();
+  });
+
+  it('honours @SkipRateLimit() (probes and metrics scrapes)', async () => {
+    const handler = () => undefined;
+    Reflect.defineMetadata(SKIP_RATE_LIMIT_KEY, true, handler);
+    const skippedContext = {
+      getHandler: () => handler,
+      getClass: () => class Controller {},
+      switchToHttp: () => ({
+        getRequest: () => request(),
+        getResponse: () => ({ header: vi.fn() }),
+      }),
+    } as unknown as ExecutionContext;
+
+    expect(await guard.canActivate(skippedContext)).toBe(true);
+    expect(keys).toEqual([]);
+  });
+
+  it('fails OPEN when the cache cannot answer, and says so (the outage alarm reads the tag)', async () => {
+    const metrics = { recordFailOpen: vi.fn() };
+    const cache = {
+      consumeRateLimit: vi.fn().mockRejectedValue(new Error('valkey down')),
+      refundRateLimit: refund,
+    };
+    const failingGuard = new RateLimitGuard(new Reflector(), cache as never, metrics as never);
+    await expect(
+      requestContextStorage.run(principalStore('user-1'), () =>
+        failingGuard.canActivate(
+          context(request({ headers: { 'cf-connecting-ip': '203.0.113.7' } })),
+        ),
+      ),
+    ).resolves.toBe(true);
+    expect(metrics.recordFailOpen).toHaveBeenCalledWith('rate_limit');
+  });
+
+  it('an authenticated request with NO pre-auth reservation refunds nothing (and still runs)', async () => {
+    const req = request({ headers: { 'cf-connecting-ip': '203.0.113.7' } });
+    const allowed = await requestContextStorage.run(principalStore('user-1'), () =>
+      guard.canActivate(context(req)),
+    );
+    expect(allowed).toBe(true);
+    expect(refund).not.toHaveBeenCalled();
+    expect(keys).toEqual(['DEFAULT:uid:user-1']);
+  });
+
+  it('DISABLE_RATE_LIMIT bypasses the guard (dev/CI)', async () => {
+    process.env['DISABLE_RATE_LIMIT'] = 'true';
+    const disabledGuard = new RateLimitGuard(
+      new Reflector(),
+      { consumeRateLimit: vi.fn(), refundRateLimit: refund } as never,
+      { recordFailOpen: vi.fn() } as never,
+    );
+    expect(await disabledGuard.canActivate(context(request()))).toBe(true);
+    delete process.env['DISABLE_RATE_LIMIT'];
+  });
+
+  it('a 429 from the USER bucket KEEPS the address slot: the per-IP floor is not a bypass', async () => {
+    // The user's own budget is exhausted.
+    const cache = {
+      consumeRateLimit: vi.fn().mockResolvedValueOnce({
+        allowed: false,
+        remaining: 0,
+        resetAt: Math.floor(Date.now() / 1000) + 30,
+      }),
+      refundRateLimit: refund,
+    };
+    const strictGuard = new RateLimitGuard(
+      new Reflector(),
+      cache as never,
+      {
+        recordFailOpen: vi.fn(),
+      } as never,
+    );
+    const req = request({ headers: { 'cf-connecting-ip': '203.0.113.7' } });
+    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = {
+      key: 'PRE_AUTH:ip:203.0.113.7',
+      id: 'slot-10',
+      settled: false,
+    } satisfies PreAuthReservation;
+
+    await expect(
+      requestContextStorage.run(principalStore('user-1'), () =>
+        strictGuard.canActivate(context(req)),
+      ),
+    ).rejects.toThrow(/Rate limit exceeded/);
+
+    expect(refund).not.toHaveBeenCalled();
+    expect(
+      ((req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] as PreAuthReservation)
+        .settled,
+    ).toBe(false);
   });
 });

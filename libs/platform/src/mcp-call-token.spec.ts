@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   consumeMcpCallToken,
   mintMcpCallToken,
@@ -38,6 +38,30 @@ describe('MCP call tokens', () => {
     // an array header resolves to its FIRST value
     const token = mintMcpCallToken(PRINCIPAL);
     expect(peekMcpCallToken([token, 'other'])).toEqual(PRINCIPAL);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('an EXPIRED token is no principal — neither peeked nor consumed', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-04T00:00:00Z'));
+    const token = mintMcpCallToken(PRINCIPAL);
+    vi.setSystemTime(new Date('2026-11-04T00:00:06Z')); // TTL is 5 s
+    expect(peekMcpCallToken(token)).toBeUndefined();
+    expect(consumeMcpCallToken(token)).toBeUndefined();
+  });
+
+  it('the pending map is SWEPT once it reaches its bound, dropping only expired entries', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-04T00:00:00Z'));
+    const live: string[] = [];
+    for (let i = 0; i < 1_000; i += 1) live.push(mintMcpCallToken(PRINCIPAL));
+    // Everything minted above expires; the NEXT mint crossing the bound sweeps them.
+    vi.setSystemTime(new Date('2026-11-04T00:00:06Z'));
+    const fresh = mintMcpCallToken(PRINCIPAL);
+    // The sweep did its job: the fresh token is the only live one.
+    expect(peekMcpCallToken(fresh)).toEqual(PRINCIPAL);
+    expect(live.every((token) => peekMcpCallToken(token) === undefined)).toBe(true);
   });
 
   it('a minted token is unguessable: two mints never collide', () => {

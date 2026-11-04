@@ -7666,6 +7666,13 @@ export interface operations {
         }
         content?: never
       }
+      /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
+      429: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
     }
   }
   AuthController_updateProfile: {

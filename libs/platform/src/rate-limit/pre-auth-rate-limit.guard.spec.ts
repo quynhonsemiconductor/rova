@@ -1,11 +1,20 @@
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PreAuthRateLimitGuard } from './pre-auth-rate-limit.guard';
+import {
+  PreAuthRateLimitGuard,
+  PRE_AUTH_RESERVATION,
+  refundPreAuthReservation,
+  type PreAuthReservation,
+} from './pre-auth-rate-limit.guard';
 import { SKIP_RATE_LIMIT_KEY } from './rate-limit.constants';
 import { consumeMcpCallToken, mintMcpCallToken, MCP_CALL_TOKEN_HEADER } from '../mcp-call-token';
 
-const ctx = (headers: Record<string, string>, skip = false): ExecutionContext => {
+const ctx = (
+  headers: Record<string, string>,
+  skip = false,
+  req?: Record<symbol, unknown>,
+): ExecutionContext => {
   const handler = () => undefined;
   if (skip) Reflect.defineMetadata(SKIP_RATE_LIMIT_KEY, true, handler);
   return {
@@ -13,11 +22,15 @@ const ctx = (headers: Record<string, string>, skip = false): ExecutionContext =>
     getHandler: () => handler,
     getClass: () => class Route {},
     switchToHttp: () => ({
-      getRequest: () => ({
-        headers: { 'cf-connecting-ip': '203.0.113.7', ...headers },
-        ip: '10.0.0.1',
-        socket: {},
-      }),
+      getRequest: () => {
+        const defaultReq = {
+          headers: { 'cf-connecting-ip': '203.0.113.7', ...headers },
+          ip: '10.0.0.1',
+          socket: {},
+        };
+        // With a caller-supplied request, mutate THAT object: the reservation is written back.
+        return req ? Object.assign(req, defaultReq) : defaultReq;
+      },
       getResponse: () => ({ header: vi.fn() }),
     }),
   } as unknown as ExecutionContext;
@@ -31,6 +44,7 @@ describe('PreAuthRateLimitGuard', () => {
   beforeEach(() => {
     delete process.env['DISABLE_RATE_LIMIT'];
     buckets = new Map();
+    let slot = 0;
     consume = vi.fn((key: string, limit: number) => {
       const n = (buckets.get(key) ?? 0) + 1;
       buckets.set(key, n);
@@ -38,6 +52,7 @@ describe('PreAuthRateLimitGuard', () => {
         allowed: n <= limit,
         remaining: 0,
         resetAt: Math.floor(Date.now() / 1000) + 30,
+        id: `slot-${++slot}`,
       });
     });
     guard = new PreAuthRateLimitGuard(
@@ -121,6 +136,55 @@ describe('PreAuthRateLimitGuard', () => {
 
   it('honours @SkipRateLimit() (the probes)', async () => {
     expect(await guard.canActivate(ctx({}, true))).toBe(true);
+    expect(consume).not.toHaveBeenCalled();
+  });
+
+  it('reserves the address slot it took, and the post-auth guard refunds it exactly once', async () => {
+    const req: Record<symbol, unknown> = {};
+    await guard.canActivate(ctx({}, false, req));
+
+    const reservation = req[PRE_AUTH_RESERVATION] as PreAuthReservation;
+    expect(reservation).toMatchObject({ key: 'PRE_AUTH:ip:203.0.113.7', settled: false });
+    expect(typeof reservation.id).toBe('string');
+
+    const refund = vi.fn().mockResolvedValue(undefined);
+    const log = { error: vi.fn() };
+    await refundPreAuthReservation(
+      { refundRateLimit: refund } as never,
+      log as never,
+      req as never,
+    );
+    await refundPreAuthReservation(
+      { refundRateLimit: refund } as never,
+      log as never,
+      req as never,
+    );
+    expect(refund).toHaveBeenCalledTimes(1);
+    expect(refund).toHaveBeenCalledWith('PRE_AUTH:ip:203.0.113.7', reservation.id);
+  });
+
+  it('a cache that returns no slot id leaves nothing to refund (DISABLE-style cache)', async () => {
+    consume.mockResolvedValue({ allowed: true, remaining: 0, resetAt: 0 });
+    const req: Record<symbol, unknown> = {};
+    await guard.canActivate(ctx({}, false, req));
+    expect(req[PRE_AUTH_RESERVATION]).toBeUndefined();
+  });
+
+  it('DISABLE_RATE_LIMIT skips the floor entirely (dev/CI)', async () => {
+    process.env['DISABLE_RATE_LIMIT'] = 'true';
+    const disabledGuard = new PreAuthRateLimitGuard(
+      new Reflector(),
+      { consumeRateLimit: consume } as never,
+      { recordFailOpen: vi.fn() } as never,
+    );
+    expect(await disabledGuard.canActivate(ctx({}))).toBe(true);
+    expect(consume).not.toHaveBeenCalled();
+    delete process.env['DISABLE_RATE_LIMIT'];
+  });
+
+  it('leaves a non-HTTP context alone (no request to key)', async () => {
+    const nonHttp = { ...(ctx({}) as object), getType: () => 'rpc' } as unknown as ExecutionContext;
+    expect(await guard.canActivate(nonHttp)).toBe(true);
     expect(consume).not.toHaveBeenCalled();
   });
 
