@@ -100,10 +100,11 @@ jobs:
   # run is red. One job that needs both calls and makes ONE bump call is the
   # "merge web into one call" option.
   #
-  # Only services that exist in gitops values/rova are written. `web` is built and
-  # published but gitops has no web image yet (D's chart); it joins the list when
-  # the chart lands. Extra digests in the map are harmless (the action writes the
-  # services it is given).
+  # `web` IS in the list: the SPA image is published by the second call from the
+  # SAME commit, and the action writes it to top-level `web.image` in the same
+  # machine-owned tags file — where the chart reads it (templates/web.yaml), not
+  # under services. A digest there is harmless until values/rova/<env>.yaml sets
+  # `web.enabled: true`.
   bump-dev:
     needs: [publish, publish-web]
     # Only a main push that fully published bumps dev. A dispatch from another
@@ -146,11 +147,11 @@ jobs:
           b=${WEB_DIGESTS-}; [ -n "$b" ] || b='{}'
           merged=$(jq -c -n --argjson a "$a" --argjson b "$b" '$a * $b')
           echo "digests=$merged" >> "$GITHUB_OUTPUT"
-      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@400b7e9868e9ba6d172d956a08041ba19b574689 # v1.33.1
+      - uses: quynhonsemiconductor/ci/actions/bump-gitops-tag@b696a7d77e650057b4ee1de16be84bcce3936566 # v1.34.0
         with:
           product: rova
           env: dev
-          services: api worker migrator
+          services: api worker migrator web
           tag: ${{ needs.publish.outputs.tag }}
           digests: ${{ steps.digests.outputs.digests }}
           mode: pull-request
