@@ -330,7 +330,10 @@ export function IterationStatusPage() {
   // Kept nullable: an iteration with NO end date has no days-left, and `?? 0` fed the
   // elapsed-bar arithmetic below where it reads as "the whole iteration has elapsed".
   const daysLeft = metrics?.daysLeft ?? null
-  const tDays = computeTotalDays(selected)
+  // WORKING days, from the server, in the workspace's own working-day setting (BA 2026-11-04:
+  // Sprint 1 Mon 11-02 → Fri 11-13 is 10 days, not 12). The calendar count stays only as the
+  // fallback while the status read is in flight.
+  const tDays = metrics?.totalDays ?? computeTotalDays(selected)
   // An iteration is finished once it's been accepted or explicitly completed —
   // regardless of the raw end-date arithmetic (which reads 0/negative when past
   // due and otherwise misleadingly shows "0 days left" on a done sprint).

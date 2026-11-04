@@ -42,4 +42,14 @@ export interface IIterationStatusRepository {
     args: { limit: number; cursor: CursorPayload | null },
     scope: TeamReadScope,
   ): Promise<PagedResult<IterationStatusItem>>;
+  /**
+   * The workspace's calendar: its time zone (for "today") and its working days (ISO 1 = Mon …
+   * 7 = Sun). A workspace with no settings row gets the column defaults, UTC and Mon–Fri.
+   */
+  getWorkspaceCalendar(workspaceId: string): Promise<WorkspaceCalendar>;
+}
+
+export interface WorkspaceCalendar {
+  timeZone: string;
+  workingDays: number[];
 }

@@ -5179,6 +5179,7 @@ export interface components {
         acceptedPercent: number
         totalPlanEstimate: number
         daysLeft: number | null
+        totalDays: number | null
         defectCount: number
         taskCount: number
         activeTaskCount: number

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { IterationStatusService } from './iteration-status.service';
 import { IterationsService } from './iterations.service';
@@ -49,7 +49,11 @@ const emptyPage = { data: [], pageInfo: { nextCursor: null, hasNextPage: false, 
 
 describe('IterationStatusService', () => {
   let service: IterationStatusService;
-  let statusRepo: { getMetrics: ReturnType<typeof vi.fn>; listItems: ReturnType<typeof vi.fn> };
+  let statusRepo: {
+    getMetrics: ReturnType<typeof vi.fn>;
+    listItems: ReturnType<typeof vi.fn>;
+    getWorkspaceCalendar: ReturnType<typeof vi.fn>;
+  };
   let iterationsService: {
     getIteration: ReturnType<typeof vi.fn>;
     getIterationForView: ReturnType<typeof vi.fn>;
@@ -70,6 +74,9 @@ describe('IterationStatusService', () => {
         activeTaskCount: 0,
       }),
       listItems: vi.fn().mockResolvedValue(emptyPage),
+      getWorkspaceCalendar: vi
+        .fn()
+        .mockResolvedValue({ timeZone: 'UTC', workingDays: [1, 2, 3, 4, 5] }),
     };
     // getStatus reads via getIterationForView (project-scoped view check);
     // createItemInIteration reads via getIteration. Alias both to one mock so a
@@ -111,10 +118,27 @@ describe('IterationStatusService', () => {
       expect(res.metrics.acceptedPoints).toBe(30);
       expect(res.metrics.totalPlanEstimate).toBe(40);
       expect(res.metrics.acceptedPercent).toBe(75); // 30/40
-      expect(res.metrics.plannedVelocityPercent).toBe(75); // 30/40
+      expect(res.metrics.plannedVelocityPercent).toBe(100); // 40 planned / 40 velocity
       expect(res.metrics.defectCount).toBe(2);
       expect(res.metrics.taskCount).toBe(5);
       expect(res.metrics.activeTaskCount).toBe(3);
+    });
+
+    it('counts PLANNED points toward velocity before anything is accepted (BA 2026-11-04)', async () => {
+      // The reported sprint: 11 points estimated, none accepted, velocity target 60. It used to
+      // read "0% · 0 of 60 Points" because the numerator was accepted points.
+      statusRepo.getMetrics.mockResolvedValue({
+        totalPlanEstimate: 11,
+        acceptedPoints: 0,
+        defectCount: 0,
+        taskCount: 2,
+        activeTaskCount: 2,
+      });
+      iterationsService.getIteration.mockResolvedValue(mockIteration({ plannedVelocity: 60 }));
+
+      const res = await service.getStatus(actor, 'it-1', {}, pageArgs);
+      expect(res.metrics.plannedVelocityPercent).toBe(18); // round(11/60 * 100)
+      expect(res.metrics.acceptedPercent).toBe(0); // the Accepted tile is unchanged
     });
 
     it('guards divide-by-zero when there are no points', async () => {
@@ -135,22 +159,74 @@ describe('IterationStatusService', () => {
       expect(res.metrics.plannedVelocityPercent).toBeNull();
     });
 
-    it('computes days left relative to today (future end)', async () => {
-      const future = new Date();
-      future.setUTCDate(future.getUTCDate() + 5);
-      const iso = future.toISOString().slice(0, 10);
-      iterationsService.getIteration.mockResolvedValue(mockIteration({ endDate: iso }));
-      const res = await service.getStatus(actor, 'it-1', {}, pageArgs);
-      expect(res.metrics.daysLeft).toBe(5);
-    });
+    describe('Iteration End counts WORKING days (BA 2026-11-04)', () => {
+      // The reported sprint: Mon 2026-11-02 → Fri 2026-11-13, twelve calendar days, ten working.
+      const sprint = { startDate: '2026-11-02', endDate: '2026-11-13' };
+      const at = (iso: string) => vi.setSystemTime(new Date(iso));
 
-    it('returns negative days left when the iteration has ended', async () => {
-      const past = new Date();
-      past.setUTCDate(past.getUTCDate() - 3);
-      const iso = past.toISOString().slice(0, 10);
-      iterationsService.getIteration.mockResolvedValue(mockIteration({ endDate: iso }));
-      const res = await service.getStatus(actor, 'it-1', {}, pageArgs);
-      expect(res.metrics.daysLeft).toBe(-3);
+      beforeEach(() => vi.useFakeTimers({ toFake: ['Date'] }));
+      afterEach(() => vi.useRealTimers());
+
+      it('totals the window without the weekend', async () => {
+        at('2026-11-04T03:00:00Z');
+        iterationsService.getIteration.mockResolvedValue(mockIteration(sprint));
+        const res = await service.getStatus(actor, 'it-1', {}, pageArgs);
+        expect(res.metrics.totalDays).toBe(10);
+      });
+
+      it('counts today and the working days after it', async () => {
+        at('2026-11-04T03:00:00Z'); // Wed: Wed–Fri (3) + next Mon–Fri (5)
+        iterationsService.getIteration.mockResolvedValue(mockIteration(sprint));
+        const res = await service.getStatus(actor, 'it-1', {}, pageArgs);
+        expect(res.metrics.daysLeft).toBe(8);
+      });
+
+      it('reads the full window on the first day and one on the last', async () => {
+        iterationsService.getIteration.mockResolvedValue(mockIteration(sprint));
+        at('2026-11-02T03:00:00Z');
+        expect((await service.getStatus(actor, 'it-1', {}, pageArgs)).metrics.daysLeft).toBe(10);
+        at('2026-11-13T03:00:00Z');
+        expect((await service.getStatus(actor, 'it-1', {}, pageArgs)).metrics.daysLeft).toBe(1);
+      });
+
+      it('loses nothing over a weekend', async () => {
+        iterationsService.getIteration.mockResolvedValue(mockIteration(sprint));
+        at('2026-11-07T03:00:00Z'); // Sat
+        expect((await service.getStatus(actor, 'it-1', {}, pageArgs)).metrics.daysLeft).toBe(5);
+      });
+
+      it('uses the workspace working days, not a hardcoded Mon–Fri', async () => {
+        statusRepo.getWorkspaceCalendar.mockResolvedValue({
+          timeZone: 'UTC',
+          workingDays: [1, 2, 3, 4, 5, 6],
+        });
+        iterationsService.getIteration.mockResolvedValue(mockIteration(sprint));
+        at('2026-11-02T03:00:00Z');
+        expect((await service.getStatus(actor, 'it-1', {}, pageArgs)).metrics.totalDays).toBe(11);
+      });
+
+      it("takes 'today' in the workspace's zone, not UTC", async () => {
+        statusRepo.getWorkspaceCalendar.mockResolvedValue({
+          timeZone: 'Asia/Ho_Chi_Minh',
+          workingDays: [1, 2, 3, 4, 5],
+        });
+        iterationsService.getIteration.mockResolvedValue(mockIteration(sprint));
+        // 2026-11-13 01:00 in Ho Chi Minh City is still the 12th in UTC.
+        at('2026-11-12T18:00:00Z');
+        expect((await service.getStatus(actor, 'it-1', {}, pageArgs)).metrics.daysLeft).toBe(1);
+      });
+
+      it('reports overdue as negative CALENDAR days', async () => {
+        iterationsService.getIteration.mockResolvedValue(mockIteration(sprint));
+        at('2026-11-16T03:00:00Z'); // the Monday after a Friday end
+        expect((await service.getStatus(actor, 'it-1', {}, pageArgs)).metrics.daysLeft).toBe(-3);
+      });
+
+      it('has the whole window ahead before the sprint starts', async () => {
+        iterationsService.getIteration.mockResolvedValue(mockIteration(sprint));
+        at('2026-10-28T03:00:00Z');
+        expect((await service.getStatus(actor, 'it-1', {}, pageArgs)).metrics.daysLeft).toBe(10);
+      });
     });
 
     it('returns null days left when there is no end date', async () => {

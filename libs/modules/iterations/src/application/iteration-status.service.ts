@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
-import { PreconditionFailedException } from '@platform';
+import { PreconditionFailedException, workspaceLocalDate } from '@platform';
+import { iterationDayCount } from '../domain/iteration-calendar';
 import { WorkItemsService } from '@modules/work-items';
 import type { WorkItemType } from '@modules/work-items';
 import { AccessService } from '@modules/access';
@@ -36,15 +37,6 @@ export class IterationStatusService {
   private percent(numerator: number, denominator: number): number {
     if (!denominator) return 0;
     return Math.round((numerator / denominator) * 100);
-  }
-
-  /** Whole days from today (UTC date) to the iteration end; null if no end date. */
-  private daysLeft(endDate: string | null): number | null {
-    if (!endDate) return null;
-    const end = new Date(`${endDate}T00:00:00.000Z`).getTime();
-    const now = new Date();
-    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    return Math.round((end - today) / 86_400_000);
   }
 
   // ── Status read-model (P2-IS-03 / P2-IS-04) ───────────────────────────────
@@ -83,10 +75,20 @@ export class IterationStatusService {
       iteration.projectId,
     );
 
-    const [raw, items] = await Promise.all([
+    const [raw, items, calendar] = await Promise.all([
       this.statusRepo.getMetrics(iterationId, actor.workspaceId, scope),
       this.statusRepo.listItems(iterationId, actor.workspaceId, filters, args, scope),
+      this.statusRepo.getWorkspaceCalendar(actor.workspaceId),
     ]);
+    // Working days, in the workspace's own calendar — see `iteration-calendar.ts`. "Today" is the
+    // workspace-local date, not the UTC one: at 06:00 in Ho Chi Minh City it is still yesterday in
+    // UTC, which would hand back a day the team has already started.
+    const days = iterationDayCount({
+      startDate: iteration.startDate,
+      endDate: iteration.endDate,
+      today: workspaceLocalDate(new Date(), calendar.timeZone),
+      workingDays: calendar.workingDays,
+    });
 
     /**
      * Passed through UNCHANGED, including null.
@@ -97,6 +99,15 @@ export class IterationStatusService {
      * percent is null for the same reason: attainment against a target that does not exist
      * is not 0%, it is unanswerable. A REAL target of 0 still yields 0% via `percent()`,
      * which SRS §8 requires.
+     *
+     * The NUMERATOR is the iteration's total Plan Estimate, NOT its accepted points (BA ruling
+     * 2026-11-04, reversing P2-IS-FR-012's "accepted points compared with the planned velocity").
+     * Planned Velocity answers "how full is this sprint against its target", so a Story counts the
+     * moment it is in the iteration with an estimate, whatever its schedule state. Delivery
+     * against plan is the ACCEPTED tile's job; dividing accepted by velocity here made the two
+     * tiles measure the same thing and left Planned Velocity at 0% for a fully planned sprint
+     * until something was accepted. It is the same `totalPlanEstimate` the grid's Totals row
+     * prints, so the tile and the column cannot disagree.
      */
     const plannedVelocity = iteration.plannedVelocity;
     const metrics: IterationStatusMetrics = {
@@ -104,9 +115,10 @@ export class IterationStatusService {
       acceptedPoints: raw.acceptedPoints,
       totalPlanEstimate: raw.totalPlanEstimate,
       plannedVelocityPercent:
-        plannedVelocity === null ? null : this.percent(raw.acceptedPoints, plannedVelocity),
+        plannedVelocity === null ? null : this.percent(raw.totalPlanEstimate, plannedVelocity),
       acceptedPercent: this.percent(raw.acceptedPoints, raw.totalPlanEstimate),
-      daysLeft: this.daysLeft(iteration.endDate),
+      daysLeft: days.daysLeft,
+      totalDays: days.totalDays,
       defectCount: raw.defectCount,
       taskCount: raw.taskCount,
       activeTaskCount: raw.activeTaskCount,

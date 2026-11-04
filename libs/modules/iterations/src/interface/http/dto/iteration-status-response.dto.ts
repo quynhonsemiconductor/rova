@@ -10,7 +10,10 @@ export const IterationStatusMetricsSchema = z.object({
   plannedVelocity: z.number().int().nullable(),
   acceptedPercent: z.number().int(),
   totalPlanEstimate: z.number(),
+  /** Working days left, today included (workspace working days). Negative = calendar days overdue. */
   daysLeft: z.number().int().nullable(),
+  /** Working days in the whole iteration window, both ends inclusive. */
+  totalDays: z.number().int().nullable(),
   defectCount: z.number().int(),
   taskCount: z.number().int(),
   activeTaskCount: z.number().int(),
