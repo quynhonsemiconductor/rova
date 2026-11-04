@@ -21,7 +21,12 @@ let _bootstrapPromise: Promise<void> | null = null
 
 export function bootstrapAuth(): Promise<void> {
   if (_bootstrapPromise) return _bootstrapPromise
-  _bootstrapPromise = _run()
+  // The latch must RESOLVE whatever happens: `requireAuth` awaits it with no catch, and a
+  // rejected latch would leave `isLoading` stuck with neither a session nor a recovery screen.
+  // Anything `_run` did not anticipate becomes the same transient failure as a 5xx.
+  _bootstrapPromise = _run().catch(() => {
+    failBootstrap(useAuthStore.getState().setAuthError)
+  })
   return _bootstrapPromise
 }
 

@@ -167,6 +167,24 @@ describe('bootstrapAuth', () => {
     expect(useAuthStore.getState().authError).toBeNull()
   })
 
+  it('never latches a REJECTED promise: an unexpected throw becomes the recovery screen', async () => {
+    const evil = { ...ME }
+    Object.defineProperty(evil, 'memberships', {
+      get() {
+        throw new Error('unexpected shape')
+      },
+    })
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => evil,
+    } as unknown as Response)
+
+    await expect(bootstrapAuth()).resolves.toBeUndefined()
+    expect(useAuthStore.getState().authError).toBe('unavailable')
+    expect(useAuthStore.getState().isLoading).toBe(false)
+  })
+
   it('caps a Retry-After the server asks for beyond the ceiling', async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(429, {}, { 'retry-after': '3600' }))
