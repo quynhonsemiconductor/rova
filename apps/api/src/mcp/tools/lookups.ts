@@ -227,6 +227,59 @@ export async function resolvePortfolioItem(
   };
 }
 
+export interface ResolvedPeople {
+  ok: true;
+  ids: string[];
+}
+
+/**
+ * People by display name or email, from the caller's OWN workspace picker feed (`member-options`,
+ * scoped to the projects they can read). An unknown reference lists the candidates; an ambiguous
+ * one names every match — a mention must never go to the wrong person.
+ */
+export async function resolvePeople(
+  ctx: ToolContext,
+  references: string[],
+): Promise<Lookup<ResolvedPeople>> {
+  const res = await ctx.callRest(ctx.principal, {
+    method: 'GET',
+    url: `/v1/workspaces/${pathSegment(ctx.principal.workspaceId)}/member-options`,
+  });
+  if (res.statusCode >= 400) return { ok: false, statusCode: res.statusCode, json: res.json };
+  const people = rowsOf(res.json) ?? [];
+  const ids: string[] = [];
+  const candidates = people
+    .slice(0, 20)
+    .map((p) => `${str(p['displayName'])} <${str(p['email'])}>`);
+
+  for (const reference of references) {
+    const wanted = reference.trim().toLowerCase();
+    const matches = people.filter(
+      (p) =>
+        str(p['email'])?.toLowerCase() === wanted ||
+        str(p['displayName'])?.toLowerCase() === wanted,
+    );
+    if (matches.length === 0) {
+      return {
+        ok: false,
+        message: `No person matches "${reference}". Candidates: ${candidates.join(', ') || 'none'}.`,
+      };
+    }
+    if (matches.length > 1) {
+      return {
+        ok: false,
+        message: `"${reference}" matches ${matches.length} people: ${matches
+          .map((p) => `${str(p['displayName'])} <${str(p['email'])}>`)
+          .join(', ')}. Use the email.`,
+      };
+    }
+    const id = str(matches[0]['userId']);
+    if (!id) return { ok: false, message: `"${reference}" resolved to a person without an id.` };
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return { ok: true, ids };
+}
+
 /** A test case by key (TC-12): the by-key route answers the record; its id feeds the results feed. */
 export async function resolveTestCase(
   ctx: ToolContext,

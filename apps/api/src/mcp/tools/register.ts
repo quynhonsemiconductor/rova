@@ -38,6 +38,9 @@ import { registerProjectActivity } from './project_activity';
 import { registerProjectVocabulary } from './project_vocabulary';
 import { registerListTestResults } from './list_test_results';
 import { registerWorkItemDetails } from './work_item_details';
+import { registerLogTime } from './log_time';
+import { registerAddComment } from './add_comment';
+import { registerMarkNotificationsRead } from './mark_notifications_read';
 import type { ToolCallObserver, ToolContext } from './rest';
 import { instrumentToolHandler } from './rest';
 
@@ -72,7 +75,11 @@ export interface WriteToolRegistrar {
  * `MCP_WRITES_ENABLED` is on; `WRITE_TOOL_ROUTES` in registry.ts must name the same tools'
  * routes, which is what the REST-side guard enforces.
  */
-export const WRITE_TOOL_REGISTRARS: readonly WriteToolRegistrar[] = [];
+export const WRITE_TOOL_REGISTRARS: readonly WriteToolRegistrar[] = [
+  { name: 'rova_log_time', register: registerLogTime },
+  { name: 'rova_add_comment', register: registerAddComment },
+  { name: 'rova_mark_notifications_read', register: registerMarkNotificationsRead },
+];
 
 export interface RegisterToolsOptions {
   /** Mount the write catalogue (MCP_WRITES_ENABLED). Default false: read-only server. */

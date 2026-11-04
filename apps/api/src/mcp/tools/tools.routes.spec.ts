@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { TOOL_ROUTES, WRITE_TOOL_ROUTES } from './registry';
+import { TOOL_ROUTES, WRITE_TOOL_ROUTES, type WriteRoute } from './registry';
 import { WRITE_TOOL_REGISTRARS } from './register';
 import {
   MCP_READ_ROUTES,
@@ -427,7 +427,12 @@ describe('MCP tool catalogue maps to real routes', () => {
   });
 
   it('the write catalogue names non-GET routes, and is exactly the REST write allowlist', () => {
-    const entries = Object.entries<{ method: string; url: string }>(WRITE_TOOL_ROUTES);
+    const entries = Object.entries<WriteRoute | readonly WriteRoute[]>(WRITE_TOOL_ROUTES).flatMap(
+      ([name, routes]) =>
+        Array.isArray(routes)
+          ? routes.map((route) => [name, route] as const)
+          : [[name, routes] as const],
+    );
     // The REST-side guard derives its set from this table; a tool whose route is missing there
     // mounts but is refused 403 at the bridge, so the two must never drift.
     const derived = new Set(entries.map(([, route]) => mcpWriteRouteKey(route.method, route.url)));
@@ -435,7 +440,7 @@ describe('MCP tool catalogue maps to real routes', () => {
     // No allowlisted route without a tool AND no write tool without its listed route: the two
     // tables are the same catalogue seen twice.
     expect(WRITE_TOOL_REGISTRARS.map((tool) => tool.name).sort()).toEqual(
-      entries.map(([name]) => name).sort(),
+      Object.keys(WRITE_TOOL_ROUTES).sort(),
     );
     for (const [name, route] of entries) {
       expect(route.method, `${name}: a write tool cannot be a GET`).not.toBe('GET');
@@ -447,9 +452,13 @@ describe('MCP tool catalogue maps to real routes', () => {
     const real = controllerRoutes();
     // The scanner must actually see the controllers; an empty set would make the loop vacuous.
     expect(real.size).toBeGreaterThan(100);
-    for (const [name, route] of Object.entries<{ method: string; url: string }>(
-      WRITE_TOOL_ROUTES,
-    )) {
+    const entries = Object.entries<WriteRoute | readonly WriteRoute[]>(WRITE_TOOL_ROUTES).flatMap(
+      ([name, routes]) =>
+        Array.isArray(routes)
+          ? routes.map((route) => [name, route] as const)
+          : [[name, routes] as const],
+    );
+    for (const [name, route] of entries) {
       expect(
         real.has(mcpWriteRouteKey(route.method, route.url)),
         `${name}: no such REST route`,

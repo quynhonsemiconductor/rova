@@ -1,4 +1,4 @@
-import { TOOL_ROUTES, WRITE_TOOL_ROUTES } from './tools/registry';
+import { TOOL_ROUTES, WRITE_TOOL_ROUTES, type WriteRoute } from './tools/registry';
 
 /**
  * The REST-side route policy for MCP (design §6.1): what a bridged request may reach.
@@ -102,9 +102,11 @@ export const MCP_READ_ROUTES: ReadonlySet<string> = new Set([
 ]);
 
 export const MCP_WRITE_ROUTES: ReadonlySet<string> = new Set(
-  Object.values<{ method: string; url: string }>(WRITE_TOOL_ROUTES).map((route) =>
-    mcpWriteRouteKey(route.method, route.url),
-  ),
+  Object.values<WriteRoute | readonly WriteRoute[]>(WRITE_TOOL_ROUTES)
+    .flatMap((routes) =>
+      Array.isArray(routes) ? (routes as readonly WriteRoute[]) : [routes as WriteRoute],
+    )
+    .map((route) => mcpWriteRouteKey(route.method, route.url)),
 );
 
 /**
