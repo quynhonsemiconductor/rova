@@ -16,6 +16,7 @@ import {
 } from 'drizzle-orm';
 import { alias, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
+import { PreconditionFailedException } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
   portfolioItems,
@@ -1423,8 +1424,21 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     input: UpdateWorkItemInput,
     workspaceId: string,
     executor?: DbExecutor,
+    expectedUpdatedAt?: Date,
   ): Promise<WorkItem> {
     const exec = executor ?? this.db;
+
+    /**
+     * Optimistic concurrency (MCP v2 G1): when the caller names the record's updatedAt, the
+     * comparison happens IN the UPDATE's WHERE — `date_trunc('milliseconds', updated_at) = $x`,
+     * matching the millisecond-exact value the GET emits in its ETag. A row that moved matches
+     * nothing, and 0 affected rows is a 412, not a lost update. There is no read-then-write
+     * window. Absent the argument the WHERE is unchanged (the web never sends If-Match).
+     */
+    const ifUnchanged = (column: AnyPgColumn) =>
+      expectedUpdatedAt
+        ? sql`date_trunc('milliseconds', ${column}) = ${expectedUpdatedAt.toISOString()}::timestamptz`
+        : undefined;
 
     // P3: If this is a task (exists in tasks table), update there instead.
     const taskCheck = await exec
@@ -1462,10 +1476,19 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       if (input.rank !== undefined) setFields.rank = input.rank;
       if (input.updatedBy !== undefined) setFields.updatedBy = input.updatedBy;
 
-      await exec
+      const taskRows = await exec
         .update(tasks)
         .set(setFields)
-        .where(and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId)));
+        .where(
+          and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId), ifUnchanged(tasks.updatedAt)),
+        )
+        .returning({ id: tasks.id });
+      if (expectedUpdatedAt && taskRows.length === 0) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_STALE',
+          'The work item changed after the version you read. Re-read it and retry.',
+        );
+      }
 
       // Re-fetch and return as WorkItem (use exec/tx for transaction consistency)
       return (await this.findById(id, workspaceId, exec))!;
@@ -1535,8 +1558,20 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         ...(input.targetEndDate !== undefined && { targetEndDate: input.targetEndDate }),
         updatedAt: new Date(),
       })
-      .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)))
+      .where(
+        and(
+          eq(workItems.id, id),
+          eq(workItems.workspaceId, workspaceId),
+          ifUnchanged(workItems.updatedAt),
+        ),
+      )
       .returning();
+    if (expectedUpdatedAt && rows.length === 0) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_STALE',
+        'The work item changed after the version you read. Re-read it and retry.',
+      );
+    }
     return toWorkItem(rows[0]);
   }
 

@@ -4091,6 +4091,10 @@ export interface components {
       parentId?: string
       /** Format: uuid */
       teamId?: string
+      /** Format: uuid */
+      iterationId?: string
+      /** Format: uuid */
+      releaseId?: string
       storyPoints?: number
       estimateHours?: number
       todoHours?: number
@@ -10566,7 +10570,10 @@ export interface operations {
   WorkItemsController_updateWorkItem: {
     parameters: {
       query?: never
-      header?: never
+      header?: {
+        /** @description Optimistic concurrency: the ETag returned by GET for this item. When it no longer matches, the update is refused 412 WORK_ITEM_STALE. */
+        'If-Match'?: string
+      }
       path: {
         id: string
       }

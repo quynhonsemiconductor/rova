@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -12,14 +13,15 @@ import {
   Put,
   Query,
   Redirect,
+  Res,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { FastifyReply } from 'fastify';
+import { ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   ApiCommonErrors,
   ApiPagedResponse,
   buildPageArgs,
   parseSort,
-  PreconditionFailedException,
   UseIdempotency,
   RateLimit,
 } from '@platform';
@@ -86,22 +88,29 @@ import {
 // ── Mappers ─────────────────────────────────────────────────────────────────
 
 /**
- * The optional `If-Unmodified-Since` precondition (MCP v2 gap G1, design §7). The web never sends
- * it, so its PATCH is unchanged; an MCP update passes the `updatedAt` of the record it read, and
- * the service refuses with 412 `WORK_ITEM_STALE` when the row moved since.
- *
- * HTTP-date and ISO-8601 both parse (the header's own grammar is the HTTP-date; an ISO value is
- * accepted because an agent carries ISO timestamps). A present but unparsable value is a 412 too:
- * the precondition cannot be evaluated, and guessing would defeat it.
+ * The server's concurrency token (MCP v2 gap G1, design §7): the record's `updatedAt` as a
+ * millisecond-exact ISO-8601 timestamp, quoted as an ETag. The GET handlers emit it; a PATCH
+ * accepts it back as `If-Match`.
  */
-export function parseIfUnmodifiedSince(value: string | undefined): Date | undefined {
+export function etagFor(updatedAt: Date): string {
+  return `"${updatedAt.toISOString()}"`;
+}
+
+/**
+ * Parses `If-Match` into the timestamp the repository compares IN the UPDATE. Absent/blank means
+ * no precondition (the web path). A malformed value is a 400 — the precondition cannot be
+ * evaluated, and guessing would defeat it. Strong validators only: a weak `W/` prefix is still
+ * parsed, because the value names a timestamp, not a byte representation.
+ */
+export function parseIfMatch(value: string | undefined): Date | undefined {
   if (value === undefined || value.trim() === '') return undefined;
-  const ms = Date.parse(value);
+  const unquoted = /^(?:W\/)?"(.*)"$/.exec(value.trim());
+  if (!unquoted) {
+    throw new BadRequestException('If-Match must be a quoted ISO-8601 timestamp');
+  }
+  const ms = Date.parse(unquoted[1]);
   if (!Number.isFinite(ms)) {
-    throw new PreconditionFailedException(
-      'WORK_ITEM_INVALID_IF_UNMODIFIED_SINCE',
-      'If-Unmodified-Since must be an HTTP-date or an ISO-8601 timestamp',
-    );
+    throw new BadRequestException('If-Match must be a quoted ISO-8601 timestamp');
   }
   return new Date(ms);
 }
@@ -483,10 +492,11 @@ export class WorkItemsController {
   async getWorkItemByKey(
     @CurrentUser() user: JwtPayload,
     @Query() query: WorkItemByKeyQueryDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemDetailResponseDto> {
-    return toWorkItemDetailDto(
-      await this.workItemsService.getWorkItemDetailByKey(user, query.itemKey),
-    );
+    const detail = await this.workItemsService.getWorkItemDetailByKey(user, query.itemKey);
+    reply.header('ETag', etagFor(detail.item.updatedAt));
+    return toWorkItemDetailDto(detail);
   }
 
   @Get(':id')
@@ -498,8 +508,11 @@ export class WorkItemsController {
   async getWorkItem(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemDetailResponseDto> {
-    return toWorkItemDetailDto(await this.workItemsService.getWorkItemDetail(user, id));
+    const detail = await this.workItemsService.getWorkItemDetail(user, id);
+    reply.header('ETag', etagFor(detail.item.updatedAt));
+    return toWorkItemDetailDto(detail);
   }
 
   // ── Bulk assign release / iteration (P2-BL-03 / P2-BL-04) ────────────────────
@@ -553,6 +566,12 @@ export class WorkItemsController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a work item' })
+  @ApiHeader({
+    name: 'If-Match',
+    required: false,
+    description:
+      'Optimistic concurrency: the ETag returned by GET for this item. When it no longer matches, the update is refused 412 WORK_ITEM_STALE.',
+  })
   @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkItemResponseDto })
@@ -561,11 +580,14 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateWorkItemDto,
-    @Headers('if-unmodified-since') ifUnmodifiedSince?: string,
+    @Headers('if-match') ifMatch: string | undefined,
+    @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemResponseDto> {
     const item = await this.workItemsService.updateWorkItem(user, id, dto, {
-      expectedUpdatedAt: parseIfUnmodifiedSince(ifUnmodifiedSince),
+      expectedUpdatedAt: parseIfMatch(ifMatch),
     });
+    // The new token, so a caller that chains edits does not have to re-read.
+    reply.header('ETag', etagFor(item.updatedAt));
     return toWorkItemDto(item);
   }
 

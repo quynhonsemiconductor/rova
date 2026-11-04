@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { INTERCEPTORS_METADATA } from '@nestjs/common/constants';
 import { describe, expect, it } from 'vitest';
 import { WorkItemsController } from '@modules/work-items/interface/http/work-items.controller';
+import { IdempotencyInterceptor } from '../libs/platform/src/http/idempotency.interceptor';
 import { CollaborationController } from '@modules/collaboration/interface/http/collaboration.controller';
 import { TestCaseRecordsController } from '@modules/test-cases/interface/http/test-case-records.controller';
 import { WorkItemTestCasesController } from '@modules/test-cases/interface/http/test-cases.controller';
@@ -61,7 +62,8 @@ describe('create routes are idempotent (G2)', () => {
       expect(typeof handler).toBe('function');
       const interceptors = Reflect.getMetadata(INTERCEPTORS_METADATA, handler!);
       expect(Array.isArray(interceptors), 'no interceptor metadata on the route').toBe(true);
-      expect(interceptors.length).toBeGreaterThan(0);
+      // The interceptor TOKEN itself, not merely "some interceptor is attached".
+      expect(interceptors).toContain(IdempotencyInterceptor);
     });
   }
 });

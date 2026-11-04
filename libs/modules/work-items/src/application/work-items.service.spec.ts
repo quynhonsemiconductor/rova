@@ -623,6 +623,16 @@ describe('WorkItemsService', () => {
       },
     );
 
+    it('refuses a create that SEEDS a Release when the caller may not assign one (G3)', async () => {
+      accessService.assertProjectPermission.mockRejectedValueOnce(
+        new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'Not allowed'),
+      );
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'story', 'Story', { releaseId: 'rel-x' }),
+      ).rejects.toThrow(PermissionDeniedException);
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
     it('rejects an iteration that belongs to a different project', async () => {
       workItemRepo.findIterationScope.mockResolvedValue({ projectId: 'other-proj', teamId: null });
       await expect(
@@ -1088,35 +1098,27 @@ describe('WorkItemsService', () => {
       expect(result.title).toBe('Updated');
     });
 
-    // G1: If-Unmodified-Since (MCP v2). The fixture's updatedAt is `now`; an expected time is
-    // compared at the stored time's SECOND, so equal seconds pass.
-    it('refuses an update when the row moved after the version the caller read', async () => {
-      workItemRepo.findById.mockResolvedValue(mockWorkItem());
-      await expect(
-        service.updateWorkItem(
-          mockActor,
-          'wi-1',
-          { title: 'x' },
-          { expectedUpdatedAt: new Date(now.getTime() - 1_000) },
-        ),
-      ).rejects.toMatchObject({ code: 'WORK_ITEM_STALE' });
-      expect(workItemRepo.update).not.toHaveBeenCalled();
-    });
-
-    it('accepts the same second and any later expected time', async () => {
+    // G1: If-Match (MCP v2). The service does not compare — it forwards the expected timestamp
+    // to the repository, where the UPDATE's WHERE enforces it atomically.
+    it('forwards the expected updatedAt to the repository', async () => {
+      const expected = new Date(now.getTime() - 1_000);
       workItemRepo.findById.mockResolvedValue(mockWorkItem());
       workItemRepo.update.mockResolvedValue(mockWorkItem({ title: 'x' }));
-      await expect(
-        service.updateWorkItem(mockActor, 'wi-1', { title: 'x' }, { expectedUpdatedAt: now }),
-      ).resolves.toMatchObject({ title: 'x' });
-      await expect(
-        service.updateWorkItem(
-          mockActor,
-          'wi-1',
-          { title: 'x' },
-          { expectedUpdatedAt: new Date(now.getTime() + 60_000) },
-        ),
-      ).resolves.toMatchObject({ title: 'x' });
+
+      await service.updateWorkItem(
+        mockActor,
+        'wi-1',
+        { title: 'x' },
+        { expectedUpdatedAt: expected },
+      );
+
+      expect(workItemRepo.update).toHaveBeenCalledWith(
+        'wi-1',
+        expect.objectContaining({ title: 'x' }),
+        'ws-1',
+        expect.anything(),
+        expected,
+      );
     });
 
     /**

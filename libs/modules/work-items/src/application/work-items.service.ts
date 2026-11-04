@@ -632,6 +632,13 @@ export class WorkItemsService {
 
     const statusId = await this.resolveStatusId(actor.workspaceId, projectId, opts.statusId);
 
+    // G3 (MCP v2): a create that SEEDS a release passes the same field-level rule as the update
+    // path — `assertMayAssignRelease` (BL §8:294, an Editor cannot assign a Release). The bulk
+    // path calls it too; without this one, `POST /work-items {releaseId}` was the side door.
+    if (opts.releaseId !== undefined) {
+      await this.assertMayAssignRelease(actor, projectId);
+    }
+
     // Every scoped reference (team, iteration, release, foundInRelease and the
     // assignee/reporter/dev-owner person refs) is validated through the ONE
     // assignment-scope guard — the same funnel the update and bulk paths use —
@@ -2332,22 +2339,11 @@ export class WorkItemsService {
     const item = await this.getWorkItem(actor.workspaceId, id);
     /**
      * Optimistic concurrency (MCP v2 gap G1, design §7): the caller may name the `updatedAt` of
-     * the record it read, and an update whose row moved since is refused 412 rather than silently
-     * overwriting someone else's change. HTTP-date granularity is seconds, so the comparison uses
-     * the stored time truncated to the second; equal seconds pass. The web sends no such header
-     * and is unaffected. Residual TOCTOU: the check reads before the update transaction opens, so
-     * two writes inside that window can still race — the statements below keep their own
-     * invariants, and the MCP client is expected to re-read on a 412.
+     * the record it read (the value the GET returned as its ETag). The comparison is NOT made
+     * here — it rides the UPDATE's WHERE (see the repository), so a row that moves between this
+     * read and the write matches nothing and the write answers 412 `WORK_ITEM_STALE` instead of
+     * overwriting someone else's change. The web sends no If-Match and is unaffected.
      */
-    if (options.expectedUpdatedAt !== undefined) {
-      const rowSecond = Math.floor(item.updatedAt.getTime() / 1000) * 1000;
-      if (rowSecond > options.expectedUpdatedAt.getTime()) {
-        throw new PreconditionFailedException(
-          'WORK_ITEM_STALE',
-          'The work item changed after the version you read. Re-read it and retry.',
-        );
-      }
-    }
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     // The record as it stands, BEFORE the patch: an Editor may not edit another Team's item, and may
     // not move one INTO their scope either, so the destination team is checked below as well.
@@ -2663,12 +2659,22 @@ export class WorkItemsService {
       // A Manual Move's source is read from the LOCKED row, before this write changes it.
       if (storyMove) await this.lockForManualMove(tx, [item]);
 
-      const updatedInTx = await this.workItemRepo.update(
-        id,
-        { ...input, ...rerank, ...clearReasonOnUnblock(input), updatedBy: actor.sub },
-        actor.workspaceId,
-        tx,
-      );
+      // The fifth argument is passed ONLY when the caller supplied If-Match, so every other
+      // call site keeps the four-argument shape its mocks and tests already pin.
+      const updatedInTx = options.expectedUpdatedAt
+        ? await this.workItemRepo.update(
+            id,
+            { ...input, ...rerank, ...clearReasonOnUnblock(input), updatedBy: actor.sub },
+            actor.workspaceId,
+            tx,
+            options.expectedUpdatedAt,
+          )
+        : await this.workItemRepo.update(
+            id,
+            { ...input, ...rerank, ...clearReasonOnUnblock(input), updatedBy: actor.sub },
+            actor.workspaceId,
+            tx,
+          );
       const updated = updatedInTx;
 
       // Build all diff entries then flush in ONE multi-row INSERT — avoids N

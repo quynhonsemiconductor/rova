@@ -250,6 +250,12 @@ export interface IWorkItemRepository {
     input: UpdateWorkItemInput,
     workspaceId: string,
     executor?: DbExecutor,
+    /**
+     * G1 optimistic concurrency: the millisecond-exact `updatedAt` the caller read. The UPDATE
+     * matches only a row still at that time (compared in the WHERE); 0 rows is
+     * `WORK_ITEM_STALE`. Every web path omits it.
+     */
+    expectedUpdatedAt?: Date,
   ): Promise<WorkItem>;
   /**
    * Mark a Story as the historical PLACEHOLDER of a Split (`work_items.split_id`, migration 0131).
