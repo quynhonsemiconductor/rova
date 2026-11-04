@@ -21,10 +21,10 @@ function request(body: unknown, headers: Record<string, string> = {}) {
   };
 }
 
-function context(req: object): ExecutionContext {
+function context(req: object, reply = { statusCode: 200, status: vi.fn() }): ExecutionContext {
   return {
     getType: () => 'http',
-    switchToHttp: () => ({ getRequest: () => req }),
+    switchToHttp: () => ({ getRequest: () => req, getResponse: () => reply }),
     getHandler: () => () => undefined,
     getClass: () => class {},
   } as unknown as ExecutionContext;
@@ -70,7 +70,8 @@ describe('IdempotencyInterceptor — body reuse, in-flight, cache failure', () =
 
   it('refuses the same key with a DIFFERENT body: 422 IDEMPOTENCY_KEY_REUSED', async () => {
     const cache = {
-      get: async () => JSON.stringify({ v: 1, hash: hashBody({ a: 1 }), response: { ok: true } }),
+      get: async () =>
+        JSON.stringify({ v: 1, hash: hashBody({ a: 1 }), status: 201, response: { ok: true } }),
       set: vi.fn(async () => 'OK'),
       del: vi.fn(async () => 1),
     };
@@ -116,7 +117,7 @@ describe('IdempotencyInterceptor — body reuse, in-flight, cache failure', () =
     expect(cache.set).not.toHaveBeenCalled();
   });
 
-  it('a first call takes the in-flight lock, caches {v,hash,response}, and releases the lock', async () => {
+  it('a first call takes the in-flight lock, caches {v,hash,status,response}, and releases the lock', async () => {
     const cache = {
       get: async () => null,
       set: vi.fn(async () => 'OK'),
@@ -137,12 +138,57 @@ describe('IdempotencyInterceptor — body reuse, in-flight, cache failure', () =
     );
     expect(cache.set).toHaveBeenCalledWith(
       redisKey,
-      JSON.stringify({ v: 1, hash: hashBody({ a: 1 }), response: { ok: true } }),
+      JSON.stringify({ v: 1, hash: hashBody({ a: 1 }), status: 201, response: { ok: true } }),
       'EX',
       86_400,
     );
     await new Promise((r) => setTimeout(r, 0));
     expect(cache.del).toHaveBeenCalledWith(`${redisKey}:inflight`);
+  });
+
+  it('replays the ORIGINAL status code, not the route default', async () => {
+    const cache = {
+      get: async () =>
+        JSON.stringify({ v: 1, hash: hashBody({ a: 1 }), status: 202, response: { ok: true } }),
+      set: vi.fn(async () => 'OK'),
+      del: vi.fn(async () => 1),
+    };
+    const interceptor = interceptorWith(cache);
+    const { handler, spy } = nextWith({ ok: true });
+    const reply = { statusCode: 200, status: vi.fn() };
+
+    await lastValueFrom(interceptor.intercept(context(request({ a: 1 }), reply), handler));
+
+    expect(reply.status).toHaveBeenCalledWith(202);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('GET-miss / SET-NX race: the winner caches, the loser replays and the handler runs ONCE', async () => {
+    let stored: string | null = null;
+    const cache = {
+      get: async () => stored,
+      set: vi.fn(async (...args: unknown[]) => {
+        if (args[0] === `${redisKey}:inflight`) {
+          // Simulate the other request finishing between this caller's GET miss and its NX.
+          stored = JSON.stringify({
+            v: 1,
+            hash: hashBody({ a: 1 }),
+            status: 201,
+            response: { ok: true, winner: true },
+          });
+          return null;
+        }
+        return 'OK';
+      }),
+      del: vi.fn(async () => 1),
+    };
+    const interceptor = interceptorWith(cache);
+    const { handler, spy } = nextWith({ ok: true, winner: false });
+
+    await expect(
+      lastValueFrom(interceptor.intercept(context(request({ a: 1 })), handler)),
+    ).resolves.toEqual({ ok: true, winner: true });
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('a cache WRITE failure does not fail the request', async () => {

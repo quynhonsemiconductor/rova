@@ -4094,7 +4094,7 @@ export interface components {
       /** Format: uuid */
       iterationId?: string
       /** Format: uuid */
-      releaseId?: string
+      releaseId?: string | null
       storyPoints?: number
       estimateHours?: number
       todoHours?: number
@@ -10232,6 +10232,8 @@ export interface operations {
     responses: {
       201: {
         headers: {
+          /** @description Strong validator "<version>" of the created row. */
+          ETag?: string
           [name: string]: unknown
         }
         content: {
@@ -10469,6 +10471,8 @@ export interface operations {
     responses: {
       200: {
         headers: {
+          /** @description Strong validator "<version>"; send it back as If-Match on PATCH. */
+          ETag?: string
           [name: string]: unknown
         }
         content: {
@@ -10511,6 +10515,8 @@ export interface operations {
     responses: {
       200: {
         headers: {
+          /** @description Strong validator "<version>"; send it back as If-Match on PATCH. */
+          ETag?: string
           [name: string]: unknown
         }
         content: {
@@ -10587,6 +10593,8 @@ export interface operations {
     responses: {
       200: {
         headers: {
+          /** @description Strong validator "<version>" of the updated row. */
+          ETag?: string
           [name: string]: unknown
         }
         content: {
@@ -10932,6 +10940,8 @@ export interface operations {
     responses: {
       201: {
         headers: {
+          /** @description Strong validator "<version>" of the created task. */
+          ETag?: string
           [name: string]: unknown
         }
         content: {

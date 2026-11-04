@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { uuidv7 } from 'uuidv7';
 
@@ -15,6 +15,7 @@ function stableEventId(name: string): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 }
 import {
+  DomainException,
   NotFoundException,
   PermissionDeniedException,
   PreconditionFailedException,
@@ -238,7 +239,7 @@ interface CreateWorkItemOpts {
   parentId?: string;
   teamId?: string;
   iterationId?: string;
-  releaseId?: string;
+  releaseId?: string | null;
   storyPoints?: string;
   estimateHours?: string;
   todoHours?: string;
@@ -535,6 +536,22 @@ export class WorkItemsService {
     opts: CreateWorkItemOpts = {},
   ): Promise<WorkItem> {
     await this.assertProjectWritable(actor.workspaceId, projectId);
+    // A task's iteration follows its parent; a caller that SEEDS one is refused 422 (not the
+    // parent-scope 412 the update path used), because the request itself is invalid.
+    if (type === 'task' && opts.iterationId !== undefined) {
+      throw new DomainException(
+        'TASK_ITERATION_DERIVED',
+        "A task's iteration follows its parent story or defect and cannot be set directly.",
+        'VALIDATION_FAILED',
+      );
+    }
+    // A create may OMIT the release; it may not send null — clearing is an update operation, and
+    // a null here reads as "unschedule", which this route has never done. 400, not a silent drop.
+    if (opts.releaseId === null) {
+      throw new BadRequestException(
+        'releaseId cannot be null on create; omit it, or clear it with an update',
+      );
+    }
     /**
      * "Editor must SELECT one of their assigned Teams when creating a Work Item" (BA ruling
      * 2026-08-17). Omitting the Team is therefore not the Project Backlog's refusal on this path — it
@@ -605,12 +622,6 @@ export class WorkItemsService {
        * `POST /work-items` with `type: 'task'` skips that wrapper entirely, so a refusal only there
        * would be a front door with a lock beside a side door without one.
        */
-      if (type === 'task' && opts.iterationId !== undefined) {
-        throw new PreconditionFailedException(
-          'TASK_ITERATION_DERIVED',
-          "A task's iteration follows its parent story or defect and cannot be set directly.",
-        );
-      }
       // Non-defect, non-task items cannot have a parent (only tasks and defects)
       if (type !== 'defect' && type !== 'task') {
         throw new PreconditionFailedException(
@@ -722,7 +733,8 @@ export class WorkItemsService {
               parentId: opts.parentId,
               teamId: opts.teamId,
               iterationId: opts.iterationId,
-              releaseId: opts.releaseId,
+              // Null is refused at the entry of createWorkItem, so this is string | undefined.
+              releaseId: opts.releaseId as string | undefined,
               storyPoints: opts.storyPoints,
               // Real-Rally task time: Estimate is an independent planned value
               // (client-set, never derived). To Do defaults to the Estimate on
@@ -2334,15 +2346,15 @@ export class WorkItemsService {
     actor: JwtPayload,
     id: string,
     input: UpdateWorkItemInput,
-    options: { expectedUpdatedAt?: Date } = {},
+    options: { expectedVersion?: number } = {},
   ): Promise<WorkItem> {
     const item = await this.getWorkItem(actor.workspaceId, id);
     /**
-     * Optimistic concurrency (MCP v2 gap G1, design §7): the caller may name the `updatedAt` of
-     * the record it read (the value the GET returned as its ETag). The comparison is NOT made
-     * here — it rides the UPDATE's WHERE (see the repository), so a row that moves between this
-     * read and the write matches nothing and the write answers 412 `WORK_ITEM_STALE` instead of
-     * overwriting someone else's change. The web sends no If-Match and is unaffected.
+     * Optimistic concurrency (MCP v2 gap G1, design §7): the caller may name the integer
+     * `version` of the record it read (the GET's strong ETag). The comparison is NOT made here —
+     * it rides the UPDATE's WHERE and the version increments in the same statement (see the
+     * repository), so any concurrent write, however close in time, makes the token stale and the
+     * write answers 412 `WORK_ITEM_STALE`. The web sends no If-Match and is unaffected.
      */
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     // The record as it stands, BEFORE the patch: an Editor may not edit another Team's item, and may
@@ -2659,22 +2671,24 @@ export class WorkItemsService {
       // A Manual Move's source is read from the LOCKED row, before this write changes it.
       if (storyMove) await this.lockForManualMove(tx, [item]);
 
-      // The fifth argument is passed ONLY when the caller supplied If-Match, so every other
-      // call site keeps the four-argument shape its mocks and tests already pin.
-      const updatedInTx = options.expectedUpdatedAt
-        ? await this.workItemRepo.update(
-            id,
-            { ...input, ...rerank, ...clearReasonOnUnblock(input), updatedBy: actor.sub },
-            actor.workspaceId,
-            tx,
-            options.expectedUpdatedAt,
-          )
-        : await this.workItemRepo.update(
-            id,
-            { ...input, ...rerank, ...clearReasonOnUnblock(input), updatedBy: actor.sub },
-            actor.workspaceId,
-            tx,
-          );
+      // The fifth argument is passed ONLY when the caller supplied If-Match (-1 included: a weak
+      // token must reach the WHERE and match nothing), so every other call site keeps the
+      // four-argument shape its mocks and tests already pin.
+      const updatedInTx =
+        options.expectedVersion !== undefined
+          ? await this.workItemRepo.update(
+              id,
+              { ...input, ...rerank, ...clearReasonOnUnblock(input), updatedBy: actor.sub },
+              actor.workspaceId,
+              tx,
+              options.expectedVersion,
+            )
+          : await this.workItemRepo.update(
+              id,
+              { ...input, ...rerank, ...clearReasonOnUnblock(input), updatedBy: actor.sub },
+              actor.workspaceId,
+              tx,
+            );
       const updated = updatedInTx;
 
       // Build all diff entries then flush in ONE multi-row INSERT — avoids N

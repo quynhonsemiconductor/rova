@@ -215,6 +215,13 @@ export const workItems = workSchema.table(
     updatedBy: uuid('updated_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Optimistic-concurrency counter (MCP v2 G1, migration 0138). Every UPDATE of the row
+     * increments it in the SAME statement; the record GETs expose it as the strong ETag and
+     * PATCH matches `WHERE version = <If-Match>`. A timestamp was rejected as the token: two
+     * writes inside one millisecond share a stamp and a stale ETag would silently win.
+     */
+    version: integer('version').notNull().default(0),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     /**
      * `split_id IS NOT NULL` ⇔ "this Story is a Split/Carryover historical PLACEHOLDER; it never
@@ -1215,6 +1222,13 @@ export const tasks = workSchema.table(
     updatedBy: uuid('updated_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Optimistic-concurrency counter (MCP v2 G1, migration 0138). Every UPDATE of the row
+     * increments it in the SAME statement; the record GETs expose it as the strong ETag and
+     * PATCH matches `WHERE version = <If-Match>`. A timestamp was rejected as the token: two
+     * writes inside one millisecond share a stamp and a stale ETag would silently win.
+     */
+    version: integer('version').notNull().default(0),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => ({

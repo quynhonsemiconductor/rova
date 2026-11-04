@@ -252,6 +252,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       updatedBy: t.updatedBy,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
+      version: t.version,
       deletedAt: t.deletedAt,
       severity: null,
       foundInEnvironment: null,
@@ -479,7 +480,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
   ): Promise<void> {
     await executor
       .update(workItems)
-      .set({ splitId, updatedAt: new Date() })
+      .set({ splitId, updatedAt: new Date(), version: sql`${workItems.version} + 1` })
       .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)));
   }
 
@@ -516,7 +517,12 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     const exec = executor ?? this.db;
     await exec
       .update(workItems)
-      .set({ iterationId, updatedBy, updatedAt: new Date() })
+      .set({
+        iterationId,
+        updatedBy,
+        updatedAt: new Date(),
+        version: sql`${workItems.version} + 1`,
+      })
       .where(
         and(
           inArray(workItems.id, ids),
@@ -537,7 +543,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     const exec = executor ?? this.db;
     await exec
       .update(workItems)
-      .set({ releaseId, updatedBy, updatedAt: new Date() })
+      .set({ releaseId, updatedBy, updatedAt: new Date(), version: sql`${workItems.version} + 1` })
       .where(
         and(
           inArray(workItems.id, ids),
@@ -1356,6 +1362,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         updatedBy: t.updatedBy,
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,
+        version: t.version,
         deletedAt: t.deletedAt,
         severity: null,
         foundInEnvironment: null,
@@ -1424,21 +1431,20 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     input: UpdateWorkItemInput,
     workspaceId: string,
     executor?: DbExecutor,
-    expectedUpdatedAt?: Date,
+    expectedVersion?: number,
   ): Promise<WorkItem> {
     const exec = executor ?? this.db;
 
     /**
-     * Optimistic concurrency (MCP v2 G1): when the caller names the record's updatedAt, the
-     * comparison happens IN the UPDATE's WHERE — `date_trunc('milliseconds', updated_at) = $x`,
-     * matching the millisecond-exact value the GET emits in its ETag. A row that moved matches
-     * nothing, and 0 affected rows is a 412, not a lost update. There is no read-then-write
-     * window. Absent the argument the WHERE is unchanged (the web never sends If-Match).
+     * Optimistic concurrency (MCP v2 G1): the token is the row's integer `version`. The match
+     * rides the UPDATE's WHERE — `version = $n` — and every update increments the counter in the
+     * SAME statement, so two writes inside one millisecond cannot share a token and a stale
+     * ETag can never silently win. 0 affected rows is a 412. Absent the argument the WHERE is
+     * unchanged (the web never sends If-Match). Weak tokens arrive as -1 and match nothing.
      */
-    const ifUnchanged = (column: AnyPgColumn) =>
-      expectedUpdatedAt
-        ? sql`date_trunc('milliseconds', ${column}) = ${expectedUpdatedAt.toISOString()}::timestamptz`
-        : undefined;
+    const ifVersion = (column: AnyPgColumn) =>
+      expectedVersion !== undefined ? eq(column, expectedVersion) : undefined;
+    const bump = (column: AnyPgColumn) => sql`${column} + 1`;
 
     // P3: If this is a task (exists in tasks table), update there instead.
     const taskCheck = await exec
@@ -1448,7 +1454,10 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .limit(1);
 
     if (taskCheck.length > 0) {
-      const setFields: Record<string, unknown> = { updatedAt: new Date() };
+      const setFields: Record<string, unknown> = {
+        updatedAt: new Date(),
+        version: bump(tasks.version),
+      };
       if (input.title !== undefined) setFields.title = input.title;
       if (input.description !== undefined) setFields.description = input.description;
       // Writable since migration 0096 gave `work.tasks` the column. Omitting it was what made a
@@ -1479,11 +1488,9 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       const taskRows = await exec
         .update(tasks)
         .set(setFields)
-        .where(
-          and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId), ifUnchanged(tasks.updatedAt)),
-        )
+        .where(and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId), ifVersion(tasks.version)))
         .returning({ id: tasks.id });
-      if (expectedUpdatedAt && taskRows.length === 0) {
+      if (expectedVersion !== undefined && taskRows.length === 0) {
         throw new PreconditionFailedException(
           'WORK_ITEM_STALE',
           'The work item changed after the version you read. Re-read it and retry.',
@@ -1557,16 +1564,17 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         // dates are deliberately absent (trigger-owned).
         ...(input.targetEndDate !== undefined && { targetEndDate: input.targetEndDate }),
         updatedAt: new Date(),
+        version: bump(workItems.version),
       })
       .where(
         and(
           eq(workItems.id, id),
           eq(workItems.workspaceId, workspaceId),
-          ifUnchanged(workItems.updatedAt),
+          ifVersion(workItems.version),
         ),
       )
       .returning();
-    if (expectedUpdatedAt && rows.length === 0) {
+    if (expectedVersion !== undefined && rows.length === 0) {
       throw new PreconditionFailedException(
         'WORK_ITEM_STALE',
         'The work item changed after the version you read. Re-read it and retry.',
@@ -1618,13 +1626,13 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     if (taskCheck.length > 0) {
       await exec
         .update(tasks)
-        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .set({ deletedAt: new Date(), updatedAt: new Date(), version: sql`${tasks.version} + 1` })
         .where(and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId)));
       return;
     }
     await exec
       .update(workItems)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .set({ deletedAt: new Date(), updatedAt: new Date(), version: sql`${workItems.version} + 1` })
       .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)));
   }
 
@@ -1642,7 +1650,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       items.map(({ id, rank }) =>
         exec
           .update(workItems)
-          .set({ rank, updatedAt: new Date() })
+          .set({ rank, updatedAt: new Date(), version: sql`${workItems.version} + 1` })
           .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId))),
       ),
     );

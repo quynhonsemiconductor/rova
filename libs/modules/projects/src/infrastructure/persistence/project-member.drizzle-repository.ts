@@ -197,7 +197,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
     // Scoped by the project's actively-linked teams so tasks elsewhere are untouched.
     await db.execute(sql`
       UPDATE work.tasks t
-      SET assignee_id = NULL, updated_by = ${actorId}, updated_at = NOW()
+      SET assignee_id = NULL, updated_by = ${actorId}, updated_at = NOW(), version = version + 1
       WHERE t.assignee_id = ${userId}
         AND t.deleted_at IS NULL
         AND COALESCE(

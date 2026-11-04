@@ -164,7 +164,8 @@ export const CreateWorkItemSchema = z.object({
    * same `assertIterationAssignable` validation an update uses — on the same project.
    */
   iterationId: z.string().uuid().optional(),
-  releaseId: z.string().uuid().optional(),
+  /** Nullable so a null is refused with a clear 400 by the service, not a schema 422. */
+  releaseId: z.string().uuid().nullable().optional(),
   storyPoints: pointsOptional,
   estimateHours: hoursOptional,
   todoHours: hoursOptional,

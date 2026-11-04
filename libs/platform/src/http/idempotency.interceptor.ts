@@ -10,7 +10,8 @@ import {
 import { createHash } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import { Observable, from, of, throwError } from 'rxjs';
-import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
+import { catchError, mergeMap, switchMap } from 'rxjs/operators';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { clientIp, currentUserId } from '@quynhonsemiconductor/platform-http';
 import { ConflictException, DomainException } from '../errors/exceptions';
@@ -85,46 +86,69 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const redisKey = `idem:${userId}:${req.method}:${req.url}:${idempotencyKey}`;
     const inFlightKey = `${redisKey}:inflight`;
     const requestHash = hashBody((req as FastifyRequest & { body?: unknown }).body);
+    const reply = context.switchToHttp().getResponse<{
+      statusCode: number;
+      status(code: number): unknown;
+    }>();
+    /** What the route answers when nothing overrides it — captured so a replay carries the FIRST
+     * call's status, not whatever the route happens to default to when the retry arrives. */
+    const defaultStatus =
+      (Reflect.getMetadata(HTTP_CODE_METADATA, context.getHandler()) as number | undefined) ??
+      (req.method === 'POST' ? 201 : 200);
 
-    return from(this.cache.instance.get(redisKey)).pipe(
-      // A cache READ failure is not the caller's problem: run the request, cache nothing. (The
-      // write-side promise, below, is the same rule for the same reason.)
-      catchError(() => {
-        this.logger.warn({ msg: 'idempotency: cache read failed; passing through', redisKey });
-        return of(undefined as string | null | undefined);
-      }),
-      switchMap((cached: string | null | undefined) => {
-        if (cached === undefined) return next.handle();
+    const release = async () => {
+      try {
+        await this.cache.instance.del(inFlightKey);
+      } catch {
+        // Releasing is best-effort; the TTL frees a marker whose release failed.
+      }
+    };
 
-        if (cached !== null) {
-          this.logger.debug({ msg: 'idempotency: cache hit', redisKey });
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(cached);
-          } catch {
-            return next.handle();
-          }
-          const entry = parsed as { v?: unknown; hash?: unknown; response?: unknown };
-          if (entry.v === 1) {
-            // IETF idempotency-key draft: a key replayed with a DIFFERENT request body is a
-            // client error, not a replay. Without this, a model retry that edited its arguments
-            // would silently receive the first request's response.
-            if (entry.hash !== requestHash) {
-              return throwError(
-                () =>
-                  new DomainException(
-                    'IDEMPOTENCY_KEY_REUSED',
-                    'This Idempotency-Key was already used with a different request body.',
-                    'VALIDATION_FAILED',
-                  ),
-              );
-            }
-            return of(entry.response);
-          }
-          // An entry written before the hash was stored: replay it (its response is the shape
-          // clients expect) rather than fail a call the key legitimately owns.
-          return of(parsed);
+    const parseEntry = (cached: string | null | undefined): Record<string, unknown> | undefined => {
+      if (cached === undefined) return undefined; // a read failure (already logged)
+      if (cached === null) return null as unknown as undefined; // no entry: caller distinguishes
+      try {
+        return JSON.parse(cached) as Record<string, unknown>;
+      } catch {
+        return undefined;
+      }
+    };
+    const cachedValue = (cached: string | null | undefined) =>
+      cached === undefined ? undefined : parseEntry(cached);
+    const replay = (entry: Record<string, unknown>) => {
+      if (entry['v'] === 1) {
+        // IETF idempotency-key draft: the same key with a DIFFERENT body is a client error, not
+        // a replay. Without this, a model retry that edited its arguments would silently receive
+        // the first request's response.
+        if (entry['hash'] !== requestHash) {
+          return throwError(
+            () =>
+              new DomainException(
+                'IDEMPOTENCY_KEY_REUSED',
+                'This Idempotency-Key was already used with a different request body.',
+                'VALIDATION_FAILED',
+              ),
+          );
         }
+        if (typeof entry['status'] === 'number') reply.status(entry['status']);
+        return of(entry['response']);
+      }
+      // An entry written before {hash,status} existed: replay its body, route status.
+      return of(entry);
+    };
+    const readCache = () =>
+      from(this.cache.instance.get(redisKey)).pipe(
+        catchError(() => {
+          this.logger.warn({ msg: 'idempotency: cache read failed; passing through', redisKey });
+          return of(undefined as string | null | undefined);
+        }),
+      );
+
+    return readCache().pipe(
+      switchMap((first: string | null | undefined) => {
+        const entry = cachedValue(first);
+        if (entry === undefined) return next.handle(); // read/parse failure: pass through
+        if (entry !== null) return replay(entry);
 
         // First call: take a short in-flight lock so two concurrent duplicates do not both run.
         return from(
@@ -133,30 +157,56 @@ export class IdempotencyInterceptor implements NestInterceptor {
           catchError(() => of('OK')), // cache unavailable: let the request run
           switchMap((acquired: unknown) => {
             if (acquired === null) {
-              return throwError(
-                () =>
-                  new ConflictException(
-                    'IDEMPOTENCY_IN_FLIGHT',
-                    'A request with this Idempotency-Key is already in progress. Retry shortly.',
-                  ),
+              // The lock is held. The holder may have FINISHED between our first read and the
+              // NX: re-read before deciding it is still in flight.
+              return readCache().pipe(
+                switchMap((again) => {
+                  const raced = cachedValue(again);
+                  if (raced) return replay(raced);
+                  return throwError(
+                    () =>
+                      new ConflictException(
+                        'IDEMPOTENCY_IN_FLIGHT',
+                        'A request with this Idempotency-Key is already in progress. Retry shortly.',
+                      ),
+                  );
+                }),
               );
             }
-            return next.handle().pipe(
-              tap(async (response: unknown) => {
-                try {
-                  await this.cache.instance.set(
-                    redisKey,
-                    JSON.stringify({ v: 1, hash: requestHash, response }),
-                    'EX',
-                    IDEMPOTENCY_TTL_SECONDS,
-                  );
-                } catch (err) {
-                  // Cache failure must NOT fail the request
-                  this.logger.warn({ msg: 'idempotency: failed to cache response', err });
+
+            // Lock taken; re-read once more: another holder may have written between our read
+            // and the NX (the GET-miss / SET-NX race), in which case replay instead of running.
+            return readCache().pipe(
+              switchMap((again) => {
+                const raced = cachedValue(again);
+                if (raced) {
+                  void release();
+                  return replay(raced);
                 }
-              }),
-              finalize(() => {
-                void Promise.resolve(this.cache.instance.del(inFlightKey)).catch(() => undefined);
+                return next.handle().pipe(
+                  // AWAIT the write before releasing: a duplicate arriving right after the
+                  // release must find the cached answer, not a second handler run.
+                  mergeMap(async (response: unknown) => {
+                    const status = reply.statusCode !== 200 ? reply.statusCode : defaultStatus;
+                    try {
+                      await this.cache.instance.set(
+                        redisKey,
+                        JSON.stringify({ v: 1, hash: requestHash, status, response }),
+                        'EX',
+                        IDEMPOTENCY_TTL_SECONDS,
+                      );
+                    } catch (err) {
+                      // Cache failure must NOT fail the request
+                      this.logger.warn({ msg: 'idempotency: failed to cache response', err });
+                    }
+                    await release();
+                    return response;
+                  }),
+                  catchError((err: unknown) => {
+                    void release();
+                    return throwError(() => err);
+                  }),
+                );
               }),
             );
           }),

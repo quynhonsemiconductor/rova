@@ -251,11 +251,12 @@ export interface IWorkItemRepository {
     workspaceId: string,
     executor?: DbExecutor,
     /**
-     * G1 optimistic concurrency: the millisecond-exact `updatedAt` the caller read. The UPDATE
-     * matches only a row still at that time (compared in the WHERE); 0 rows is
-     * `WORK_ITEM_STALE`. Every web path omits it.
+     * G1 optimistic concurrency: the integer `version` the caller read (the record's ETag). The
+     * UPDATE matches only a row still at that version (compared in the WHERE) and increments the
+     * counter in the same statement; 0 rows is `WORK_ITEM_STALE`. Every web path omits it; a weak
+     * If-Match arrives as -1 and matches nothing.
      */
-    expectedUpdatedAt?: Date,
+    expectedVersion?: number,
   ): Promise<WorkItem>;
   /**
    * Mark a Story as the historical PLACEHOLDER of a Split (`work_items.split_id`, migration 0131).

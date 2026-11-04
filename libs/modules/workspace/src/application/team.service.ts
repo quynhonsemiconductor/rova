@@ -621,7 +621,7 @@ export class TeamService {
     // the ruled fix for the fold-in dev gap.
     const result = await tx.execute(sql`
       UPDATE work.tasks t
-      SET assignee_id = NULL, updated_by = ${actorId}, updated_at = NOW()
+      SET assignee_id = NULL, updated_by = ${actorId}, updated_at = NOW(), version = version + 1
       WHERE t.assignee_id = ${userId}
         AND t.deleted_at IS NULL
         AND COALESCE(

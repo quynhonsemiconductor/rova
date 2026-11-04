@@ -1100,8 +1100,8 @@ describe('WorkItemsService', () => {
 
     // G1: If-Match (MCP v2). The service does not compare — it forwards the expected timestamp
     // to the repository, where the UPDATE's WHERE enforces it atomically.
-    it('forwards the expected updatedAt to the repository', async () => {
-      const expected = new Date(now.getTime() - 1_000);
+    it('forwards the expected version to the repository', async () => {
+      const expected = 7;
       workItemRepo.findById.mockResolvedValue(mockWorkItem());
       workItemRepo.update.mockResolvedValue(mockWorkItem({ title: 'x' }));
 
@@ -1109,7 +1109,7 @@ describe('WorkItemsService', () => {
         mockActor,
         'wi-1',
         { title: 'x' },
-        { expectedUpdatedAt: expected },
+        { expectedVersion: expected },
       );
 
       expect(workItemRepo.update).toHaveBeenCalledWith(

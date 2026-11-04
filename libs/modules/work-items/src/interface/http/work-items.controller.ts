@@ -88,31 +88,38 @@ import {
 // ── Mappers ─────────────────────────────────────────────────────────────────
 
 /**
- * The server's concurrency token (MCP v2 gap G1, design §7): the record's `updatedAt` as a
- * millisecond-exact ISO-8601 timestamp, quoted as an ETag. The GET handlers emit it; a PATCH
- * accepts it back as `If-Match`.
+ * The record's concurrency token (MCP v2 G1): a strong ETag around the integer `version` column.
+ * Every write path increments the counter in the same statement, so the token changes on EVERY
+ * write — two updates inside one millisecond still get different tokens (a timestamp cannot make
+ * that promise).
  */
-export function etagFor(updatedAt: Date): string {
-  return `"${updatedAt.toISOString()}"`;
+export function etagFor(version: number): string {
+  return `"${version}"`;
 }
 
 /**
- * Parses `If-Match` into the timestamp the repository compares IN the UPDATE. Absent/blank means
- * no precondition (the web path). A malformed value is a 400 — the precondition cannot be
- * evaluated, and guessing would defeat it. Strong validators only: a weak `W/` prefix is still
- * parsed, because the value names a timestamp, not a byte representation.
+ * Parses `If-Match` per RFC 9110 into the integer version the repository matches in the UPDATE.
+ *   - absent/blank: no precondition (the web path);
+ *   - `*`: the item must merely EXIST — the route's own 404 answers that, so no version check;
+ *   - `W/"n"`: a weak validator NEVER matches, so it is mapped to a version that cannot exist
+ *     and the write answers 412 `WORK_ITEM_STALE`;
+ *   - `"n"`: the strong token the GET emitted;
+ *   - anything else: 400, because the precondition cannot be evaluated.
  */
-export function parseIfMatch(value: string | undefined): Date | undefined {
+export function parseIfMatch(value: string | undefined): number | undefined {
   if (value === undefined || value.trim() === '') return undefined;
-  const unquoted = /^(?:W\/)?"(.*)"$/.exec(value.trim());
-  if (!unquoted) {
-    throw new BadRequestException('If-Match must be a quoted ISO-8601 timestamp');
+  const token = value.trim();
+  if (token === '*') return undefined;
+  if (token.startsWith('W/')) return -1;
+  const strong = /^"(0|[1-9][0-9]*)"$/.exec(token);
+  if (!strong) {
+    throw new BadRequestException('If-Match must be "*" or a strong ETag: "<version>"');
   }
-  const ms = Date.parse(unquoted[1]);
-  if (!Number.isFinite(ms)) {
-    throw new BadRequestException('If-Match must be a quoted ISO-8601 timestamp');
+  const version = Number(strong[1]);
+  if (!Number.isSafeInteger(version)) {
+    throw new BadRequestException('If-Match version is out of range');
   }
-  return new Date(ms);
+  return version;
 }
 
 function numOrNull(v: string | null): number | null {
@@ -417,11 +424,21 @@ export class WorkItemsController {
   @UseIdempotency()
   @ApiOperation({ summary: 'Create a work item' })
   @RequirePermission('work_item:create', { from: 'body', field: 'projectId' })
-  @ApiResponse({ status: 201, type: WorkItemResponseDto })
+  @ApiResponse({
+    status: 201,
+    type: WorkItemResponseDto,
+    headers: {
+      ETag: {
+        description: 'Strong validator "<version>" of the created row.',
+        schema: { type: 'string' },
+      },
+    },
+  })
   @ApiCommonErrors(400, 401, 404, 409, 422)
   async createWorkItem(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateWorkItemDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemResponseDto> {
     const item = await this.workItemsService.createWorkItem(
       user,
@@ -460,6 +477,7 @@ export class WorkItemsController {
         fixedInBuild: dto.fixedInBuild,
       },
     );
+    reply.header('ETag', etagFor(item.version ?? 0));
     return toWorkItemDto(item);
   }
 
@@ -487,7 +505,16 @@ export class WorkItemsController {
    * cell answered 403 for the two roles that do the work. Invisible in testing because the dev
    * principal is a Workspace Admin, exactly as the `report:view` bug was.
    */
-  @ApiResponse({ status: 200, type: WorkItemDetailResponseDto })
+  @ApiResponse({
+    status: 200,
+    type: WorkItemDetailResponseDto,
+    headers: {
+      ETag: {
+        description: 'Strong validator "<version>"; send it back as If-Match on PATCH.',
+        schema: { type: 'string' },
+      },
+    },
+  })
   @ApiCommonErrors(400, 401, 404)
   async getWorkItemByKey(
     @CurrentUser() user: JwtPayload,
@@ -495,7 +522,7 @@ export class WorkItemsController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemDetailResponseDto> {
     const detail = await this.workItemsService.getWorkItemDetailByKey(user, query.itemKey);
-    reply.header('ETag', etagFor(detail.item.updatedAt));
+    reply.header('ETag', etagFor(detail.item.version ?? 0));
     return toWorkItemDetailDto(detail);
   }
 
@@ -503,7 +530,16 @@ export class WorkItemsController {
   @ApiOperation({ summary: 'Get a work item by ID' })
   @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, type: WorkItemDetailResponseDto })
+  @ApiResponse({
+    status: 200,
+    type: WorkItemDetailResponseDto,
+    headers: {
+      ETag: {
+        description: 'Strong validator "<version>"; send it back as If-Match on PATCH.',
+        schema: { type: 'string' },
+      },
+    },
+  })
   @ApiCommonErrors(401, 404)
   async getWorkItem(
     @CurrentUser() user: JwtPayload,
@@ -511,7 +547,7 @@ export class WorkItemsController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemDetailResponseDto> {
     const detail = await this.workItemsService.getWorkItemDetail(user, id);
-    reply.header('ETag', etagFor(detail.item.updatedAt));
+    reply.header('ETag', etagFor(detail.item.version ?? 0));
     return toWorkItemDetailDto(detail);
   }
 
@@ -574,7 +610,16 @@ export class WorkItemsController {
   })
   @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, type: WorkItemResponseDto })
+  @ApiResponse({
+    status: 200,
+    type: WorkItemResponseDto,
+    headers: {
+      ETag: {
+        description: 'Strong validator "<version>" of the updated row.',
+        schema: { type: 'string' },
+      },
+    },
+  })
   @ApiCommonErrors(400, 401, 404, 422)
   async updateWorkItem(
     @CurrentUser() user: JwtPayload,
@@ -584,10 +629,10 @@ export class WorkItemsController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemResponseDto> {
     const item = await this.workItemsService.updateWorkItem(user, id, dto, {
-      expectedUpdatedAt: parseIfMatch(ifMatch),
+      expectedVersion: parseIfMatch(ifMatch),
     });
     // The new token, so a caller that chains edits does not have to re-read.
-    reply.header('ETag', etagFor(item.updatedAt));
+    reply.header('ETag', etagFor(item.version ?? 0));
     return toWorkItemDto(item);
   }
 
@@ -697,12 +742,22 @@ export class WorkItemsController {
   @ApiOperation({ summary: 'Create a child task under a work item' })
   @RequirePermission('work_item:create', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 201, type: WorkItemResponseDto })
+  @ApiResponse({
+    status: 201,
+    type: WorkItemResponseDto,
+    headers: {
+      ETag: {
+        description: 'Strong validator "<version>" of the created task.',
+        schema: { type: 'string' },
+      },
+    },
+  })
   @ApiCommonErrors(400, 401, 404, 409, 422)
   async createTask(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateTaskDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemResponseDto> {
     const task = await this.workItemsService.createTask(user, id, dto.title, {
       description: dto.description,
@@ -716,6 +771,7 @@ export class WorkItemsController {
       todoHours: dto.todoHours,
       actualHours: dto.actualHours,
     });
+    reply.header('ETag', etagFor(task.version ?? 0));
     return toWorkItemDto(task);
   }
 
