@@ -8,6 +8,7 @@ import type { McpAccessPrincipal, McpAccessVerifier } from './access-verifier';
 import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER, type McpPrincipalContext } from '@platform';
 import { registerTools } from './tools/register';
 import {
+  assertIfMatchOnlyOnPatch,
   assertPostCarriesIdempotencyKey,
   assertReadCarriesNoWritePayload,
   idempotencyKeyFor,
@@ -87,6 +88,7 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
     // freely; refuse at runtime rather than silently dropping the payload.
     assertReadCarriesNoWritePayload(rest);
     assertPostCarriesIdempotencyKey(rest);
+    assertIfMatchOnlyOnPatch(rest);
     const injected = await app.inject({
       method: rest.method,
       url: rest.url,
@@ -101,6 +103,9 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
       headers: {
         [MCP_CALL_TOKEN_HEADER]: mintMcpCallToken(principal),
         ...(rest.idempotencyKey !== undefined ? { 'idempotency-key': rest.idempotencyKey } : {}),
+        // The optimistic-concurrency token a PATCH carries. The tool names the VALUE (from the
+        // ETag its read returned); the header is built here, the same as the idempotency key.
+        ...(rest.ifMatch !== undefined ? { 'if-match': rest.ifMatch } : {}),
       },
     });
     let json: Record<string, unknown> | unknown[] | undefined;

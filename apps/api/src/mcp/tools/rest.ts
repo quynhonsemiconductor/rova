@@ -15,9 +15,10 @@ export type McpWriteMethod = 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 export type McpRestMethod = McpReadMethod | McpWriteMethod;
 
 /**
- * One in-process REST call a tool composes. NO headers, ever — see the ratchet. A write carries
- * a `body`, and an idempotent create carries the key {@link idempotencyKeyFor} builds; `route.ts`
- * turns that key into the one header the bridge may add.
+ * One in-process REST call a tool composes. A tool NEVER builds a header — see the ratchet — it
+ * names the one CONTRACT value the bridge is allowed to carry: `idempotencyKey` (a POST create)
+ * or `ifMatch` (the optimistic-concurrency token on a PATCH). `route.ts` turns each into the
+ * single header it owns.
  */
 export interface McpRestCall {
   method: McpRestMethod;
@@ -27,6 +28,12 @@ export interface McpRestCall {
   body?: Record<string, unknown> | unknown[];
   /** Only for an idempotent POST create; see idempotencyKeyFor. */
   idempotencyKey?: string;
+  /**
+   * The `If-Match` value a PATCH sends: the ETag `"<version>"` read from a work-item response
+   * (see {@link responseEtag}). Only a PATCH may carry it; the REST route compares it in the
+   * UPDATE and answers 412 WORK_ITEM_STALE on a mismatch.
+   */
+  ifMatch?: string;
 }
 
 export interface McpRestResult {
@@ -79,13 +86,26 @@ export function pathSegment(value: string): string {
 
 /**
  * Refuses, at RUNTIME, a read that carries write payload: only the TS types say a GET has no
- * body and no idempotency key, and a tool is free to build its `McpRestCall` however it likes.
- * Callers (route.ts) convert the throw into the tool's error result.
+ * body, no idempotency key and no If-Match, and a tool is free to build its `McpRestCall`
+ * however it likes. Callers (route.ts) convert the throw into the tool's error result.
  */
 export function assertReadCarriesNoWritePayload(call: McpRestCall): void {
   if (isWriteMethod(call.method)) return;
-  if (call.body !== undefined || call.idempotencyKey !== undefined) {
-    throw new Error(`MCP bridge: ${call.method} ${call.url} carries a body or an Idempotency-Key`);
+  if (call.body !== undefined || call.idempotencyKey !== undefined || call.ifMatch !== undefined) {
+    throw new Error(
+      `MCP bridge: ${call.method} ${call.url} carries a body, an Idempotency-Key or an If-Match`,
+    );
+  }
+}
+
+/**
+ * Refuses an If-Match on anything but a PATCH: the concurrency contract exists on
+ * `PATCH /v1/work-items/:id` alone, and a value attached to another method would be a header the
+ * route never reads — a silent no-op that looks like an optimistic write.
+ */
+export function assertIfMatchOnlyOnPatch(call: McpRestCall): void {
+  if (call.ifMatch !== undefined && call.method !== 'PATCH') {
+    throw new Error(`MCP bridge: ${call.method} ${call.url} carries an If-Match`);
   }
 }
 
@@ -191,6 +211,17 @@ export function responseEtag(result: McpRestResult): string | undefined {
   const raw = key ? headers[key] : undefined;
   const value = Array.isArray(raw) ? raw[0] : raw;
   return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * The integer version inside the strong ETag a work-item response carries (`"<version>"`).
+ * `undefined` when the header is missing or not the contract's strong form — a write tool must
+ * not send an If-Match it could not derive.
+ */
+export function versionFromEtag(result: McpRestResult): number | undefined {
+  const etag = responseEtag(result);
+  const match = etag ? /^"(0|[1-9][0-9]*)"$/.exec(etag) : null;
+  return match ? Number(match[1]) : undefined;
 }
 
 /** A tool-level refusal (an unresolvable reference, an ambiguous name): an MCP error result. */
