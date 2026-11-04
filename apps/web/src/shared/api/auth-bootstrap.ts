@@ -30,6 +30,17 @@ export function resetAuthBootstrap(): void {
   _bootstrapPromise = null
 }
 
+/**
+ * The recovery screen's retry: re-run the whole bootstrap (latch included) and report whether the
+ * session came back. The caller navigates only on `true`; a second transient failure leaves the
+ * screen in place rather than bouncing the user somewhere else.
+ */
+export async function retryAuthBootstrap(): Promise<boolean> {
+  resetAuthBootstrap()
+  await bootstrapAuth()
+  return useAuthStore.getState().isAuthenticated
+}
+
 /** A retry delay: Retry-After when the server named one, else exponential backoff; capped. */
 function delayFor(response: Response | null, attempt: number): number {
   const header = response?.headers.get('retry-after')
@@ -81,7 +92,16 @@ async function _run(): Promise<void> {
     }
 
     if (meRes.ok) {
-      const user = (await meRes.json()) as MeResponse
+      // A 200 with a body that is not JSON (a gateway HTML page, a truncated response) must not
+      // throw out of `_run`: the promise would latch REJECTED and every later guard read would
+      // see `isLoading` forever. It is a transient failure like any other.
+      let user: MeResponse
+      try {
+        user = (await meRes.json()) as MeResponse
+      } catch {
+        failBootstrap(setAuthError)
+        return
+      }
       // Session-bound CSRF token for this page's lifetime — every state-changing
       // request echoes it back in the X-CSRF-Token header.
       setCsrfToken(user.csrfToken ?? null)

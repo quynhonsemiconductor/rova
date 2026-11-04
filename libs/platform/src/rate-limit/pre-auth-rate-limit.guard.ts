@@ -28,21 +28,26 @@ export const PRE_AUTH_RESERVATION = Symbol('rova:PRE_AUTH_RESERVATION');
  * login, a forged cookie, a route answered 401 before the principal was written). A refund that
  * fails is logged; the request has already been answered.
  */
-export function refundPreAuthReservation(
+export async function refundPreAuthReservation(
   cache: CacheService,
   logger: Logger,
   req: FastifyRequest,
-): void {
+): Promise<void> {
   const holder = req as unknown as Record<symbol, unknown>;
   const reservation = holder[PRE_AUTH_RESERVATION] as PreAuthReservation | undefined;
   if (!reservation || reservation.settled) return;
   reservation.settled = true;
-  cache.refundRateLimit(reservation.key, reservation.id).catch((err: unknown) => {
+  try {
+    // AWAITED, deliberately: the caller then answers with the address bucket already settled, so
+    // no request after it depends on a refund that is still in flight. One extra Valkey round
+    // trip on an authenticated request, and a failure is logged, never fatal to the request.
+    await cache.refundRateLimit(reservation.key, reservation.id);
+  } catch (err) {
     logger.error(
       failOpenLog('rate_limit', { err, key: reservation.key }),
       'Rate limit slot not refunded',
     );
-  });
+  }
 }
 
 /**

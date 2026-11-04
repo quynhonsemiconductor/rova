@@ -113,8 +113,7 @@ describe('rate limits around authentication', () => {
         (await get({ cookie: alice, 'cf-connecting-ip': sharedIp }, '/v1/auth/me')).statusCode,
       ).toBe(200);
     }
-    // The refund rides behind the response; let the last one settle.
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    // The guard awaits the refund before answering, so the bucket is settled here.
     const afterSignedIn = await cache.consumeRateLimit(`PRE_AUTH:ip:${sharedIp}`, 1200, 60);
     expect(afterSignedIn.remaining, '30 signed-in requests left the address bucket empty').toBe(
       1199,

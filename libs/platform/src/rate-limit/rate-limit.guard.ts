@@ -95,7 +95,7 @@ export class RateLimitGuard implements CanActivate {
     // `PreAuthRateLimitGuard` before it is not needed: giving it back now keeps normal office
     // traffic off the shared PRE_AUTH bucket. Nothing else refunds it — an unverified request
     // keeps its slot whatever status it ends with.
-    if (userId) refundPreAuthReservation(this.cache, this.logger, req);
+    if (userId) await refundPreAuthReservation(this.cache, this.logger, req);
 
     // ── Consume one token from the bucket ────────────────────────────────────
     let allowed: boolean;

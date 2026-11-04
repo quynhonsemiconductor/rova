@@ -93,7 +93,9 @@ export const useAuthStore = create<AuthState>()(
 
       setLoading: (isLoading) => set({ isLoading }),
 
-      setAuthError: (authError) => set({ authError, isAuthenticated: false, isLoading: false }),
+      // Deliberately leaves `user`/`isAuthenticated` alone: a transient failure is not a
+      // sign-out, and the recovery screen (selected by `authError`) is what the router shows.
+      setAuthError: (authError) => set({ authError, isLoading: false }),
 
       switchWorkspace: async (workspaceId: string) => {
         const { activeWorkspaceId } = get()

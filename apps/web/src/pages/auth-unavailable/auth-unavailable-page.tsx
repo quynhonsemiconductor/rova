@@ -1,16 +1,27 @@
+import { useState } from 'react'
 import { CloudOff, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { retrySession } from './retry'
 import { Button } from '@/shared/ui/button'
 
-/**
- * The recovery screen for a session check that failed for a TRANSIENT reason.
- *
- * `/login` is wrong here: the session cookie may still be valid, so signing in again is a detour
- * that lands the user back in the same 429/5xx. A reload re-runs `bootstrapAuth`, which retries
- * with Retry-After backoff before it ever reaches this page again.
- */
 export function AuthUnavailablePage() {
   const { t } = useTranslation('auth')
+  const [retrying, setRetrying] = useState(false)
+
+  const retry = async () => {
+    setRetrying(true)
+    try {
+      // A full navigation drops every in-memory query of the failed attempt; bootstrap has
+      // already proved the session works, so the next load starts clean.
+      const restored = await retrySession(window.location.search, (target) =>
+        window.location.assign(target),
+      )
+      if (restored) return
+    } catch {
+      // Treated exactly like a failed retry: the screen stays and the button comes back.
+    }
+    setRetrying(false)
+  }
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-background py-24">
@@ -23,7 +34,7 @@ export function AuthUnavailablePage() {
           {t('sessionUnavailable.description')}
         </p>
       </div>
-      <Button className="mt-2" onClick={() => window.location.reload()}>
+      <Button className="mt-2" onClick={() => void retry()} disabled={retrying}>
         <RefreshCw size={14} />
         {t('sessionUnavailable.retry')}
       </Button>

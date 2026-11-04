@@ -42,8 +42,13 @@ async function requireAuth() {
   const { isAuthenticated, authError } = useAuthStore.getState()
   if (authError) {
     // The session check failed for a TRANSIENT reason (429/5xx/network). Not a sign-out: show
-    // the recovery screen rather than bouncing a signed-in user to /login.
-    throw redirect({ to: '/auth-unavailable' } as Parameters<typeof redirect>[0])
+    // the recovery screen rather than bouncing a signed-in user to /login. The page it was on
+    // travels along, so a successful retry returns the reader where they were.
+    const returnTo = window.location.pathname + window.location.search
+    throw redirect({
+      to: '/auth-unavailable',
+      search: returnTo === '/' ? {} : { returnTo },
+    } as Parameters<typeof redirect>[0])
   }
   if (!isAuthenticated) {
     // AUTH-FR-012: preserve requested URL so login can redirect back after session expiry
@@ -142,6 +147,8 @@ const loginRoute = createRoute({
 const authUnavailableRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/auth-unavailable',
+  validateSearch: (search: Record<string, unknown>): { returnTo?: string } =>
+    typeof search.returnTo === 'string' ? { returnTo: search.returnTo } : {},
   component: lazyPage(
     () => import('@/pages/auth-unavailable/auth-unavailable-page'),
     'AuthUnavailablePage',

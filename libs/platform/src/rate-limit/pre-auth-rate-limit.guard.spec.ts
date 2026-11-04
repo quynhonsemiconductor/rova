@@ -149,8 +149,16 @@ describe('PreAuthRateLimitGuard', () => {
 
     const refund = vi.fn().mockResolvedValue(undefined);
     const log = { error: vi.fn() };
-    refundPreAuthReservation({ refundRateLimit: refund } as never, log as never, req as never);
-    refundPreAuthReservation({ refundRateLimit: refund } as never, log as never, req as never);
+    await refundPreAuthReservation(
+      { refundRateLimit: refund } as never,
+      log as never,
+      req as never,
+    );
+    await refundPreAuthReservation(
+      { refundRateLimit: refund } as never,
+      log as never,
+      req as never,
+    );
     expect(refund).toHaveBeenCalledTimes(1);
     expect(refund).toHaveBeenCalledWith('PRE_AUTH:ip:203.0.113.7', reservation.id);
   });

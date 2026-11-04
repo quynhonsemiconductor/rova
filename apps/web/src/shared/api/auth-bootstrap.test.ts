@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { bootstrapAuth, resetAuthBootstrap } from './auth-bootstrap'
+import { bootstrapAuth, resetAuthBootstrap, retryAuthBootstrap } from './auth-bootstrap'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { getCsrfToken, setCsrfToken } from './csrf'
 
@@ -119,6 +119,50 @@ describe('bootstrapAuth', () => {
     await done
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useAuthStore.getState().authError).toBeNull()
+  })
+
+  it('a 200 with a malformed body fails RECOVERABLY: the promise resolves, the screen shows', async () => {
+    fetchMock.mockResolvedValue(new Response('<html>gateway</html>', { status: 200 }))
+
+    await expect(bootstrapAuth()).resolves.toBeUndefined()
+
+    expect(useAuthStore.getState().authError).toBe('unavailable')
+    expect(useAuthStore.getState().isLoading).toBe(false)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('a signed-in profile SURVIVES a transient outage: 5xx does not sign the user out', async () => {
+    useAuthStore.setState({
+      user: { ...ME },
+      memberships: [],
+      isAuthenticated: true,
+      isLoading: false,
+      authError: null,
+    })
+    fetchMock.mockResolvedValue(jsonResponse(503, { error: { code: 'UNAVAILABLE' } }))
+
+    const done = bootstrapAuth()
+    await vi.advanceTimersByTimeAsync(10_000)
+    await done
+
+    expect(useAuthStore.getState().user?.id).toBe('u-1')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useAuthStore.getState().authError).toBe('unavailable')
+  })
+
+  it('retryAuthBootstrap re-runs a failed bootstrap and succeeds once the server recovers', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(429, {}, { 'retry-after': '1' }))
+    const done = bootstrapAuth()
+    await vi.advanceTimersByTimeAsync(10_000)
+    await done
+    expect(useAuthStore.getState().authError).toBe('unavailable')
+
+    fetchMock.mockResolvedValue(jsonResponse(200, ME))
+    const restored = retryAuthBootstrap()
+    await vi.runAllTimersAsync()
+    await expect(restored).resolves.toBe(true)
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
     expect(useAuthStore.getState().authError).toBeNull()
   })
