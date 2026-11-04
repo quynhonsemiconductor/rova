@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ActivityLogger, type ActivitySubject } from './activity-logger.service';
 import type { IActivityLogRepository } from '../domain/ports/activity-log.repository';
 import type { ActivityDiffConfig } from '../domain/activity-diff';
+import { requestContextStorage } from '@platform';
 
 const SUBJECT: ActivitySubject = {
   workspaceId: 'ws',
@@ -84,6 +85,34 @@ describe('ActivityLogger', () => {
       await logger.log([]);
       await logger.logSafe([]);
       expect(repo.appendMany).not.toHaveBeenCalled();
+    });
+
+    it('stamps metadata.source = mcp on every row appended by an MCP-bridged write (G5)', async () => {
+      const input = logger.build(SUBJECT, 'a', 'work_item.updated', null, { extra: 'kept' });
+      await new Promise<void>((resolve) =>
+        requestContextStorage.run(
+          {
+            workspaceId: 'ws',
+            userId: 'u',
+            sessionId: 's',
+            correlationId: 'c',
+            mcpBridged: true,
+          } as never,
+          () => {
+            void logger.log([input]).then(resolve);
+          },
+        ),
+      );
+      expect(repo.appendMany).toHaveBeenCalledWith(
+        [expect.objectContaining({ metadata: { extra: 'kept', source: 'mcp' } })],
+        undefined,
+      );
+    });
+
+    it('does not stamp a row from a normal request (or a job)', async () => {
+      const input = logger.build(SUBJECT, 'a', 'work_item.updated');
+      await logger.log([input]);
+      expect(repo.appendMany).toHaveBeenCalledWith([input], undefined);
     });
 
     it('log forwards the transaction executor', async () => {

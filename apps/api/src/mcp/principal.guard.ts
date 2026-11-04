@@ -71,6 +71,11 @@ export class McpPrincipalGuard implements CanActivate {
 
     // The belt guards key off this marker, not off `request.user`'s mere presence.
     markMcpBridged(request);
+    // Provenance for the audit trail (G5): services that append activity rows read this from the
+    // request context (ActivityLogger), so a row written for an MCP call records source='mcp'
+    // without every service knowing what MCP is.
+    const bridgedStore = requestContextStorage.getStore();
+    if (bridgedStore) (bridgedStore as unknown as Record<string, unknown>)['mcpBridged'] = true;
 
     request.user = {
       sub: mcp.userId,

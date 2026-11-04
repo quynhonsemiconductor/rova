@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import type { DbExecutor } from '@platform';
+import { requestContextStorage, type DbExecutor } from '@platform';
 import {
   ACTIVITY_LOG_REPOSITORY,
   IActivityLogRepository,
@@ -71,17 +71,27 @@ export class ActivityLogger {
     );
   }
 
+  /** Provenance: an MCP-bridged write stamps `metadata.source = 'mcp'` on every row it appends. */
+  private withSource(inputs: CreateActivityInput[]): CreateActivityInput[] {
+    const store = requestContextStorage.getStore() as { mcpBridged?: unknown } | undefined;
+    if (store?.mcpBridged !== true) return inputs;
+    return inputs.map((input) => ({
+      ...input,
+      metadata: { ...input.metadata, source: 'mcp' },
+    }));
+  }
+
   /** Batched append. `tx` → participates in the caller's transaction. Throws on failure. */
   async log(inputs: CreateActivityInput[], opts?: { tx?: DbExecutor }): Promise<void> {
     if (inputs.length === 0) return;
-    await this.repo.appendMany(inputs, opts?.tx);
+    await this.repo.appendMany(this.withSource(inputs), opts?.tx);
   }
 
   /** Best-effort append — a revision-log failure must never fail the mutation. */
   async logSafe(inputs: CreateActivityInput[], opts?: { tx?: DbExecutor }): Promise<void> {
     if (inputs.length === 0) return;
     try {
-      await this.repo.appendMany(inputs, opts?.tx);
+      await this.repo.appendMany(this.withSource(inputs), opts?.tx);
     } catch (err) {
       this.logger.warn({ err }, 'Failed to write activity log');
     }

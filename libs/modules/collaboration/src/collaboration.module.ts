@@ -7,12 +7,13 @@ import { CollaborationController } from './interface/http/collaboration.controll
 import { CommentDrizzleRepository } from './infrastructure/persistence/comment.drizzle-repository';
 import { COMMENT_REPOSITORY } from './domain/ports/comment.repository';
 import { PortfolioModule } from '@modules/portfolio';
+import { ActivityModule } from '@modules/activity';
 import { PortfolioCollaborationController } from './interface/http/portfolio-collaboration.controller';
 
 @Module({
   // ProjectsModule for `assertProjectWritable` alone (PRJ-FR-010) — a direct import because Nest
   // does not inject a provider reached only transitively through PortfolioModule.
-  imports: [WorkItemsModule, AccessModule, PortfolioModule, ProjectsModule],
+  imports: [WorkItemsModule, AccessModule, PortfolioModule, ProjectsModule, ActivityModule],
   controllers: [CollaborationController, PortfolioCollaborationController],
   providers: [
     CollaborationService,

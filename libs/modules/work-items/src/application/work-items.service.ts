@@ -3856,6 +3856,13 @@ export class WorkItemsService {
     const item = await this.requireReadable(actor, id);
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     await this.workItemRepo.removeLabel(id, labelId, actor.workspaceId);
+    // G6: a label removal is a write to the item and belongs in its history. Best-effort, so a
+    // revision-log failure never fails an operation the caller has already completed.
+    await this.activity.logSafe([
+      this.buildActivityInput(item, 'work_item', actor.sub, 'work_item.label_removed', null, {
+        labelId,
+      }),
+    ]);
   }
 
   // ── Milestones ──────────────────────────────────────────────────────────────

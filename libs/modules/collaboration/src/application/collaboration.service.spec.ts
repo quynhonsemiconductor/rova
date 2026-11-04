@@ -5,6 +5,7 @@ import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
 import { PortfolioItemsService } from '@modules/portfolio';
 import { ProjectsService } from '@modules/projects';
+import { ActivityLogger } from '@modules/activity';
 import { CollaborationService } from './collaboration.service';
 import { COMMENT_REPOSITORY } from '../domain/ports/comment.repository';
 import type { Comment } from '../domain/collaboration.types';
@@ -75,6 +76,19 @@ const makeProjectsService = () => ({
     .mockResolvedValue({ id: 'proj-9', workspaceId: 'ws-1', status: 'active' }),
 });
 
+const makeActivityLogger = () => ({
+  build: vi.fn(
+    (
+      subject: Record<string, unknown>,
+      actorId: string | null,
+      action: string,
+      changes: unknown = null,
+      metadata: Record<string, unknown> = {},
+    ) => ({ id: 'act', ...subject, actorId, action, changes, metadata }),
+  ),
+  logSafe: vi.fn().mockResolvedValue(undefined),
+});
+
 const WORK_ITEM_REF = { entityType: 'work_item' as const, entityId: 'wi-1' };
 const PORTFOLIO_REF = { entityType: 'portfolio_item' as const, entityId: 'pi-1' };
 
@@ -85,6 +99,7 @@ describe('CollaborationService — project-scoped comment writes', () => {
   let portfolioItemsService: ReturnType<typeof makePortfolioItemsService>;
   let accessService: ReturnType<typeof makeAccessService>;
   let projectsService: ReturnType<typeof makeProjectsService>;
+  let activity: ReturnType<typeof makeActivityLogger>;
 
   beforeEach(async () => {
     commentRepo = makeCommentRepo();
@@ -92,6 +107,7 @@ describe('CollaborationService — project-scoped comment writes', () => {
     portfolioItemsService = makePortfolioItemsService();
     accessService = makeAccessService();
     projectsService = makeProjectsService();
+    activity = makeActivityLogger();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -101,6 +117,7 @@ describe('CollaborationService — project-scoped comment writes', () => {
         { provide: PortfolioItemsService, useValue: portfolioItemsService },
         { provide: AccessService, useValue: accessService },
         { provide: ProjectsService, useValue: projectsService },
+        { provide: ActivityLogger, useValue: activity },
       ],
     }).compile();
 
@@ -173,7 +190,7 @@ describe('CollaborationService — project-scoped comment writes', () => {
   });
 
   describe('deleteComment', () => {
-    it('authorizes the project before soft-deleting', async () => {
+    it('authorizes the project before soft-deleting, then records the delete (G6)', async () => {
       commentRepo.findById.mockResolvedValue(mockComment());
       await service.deleteComment(mockActor, 'c-1');
       expect(accessService.assertProjectPermission).toHaveBeenCalledWith(
@@ -182,6 +199,14 @@ describe('CollaborationService — project-scoped comment writes', () => {
         'work_item:edit',
       );
       expect(commentRepo.softDelete).toHaveBeenCalledWith('c-1');
+      expect(activity.logSafe).toHaveBeenCalledWith([
+        expect.objectContaining({
+          entityType: 'work_item',
+          entityId: 'wi-1',
+          action: 'comment.deleted',
+          metadata: { commentId: 'c-1' },
+        }),
+      ]);
     });
   });
 

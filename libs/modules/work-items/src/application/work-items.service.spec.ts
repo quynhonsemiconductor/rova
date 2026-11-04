@@ -1896,9 +1896,15 @@ describe('WorkItemsService', () => {
       );
     });
 
-    it('removeLabelFromWorkItem removes label', async () => {
+    it('removeLabelFromWorkItem removes label and records it in the history (G6)', async () => {
       await service.removeLabelFromWorkItem(mockActor, 'wi-1', 'l1');
       expect(workItemRepo.removeLabel).toHaveBeenCalledWith('wi-1', 'l1', 'ws-1');
+      expect(activityRepo.logSafe).toHaveBeenCalledWith([
+        expect.objectContaining({
+          action: 'work_item.label_removed',
+          metadata: { labelId: 'l1' },
+        }),
+      ]);
     });
   });
 
