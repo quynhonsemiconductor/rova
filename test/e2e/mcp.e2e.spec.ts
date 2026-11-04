@@ -815,7 +815,7 @@ describe('/mcp over the real guard chain (e2e)', () => {
     });
   });
 
-  it('one tool POST touches exactly the per-person buckets — never the shared loopback bucket', async () => {
+  it('one tool POST leaves exactly the per-person buckets — never the shared loopback bucket', async () => {
     const cache = app.get(CacheService);
     const redis = cache.instance; // throws if the cache is disabled: this test needs the real floor
     const { token, userId } = await bindPerson('mcp-buckets');
@@ -824,14 +824,20 @@ describe('/mcp over the real guard chain (e2e)', () => {
     await callWhoami(token);
     const added = (await redis.keys('*')).filter((key) => !before.has(key)).sort();
 
-    // the three rate-limit buckets, under the cache's key prefix (`rova:rl:`), all keyed by PERSON
-    expect(added.filter((key) => key.includes(':rl:')).sort()).toEqual([
-      `rova:rl:DEFAULT:uid:${userId}`, // RateLimitGuard, on the injected REST call
-      `rova:rl:PRE_AUTH:uid:${userId}`, // PreAuthRateLimitGuard, keyed by the peeked call token
-      `rova:rl:mcp:uid:${userId}`, // the /mcp route's own per-person budget
+    // Two buckets survive, both keyed by PERSON, under the cache's prefix (`rova:rl:`):
+    //   AUTH_ME — RateLimitGuard, on the injected REST call (`rova_whoami` → GET /v1/auth/me,
+    //             which has its own 120/min tier)
+    //   mcp     — the /mcp route's own per-person budget
+    // The third, PreAuthRateLimitGuard's PRE_AUTH, IS consumed first (keyed by the peeked call
+    // token's person — pinned by pre-auth-rate-limit.guard.spec) and REFUNDED by RateLimitGuard
+    // once the caller is verified, so it leaves no key behind. That absence is the refund.
+    expect(added.filter((key) => key.includes(':rl:'))).toEqual([
+      `rova:rl:AUTH_ME:uid:${userId}`,
+      `rova:rl:mcp:uid:${userId}`,
     ]);
     // belt: nothing address-keyed was created by this request at all (the permission cache also
     // writes a `rova:authz:` key while provisioning, so the filter above is not optional)
     expect(added.some((key) => key.includes(':ip:'))).toBe(false);
+    expect(added).not.toContain(`rova:rl:PRE_AUTH:ip:127.0.0.1`);
   });
 });
