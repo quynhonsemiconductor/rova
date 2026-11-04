@@ -42,9 +42,13 @@ const SCAN_SIZE = 100;
 
 /**
  * `rova_project_activity` — what changed in a project (who, what, when), for stand-ups and
- * "since yesterday" questions. The route pages by page/pageSize; `since` filters the rows of
- * the returned page (the route has no time parameter), so a `hasMore` page may contain older
- * rows — re-ask with a bigger page size when the filter leaves too few.
+ * "since yesterday" questions.
+ *
+ * WITHOUT `since`: one page (`page`/`pageSize`), and `hasMore` says whether older rows exist.
+ * WITH `since`: the route pages newest-first and has no time parameter, so the tool scans
+ * newest-to-oldest itself — up to 5 pages of 100 rows — and stops at the first row older than
+ * `since`. `truncated: true` means the 5×100 cap stopped the scan before that point (there may
+ * be more matching rows); otherwise `hasMore` is false because the filtered window is complete.
  */
 export function registerProjectActivity(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
@@ -52,7 +56,7 @@ export function registerProjectActivity(server: McpServer, ctx: ToolContext) {
     {
       title: 'Project activity',
       description:
-        'The revision history of one project you can read: who changed what and when. Page-based; `since` filters within the returned page.',
+        'The revision history of one project you can read: who changed what and when. Without `since` it returns one page; with `since` it scans newest-first up to 5×100 rows and sets `truncated` if the cap stopped before an older row.',
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: {
         project: z.string().min(1).max(255).describe('Project key, exact name or id'),
@@ -60,15 +64,22 @@ export function registerProjectActivity(server: McpServer, ctx: ToolContext) {
           .string()
           .datetime({ offset: true })
           .optional()
-          .describe('Only rows created at/after this ISO timestamp (applies to this page)'),
-        page: z.number().int().min(1).optional().describe('Page number (default 1)'),
+          .describe(
+            'Only rows created at/after this ISO timestamp. The tool scans newest-first up to 5×100 rows; `truncated` means the cap stopped the scan.',
+          ),
+        page: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('Page number (default 1); ignored when `since` is given'),
         pageSize: z
           .number()
           .int()
           .min(1)
           .max(100)
           .optional()
-          .describe('Rows per page (default 25, max 100)'),
+          .describe('Rows per page (default 25, max 100); ignored when `since` is given'),
       },
     },
     async ({ project, since, page, pageSize }) => {
