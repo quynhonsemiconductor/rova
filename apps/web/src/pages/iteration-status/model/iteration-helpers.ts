@@ -103,20 +103,24 @@ export function iterationStatusTotals(rows: readonly TotalsRow[]): {
   planEst: number
   taskEst: number
   toDoSum: number
+  actualSum: number
   count: number
 } {
   let planEst = 0
   let taskEst = 0
   let toDoSum = 0
+  let actualSum = 0
   for (const row of rows) {
     planEst += row.planEstimate ?? 0
     taskEst += (row.toDo ?? 0) + (row.actual ?? 0)
     toDoSum += row.toDo ?? 0
+    actualSum += row.actual ?? 0
   }
   return {
     planEst: roundToTenth(planEst),
     taskEst: roundToTenth(taskEst),
     toDoSum: roundToTenth(toDoSum),
+    actualSum: roundToTenth(actualSum),
     count: rows.length,
   }
 }
