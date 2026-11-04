@@ -1088,6 +1088,37 @@ describe('WorkItemsService', () => {
       expect(result.title).toBe('Updated');
     });
 
+    // G1: If-Unmodified-Since (MCP v2). The fixture's updatedAt is `now`; an expected time is
+    // compared at the stored time's SECOND, so equal seconds pass.
+    it('refuses an update when the row moved after the version the caller read', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      await expect(
+        service.updateWorkItem(
+          mockActor,
+          'wi-1',
+          { title: 'x' },
+          { expectedUpdatedAt: new Date(now.getTime() - 1_000) },
+        ),
+      ).rejects.toMatchObject({ code: 'WORK_ITEM_STALE' });
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('accepts the same second and any later expected time', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ title: 'x' }));
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { title: 'x' }, { expectedUpdatedAt: now }),
+      ).resolves.toMatchObject({ title: 'x' });
+      await expect(
+        service.updateWorkItem(
+          mockActor,
+          'wi-1',
+          { title: 'x' },
+          { expectedUpdatedAt: new Date(now.getTime() + 60_000) },
+        ),
+      ).resolves.toMatchObject({ title: 'x' });
+    });
+
     /**
      * `GAP-P1-WID-007` AC5/AC6 (BA DEV Handoff retest 2026-08-17). "If the Work Item moves to another
      * Team and the old Owner does not belong to the new Team, the system must return Owner to

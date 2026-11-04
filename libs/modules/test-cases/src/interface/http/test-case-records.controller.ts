@@ -12,7 +12,7 @@ import {
   Redirect,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiCommonErrors, RateLimit } from '@platform';
+import { ApiCommonErrors, RateLimit, UseIdempotency } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { AuthPolicy, RequirePermission, AuthorizedInService } from '@modules/access';
@@ -201,6 +201,7 @@ export class TestCaseRecordsController {
   }
 
   @Post(':id/test-results')
+  @UseIdempotency()
   @RequirePermission('test_result:create', { resource: 'test_case', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Add a Test Result to a Test Case (SRS §8)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

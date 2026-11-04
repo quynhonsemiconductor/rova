@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   Param,
   ParseUUIDPipe,
@@ -18,6 +19,7 @@ import {
   ApiPagedResponse,
   buildPageArgs,
   parseSort,
+  PreconditionFailedException,
   UseIdempotency,
   RateLimit,
 } from '@platform';
@@ -82,6 +84,27 @@ import {
 } from '@modules/attachments';
 
 // ── Mappers ─────────────────────────────────────────────────────────────────
+
+/**
+ * The optional `If-Unmodified-Since` precondition (MCP v2 gap G1, design §7). The web never sends
+ * it, so its PATCH is unchanged; an MCP update passes the `updatedAt` of the record it read, and
+ * the service refuses with 412 `WORK_ITEM_STALE` when the row moved since.
+ *
+ * HTTP-date and ISO-8601 both parse (the header's own grammar is the HTTP-date; an ISO value is
+ * accepted because an agent carries ISO timestamps). A present but unparsable value is a 412 too:
+ * the precondition cannot be evaluated, and guessing would defeat it.
+ */
+export function parseIfUnmodifiedSince(value: string | undefined): Date | undefined {
+  if (value === undefined || value.trim() === '') return undefined;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) {
+    throw new PreconditionFailedException(
+      'WORK_ITEM_INVALID_IF_UNMODIFIED_SINCE',
+      'If-Unmodified-Since must be an HTTP-date or an ISO-8601 timestamp',
+    );
+  }
+  return new Date(ms);
+}
 
 function numOrNull(v: string | null): number | null {
   return v === null ? null : Number(v);
@@ -382,6 +405,7 @@ export class WorkItemsController {
   // ── Create ─────────────────────────────────────────────────────────────────
 
   @Post()
+  @UseIdempotency()
   @ApiOperation({ summary: 'Create a work item' })
   @RequirePermission('work_item:create', { from: 'body', field: 'projectId' })
   @ApiResponse({ status: 201, type: WorkItemResponseDto })
@@ -404,6 +428,11 @@ export class WorkItemsController {
         reporterId: dto.reporterId,
         parentId: dto.parentId,
         teamId: dto.teamId,
+        // G3: a create may seed its iteration and release ATOMICALLY (the same
+        // `assertAssignmentScope` the update path uses validates both, including
+        // `assertIterationAssignable` for a team-scoped timebox).
+        iterationId: dto.iterationId,
+        releaseId: dto.releaseId,
         storyPoints: dto.storyPoints,
         estimateHours: dto.estimateHours,
         todoHours: dto.todoHours,
@@ -532,8 +561,11 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateWorkItemDto,
+    @Headers('if-unmodified-since') ifUnmodifiedSince?: string,
   ): Promise<WorkItemResponseDto> {
-    const item = await this.workItemsService.updateWorkItem(user, id, dto);
+    const item = await this.workItemsService.updateWorkItem(user, id, dto, {
+      expectedUpdatedAt: parseIfUnmodifiedSince(ifUnmodifiedSince),
+    });
     return toWorkItemDto(item);
   }
 
@@ -639,6 +671,7 @@ export class WorkItemsController {
   }
 
   @Post(':id/tasks')
+  @UseIdempotency()
   @ApiOperation({ summary: 'Create a child task under a work item' })
   @RequirePermission('work_item:create', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

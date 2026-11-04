@@ -2327,8 +2327,27 @@ export class WorkItemsService {
     actor: JwtPayload,
     id: string,
     input: UpdateWorkItemInput,
+    options: { expectedUpdatedAt?: Date } = {},
   ): Promise<WorkItem> {
     const item = await this.getWorkItem(actor.workspaceId, id);
+    /**
+     * Optimistic concurrency (MCP v2 gap G1, design §7): the caller may name the `updatedAt` of
+     * the record it read, and an update whose row moved since is refused 412 rather than silently
+     * overwriting someone else's change. HTTP-date granularity is seconds, so the comparison uses
+     * the stored time truncated to the second; equal seconds pass. The web sends no such header
+     * and is unaffected. Residual TOCTOU: the check reads before the update transaction opens, so
+     * two writes inside that window can still race — the statements below keep their own
+     * invariants, and the MCP client is expected to re-read on a 412.
+     */
+    if (options.expectedUpdatedAt !== undefined) {
+      const rowSecond = Math.floor(item.updatedAt.getTime() / 1000) * 1000;
+      if (rowSecond > options.expectedUpdatedAt.getTime()) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_STALE',
+          'The work item changed after the version you read. Re-read it and retry.',
+        );
+      }
+    }
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     // The record as it stands, BEFORE the patch: an Editor may not edit another Team's item, and may
     // not move one INTO their scope either, so the destination team is checked below as well.

@@ -11,7 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
+import { ApiCommonErrors, ApiPagedResponse, buildPageArgs, UseIdempotency } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { RequirePermission, AuthPolicy } from '@modules/access';
@@ -191,6 +191,7 @@ export class IterationsController {
   }
 
   @Post()
+  @UseIdempotency()
   @RequirePermission('iteration:create', { from: 'body', field: 'projectId' })
   @ApiOperation({ summary: 'Create an iteration' })
   @ApiResponse({ status: 201, type: IterationResponseDto })

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
+import { ApiCommonErrors, ApiPagedResponse, buildPageArgs, UseIdempotency } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { AuthPolicy, RequirePermission, AuthorizedInService } from '@modules/access';
@@ -293,6 +293,7 @@ export class PortfolioItemsController {
   }
 
   @Post()
+  @UseIdempotency()
   // Scoped from the BODY: a create names its project explicitly, so unlike the list
   // route the guard CAN resolve one project and check `portfolio:create` against it.
   @RequirePermission('portfolio:create', { from: 'body', field: 'projectId' })
