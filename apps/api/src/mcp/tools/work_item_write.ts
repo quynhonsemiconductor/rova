@@ -12,7 +12,11 @@ import { denied, result, versionFromEtag, type McpRestResult } from './rest';
 export function workItemWriteResult(
   res: McpRestResult,
   changed: string[],
-  options: { replayed?: boolean } = {},
+  options: {
+    replayed?: boolean;
+    /** The Feature link a create applies with a follow-up PATCH (create's DTO has no featureId). */
+    feature?: { linked: boolean | null; error?: unknown };
+  } = {},
 ): ReturnType<typeof result> | ReturnType<typeof denied> {
   if (res.statusCode >= 400 || res.json === null || typeof res.json !== 'object') {
     return denied(res.statusCode, res.json);
@@ -26,6 +30,7 @@ export function workItemWriteResult(
     // Present on an idempotent CREATE: true means the REST layer replayed the first identical
     // request inside its 10-minute window, so no second row was written.
     ...(options.replayed !== undefined ? { replayed: options.replayed } : {}),
+    ...(options.feature !== undefined ? { featureLink: options.feature } : {}),
   });
 }
 

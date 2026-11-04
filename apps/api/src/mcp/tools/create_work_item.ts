@@ -1,6 +1,14 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, replayedFrom, toolError, type ToolContext } from './rest';
+import {
+  denied,
+  pathSegment,
+  replayedFrom,
+  result,
+  toolError,
+  versionFromEtag,
+  type ToolContext,
+} from './rest';
 import {
   failureResult,
   resolvePeople,
@@ -11,7 +19,7 @@ import {
   resolveIteration,
   resolveWorkItem,
 } from './lookups';
-import { workItemWriteResult } from './work_item_write';
+import { shapeWrittenWorkItem, workItemWriteResult } from './work_item_write';
 
 /**
  * `rova_create_work_item` — create a story or a defect in one project (W1). Child tasks have
@@ -28,7 +36,7 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
     {
       title: 'Create work item',
       description:
-        "WRITES a new story or defect as you, and must be used only on the user's explicit request; confirm the project, type and title with the user first. Names (project, team, iteration, release, feature, assignee) are resolved against what you can see — an unknown or ambiguous name comes back with candidates. An identical request within 10 minutes returns the first result (`replayed: true`).",
+        "WRITES a new story or defect as you, and must be used only on the user's explicit request; confirm the project, type and title with the user first. Names (project, team, iteration, release, feature, assignee) are resolved against what you can see — an unknown or ambiguous name comes back with candidates. A `feature` is linked with one follow-up update after the create and its outcome is reported as `featureLink`. An identical request within 10 minutes returns the first result (`replayed: true`).",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -130,6 +138,7 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
         if (!release.ok) return failureResult(release);
         body['releaseId'] = release.id;
       }
+      let featureId: string | undefined;
       if (args.feature !== undefined) {
         const feature = await resolvePortfolioItem(ctx, args.feature);
         if (!feature.ok) return failureResult(feature);
@@ -143,7 +152,10 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
             `"${args.feature}" belongs to another project; a work item may only roll up to a Feature in its own project.`,
           );
         }
-        body['featureId'] = feature.id;
+        // NOT in the create body: `CreateWorkItemSchema` has no `featureId` (the link is
+        // update-only), and Zod strips an unknown key silently — the link would never reach the
+        // row while `changed` said it had. It is applied below, with one PATCH after the create.
+        featureId = feature.id;
       }
       if (args.parentStory !== undefined) {
         if (args.type !== 'defect') {
@@ -177,11 +189,54 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
         idempotencyKey,
       });
       if (res.statusCode >= 400) return denied(res.statusCode, res.json);
-      return workItemWriteResult(
-        res,
-        Object.keys(body).filter((field) => !['projectId', 'type', 'title'].includes(field)),
-        { replayed: replayedFrom(res) },
+      const row = res.json as Record<string, unknown>;
+      const replayed = replayedFrom(res);
+      const changed = Object.keys(body).filter(
+        (field) => !['projectId', 'type', 'title'].includes(field),
       );
+
+      let featureLink: { linked: boolean | null; error?: unknown } | undefined;
+      if (featureId !== undefined) {
+        const createdId = typeof row['id'] === 'string' ? row['id'] : undefined;
+        const version = versionFromEtag(res);
+        if (replayed) {
+          // The first identical call already linked it; a second PATCH would only bump the
+          // version the caller is about to use.
+          featureLink = { linked: null };
+        } else if (createdId === undefined || version === undefined) {
+          featureLink = {
+            linked: false,
+            error: 'the create response carried no id/version, so the Feature link was not applied',
+          };
+        } else {
+          const patch = await ctx.callRest(ctx.principal, {
+            method: 'PATCH',
+            url: `/v1/work-items/${pathSegment(createdId)}`,
+            body: { featureId },
+            ifMatch: `"${version}"`,
+          });
+          if (patch.statusCode < 400) {
+            changed.push('featureId');
+            featureLink = { linked: true };
+          } else {
+            // Partial success, stated: the item EXISTS; only the rollup link did not land.
+            featureLink = { linked: false, error: patch.json };
+          }
+        }
+      }
+
+      if (featureLink === undefined) {
+        return workItemWriteResult(res, changed, { replayed });
+      }
+      // The create answered; the follow-up link may have failed, so answer the row we know and
+      // the link outcome separately rather than pretending the whole write succeeded or failed.
+      return result(res.statusCode, res.json, {
+        workItem: shapeWrittenWorkItem(row),
+        version: versionFromEtag(res) ?? null,
+        changed,
+        replayed,
+        featureLink,
+      });
     },
   );
 }

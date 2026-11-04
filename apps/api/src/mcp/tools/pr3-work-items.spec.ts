@@ -107,6 +107,9 @@ describe('PR3 work-item write tools', () => {
           headers: { ETag: '"0"' },
         };
       }
+      if (call.method === 'PATCH' && call.url === `/v1/work-items/${ITEM}`) {
+        return { statusCode: 200, json: ITEM_ROW, headers: { ETag: '"1"' } };
+      }
       return { statusCode: 404, json: { error: 'x' } };
     });
 
@@ -138,17 +141,31 @@ describe('PR3 work-item write tools', () => {
       teamId: TEAM.teamId,
       iterationId: ITERATION.id,
       releaseId: RELEASE.id,
-      featureId: FEATURE.id,
       storyPoints: 3,
     });
-    // The contract, not our idea of it: the body is accepted by the route's own schema.
+    // The contract, not our idea of it: the body is accepted by the route's own schema — and
+    // featureId is NOT in it (the schema has none; Zod would strip it silently).
     expect(CreateWorkItemSchema.safeParse(post.body).success).toBe(true);
+    expect(post.body).not.toHaveProperty('featureId');
+
+    // The Feature is linked by one follow-up PATCH, with the version the create returned.
+    const link = calls.find((c) => c.method === 'PATCH')!;
+    expect(link.url).toBe(`/v1/work-items/${ITEM}`);
+    expect(link.body).toEqual({ featureId: FEATURE.id });
+    expect(link.ifMatch).toBe('"0"');
 
     expect(body).toMatchObject({
       workItem: { id: ITEM, itemKey: 'US-412', type: 'story' },
       version: 0,
       replayed: false,
-      changed: expect.arrayContaining(['description', 'assigneeId', 'iterationId', 'releaseId']),
+      featureLink: { linked: true },
+      changed: expect.arrayContaining([
+        'description',
+        'assigneeId',
+        'iterationId',
+        'releaseId',
+        'featureId',
+      ]),
     });
   });
 
@@ -621,6 +638,61 @@ describe('PR3 work-item write tools', () => {
     });
     expect(isError).toBe(true);
     expect(JSON.stringify(body)).toContain('ifMatch required: pass the version from');
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  it('states a partial success when the Feature link PATCH fails: the item exists, the link did not land', async () => {
+    const { ctx, calls } = context((call) => {
+      const hit = feeds(call);
+      if (hit) return hit;
+      if (call.method === 'POST' && call.url === '/v1/work-items') {
+        return { statusCode: 201, json: ITEM_ROW, headers: { ETag: '"0"' } };
+      }
+      if (call.method === 'PATCH') {
+        return { statusCode: 412, json: { error: { code: 'WORK_ITEM_STALE' } } };
+      }
+      return { statusCode: 500, json: {} };
+    });
+    const { isError, body } = await call(registerCreateWorkItem, ctx, {
+      project: 'NXP',
+      type: 'story',
+      title: 'partial',
+      feature: 'FE-3',
+    });
+    // The create succeeded, so the tool must not deny the whole call.
+    expect(isError).toBeFalsy();
+    expect(body).toMatchObject({
+      workItem: { id: ITEM },
+      featureLink: { linked: false, error: { error: { code: 'WORK_ITEM_STALE' } } },
+    });
+    expect(body.changed).not.toContain('featureId');
+    expect(calls.filter((c) => c.method === 'PATCH')).toHaveLength(1);
+  });
+
+  it('a REPLAYED create does not re-apply the Feature link (the first call did)', async () => {
+    const { ctx, calls } = context((call) => {
+      const hit = feeds(call);
+      if (hit) return hit;
+      if (call.method === 'POST' && call.url === '/v1/work-items') {
+        return {
+          statusCode: 201,
+          json: ITEM_ROW,
+          headers: { ETag: '"0"', 'Idempotency-Replayed': 'true' },
+        };
+      }
+      if (call.method === 'PATCH') {
+        return { statusCode: 200, json: ITEM_ROW, headers: { ETag: '"1"' } };
+      }
+      return { statusCode: 500, json: {} };
+    });
+    const { body } = await call(registerCreateWorkItem, ctx, {
+      project: 'NXP',
+      type: 'story',
+      title: 'twice',
+      feature: 'FE-3',
+    });
+    expect(body.replayed).toBe(true);
+    expect(body.featureLink).toEqual({ linked: null });
     expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
   });
 
