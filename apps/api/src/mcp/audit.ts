@@ -17,11 +17,55 @@ import type { Counter, Histogram } from '@opentelemetry/api';
 
 export type ToolOutcome = 'ok' | 'error';
 
-export interface ToolCallEvent {
+/**
+ * What a write tool may report about the write it made (design §6.7). IDS, KEYS and FIELD NAMES
+ * only — never a value and never free text (a title, a comment body, a reason). `sanitize` keeps
+ * exactly these keys and nothing else, so a tool that passes extra fields cannot leak them.
+ */
+export interface WriteAuditData {
+  write?: boolean;
+  httpStatus?: number;
+  /** Item ids or keys the call touched (≤ 25). */
+  targets?: string[];
+  /** FIELD NAMES that changed. */
+  fields?: string[];
+  /** How many rows the write affects (a bulk count ≥ targets). */
+  count?: number;
+  /** A plan preview: `true` means nothing was written. */
+  dryRun?: boolean;
+}
+
+export interface ToolCallEvent extends WriteAuditData {
   tool: string;
   principalId: string;
   durationMs: number;
   outcome: ToolOutcome;
+}
+
+const WRITE_KEYS = new Set(['write', 'httpStatus', 'targets', 'fields', 'count', 'dryRun']);
+const MAX_TARGETS = 25;
+
+/**
+ * Keeps exactly the §6.7 write fields and drops everything else. Arrays are truncated, entries
+ * that are not strings are dropped, and no string is copied from a non-whitelisted key.
+ */
+export function sanitizeWriteAudit(input: Record<string, unknown>): WriteAuditData {
+  const out: WriteAuditData = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (!WRITE_KEYS.has(key)) continue;
+    if (key === 'write' || key === 'dryRun') {
+      if (typeof value === 'boolean') out[key] = value;
+    } else if (key === 'httpStatus' || key === 'count') {
+      if (typeof value === 'number' && Number.isFinite(value)) out[key] = value;
+    } else if (key === 'targets' || key === 'fields') {
+      if (Array.isArray(value)) {
+        out[key] = value
+          .filter((entry): entry is string => typeof entry === 'string')
+          .slice(0, MAX_TARGETS);
+      }
+    }
+  }
+  return out;
 }
 
 /** The structured logger shape this module needs; Nest's Logger satisfies it. */
@@ -83,7 +127,8 @@ export function createMcpAudit(
   const instruments = options.instruments ?? defaultInstruments();
 
   return {
-    onToolCall({ tool, principalId, durationMs, outcome }) {
+    onToolCall(event) {
+      const { tool, principalId, durationMs, outcome } = event;
       logger.info(
         {
           event: 'mcp.tool_call',
@@ -92,6 +137,8 @@ export function createMcpAudit(
           durationMs,
           outcome,
           rateLimited: false,
+          // §6.7: ids/keys/field NAMES/counts only — no values, no free text.
+          ...sanitizeWriteAudit(event as unknown as Record<string, unknown>),
         },
         'MCP tool call',
       );

@@ -64,6 +64,11 @@ export function registerLogTime(server: McpServer, ctx: ToolContext) {
         return denied(res.statusCode, res.json);
       }
       const row = res.json as Record<string, unknown>;
+      ctx.noteWrite?.({
+        targets: [item.id],
+        fields: ['hours', 'loggedDate', 'description'],
+        count: 1,
+      });
       return result(res.statusCode, res.json, {
         timeLog: {
           id: row['id'],

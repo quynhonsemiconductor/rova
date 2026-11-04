@@ -53,10 +53,24 @@ export type McpRestCaller = (
   call: McpRestCall,
 ) => Promise<McpRestResult>;
 
+/**
+ * What a WRITE tool may report about its write for the audit line (design §6.7): ids/keys/field
+ * NAMES only. `route.ts` sanitises it again before logging; a tool that passes a value or free
+ * text loses it there.
+ */
+export interface WriteAudit {
+  targets?: string[];
+  fields?: string[];
+  count?: number;
+  dryRun?: boolean;
+}
+
 /** What register.ts hands every tool: the request's ONE principal and the caller. */
 export interface ToolContext {
   principal: McpPrincipalContext;
   callRest: McpRestCaller;
+  /** Tags the request's audit line with what the write touched; present whenever writes mount. */
+  noteWrite?: (meta: WriteAudit) => void;
   /**
    * Builds the `Idempotency-Key` for one idempotent create, bound by route.ts to the principal
    * and the server's `MCP_IDEMPOTENCY_SECRET` (never exposed to a tool). Present whenever writes
@@ -106,18 +120,6 @@ export function assertReadCarriesNoWritePayload(call: McpRestCall): void {
 export function assertIfMatchOnlyOnPatch(call: McpRestCall): void {
   if (call.ifMatch !== undefined && call.method !== 'PATCH') {
     throw new Error(`MCP bridge: ${call.method} ${call.url} carries an If-Match`);
-  }
-}
-
-/**
- * Refuses, at RUNTIME, a POST with no Idempotency-Key: a create is exactly the call whose
- * duplicate is a new row, so the MCP side must always sign it. A tool that forgot the key fails
- * loudly here instead of silently creating twice on an LLM retry.
- */
-export function assertPostCarriesIdempotencyKey(call: McpRestCall): void {
-  if (call.method !== 'POST') return;
-  if (call.idempotencyKey === undefined || call.idempotencyKey === '') {
-    throw new Error(`MCP bridge: POST ${call.url} carries no Idempotency-Key`);
   }
 }
 

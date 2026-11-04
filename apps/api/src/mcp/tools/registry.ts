@@ -75,6 +75,15 @@ export const WRITE_TOOL_ROUTES = {
   rova_create_work_item: { method: 'POST', url: '/v1/work-items' },
   rova_add_task: { method: 'POST', url: '/v1/work-items/:id/tasks' },
   rova_update_work_item: { method: 'PATCH', url: '/v1/work-items/:id' },
+  rova_link_work_items: { method: 'POST', url: '/v1/work-items/:id/relations' },
+  rova_label_work_item: [
+    { method: 'POST', url: '/v1/work-items/:id/labels' },
+    { method: 'DELETE', url: '/v1/work-items/:id/labels/:labelId' },
+  ],
+  rova_plan_work_items: [
+    { method: 'PATCH', url: '/v1/work-items/bulk-iteration' },
+    { method: 'PATCH', url: '/v1/work-items/bulk-release' },
+  ],
 } as const satisfies Record<string, WriteRoute | readonly WriteRoute[]>;
 
 export type ToolName = keyof typeof TOOL_ROUTES;
