@@ -6,7 +6,7 @@
 # a writable /tmp, config.json mounted at /srv/config.json, an arbitrary non-root uid, port 8080),
 # and exercises the contract plus the User Guide session gate against a stub API.
 #
-#   contract      /healthz and /livez 200; doc root /srv; the process runs as the uid asked for
+#   contract      runs with ALL caps dropped + no-new-privileges as uid 1001 (/healthz and
 #   caching       / and SPA routes no-cache; an existing /assets/* immutable; a MISSING asset 404
 #                 with no Cache-Control promise
 #   headers       every value of the Worker's `_headers` on the app, and the same set plus the
@@ -171,12 +171,12 @@ echo "== build the image"
 docker build -q -f apps/web/Dockerfile --target web \
   --secret id=node_auth_token,env=NODE_AUTH_TOKEN -t "$image" . >/dev/null
 
-echo "== start the stub API and the image (read-only root, uid 12345, config mounted)"
+echo "== start the stub API and the image (read-only root, ALL caps dropped, uid 1001, config mounted)"
 docker network create "$net" >/dev/null
 docker run -d --name "$stub" --network "$net" \
   -v "$tmpdir:/app:ro" -w /app "$stub_image" python server.py >/dev/null
 docker run -d --name "$web" --network "$net" --read-only --tmpfs /tmp \
-  --user 12345 -p 127.0.0.1::8080 \
+  --cap-drop ALL --security-opt no-new-privileges --user 1001 -p 127.0.0.1::8080 \
   -e WEB_API_UPSTREAM=http://"$stub":9000 \
   -v "$tmpdir/config.json:/srv/config.json:ro" "$image" >/dev/null
 
@@ -193,7 +193,7 @@ guide_dir="$(docker exec --user 0 "$web" sh -c 'find /srv/guide-assets -type f |
 
 echo "== the image contract"
 uid="$(docker exec --user 0 "$web" sh -c 'grep ^Uid /proc/1/status' | awk '{print $2}')"
-if [ "$uid" = "12345" ]; then ok "the server runs as the uid the pod asked for (12345)"; else bad "non-root uid" "expected 12345, got $uid"; fi
+if [ "$uid" = "1001" ]; then ok "the server runs as the uid the pod asked for (1001)"; else bad "non-root uid" "expected 1001, got $uid"; fi
 root="$(docker exec --user 0 "$web" sh -c 'test -f /srv/index.html && echo /srv')"
 if [ "$root" = "/srv" ]; then ok "doc root /srv holds index.html"; else bad "doc root" "/srv/index.html is missing"; fi
 expect_status "/healthz" 200 "$base/healthz"
@@ -265,7 +265,7 @@ expect_one_of "POST /guide-assets/..." "302 404" "$base$guide_asset" -X POST
 
 echo "== the API unreachable"
 docker run -d --name "$web_down" --network "$net" --read-only --tmpfs /tmp \
-  --user 12345 -p 127.0.0.1::8080 -e WEB_API_UPSTREAM=http://127.0.0.1:9 \
+  --cap-drop ALL --security-opt no-new-privileges --user 1001 -p 127.0.0.1::8080 -e WEB_API_UPSTREAM=http://127.0.0.1:9 \
   -v "$tmpdir/config.json:/srv/config.json:ro" "$image" >/dev/null
 for _ in $(seq 1 30); do
   down_port="$(docker port "$web_down" 8080/tcp 2>/dev/null | awk -F: 'NR==1{print $NF}')"
