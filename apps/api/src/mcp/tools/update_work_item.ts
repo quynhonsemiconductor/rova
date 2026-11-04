@@ -261,6 +261,7 @@ export function registerUpdateWorkItem(server: McpServer, ctx: ToolContext) {
         ifMatch: `"${parsed[1]}"`,
       });
 
+      ctx.noteWrite?.({ targets: [item.id], fields: Object.keys(body), count: 1 });
       if (isStale(res)) {
         const fresh = await ctx.callRest(ctx.principal, {
           method: 'GET',

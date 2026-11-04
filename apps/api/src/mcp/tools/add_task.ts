@@ -75,6 +75,12 @@ export function registerAddTask(server: McpServer, ctx: ToolContext) {
         body,
         idempotencyKey,
       });
+      const createdId = (res.json as Record<string, unknown>)['id'];
+      ctx.noteWrite?.({
+        targets: [parent.id, ...(typeof createdId === 'string' ? [createdId] : [])],
+        fields: Object.keys(body).filter((field) => field !== 'title'),
+        count: 1,
+      });
       return workItemWriteResult(
         res,
         Object.keys(body).filter((field) => field !== 'title'),

@@ -44,6 +44,9 @@ import { registerMarkNotificationsRead } from './mark_notifications_read';
 import { registerCreateWorkItem } from './create_work_item';
 import { registerAddTask } from './add_task';
 import { registerUpdateWorkItem } from './update_work_item';
+import { registerLinkWorkItems } from './link_work_items';
+import { registerLabelWorkItem } from './label_work_item';
+import { registerPlanWorkItems } from './plan_work_items';
 import type { ToolCallObserver, ToolContext } from './rest';
 import { instrumentToolHandler } from './rest';
 
@@ -85,6 +88,9 @@ export const WRITE_TOOL_REGISTRARS: readonly WriteToolRegistrar[] = [
   { name: 'rova_create_work_item', register: registerCreateWorkItem },
   { name: 'rova_add_task', register: registerAddTask },
   { name: 'rova_update_work_item', register: registerUpdateWorkItem },
+  { name: 'rova_link_work_items', register: registerLinkWorkItems },
+  { name: 'rova_label_work_item', register: registerLabelWorkItem },
+  { name: 'rova_plan_work_items', register: registerPlanWorkItems },
 ];
 
 export interface RegisterToolsOptions {

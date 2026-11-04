@@ -330,7 +330,7 @@ let app: NestFastifyApplication | undefined;
 
 async function boot(
   routeVerifier: McpAccessVerifier = verifier,
-  options: { writesEnabled?: boolean; hook?: boolean } = {},
+  options: { writesEnabled?: boolean; hook?: boolean; rateLimitDisabled?: boolean } = {},
 ): Promise<FastifyInstance> {
   fixtureConfig.writesEnabled = options.writesEnabled ?? false;
   setMcpWritesEnabled(fixtureConfig.writesEnabled);
@@ -360,6 +360,7 @@ async function boot(
     serverVersion: '0.0.0-test',
     writesEnabled: fixtureConfig.writesEnabled,
     idempotencySecret: 'x'.repeat(32),
+    rateLimitDisabled: options.rateLimitDisabled ?? false,
   });
   await fastify.ready();
   return fastify;
@@ -680,6 +681,18 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     await initialize(fastify, VICTIM_TOKEN);
     await initialize(fastify, ATTACKER_TOKEN);
     expect(consumedKeys).toEqual([`mcp:uid:${VICTIM}`, `mcp:uid:${ATTACKER}`]);
+  });
+
+  it('a rateLimitDisabled config (validated DISABLE_RATE_LIMIT, dev/CI) skips the budget', async () => {
+    consumedKeys.length = 0;
+    const fastify = await boot(verifier, { rateLimitDisabled: true });
+    const res = await rpc(fastify, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+    });
+    expect(res.statusCode).toBe(200);
+    // No bucket was touched, and even a full budget cannot refuse the call.
+    expect(consumedKeys).toEqual([]);
   });
 
   it('an unverified Access token is one uniform 401', async () => {
