@@ -10,6 +10,7 @@ import {
   SKIP_RATE_LIMIT_KEY,
   type RateLimitTier,
 } from './rate-limit.constants';
+import { refundPreAuthReservation } from './pre-auth-rate-limit.guard';
 
 import { failOpenLog, SecurityMetrics } from '@quynhonsemiconductor/observability';
 
@@ -89,6 +90,12 @@ export class RateLimitGuard implements CanActivate {
     // in the wrong module) can tell the caller it ran too late.
     if (!userId) (req as unknown as Record<symbol, unknown>)[KEYED_BY_ADDRESS] = true;
     const key = `${tier}:${identifier}`;
+
+    // Identity (or the API-token guard) has verified the caller, so the ADDRESS slot taken by
+    // `PreAuthRateLimitGuard` before it is not needed: giving it back now keeps normal office
+    // traffic off the shared PRE_AUTH bucket. Nothing else refunds it — an unverified request
+    // keeps its slot whatever status it ends with.
+    if (userId) refundPreAuthReservation(this.cache, this.logger, req);
 
     // ── Consume one token from the bucket ────────────────────────────────────
     let allowed: boolean;

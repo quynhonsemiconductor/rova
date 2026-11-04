@@ -6,6 +6,7 @@ import type {} from '@fastify/csrf-protection';
 import {
   Auth,
   ApiCommonErrors,
+  RateLimit,
   ConflictException,
   NotFoundException,
   PermissionDeniedException,
@@ -52,6 +53,9 @@ export class AuthController {
   @Get('me')
   @SelfScoped("returns the caller's own principal")
   @Auth()
+  // Every page load calls this; its own tier keeps a retry loop from spending the user's whole
+  // DEFAULT budget on one read (and the client's 429 retry honours Retry-After).
+  @RateLimit('AUTH_ME')
   @ApiOperation({ summary: 'Return the authenticated user, their workspaces and permissions' })
   @ApiResponse({ status: 200, type: UserProfileResponseDto })
   @ApiCommonErrors(401)

@@ -11,6 +11,12 @@ import { setFormatPrefs, resolveFormatPrefs } from '@/shared/lib/format-prefs'
 
 const BASE = ENV.API_BASE_URL
 
+/** Total attempts for a TRANSIENT failure (429, 5xx, a refused connection): the first plus two. */
+const MAX_ATTEMPTS = 3
+/** No single wait is longer than this, even when Retry-After asks for more. */
+const MAX_DELAY_MS = 10_000
+const BASE_DELAY_MS = 500
+
 let _bootstrapPromise: Promise<void> | null = null
 
 export function bootstrapAuth(): Promise<void> {
@@ -19,49 +25,110 @@ export function bootstrapAuth(): Promise<void> {
   return _bootstrapPromise
 }
 
-async function _run(): Promise<void> {
-  const { clearAuth, setLoading, setUser } = useAuthStore.getState()
-  setLoading(true)
-  try {
-    const meRes = await fetch(`${BASE}/v1/auth/me`, {
-      credentials: 'include',
-      referrerPolicy: 'no-referrer',
-      headers: { accept: 'application/json' },
-    })
+/** Clears the once-per-page-load latch. For a harness that re-runs bootstrap in one process. */
+export function resetAuthBootstrap(): void {
+  _bootstrapPromise = null
+}
 
-    if (!meRes.ok) {
+/** A retry delay: Retry-After when the server named one, else exponential backoff; capped. */
+function delayFor(response: Response | null, attempt: number): number {
+  const header = response?.headers.get('retry-after')
+  if (header) {
+    const seconds = Number(header)
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(seconds * 1000, MAX_DELAY_MS)
+    }
+    const at = Date.parse(header)
+    if (Number.isFinite(at)) {
+      return Math.min(Math.max(at - Date.now(), 0), MAX_DELAY_MS)
+    }
+  }
+  return Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS)
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Restores the session, RETRYING the failures that are not about the session.
+ *
+ * A 429, a 5xx or a refused connection says nothing about whether the cookie is valid: treating
+ * one as "signed out" cleared auth on the client and bounced a signed-in user to `/login` (from
+ * which they sign in again only to land in the same 429). Only 401/403 clear the session; every
+ * other failure is retried with Retry-After/backoff (capped), and if it still fails the app keeps
+ * whatever profile it had and shows the recovery screen (`authError`), never the login page.
+ */
+async function _run(): Promise<void> {
+  const { clearAuth, setLoading, setUser, setAuthError } = useAuthStore.getState()
+  setLoading(true)
+  setAuthError(null)
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    let meRes: Response
+    try {
+      meRes = await fetch(`${BASE}/v1/auth/me`, {
+        credentials: 'include',
+        referrerPolicy: 'no-referrer',
+        headers: { accept: 'application/json' },
+      })
+    } catch {
+      // A network failure has no response: back off and try again.
+      if (attempt + 1 < MAX_ATTEMPTS) {
+        await sleep(delayFor(null, attempt))
+        continue
+      }
+      failBootstrap(setAuthError)
+      return
+    }
+
+    if (meRes.ok) {
+      const user = (await meRes.json()) as MeResponse
+      // Session-bound CSRF token for this page's lifetime — every state-changing
+      // request echoes it back in the X-CSRF-Token header.
+      setCsrfToken(user.csrfToken ?? null)
+      // Resolve the date/number formatting prefs: user's own settings first, then
+      // the workspace default, then UTC/en. Read by shared/lib/utils formatters.
+      setFormatPrefs(
+        resolveFormatPrefs(
+          { locale: user.locale, timezone: user.timezone },
+          user.workspaceDefaults ?? null,
+        ),
+      )
+      setUser(
+        {
+          ...user,
+          permissions: user.permissions ?? [],
+          locale: user.locale ?? 'en',
+          timezone: user.timezone ?? 'UTC',
+          emailVerified: user.emailVerified ?? false,
+          createdAt: user.createdAt ?? '',
+          updatedAt: user.updatedAt ?? '',
+        },
+        user.memberships ?? [],
+      )
+      return
+    }
+
+    if (meRes.status === 401 || meRes.status === 403) {
+      // A SESSION fact: the cookie is dead or the caller lost access. Sign-in is the way back.
+      setCsrfToken(null)
       clearAuth()
       return
     }
 
-    const user = (await meRes.json()) as MeResponse
-    // Session-bound CSRF token for this page's lifetime — every state-changing
-    // request echoes it back in the X-CSRF-Token header.
-    setCsrfToken(user.csrfToken ?? null)
-    // Resolve the date/number formatting prefs: user's own settings first, then
-    // the workspace default, then UTC/en. Read by shared/lib/utils formatters.
-    setFormatPrefs(
-      resolveFormatPrefs(
-        { locale: user.locale, timezone: user.timezone },
-        user.workspaceDefaults ?? null,
-      ),
-    )
-    setUser(
-      {
-        ...user,
-        permissions: user.permissions ?? [],
-        locale: user.locale ?? 'en',
-        timezone: user.timezone ?? 'UTC',
-        emailVerified: user.emailVerified ?? false,
-        createdAt: user.createdAt ?? '',
-        updatedAt: user.updatedAt ?? '',
-      },
-      user.memberships ?? [],
-    )
-  } catch {
-    setCsrfToken(null)
-    clearAuth()
+    // 429 / 5xx / a response that is not about this session: retry, honouring Retry-After.
+    if (attempt + 1 < MAX_ATTEMPTS) {
+      await sleep(delayFor(meRes, attempt))
+      continue
+    }
+    failBootstrap(setAuthError)
+    return
   }
+}
+
+/** The last attempt failed transiently: keep the store's profile, surface the recovery screen. */
+function failBootstrap(setAuthError: (error: 'unavailable' | null) => void): void {
+  setCsrfToken(null)
+  setAuthError('unavailable')
 }
 
 interface MeResponse {

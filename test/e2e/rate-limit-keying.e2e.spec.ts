@@ -64,16 +64,70 @@ describe('rate limits around authentication', () => {
     const alice = await signIn(app, 'admin@qnsc.dev');
     const bob = await signIn(app, 'dev@qnsc.dev');
     const headers = (cookie: string) => ({ cookie, 'cf-connecting-ip': ip });
+    const cache = app.get(CacheService);
 
-    let aliceLimited = 0;
-    for (let i = 0; i < 110; i++) {
-      if ((await get(headers(alice), '/v1/auth/me')).statusCode === 429) aliceLimited += 1;
-    }
+    // The store the guard writes to, spent directly: 599 of DEFAULT's 600 to start the window now.
+    const me = await get(headers(alice), '/v1/auth/me');
+    expect(me.statusCode, me.body).toBe(200);
+    const aliceId = me.json<{ id: string }>().id;
+    for (let i = 0; i < 599; i++) await cache.consumeRateLimit(`DEFAULT:uid:${aliceId}`, 600, 60);
 
-    expect(aliceLimited, 'one user spending DEFAULT (100/min) is limited').toBeGreaterThan(0);
+    expect((await get(headers(alice), '/v1/projects')).statusCode, 'the 600th is admitted').toBe(
+      200,
+    );
+    expect((await get(headers(alice), '/v1/projects')).statusCode, 'the 601st is limited').toBe(
+      429,
+    );
     expect(
-      (await get(headers(bob), '/v1/auth/me')).statusCode,
+      (await get(headers(bob), '/v1/projects')).statusCode,
       "...and does not spend someone else's",
     ).toBe(200);
+  });
+
+  it('GET /v1/auth/me has its own, lower ceiling so a retry loop cannot spend DEFAULT', async () => {
+    const ip = visitor();
+    const bob = await signIn(app, 'dev@qnsc.dev');
+    const headers = { cookie: bob, 'cf-connecting-ip': ip };
+    const cache = app.get(CacheService);
+
+    // This read spends the first AUTH_ME slot; spend 118 more so the 120th is the next request.
+    const me = await get(headers, '/v1/auth/me');
+    expect(me.statusCode, me.body).toBe(200);
+    const bobId = me.json<{ id: string }>().id;
+    for (let i = 0; i < 118; i++) await cache.consumeRateLimit(`AUTH_ME:uid:${bobId}`, 120, 60);
+
+    expect((await get(headers, '/v1/auth/me')).statusCode, 'the 120th is admitted').toBe(200);
+    const limited = await get(headers, '/v1/auth/me');
+    expect(limited.statusCode, 'the 121st is limited').toBe(429);
+    expect(limited.headers['retry-after'], 'and says when to try again').toBeDefined();
+    // The user's DEFAULT budget is untouched by the refusal.
+    expect((await get(headers, '/v1/projects')).statusCode).toBe(200);
+  });
+
+  it('PRE_AUTH is a floor under UNVERIFIED traffic only: a signed-in request gives its address slot back', async () => {
+    const sharedIp = visitor();
+    const alice = await signIn(app, 'admin@qnsc.dev');
+    const cache = app.get(CacheService);
+    for (let i = 0; i < 30; i++) {
+      expect(
+        (await get({ cookie: alice, 'cf-connecting-ip': sharedIp }, '/v1/auth/me')).statusCode,
+      ).toBe(200);
+    }
+    // The refund rides behind the response; let the last one settle.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const afterSignedIn = await cache.consumeRateLimit(`PRE_AUTH:ip:${sharedIp}`, 1200, 60);
+    expect(afterSignedIn.remaining, '30 signed-in requests left the address bucket empty').toBe(
+      1199,
+    );
+
+    // A forged cookie never reaches a principal, so its slot STAYS on the address.
+    const forgedIp = visitor();
+    const forged = await get(
+      { cookie: '__Secure-rova.session_token=forged', 'cf-connecting-ip': forgedIp },
+      '/v1/projects',
+    );
+    expect(forged.statusCode, 'a forged session is refused').toBe(401);
+    const afterForged = await cache.consumeRateLimit(`PRE_AUTH:ip:${forgedIp}`, 1200, 60);
+    expect(afterForged.remaining, 'the unverified request kept its slot').toBe(1198);
   });
 });

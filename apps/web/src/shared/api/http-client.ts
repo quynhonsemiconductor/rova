@@ -12,6 +12,7 @@ import createClient from 'openapi-fetch'
 import type { paths } from './generated/api'
 import { ENV } from '@/shared/config/env'
 import { CSRF_HEADER, getCsrfToken } from './csrf'
+import { ApiError } from './api-error'
 
 const BASE_URL = ENV.API_BASE_URL
 
@@ -30,6 +31,47 @@ export function forbiddenAction(status: number, method: string, url: string): 't
   if (status !== 403) return 'silent'
   if (url.includes('/auth/')) return 'silent'
   return ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase()) ? 'silent' : 'toast'
+}
+
+/** `Retry-After` as seconds: a delta-seconds value, or an HTTP-date. */
+export function retryAfterSeconds(header: string | null): number | undefined {
+  if (!header) return undefined
+  const seconds = Number(header)
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds
+  const at = Date.parse(header)
+  if (!Number.isFinite(at)) return undefined
+  return Math.max(Math.ceil((at - Date.now()) / 1000), 0)
+}
+
+/**
+ * A 429 on a READ, as a THROWN error carrying its status and `Retry-After`.
+ *
+ * Query functions hand TanStack Query only what they throw, and most feature hooks throw
+ * `new Error(apiErrorMessage(...))` — which discards both the status and the header, so the
+ * query client's retry policy could not tell a 429 apart from a 400, let alone honour the
+ * server's wait. This helper is called from the response middleware, BEFORE the body reaches
+ * the hook, so a rate-limited GET arrives as an {@link ApiError} with `status: 429` and
+ * `retryAfter` intact. Writes are untouched: a mutated POST is retried by the caller's own
+ * intent, never by the cache.
+ */
+export async function rateLimitedQueryError(
+  request: Request,
+  response: Response,
+): Promise<ApiError | null> {
+  if (response.status !== 429) return null
+  const method = request.method.toUpperCase()
+  if (method !== 'GET' && method !== 'HEAD') return null
+  let body: unknown
+  try {
+    body = await response.clone().json()
+  } catch {
+    body = null
+  }
+  return new ApiError(
+    body ?? { error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
+    429,
+    retryAfterSeconds(response.headers.get('retry-after')),
+  )
 }
 
 export const apiClient = createClient<paths>({
@@ -80,6 +122,11 @@ apiClient.use({
    * `/auth/*` is exempt: the login form renders its own inline error.
    */
   async onResponse({ request, response }) {
+    // Before any hook sees it: a rate-limited READ becomes a thrown ApiError that the query
+    // client can retry, honouring Retry-After.
+    const rateLimited = await rateLimitedQueryError(request, response)
+    if (rateLimited) throw rateLimited
+
     if (response.status === 401) {
       // The shared guard refreshes the session's access token server-side, so a
       // 401 means the session is truly dead — send the user to login, keeping

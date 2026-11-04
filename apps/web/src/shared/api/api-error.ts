@@ -67,11 +67,14 @@ export class ApiError extends Error {
   readonly code: string | undefined
   /** The HTTP status, kept for the rare caller that needs 4xx-vs-5xx. */
   readonly status: number | undefined
+  /** A 429's `Retry-After`, in seconds. The query client's retry policy waits this long. */
+  readonly retryAfter: number | undefined
 
-  constructor(error: unknown, status?: number) {
+  constructor(error: unknown, status?: number, retryAfter?: number) {
     super(apiErrorMessage(error, status))
     this.name = 'ApiError'
     this.code = apiErrorCode(error)
     this.status = status
+    this.retryAfter = retryAfter
   }
 }

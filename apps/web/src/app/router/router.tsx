@@ -39,7 +39,12 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
 // ── Auth guard helper ─────────────────────────────────────────────────────────
 async function requireAuth() {
   await bootstrapAuth()
-  const { isAuthenticated } = useAuthStore.getState()
+  const { isAuthenticated, authError } = useAuthStore.getState()
+  if (authError) {
+    // The session check failed for a TRANSIENT reason (429/5xx/network). Not a sign-out: show
+    // the recovery screen rather than bouncing a signed-in user to /login.
+    throw redirect({ to: '/auth-unavailable' } as Parameters<typeof redirect>[0])
+  }
   if (!isAuthenticated) {
     // AUTH-FR-012: preserve requested URL so login can redirect back after session expiry
     const returnTo = window.location.pathname + window.location.search
@@ -132,6 +137,15 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: lazyPage(() => import('@/pages/login/login-page'), 'LoginPage'),
+})
+
+const authUnavailableRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/auth-unavailable',
+  component: lazyPage(
+    () => import('@/pages/auth-unavailable/auth-unavailable-page'),
+    'AuthUnavailablePage',
+  ),
 })
 
 // ── Authenticated layout route ────────────────────────────────────────────────
@@ -547,6 +561,7 @@ const notFoundRoute = createRoute({
 // ── Route tree ────────────────────────────────────────────────────────────────
 const routeTree = rootRoute.addChildren([
   loginRoute,
+  authUnavailableRoute,
   authRoute.addChildren([
     homeRoute,
     projectsRoute,

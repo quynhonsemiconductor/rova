@@ -9,6 +9,42 @@ import { RateLimitedException } from '../errors/exceptions';
 import { MCP_CALL_TOKEN_HEADER, peekMcpCallToken } from '../mcp-call-token';
 import { RATE_LIMIT_TIERS, SKIP_RATE_LIMIT_KEY } from './rate-limit.constants';
 
+/** The slot this guard took for one request, and whether it has been given back. */
+export interface PreAuthReservation {
+  key: string;
+  id: string;
+  settled: boolean;
+}
+
+/** Where the reservation rides on the request so the post-auth guard can settle it. */
+export const PRE_AUTH_RESERVATION = Symbol('rova:PRE_AUTH_RESERVATION');
+
+/**
+ * Gives back the address slot a SIGNED-IN request took before identity ran, once.
+ *
+ * Called by `RateLimitGuard` only when a principal exists: an authenticated request then leaves
+ * no trace on the shared address, so an office behind one public IP never fills PRE_AUTH with
+ * its own normal traffic. Every request that never proves who it is keeps its slot (a failed
+ * login, a forged cookie, a route answered 401 before the principal was written). A refund that
+ * fails is logged; the request has already been answered.
+ */
+export function refundPreAuthReservation(
+  cache: CacheService,
+  logger: Logger,
+  req: FastifyRequest,
+): void {
+  const holder = req as unknown as Record<symbol, unknown>;
+  const reservation = holder[PRE_AUTH_RESERVATION] as PreAuthReservation | undefined;
+  if (!reservation || reservation.settled) return;
+  reservation.settled = true;
+  cache.refundRateLimit(reservation.key, reservation.id).catch((err: unknown) => {
+    logger.error(
+      failOpenLog('rate_limit', { err, key: reservation.key }),
+      'Rate limit slot not refunded',
+    );
+  });
+}
+
 /**
  * The rate limit that runs BEFORE anyone is authenticated, keyed by the client's address.
  *
@@ -65,7 +101,7 @@ export class PreAuthRateLimitGuard implements CanActivate {
 
     for (const { tier, key } of buckets) {
       const { limit, windowSeconds } = RATE_LIMIT_TIERS[tier];
-      let outcome: { allowed: boolean; remaining: number; resetAt: number };
+      let outcome: { allowed: boolean; remaining: number; resetAt: number; id?: string };
       try {
         outcome = await this.cache.consumeRateLimit(key, limit, windowSeconds);
       } catch (err) {
@@ -83,6 +119,16 @@ export class PreAuthRateLimitGuard implements CanActivate {
         throw new RateLimitedException(
           `Rate limit exceeded (${tier}). Retry after ${retryAfter}s.`,
         );
+      }
+      // PRE_AUTH is the address floor: reserve THIS slot so the post-auth guard can give it back
+      // once identity has verified the caller. PRE_AUTH_TOKEN is deliberately not refundable —
+      // presenting a token is the thing that bucket counts, whether it turns out valid or not.
+      if (tier === 'PRE_AUTH' && outcome.id !== undefined) {
+        (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = {
+          key,
+          id: outcome.id,
+          settled: false,
+        };
       }
     }
     return true;
