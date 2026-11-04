@@ -170,6 +170,24 @@ describe('PreAuthRateLimitGuard', () => {
     expect(req[PRE_AUTH_RESERVATION]).toBeUndefined();
   });
 
+  it('DISABLE_RATE_LIMIT skips the floor entirely (dev/CI)', async () => {
+    process.env['DISABLE_RATE_LIMIT'] = 'true';
+    const disabledGuard = new PreAuthRateLimitGuard(
+      new Reflector(),
+      { consumeRateLimit: consume } as never,
+      { recordFailOpen: vi.fn() } as never,
+    );
+    expect(await disabledGuard.canActivate(ctx({}))).toBe(true);
+    expect(consume).not.toHaveBeenCalled();
+    delete process.env['DISABLE_RATE_LIMIT'];
+  });
+
+  it('leaves a non-HTTP context alone (no request to key)', async () => {
+    const nonHttp = { ...(ctx({}) as object), getType: () => 'rpc' } as unknown as ExecutionContext;
+    expect(await guard.canActivate(nonHttp)).toBe(true);
+    expect(consume).not.toHaveBeenCalled();
+  });
+
   it('fails open on a cache outage', async () => {
     consume.mockRejectedValue(new Error('valkey down'));
     expect(await guard.canActivate(ctx({}))).toBe(true);
