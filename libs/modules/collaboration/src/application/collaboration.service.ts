@@ -13,6 +13,7 @@ import { ICommentRepository, COMMENT_REPOSITORY } from '../domain/ports/comment.
 import type { Comment, CommentEntityType, CommentRef } from '../domain/collaboration.types';
 import { PortfolioItemsService } from '@modules/portfolio';
 import { ProjectsService } from '@modules/projects';
+import { ActivityLogger } from '@modules/activity';
 
 @Injectable()
 export class CollaborationService {
@@ -25,6 +26,9 @@ export class CollaborationService {
     private readonly portfolioItems: PortfolioItemsService,
     // Owns `assertProjectWritable` — the archived-project rule (PRJ-FR-010).
     private readonly projects: ProjectsService,
+    // Revision history for comment deletion (G6): the row is soft-deleted, and the delete must
+    // be visible in the subject's history rather than vanishing.
+    private readonly activity: ActivityLogger,
   ) {}
 
   /**
@@ -206,6 +210,26 @@ export class CollaborationService {
       entityType: comment.entityType,
       entityId: comment.entityId,
     });
+    const projectId = await this.subjectProjectId(actor, {
+      entityType: comment.entityType,
+      entityId: comment.entityId,
+    });
     await this.commentRepo.softDelete(commentId);
+    // G6: a deleted comment leaves a trace on its subject's history. Best-effort — a revision
+    // log failure must not fail the deletion the caller asked for.
+    await this.activity.logSafe([
+      this.activity.build(
+        {
+          workspaceId: actor.workspaceId,
+          projectId,
+          entityType: comment.entityType,
+          entityId: comment.entityId,
+        },
+        actor.sub,
+        'comment.deleted',
+        null,
+        { commentId },
+      ),
+    ]);
   }
 }
