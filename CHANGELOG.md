@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.7](https://github.com/quynhonsemiconductor/rova/compare/v0.8.6...v0.8.7) (2026-11-04)
+
+
+### ✨ Features
+
+* **mcp:** audit line and metrics per tool call ([#878](https://github.com/quynhonsemiconductor/rova/issues/878)) ([0133ac7](https://github.com/quynhonsemiconductor/rova/commit/0133ac7000d140dddc32ebd21645ad04aa8a85ec))
+* **mcp:** write plumbing and the REST-side write gate ([#881](https://github.com/quynhonsemiconductor/rova/issues/881)) ([cdad435](https://github.com/quynhonsemiconductor/rova/commit/cdad435704528e68ca86879521826afd503c4641))
+
+
+### 🐛 Bug Fixes
+
+* **ci:** merge the digest maps without the shell eating the JSON ([#883](https://github.com/quynhonsemiconductor/rova/issues/883)) ([594627a](https://github.com/quynhonsemiconductor/rova/commit/594627a3124e26a7635f54009db5621cb62ad905))
+* **mcp:** answer with names, and report the real release version ([#877](https://github.com/quynhonsemiconductor/rova/issues/877)) ([8b5d5a8](https://github.com/quynhonsemiconductor/rova/commit/8b5d5a8a1e629016f6a8e7d987fad033ec0921b1))
+
 ## [0.8.6](https://github.com/quynhonsemiconductor/rova/compare/v0.8.5...v0.8.6) (2026-11-03)
 
 
