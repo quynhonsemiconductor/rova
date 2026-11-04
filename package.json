@@ -75,7 +75,7 @@
     "@opentelemetry/sdk-trace-base": "^2.9.0",
     "@opentelemetry/semantic-conventions": "^1.41.1",
     "@quynhonsemiconductor/identity": "^8.5.2",
-    "@quynhonsemiconductor/observability": "^0.6.2",
+    "@quynhonsemiconductor/observability": "^0.6.5",
     "@quynhonsemiconductor/platform-cache": "^3.3.1",
     "@quynhonsemiconductor/platform-http": "^5.0.2",
     "@quynhonsemiconductor/platform-db": "^0.1.3",
