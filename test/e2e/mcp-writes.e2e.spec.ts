@@ -901,6 +901,32 @@ describe('/mcp write tools (e2e)', () => {
     });
     expect(labels.json<{ name: string }[]>().filter((l) => l.name === labelName)).toHaveLength(1);
 
+    // The 204 label route itself replays under an Idempotency-Key (the interceptor caches VOID
+    // answers too): the second identical POST is marked as a replay.
+    const labelId = label.json<{ id?: string }>().id;
+    if (typeof labelId === 'string') {
+      const replayHeaders = {
+        cookie: adminCsrf.cookie,
+        [CSRF_HEADER]: adminCsrf.token,
+        'idempotency-key': `e2e-void-replay-${Date.now()}`,
+      };
+      const first = await app.inject({
+        method: 'POST',
+        url: `/v1/work-items/${itemId}/labels`,
+        headers: replayHeaders,
+        payload: { labelId },
+      });
+      const second = await app.inject({
+        method: 'POST',
+        url: `/v1/work-items/${itemId}/labels`,
+        headers: replayHeaders,
+        payload: { labelId },
+      });
+      expect(first.statusCode, first.body).toBe(204);
+      expect(second.statusCode).toBe(204);
+      expect(second.headers['idempotency-replayed']).toBe('true');
+    }
+
     const iterations = await app.inject({
       method: 'GET',
       url: '/v1/iterations/options',

@@ -166,6 +166,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
         // needs the ETag of the row that was actually created, not a fresh read.
         if (typeof entry['etag'] === 'string') setEtag(entry['etag']);
         setReplayed();
+        // `null` is a cached VOID answer (a 204 route). Replaying it must emit nothing, so the
+        // route's own status (204) goes out with no body — NOT the string "null".
+        if (entry['response'] === null) return of(undefined);
         return of(entry['response']);
       }
       // An entry written before {hash,status} existed: replay its body, route status.
@@ -240,24 +243,30 @@ export class IdempotencyInterceptor implements NestInterceptor {
                       void (async () => {
                         const etag = getEtag();
                         const status = reply.statusCode !== 200 ? reply.statusCode : defaultStatus;
-                        if (lastResponse !== undefined) {
-                          try {
-                            await this.cache.instance.set(
-                              redisKey,
-                              JSON.stringify({
-                                v: 1,
-                                hash: requestHash,
-                                status,
-                                ...(typeof etag === 'string' ? { etag } : {}),
-                                response: lastResponse,
-                              }),
-                              'EX',
-                              IDEMPOTENCY_TTL_SECONDS,
-                            );
-                          } catch (err) {
-                            // Cache failure must NOT fail the request
-                            this.logger.warn({ msg: 'idempotency: failed to cache response', err });
-                          }
+                        /**
+                         * EVERY completed handler is cached, including a VOID one. A 204 route
+                         * (`addLabel`, `mark_notifications_read`) emits `undefined`, and skipping
+                         * those made `@UseIdempotency` inert on exactly the routes that opted in:
+                         * the first call took the in-flight lock, completed, cached nothing, and
+                         * a retry ran the write again. `response: null` is the explicit marker a
+                         * replay turns back into "no body".
+                         */
+                        try {
+                          await this.cache.instance.set(
+                            redisKey,
+                            JSON.stringify({
+                              v: 1,
+                              hash: requestHash,
+                              status,
+                              ...(typeof etag === 'string' ? { etag } : {}),
+                              response: lastResponse ?? null,
+                            }),
+                            'EX',
+                            IDEMPOTENCY_TTL_SECONDS,
+                          );
+                        } catch (err) {
+                          // Cache failure must NOT fail the request
+                          this.logger.warn({ msg: 'idempotency: failed to cache response', err });
                         }
                         await release();
                       })().finally(() => {
