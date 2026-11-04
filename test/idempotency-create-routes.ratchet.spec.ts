@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { WorkItemsController } from '@modules/work-items/interface/http/work-items.controller';
 import { IdempotencyInterceptor } from '../libs/platform/src/http/idempotency.interceptor';
 import { CollaborationController } from '@modules/collaboration/interface/http/collaboration.controller';
+import { PortfolioCollaborationController } from '@modules/collaboration/interface/http/portfolio-collaboration.controller';
 import { TestCaseRecordsController } from '@modules/test-cases/interface/http/test-case-records.controller';
 import { WorkItemTestCasesController } from '@modules/test-cases/interface/http/test-cases.controller';
 import { PortfolioItemsController } from '@modules/portfolio/interface/http/portfolio-items.controller';
@@ -31,6 +32,11 @@ const CREATE_ROUTES: Array<{ label: string; controller: object; method: string }
   {
     label: 'POST /v1/work-items/:id/comments',
     controller: CollaborationController.prototype,
+    method: 'createComment',
+  },
+  {
+    label: 'POST /v1/portfolio-items/:id/comments',
+    controller: PortfolioCollaborationController.prototype,
     method: 'createComment',
   },
   {

@@ -10,7 +10,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiCommonErrors } from '@platform';
+import { ApiCommonErrors, UseIdempotency } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { AuthPolicy, RequirePermission } from '@modules/access';
@@ -74,6 +74,7 @@ export class PortfolioCollaborationController {
   }
 
   @Post('comments')
+  @UseIdempotency()
   @RequirePermission('portfolio:edit', { resource: 'portfolio_item', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Add a comment to an Epic or Feature' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

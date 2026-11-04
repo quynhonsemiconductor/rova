@@ -15,7 +15,7 @@ export function registerAddComment(server: McpServer, ctx: ToolContext) {
     {
       title: 'Add comment',
       description:
-        'Comment on one work item (key/id) or portfolio item (key). @mentions notify the named people. Creates a comment as you.',
+        "WRITES a comment on one work item (key/id) or portfolio item (key) as you; @mentions notify the named people. Use only on the user's explicit request.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -45,21 +45,24 @@ export function registerAddComment(server: McpServer, ctx: ToolContext) {
       }
       let url: string;
       let subject: Record<string, unknown>;
+      let projectId: string;
       if (workItemKey !== undefined) {
         const item = await resolveWorkItem(ctx, workItemKey);
         if (!item.ok) return failureResult(item);
         url = `/v1/work-items/${pathSegment(item.id)}/comments`;
         subject = { workItemId: item.id, itemKey: item.itemKey };
+        projectId = item.projectId;
       } else {
         const item = await resolvePortfolioItem(ctx, portfolioItemKey as string);
         if (!item.ok) return failureResult(item);
         url = `/v1/portfolio-items/${pathSegment(item.id)}/comments`;
         subject = { portfolioItemId: item.id, itemKey: item.itemKey };
+        projectId = item.projectId;
       }
 
       let mentionedUserIds: string[] | undefined;
       if (mention && mention.length > 0) {
-        const people = await resolvePeople(ctx, mention);
+        const people = await resolvePeople(ctx, projectId, mention);
         if (!people.ok) return failureResult(people);
         mentionedUserIds = people.ids;
       }

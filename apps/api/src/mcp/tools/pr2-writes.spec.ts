@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpRestCall, McpRestResult, ToolContext } from './rest';
 import { instrumentToolHandler, type ToolCallObservation } from './rest';
+import { CreateTimeLogSchema } from '@modules/work-items/interface/http/dto/work-item-request.dto';
 import { registerLogTime } from './log_time';
 import { registerAddComment } from './add_comment';
 import { registerMarkNotificationsRead } from './mark_notifications_read';
@@ -42,7 +43,7 @@ async function call(
   };
 }
 
-const WORK_ITEM = { id: U(20), itemKey: 'US-412', title: 'Story' };
+const WORK_ITEM = { id: U(20), projectId: U(10), itemKey: 'US-412', title: 'Story' };
 const resolved = (call: McpRestCall): McpRestResult | null => {
   if (call.url === '/v1/work-items/by-key')
     return { statusCode: 200, json: WORK_ITEM, headers: { ETag: '"3"' } };
@@ -89,6 +90,18 @@ describe('PR2 write tools', () => {
       timeLog: { id: U(60) },
       changed: ['hours', 'loggedDate', 'description'],
     });
+  });
+
+  it('the logged date is a real calendar date (REST and the tool) — 2026-02-30 is refused', () => {
+    expect(CreateTimeLogSchema.safeParse({ loggedDate: '2026-02-30', hours: 1 }).success).toBe(
+      false,
+    );
+    expect(CreateTimeLogSchema.safeParse({ loggedDate: '2026-06-20', hours: 1 }).success).toBe(
+      true,
+    );
+    expect(CreateTimeLogSchema.safeParse({ loggedDate: '1999-12-31', hours: 1 }).success).toBe(
+      false,
+    );
   });
 
   it('a non-member refusal is relayed exactly as REST returned it', async () => {
@@ -149,6 +162,8 @@ describe('PR2 write tools', () => {
       body: 'PR up, @Linh',
       mention: ['linh@qnsc.vn'],
     });
+    // Mentions resolve through the PROJECT's picker feed, never the workspace directory.
+    expect(calls.some((c) => c.url === `/v1/projects/${U(10)}/member-options`)).toBe(true);
     const post = calls.find((c) => c.method === 'POST')!;
     expect(post.url).toBe(`/v1/work-items/${U(20)}/comments`);
     expect(post.body).toMatchObject({ body: 'PR up, @Linh', mentionedUserIds: [U(70)] });

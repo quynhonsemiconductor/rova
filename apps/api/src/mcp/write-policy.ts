@@ -89,8 +89,10 @@ export const MCP_REFERENCE_READ_ROUTES: readonly string[] = [
   '/v1/work-items/:id/attachments',
   // rova_list_test_results resolves the case by key before reading its results.
   '/v1/test-cases/by-key/:key',
-  // rova_list_comments on a portfolio subject.
+  // rova_list_comments on a portfolio subject; the resolver's record read when a list row
+  // carries no projectId.
   '/v1/portfolio-items/:id/comments',
+  '/v1/portfolio-items/:id',
 ];
 
 /** Every route a bridged READ may reach: the catalogue's GETs plus the reference feeds. */

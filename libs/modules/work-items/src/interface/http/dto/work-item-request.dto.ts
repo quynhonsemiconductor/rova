@@ -338,8 +338,28 @@ export class SetWorkItemMilestonesDto extends createZodDto(SetWorkItemMilestones
 
 // ── Time log ──────────────────────────────────────────────────────────────────
 
+/**
+ * A real calendar date: the regex alone accepts 2026-02-30 and 2026-13-01, which the DB would
+ * then reject with a 500-ish error instead of a validation refusal. Range: 2000–2100.
+ */
+export function isRealLoggedDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  if (year < 2000 || year > 2100) return false;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
+export const LoggedDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD')
+  .refine(isRealLoggedDate, 'Must be a real calendar date between 2000 and 2100');
+
 export const CreateTimeLogSchema = z.object({
-  loggedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
+  loggedDate: LoggedDateSchema,
   hours: z.coerce
     .number()
     .positive()
@@ -351,10 +371,7 @@ export const CreateTimeLogSchema = z.object({
 export class CreateTimeLogDto extends createZodDto(CreateTimeLogSchema) {}
 
 export const UpdateTimeLogSchema = z.object({
-  loggedDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD')
-    .optional(),
+  loggedDate: LoggedDateSchema.optional(),
   hours: z.coerce
     .number()
     .positive()

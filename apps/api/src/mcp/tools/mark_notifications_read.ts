@@ -15,7 +15,7 @@ export function registerMarkNotificationsRead(server: McpServer, ctx: ToolContex
     {
       title: 'Mark notifications read',
       description:
-        'Mark one of your notifications read (id) or all of them (all: true). Idempotent.',
+        "WRITES: marks one of your notifications read (id) or all of them (all: true), as you. Idempotent. Use only on the user's explicit request.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
