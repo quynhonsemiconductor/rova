@@ -85,7 +85,10 @@ describe('MCP tools ratchet', () => {
       const src = stripComments(readFileSync(file, 'utf8'));
       // The principal travels in the MCP call token, never in a copied header.
       expect(src.match(/\bheaders\s*:/), file).toBeNull();
-      expect(src.match(/\.(raw|headers)\b/), file).toBeNull();
+      expect(src.match(/\.raw\b/), file).toBeNull();
+      // REST.ts is the one file allowed to READ a RESPONSE header (`responseEtag`, the work-item
+      // concurrency token); every other tool file may not touch headers at all.
+      if (!file.endsWith('rest.ts')) expect(src.match(/\.headers\b/), file).toBeNull();
       expect(src.match(/Cf-Access-Jwt-Assertion/i), file).toBeNull();
     }
   });

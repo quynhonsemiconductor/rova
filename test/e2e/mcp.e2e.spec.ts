@@ -322,6 +322,10 @@ describe('/mcp over the real guard chain (e2e)', () => {
       rova_my_work: {},
       rova_list_backlog: { projectId: STRANGER_PROJECT },
       rova_work_item_activity: { workItemId: STRANGER_ITEM },
+      rova_work_item_details: { key: STRANGER_ITEM },
+      rova_project_vocabulary: { project: STRANGER_PROJECT },
+      rova_project_activity: { project: STRANGER_PROJECT },
+      rova_list_test_results: { testCaseKey: 'TC-1' },
       rova_list_iterations: { projectId: STRANGER_PROJECT },
       rova_iteration_options: { projectId: STRANGER_PROJECT },
       rova_iteration_status: { iterationId: STRANGER_ITERATION },
@@ -393,6 +397,11 @@ describe('/mcp over the real guard chain (e2e)', () => {
       'rova_work_item_code_changes',
     ]);
 
+    /** PR1 tools whose no-role refusal is a candidate MESSAGE (the project list is empty). */
+    const MESSAGE_ONLY = new Set(['rova_project_vocabulary', 'rova_project_activity']);
+    /** PR1 tools that resolve a reference first: their route may answer 403 OR 404. */
+    const RESOLVER_DENIED = new Set(['rova_work_item_details', 'rova_list_test_results']);
+
     it('the denial matrix is derived from the live tools/list and covers every tool', async () => {
       const { token } = await bindPerson('mcp-matrix');
       const live = await toolsList(token);
@@ -420,6 +429,13 @@ describe('/mcp over the real guard chain (e2e)', () => {
           const rows = out[key] as unknown[];
           expect(Array.isArray(rows), `${name} must return a list`).toBe(true);
           expect(rows.length, `${name} must be empty for a no-role member`).toBe(0);
+        } else if (MESSAGE_ONLY.has(name)) {
+          // An empty readable-project set is a candidate message, not a route denial.
+          expect(String(out.error), `${name} must explain the miss`).toContain(
+            'No project matches',
+          );
+        } else if (RESOLVER_DENIED.has(name)) {
+          expect([403, 404], `${name} must be denied by its route`).toContain(out.statusCode);
         } else if (POLICY_403.has(name)) {
           expect(out.statusCode, `${name} must be denied by its route`).toBe(403);
         } else {

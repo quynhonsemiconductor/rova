@@ -179,6 +179,7 @@ export default defineConfig({
         'apps/api/src/mcp/audit.ts',
         'apps/api/src/mcp/tools/refs.ts',
         'apps/api/src/mcp/tools/rest.ts',
+        'apps/api/src/mcp/tools/lookups.ts',
         'apps/api/src/mcp/write.guard.ts',
       ],
       exclude: ['**/*.spec.ts'],

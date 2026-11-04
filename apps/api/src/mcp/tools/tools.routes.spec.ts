@@ -5,6 +5,7 @@ import { TOOL_ROUTES, WRITE_TOOL_ROUTES } from './registry';
 import { WRITE_TOOL_REGISTRARS } from './register';
 import {
   MCP_READ_ROUTES,
+  MCP_REFERENCE_READ_ROUTES,
   MCP_WRITE_ROUTES,
   mcpWriteRouteKey,
   normalizeRouteTemplate,
@@ -249,6 +250,30 @@ const OWNER: Record<
     get: "@Get(':id/activity')",
     permission: "'work_item:view'",
   },
+  rova_work_item_details: {
+    file: 'work-items/src/interface/http/work-items.controller.ts',
+    controller: "@Controller('work-items')",
+    get: "@Get(':id/tasks')",
+    permission: "'work_item:view'",
+  },
+  rova_project_vocabulary: {
+    file: 'projects/src/interface/http/projects.controller.ts',
+    controller: "@Controller('projects')",
+    get: "@Get(':id/statuses')",
+    permission: "'project:view'",
+  },
+  rova_project_activity: {
+    file: 'projects/src/interface/http/projects.controller.ts',
+    controller: "@Controller('projects')",
+    get: "@Get(':id/activity')",
+    permission: "'project:view'",
+  },
+  rova_list_test_results: {
+    file: 'test-cases/src/interface/http/test-case-records.controller.ts',
+    controller: "@Controller('test-cases')",
+    get: "@Get(':id/test-results')",
+    permission: "'test_result:view'",
+  },
   rova_list_iterations: {
     file: 'iterations/src/interface/http/iterations.controller.ts',
     controller: "@Controller('iterations')",
@@ -314,43 +339,49 @@ const OWNER: Record<
 describe('MCP tool catalogue maps to real routes', () => {
   it('every registered tool route exists in the owning controller', () => {
     const names = Object.keys(TOOL_ROUTES) as (keyof typeof TOOL_ROUTES)[];
-    expect(names.sort()).toEqual([
-      'rova_carryover_report',
-      'rova_get_milestone',
-      'rova_get_portfolio_item',
-      'rova_get_project',
-      'rova_get_release',
-      'rova_get_test_case_by_key',
-      'rova_get_work_item',
-      'rova_get_work_item_by_key',
-      'rova_iteration_burndown',
-      'rova_iteration_options',
-      'rova_iteration_status',
-      'rova_list_backlog',
-      'rova_list_comments',
-      'rova_list_iterations',
-      'rova_list_milestones',
-      'rova_list_notifications',
-      'rova_list_portfolio_items',
-      'rova_list_project_members',
-      'rova_list_projects',
-      'rova_list_releases',
-      'rova_list_teams',
-      'rova_list_test_cases',
-      'rova_my_work',
-      'rova_project_health',
-      'rova_quality_defects',
-      'rova_release_tracking',
-      'rova_search_work_items',
-      'rova_team_capacity',
-      'rova_team_status',
-      'rova_unread_notifications',
-      'rova_velocity',
-      'rova_whoami',
-      'rova_work_item_activity',
-      'rova_work_item_code_changes',
-    ]);
-    expect(names.length).toBe(34);
+    expect(names.sort()).toEqual(
+      [
+        'rova_carryover_report',
+        'rova_get_milestone',
+        'rova_get_portfolio_item',
+        'rova_get_project',
+        'rova_get_release',
+        'rova_get_test_case_by_key',
+        'rova_get_work_item',
+        'rova_get_work_item_by_key',
+        'rova_iteration_burndown',
+        'rova_iteration_options',
+        'rova_iteration_status',
+        'rova_list_backlog',
+        'rova_list_comments',
+        'rova_list_iterations',
+        'rova_list_milestones',
+        'rova_list_notifications',
+        'rova_list_portfolio_items',
+        'rova_list_project_members',
+        'rova_list_projects',
+        'rova_list_releases',
+        'rova_list_teams',
+        'rova_list_test_results',
+        'rova_list_test_cases',
+        'rova_my_work',
+        'rova_project_activity',
+        'rova_project_health',
+        'rova_project_vocabulary',
+        'rova_quality_defects',
+        'rova_release_tracking',
+        'rova_search_work_items',
+        'rova_team_capacity',
+        'rova_team_status',
+        'rova_unread_notifications',
+        'rova_velocity',
+        'rova_whoami',
+        'rova_work_item_activity',
+        'rova_work_item_details',
+        'rova_work_item_code_changes',
+      ].sort(),
+    );
+    expect(names.length).toBe(38);
     for (const name of names) {
       const src = readFileSync(join(CONTROLLERS, OWNER[name].file), 'utf8');
       expect(src.includes(OWNER[name].controller), `${name}: controller prefix moved`).toBe(true);
@@ -434,6 +465,16 @@ describe('MCP tool catalogue maps to real routes', () => {
       .filter(({ path }) => !allowed.has(normalizeRouteTemplate(path)))
       .map(({ file, path }) => `${file}: ${path}`);
     expect(offenders).toEqual([]);
+
+    // Every hand-written reference entry is PROVEN by a literal some tool composes. An entry
+    // nothing calls is drift waiting to 403 the first tool that tries it.
+    const literalPaths = new Set(literals.map(({ path }) => normalizeRouteTemplate(path)));
+    for (const referencePath of MCP_REFERENCE_READ_ROUTES) {
+      expect(
+        literalPaths.has(normalizeRouteTemplate(referencePath)),
+        `${referencePath}: allowlisted but no tool composes it`,
+      ).toBe(true);
+    }
 
     // And the read set is not silently empty: every tool's own registry route is in it.
     for (const [name, route] of Object.entries<{ method: string; url: string }>(TOOL_ROUTES)) {

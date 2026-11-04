@@ -187,10 +187,15 @@ describe("MCP tool inputs ⊆ their REST route's query schema", () => {
     // GET /v1/work-items/my reads `@Query('limit')` only
     expect(inputs.get('rova_my_work')).toEqual(['limit']);
     // GET /v1/work-items/:workItemId/comments reads NO query (unpaginated REST route)
-    expect(inputs.get('rova_list_comments')).toEqual(['workItemId']);
+    expect(inputs.get('rova_list_comments')).toEqual(['workItemId', 'portfolioItemKey']);
     // no query at all
     expect(inputs.get('rova_whoami')).toEqual([]);
     expect(inputs.get('rova_get_work_item')).toEqual(['workItemId']);
+    // the four PR1 reads; each composes a route whose query the tool mirrors by hand
+    expect(inputs.get('rova_project_vocabulary')).toEqual(['project']);
+    expect(inputs.get('rova_work_item_details')).toEqual(['key', 'include']);
+    expect(inputs.get('rova_list_test_results')).toEqual(['testCaseKey', 'limit']);
+    expect(inputs.get('rova_project_activity')).toEqual(['project', 'since', 'page', 'pageSize']);
     // GET /v1/notifications/unread-count reads NO query
     expect(inputs.get('rova_unread_notifications')).toEqual([]);
     // path-param-only routes

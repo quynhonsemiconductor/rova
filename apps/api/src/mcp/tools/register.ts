@@ -34,6 +34,10 @@ import { registerQualityDefects } from './quality_defects';
 import { registerTeamStatus } from './team_status';
 import { registerWhoami } from './whoami';
 import { registerWorkItemActivity } from './work_item_activity';
+import { registerProjectActivity } from './project_activity';
+import { registerProjectVocabulary } from './project_vocabulary';
+import { registerListTestResults } from './list_test_results';
+import { registerWorkItemDetails } from './work_item_details';
 import type { ToolCallObserver, ToolContext } from './rest';
 import { instrumentToolHandler } from './rest';
 
@@ -106,6 +110,10 @@ export function registerTools(
     { name: 'rova_my_work', tool: registerMyWork(server, ctx) },
     { name: 'rova_list_backlog', tool: registerListBacklog(server, ctx) },
     { name: 'rova_work_item_activity', tool: registerWorkItemActivity(server, ctx) },
+    { name: 'rova_work_item_details', tool: registerWorkItemDetails(server, ctx) },
+    { name: 'rova_project_vocabulary', tool: registerProjectVocabulary(server, ctx) },
+    { name: 'rova_project_activity', tool: registerProjectActivity(server, ctx) },
+    { name: 'rova_list_test_results', tool: registerListTestResults(server, ctx) },
     { name: 'rova_list_iterations', tool: registerListIterations(server, ctx) },
     { name: 'rova_iteration_options', tool: registerIterationOptions(server, ctx) },
     { name: 'rova_iteration_status', tool: registerIterationStatus(server, ctx) },

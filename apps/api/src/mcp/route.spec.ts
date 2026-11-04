@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UnauthorizedException,
   UseGuards,
   NotFoundException,
@@ -16,7 +17,7 @@ import {
 } from '@nestjs/common';
 import { APP_FILTER, NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { RequestContextService } from '@quynhonsemiconductor/observability';
@@ -214,6 +215,18 @@ class FixtureWorkItemsController {
       ],
       pageInfo: { hasNextPage: false },
     };
+  }
+
+  /** A record read that sets the ETag the way the real controller does (capitalised). */
+  @Get(':id')
+  detail(
+    @Req() req: { user: { workspaceId: string } },
+    @Param('id') id: string,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    if (req.user.workspaceId === RESTRICTED) throw new ForbiddenException('Forbidden resource');
+    reply.header('ETag', '"4"');
+    return { id, itemKey: 'OBSE-42', title: 'Fix the flume', type: 'task', version: undefined };
   }
 
   @Get(':id/comments')
@@ -457,8 +470,11 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       'rova_list_releases',
       'rova_list_teams',
       'rova_list_test_cases',
+      'rova_list_test_results',
       'rova_my_work',
+      'rova_project_activity',
       'rova_project_health',
+      'rova_project_vocabulary',
       'rova_quality_defects',
       'rova_release_tracking',
       'rova_search_work_items',
@@ -469,6 +485,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       'rova_whoami',
       'rova_work_item_activity',
       'rova_work_item_code_changes',
+      'rova_work_item_details',
     ]);
     for (const t of tools) expect(t.annotations?.readOnlyHint).toBe(true);
   });
@@ -570,6 +587,19 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       headers: beltToken('mcp:head'),
     });
     expect(response.statusCode).toBe(200);
+  });
+
+  it('reads the version from the REAL, capitalised ETag through the inject path', async () => {
+    const fastify = await boot();
+    const { statusCode, body } = await callTool(fastify, 'rova_work_item_details', {
+      key: KNOWN_ID,
+      include: [],
+    });
+    expect(statusCode).toBe(200);
+    const out = JSON.parse(body.result!.content![0].text);
+    // The fixture sets `reply.header('ETag', '"4"')` exactly as the controller does; a lowercase
+    // reader would silently fall back to -1 here.
+    expect(out.workItem).toMatchObject({ version: 4, id: KNOWN_ID });
   });
 
   it('a tool returns exactly what the same person sees via the same REST route', async () => {
@@ -872,7 +902,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     await initialize(fastify);
     const list = await rpc(fastify, 'tools/list');
     const tools = list.json().result!.tools!;
-    expect(tools.length).toBe(34);
+    expect(tools.length).toBe(38);
     for (const tool of tools) {
       expect(
         JSON.stringify(tool.inputSchema).match(/workspace/i),

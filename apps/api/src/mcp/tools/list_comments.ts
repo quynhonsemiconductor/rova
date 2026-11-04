@@ -1,7 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, type ToolContext, pathSegment } from './rest';
+import { denied, pathSegment, toolError, type ToolContext } from './rest';
 import { createRefResolver, type PersonRef } from './refs';
+import { failureResult, resolvePortfolioItem } from './lookups';
 
 /** The REST comments route is unpaginated, so the tool caps the feed itself. */
 const MAX_COMMENTS = 100;
@@ -57,27 +58,42 @@ export async function attachCommentAuthors(
 }
 
 /**
- * `rova_list_comments` — the comments on one work item (GET /v1/work-items/:workItemId/comments,
- * `work_item:view` on the item). The REST route returns ALL of an item's comments (no page
- * args, no ordering guarantee), so the tool sorts newest-first, caps to 100, truncates
- * bodies, and sets `truncated`.
+ * `rova_list_comments` — the comments on one work item OR portfolio item. The routes return ALL
+ * of a subject's comments (no page args, no ordering guarantee), so the tool sorts newest-first,
+ * caps to 100, truncates bodies, and sets `truncated`. Exactly one subject argument is required;
+ * a portfolio item is named by its KEY and resolved through the app's own list.
  */
 export function registerListComments(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
     'rova_list_comments',
     {
       title: 'List comments',
-      description: 'The comments on one work item you can read (newest first, capped at 100).',
+      description:
+        'The comments on one work item (id) or portfolio item (key) you can read — newest first, capped at 100.',
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: {
-        workItemId: z.uuid().describe('The work item whose comments to list'),
+        workItemId: z.uuid().optional().describe('The work item whose comments to list'),
+        portfolioItemKey: z
+          .string()
+          .min(1)
+          .max(64)
+          .optional()
+          .describe('The Epic/Feature key whose comments to list (e.g. F-12)'),
       },
     },
-    async ({ workItemId }) => {
-      const { statusCode, json } = await ctx.callRest(ctx.principal, {
-        method: 'GET',
-        url: `/v1/work-items/${pathSegment(workItemId)}/comments`,
-      });
+    async ({ workItemId, portfolioItemKey }) => {
+      if ((workItemId === undefined) === (portfolioItemKey === undefined)) {
+        return toolError('Pass exactly one of workItemId or portfolioItemKey.');
+      }
+      let url: string;
+      if (workItemId !== undefined) {
+        url = `/v1/work-items/${pathSegment(workItemId)}/comments`;
+      } else {
+        const portfolio = await resolvePortfolioItem(ctx, portfolioItemKey as string);
+        if (!portfolio.ok) return failureResult(portfolio);
+        url = `/v1/portfolio-items/${pathSegment(portfolio.id)}/comments`;
+      }
+      const { statusCode, json } = await ctx.callRest(ctx.principal, { method: 'GET', url });
       if (statusCode >= 400 || !Array.isArray(json)) return denied(statusCode, json);
       const { truncated, comments } = shapeComments(json as Record<string, unknown>[]);
       const payload: Record<string, unknown> = {
