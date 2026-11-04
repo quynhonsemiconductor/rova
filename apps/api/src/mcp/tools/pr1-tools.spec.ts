@@ -97,7 +97,7 @@ describe('PR1 tool handlers through the fake bridge', () => {
     const tasks = Array.from({ length: 101 }, () => task);
     const ctx = context((call) => {
       if (call.url === '/v1/work-items/by-key') {
-        return { statusCode: 200, json: WORK_ITEM, headers: { etag: '"3"' } };
+        return { statusCode: 200, json: WORK_ITEM, headers: { ETag: '"3"' } };
       }
       if (call.url.endsWith('/tasks')) return { statusCode: 200, json: tasks };
       if (call.url.endsWith('/relations')) {

@@ -152,7 +152,7 @@ describe('reference resolution (never guess)', () => {
   });
 
   it("reads the work item's version from the strong ETag, not the body", async () => {
-    const { ctx } = context({ [`/v1/work-items/${U(20)}`]: ITEM }, { etag: '"7"' });
+    const { ctx } = context({ [`/v1/work-items/${U(20)}`]: ITEM }, { ETag: '"7"' });
     await expect(resolveWorkItem(ctx, U(20))).resolves.toMatchObject({ ok: true, version: 7 });
   });
 
@@ -228,7 +228,7 @@ describe('reference resolution (never guess)', () => {
           ? { statusCode: 200, json: { data: [second], pageInfo: { hasNextPage: false } } }
           : {
               statusCode: 200,
-              json: { data: [first], pageInfo: { hasNextPage: true, cursor: 'c1' } },
+              json: { data: [first], pageInfo: { hasNextPage: true, nextCursor: 'c1' } },
             };
       },
     };

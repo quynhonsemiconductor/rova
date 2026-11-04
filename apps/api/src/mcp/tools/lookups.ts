@@ -106,9 +106,11 @@ async function collectPaged(
       return { rows: null, failure: { ok: false, message: `Unexpected response from ${url}.` } };
     }
     rows.push(...pageRows);
-    const info = (res.json as { pageInfo?: { hasNextPage?: unknown; cursor?: unknown } } | null)
+    // The platform's PageInfo contract (libs/platform/src/http/pagination.ts) is
+    // `{ nextCursor, hasNextPage, limit, total? }` — NOT `cursor`.
+    const info = (res.json as { pageInfo?: { hasNextPage?: unknown; nextCursor?: unknown } } | null)
       ?.pageInfo;
-    const next = typeof info?.cursor === 'string' ? info.cursor : undefined;
+    const next = typeof info?.nextCursor === 'string' ? info.nextCursor : undefined;
     if (info?.hasNextPage !== true || !next) return { rows };
     cursor = next;
   }

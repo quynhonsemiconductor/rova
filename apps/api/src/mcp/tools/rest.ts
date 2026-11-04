@@ -184,7 +184,11 @@ export const pageArgs = {
  * headers; this is the ONE sanctioned read (a RESPONSE header, never a request one).
  */
 export function responseEtag(result: McpRestResult): string | undefined {
-  const raw = result.headers?.['etag'];
+  // HTTP header names are case-insensitive, and the controllers set `ETag` (capitalised); the
+  // lookup must not depend on which spelling a runtime preserves.
+  const headers = result.headers ?? {};
+  const key = Object.keys(headers).find((name) => name.toLowerCase() === 'etag');
+  const raw = key ? headers[key] : undefined;
   const value = Array.isArray(raw) ? raw[0] : raw;
   return typeof value === 'string' ? value : undefined;
 }
