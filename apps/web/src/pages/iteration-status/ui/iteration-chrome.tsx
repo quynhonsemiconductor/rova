@@ -270,6 +270,11 @@ export function IterationHeader({
 
 // ── Metrics strip ────────────────────────────────────────────────────────────
 
+/** Planned points exceed the velocity target (BA 2026-11-04). Null = no target, never red. */
+function isOverCommitted(velocityPct: number | null): boolean {
+  return velocityPct !== null && velocityPct > 100
+}
+
 export function MetricsStrip({
   metrics,
   velocityPct,
@@ -303,17 +308,21 @@ export function MetricsStrip({
           caption={
             metrics?.plannedVelocity == null
               ? t('metrics.noVelocityTarget')
-              : // `acceptedPoints`, the same numerator the percentage above is computed from. It used to
-                // print `totalPlanEstimate`, so 34 accepted of 47 planned rendered "72% · 47 of 47
-                // Points" — a caption contradicting its own percentage, which reads as 100%
-                // attainment. IB/Iteration Status SRS: "accepted points compared with the Iteration
-                // planned velocity".
+              : // `totalPlanEstimate`, the same numerator the server computes the percentage from,
+                // so the caption and the percentage above it cannot disagree. BA ruling 2026-11-04:
+                // Planned Velocity is PLANNED points against the target — a Story counts once it is
+                // in the iteration with an estimate, not once it is Accepted (that is the ACCEPTED
+                // tile beside it).
                 t('metrics.points', {
-                  current: metrics.acceptedPoints ?? 0,
+                  current: metrics.totalPlanEstimate ?? 0,
                   total: metrics.plannedVelocity,
                 })
           }
           progressPct={velocityPct ?? 0}
+          // Over 100% means more points are planned than the velocity target: over-committed.
+          // Red on the number AND the bar (which caps at full width), so the state does not
+          // depend on reading the digits. Exactly 100% is a full sprint, not an over-full one.
+          valueColor={isOverCommitted(velocityPct) ? BRAND.danger : undefined}
           minWidth={160}
         />
         <MetricCard

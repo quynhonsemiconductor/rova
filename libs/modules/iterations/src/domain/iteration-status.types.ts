@@ -7,7 +7,7 @@ import type { WorkItemType, WorkItemScheduleState } from '../../../../../db/sche
  */
 
 export interface IterationStatusMetrics {
-  /** acceptedPoints / plannedVelocity as a percent (0 when velocity is 0). */
+  /** totalPlanEstimate / plannedVelocity as a percent (0 when velocity is 0) — BA 2026-11-04. */
   /** Null when there is no velocity target — attainment against nothing is unanswerable. */
   plannedVelocityPercent: number | null;
   /** Sum of story points on items whose schedule state is 'accepted'. */
@@ -19,8 +19,13 @@ export interface IterationStatusMetrics {
   acceptedPercent: number;
   /** Sum of story points across all assigned (non-deleted) items. */
   totalPlanEstimate: number;
-  /** Whole days from today to the iteration end date; null when no end date. Negative = ended. */
+  /**
+   * WORKING days left, today included; null when no end date. Negative = CALENDAR days overdue.
+   * See `iteration-calendar.ts`.
+   */
   daysLeft: number | null;
+  /** Working days in the iteration window, both ends inclusive; null without both dates. */
+  totalDays: number | null;
   /** Count of assigned items of type 'defect'. */
   defectCount: number;
   /** Count of assigned items of type 'task'. */

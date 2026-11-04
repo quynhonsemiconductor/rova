@@ -11,6 +11,8 @@ import {
   portfolioItems,
 } from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
+import { workspaceSettings } from '../../../../../../db/schema/workspace';
+import { DEFAULT_WORKING_DAYS } from '../../domain/iteration-calendar';
 import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
 import { UNASSIGNED_FILTER } from '@modules/work-items';
 import type {
@@ -20,6 +22,7 @@ import type {
 import {
   IIterationStatusRepository,
   type RawIterationMetrics,
+  type WorkspaceCalendar,
 } from '../../domain/ports/iteration-status.repository';
 import { scopeIsEmpty, type TeamReadScope } from '../../domain/team-read-scope';
 
@@ -136,6 +139,18 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       defectCount: Number(r?.defectCount ?? 0),
       taskCount: Number(taskAgg?.taskCount ?? 0),
       activeTaskCount: Number(taskAgg?.activeTaskCount ?? 0),
+    };
+  }
+
+  async getWorkspaceCalendar(workspaceId: string): Promise<WorkspaceCalendar> {
+    const rows = await this.db
+      .select({ timeZone: workspaceSettings.timezone, workingDays: workspaceSettings.workingDays })
+      .from(workspaceSettings)
+      .where(eq(workspaceSettings.workspaceId, workspaceId))
+      .limit(1);
+    return {
+      timeZone: rows[0]?.timeZone ?? 'UTC',
+      workingDays: rows[0]?.workingDays?.length ? rows[0].workingDays : [...DEFAULT_WORKING_DAYS],
     };
   }
 
