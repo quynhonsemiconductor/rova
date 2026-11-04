@@ -20,6 +20,7 @@ describe('iterationStatusTotals', () => {
     // 4 + 2 + 1 + 6 — remaining plus spent, per FR-016C and §240.
     expect(totals.taskEst).toBe(13)
     expect(totals.toDoSum).toBe(5)
+    expect(totals.actualSum).toBe(8)
     expect(totals.count).toBe(2)
   })
 
@@ -31,11 +32,17 @@ describe('iterationStatusTotals', () => {
       { toDo: 2 },
     ])
 
-    expect(totals).toEqual({ planEst: 0, taskEst: 2, toDoSum: 2, count: 2 })
+    expect(totals).toEqual({ planEst: 0, taskEst: 2, toDoSum: 2, actualSum: 0, count: 2 })
   })
 
   it('is zero for an empty scope, and says so with a count of zero', () => {
-    expect(iterationStatusTotals([])).toEqual({ planEst: 0, taskEst: 0, toDoSum: 0, count: 0 })
+    expect(iterationStatusTotals([])).toEqual({
+      planEst: 0,
+      taskEst: 0,
+      toDoSum: 0,
+      actualSum: 0,
+      count: 0,
+    })
   })
 
   it('rounds every total to one decimal place, so float noise never reaches the label', () => {
@@ -49,6 +56,7 @@ describe('iterationStatusTotals', () => {
     expect(totals.planEst).toBe(7.6)
     expect(totals.taskEst).toBe(43.2)
     expect(totals.toDoSum).toBe(0.3)
+    expect(totals.actualSum).toBe(42.9)
   })
 
   it('rounds an exact half-way sum UP, though the float sum lands just below it', () => {

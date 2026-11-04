@@ -476,7 +476,7 @@ export function TableFooterTotals({
   totals,
 }: {
   colStyles: Record<string, CSSProperties>
-  totals: { planEst: number; taskEst: number; toDoSum: number; count: number }
+  totals: { planEst: number; taskEst: number; toDoSum: number; actualSum: number; count: number }
 }) {
   const { t } = useTranslation('iteration-status')
   return (
@@ -489,6 +489,7 @@ export function TableFooterTotals({
         planEstimate: t('totals.points', { value: totals.planEst }),
         taskEstimate: t('totals.hours', { value: totals.taskEst }),
         toDo: t('totals.hours', { value: totals.toDoSum }),
+        actual: t('totals.hours', { value: totals.actualSum }),
       }}
     />
   )
