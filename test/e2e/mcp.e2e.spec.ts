@@ -1,3 +1,4 @@
+import './support/disable-mcp-writes';
 import { setUserBanned, type Identity } from '@quynhonsemiconductor/identity';
 import { AUTH } from '@quynhonsemiconductor/identity/nest';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
