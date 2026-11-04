@@ -480,7 +480,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
   ): Promise<void> {
     await executor
       .update(workItems)
-      .set({ splitId, updatedAt: new Date(), version: sql`${workItems.version} + 1` })
+      .set({ splitId, updatedAt: new Date() })
       .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)));
   }
 
@@ -521,7 +521,6 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         iterationId,
         updatedBy,
         updatedAt: new Date(),
-        version: sql`${workItems.version} + 1`,
       })
       .where(
         and(
@@ -543,7 +542,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     const exec = executor ?? this.db;
     await exec
       .update(workItems)
-      .set({ releaseId, updatedBy, updatedAt: new Date(), version: sql`${workItems.version} + 1` })
+      .set({ releaseId, updatedBy, updatedAt: new Date() })
       .where(
         and(
           inArray(workItems.id, ids),
@@ -1444,7 +1443,6 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
      */
     const ifVersion = (column: AnyPgColumn) =>
       expectedVersion !== undefined ? eq(column, expectedVersion) : undefined;
-    const bump = (column: AnyPgColumn) => sql`${column} + 1`;
 
     // P3: If this is a task (exists in tasks table), update there instead.
     const taskCheck = await exec
@@ -1454,10 +1452,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .limit(1);
 
     if (taskCheck.length > 0) {
-      const setFields: Record<string, unknown> = {
-        updatedAt: new Date(),
-        version: bump(tasks.version),
-      };
+      const setFields: Record<string, unknown> = { updatedAt: new Date() };
       if (input.title !== undefined) setFields.title = input.title;
       if (input.description !== undefined) setFields.description = input.description;
       // Writable since migration 0096 gave `work.tasks` the column. Omitting it was what made a
@@ -1564,7 +1559,6 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         // dates are deliberately absent (trigger-owned).
         ...(input.targetEndDate !== undefined && { targetEndDate: input.targetEndDate }),
         updatedAt: new Date(),
-        version: bump(workItems.version),
       })
       .where(
         and(
@@ -1626,13 +1620,13 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     if (taskCheck.length > 0) {
       await exec
         .update(tasks)
-        .set({ deletedAt: new Date(), updatedAt: new Date(), version: sql`${tasks.version} + 1` })
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
         .where(and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId)));
       return;
     }
     await exec
       .update(workItems)
-      .set({ deletedAt: new Date(), updatedAt: new Date(), version: sql`${workItems.version} + 1` })
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)));
   }
 
@@ -1650,7 +1644,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       items.map(({ id, rank }) =>
         exec
           .update(workItems)
-          .set({ rank, updatedAt: new Date(), version: sql`${workItems.version} + 1` })
+          .set({ rank, updatedAt: new Date() })
           .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId))),
       ),
     );

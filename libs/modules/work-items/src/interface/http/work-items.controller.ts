@@ -98,6 +98,18 @@ export function etagFor(version: number): string {
 }
 
 /**
+ * A record response MUST carry its version (the column is NOT NULL). Emitting a fake "0" would
+ * hand the client a token that silently overwrites unknown state, so a missing version is a
+ * server bug surfaced loudly instead.
+ */
+function versionOf(item: { version?: number }): number {
+  if (typeof item.version !== 'number') {
+    throw new Error('work item response is missing its version');
+  }
+  return item.version;
+}
+
+/**
  * Parses `If-Match` per RFC 9110 into the integer version the repository matches in the UPDATE.
  *   - absent/blank: no precondition (the web path);
  *   - `*`: the item must merely EXIST — the route's own 404 answers that, so no version check;
@@ -477,7 +489,7 @@ export class WorkItemsController {
         fixedInBuild: dto.fixedInBuild,
       },
     );
-    reply.header('ETag', etagFor(item.version ?? 0));
+    reply.header('ETag', etagFor(versionOf(item)));
     return toWorkItemDto(item);
   }
 
@@ -522,7 +534,7 @@ export class WorkItemsController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemDetailResponseDto> {
     const detail = await this.workItemsService.getWorkItemDetailByKey(user, query.itemKey);
-    reply.header('ETag', etagFor(detail.item.version ?? 0));
+    reply.header('ETag', etagFor(versionOf(detail.item)));
     return toWorkItemDetailDto(detail);
   }
 
@@ -547,7 +559,7 @@ export class WorkItemsController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemDetailResponseDto> {
     const detail = await this.workItemsService.getWorkItemDetail(user, id);
-    reply.header('ETag', etagFor(detail.item.version ?? 0));
+    reply.header('ETag', etagFor(versionOf(detail.item)));
     return toWorkItemDetailDto(detail);
   }
 
@@ -632,7 +644,7 @@ export class WorkItemsController {
       expectedVersion: parseIfMatch(ifMatch),
     });
     // The new token, so a caller that chains edits does not have to re-read.
-    reply.header('ETag', etagFor(item.version ?? 0));
+    reply.header('ETag', etagFor(versionOf(item)));
     return toWorkItemDto(item);
   }
 
@@ -771,7 +783,7 @@ export class WorkItemsController {
       todoHours: dto.todoHours,
       actualHours: dto.actualHours,
     });
-    reply.header('ETag', etagFor(task.version ?? 0));
+    reply.header('ETag', etagFor(versionOf(task)));
     return toWorkItemDto(task);
   }
 

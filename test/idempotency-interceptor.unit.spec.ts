@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { lastValueFrom, of } from 'rxjs';
+import { lastValueFrom, of, throwError } from 'rxjs';
 import type { CallHandler, ExecutionContext } from '@nestjs/common';
 import type { Reflector } from '@nestjs/core';
 import type { CacheService } from '@quynhonsemiconductor/platform-cache';
@@ -21,7 +21,16 @@ function request(body: unknown, headers: Record<string, string> = {}) {
   };
 }
 
-function context(req: object, reply = { statusCode: 200, status: vi.fn() }): ExecutionContext {
+function fakeReply(statusCode = 200) {
+  return {
+    statusCode,
+    status: vi.fn(),
+    header: vi.fn(),
+    getHeader: vi.fn(() => undefined as unknown),
+  };
+}
+
+function context(req: object, reply = fakeReply()): ExecutionContext {
   return {
     getType: () => 'http',
     switchToHttp: () => ({ getRequest: () => req, getResponse: () => reply }),
@@ -50,6 +59,7 @@ function interceptorWith(cache: {
 }
 
 const redisKey = 'idem:user-1:POST:/v1/probe:k-1';
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('IdempotencyInterceptor — body reuse, in-flight, cache failure', () => {
   it('replays a cached response only for the SAME body', async () => {
@@ -127,13 +137,14 @@ describe('IdempotencyInterceptor — body reuse, in-flight, cache failure', () =
     const { handler, spy } = nextWith({ ok: true });
 
     await lastValueFrom(interceptor.intercept(context(request({ a: 1 })), handler));
+    await flush();
 
     expect(spy).toHaveBeenCalledTimes(1);
     expect(cache.set).toHaveBeenCalledWith(
       `${redisKey}:inflight`,
       hashBody({ a: 1 }),
       'EX',
-      30,
+      60,
       'NX',
     );
     expect(cache.set).toHaveBeenCalledWith(
@@ -142,7 +153,6 @@ describe('IdempotencyInterceptor — body reuse, in-flight, cache failure', () =
       'EX',
       86_400,
     );
-    await new Promise((r) => setTimeout(r, 0));
     expect(cache.del).toHaveBeenCalledWith(`${redisKey}:inflight`);
   });
 
@@ -155,7 +165,7 @@ describe('IdempotencyInterceptor — body reuse, in-flight, cache failure', () =
     };
     const interceptor = interceptorWith(cache);
     const { handler, spy } = nextWith({ ok: true });
-    const reply = { statusCode: 200, status: vi.fn() };
+    const reply = fakeReply();
 
     await lastValueFrom(interceptor.intercept(context(request({ a: 1 }), reply), handler));
 
@@ -189,6 +199,50 @@ describe('IdempotencyInterceptor — body reuse, in-flight, cache failure', () =
       lastValueFrom(interceptor.intercept(context(request({ a: 1 })), handler)),
     ).resolves.toEqual({ ok: true, winner: true });
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('replays the cached ETag header with the response', async () => {
+    const cache = {
+      get: async () =>
+        JSON.stringify({
+          v: 1,
+          hash: hashBody({ a: 1 }),
+          status: 201,
+          etag: '"3"',
+          response: { ok: true },
+        }),
+      set: vi.fn(async () => 'OK'),
+      del: vi.fn(async () => 1),
+    };
+    const interceptor = interceptorWith(cache);
+    const { handler } = nextWith({ ok: true });
+    const reply = fakeReply();
+
+    await lastValueFrom(interceptor.intercept(context(request({ a: 1 }), reply), handler));
+
+    expect(reply.header).toHaveBeenCalledWith('ETag', '"3"');
+  });
+
+  it('releases the lock when the handler THROWS, so a retry runs again', async () => {
+    const cache = {
+      get: async () => null,
+      set: vi.fn(async () => 'OK'),
+      del: vi.fn(async () => 1),
+    };
+    const interceptor = interceptorWith(cache);
+    const handler: CallHandler = { handle: () => throwError(() => new Error('boom')) };
+
+    await expect(
+      lastValueFrom(interceptor.intercept(context(request({ a: 1 })), handler)),
+    ).rejects.toThrow('boom');
+    await flush();
+    expect(cache.set).not.toHaveBeenCalledWith(redisKey, expect.anything(), 'EX', 86_400);
+    expect(cache.del).toHaveBeenCalledWith(`${redisKey}:inflight`);
+
+    // The retry takes the lock again and runs (the marker is gone).
+    const retry = nextWith({ ok: true });
+    await lastValueFrom(interceptor.intercept(context(request({ a: 1 })), retry.handler));
+    expect(retry.spy).toHaveBeenCalledTimes(1);
   });
 
   it('a cache WRITE failure does not fail the request', async () => {

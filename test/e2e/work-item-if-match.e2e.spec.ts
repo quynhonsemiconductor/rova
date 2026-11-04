@@ -10,6 +10,8 @@ import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
+import { sql } from 'drizzle-orm';
+import { DRIZZLE } from '@platform';
 import { SEED_PROJECTS } from '../../db/seeds/constants';
 import { signIn } from './support/session';
 
@@ -20,7 +22,7 @@ describe('PATCH /work-items/:id with If-Match (ETag concurrency)', () => {
   let token: string;
 
   const send = (
-    method: 'GET' | 'POST' | 'PATCH',
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     url: string,
     payload?: Record<string, unknown>,
     headers: Record<string, string> = {},
@@ -160,6 +162,46 @@ describe('PATCH /work-items/:id with If-Match (ETag concurrency)', () => {
     const id = await createStory('If-Match absent');
     const res = await send('PATCH', `/work-items/${id}`, { title: 'web edit' });
     expect(res.statusCode, res.body).toBe(200);
+  });
+
+  it('a writer the APP does not run (FK ON DELETE SET NULL) still bumps the version', async () => {
+    const iteration = await send('POST', '/iterations', {
+      projectId: NXP,
+      name: `trigger-iter-${Date.now()}`,
+    });
+    expect(iteration.statusCode, iteration.body).toBe(201);
+    const iterationId = iteration.json().id as string;
+
+    const created = await send('POST', '/work-items', {
+      projectId: NXP,
+      type: 'story',
+      title: 'FK rewrite target',
+      iterationId,
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const id = created.json().id as string;
+    const before = await etagOf(id);
+
+    // Deleting the iteration rewrites work_items.iteration_id to NULL through the FK. The
+    // BEFORE UPDATE trigger bumps the version; no application code participates.
+    const deleted = await send('DELETE', `/iterations/${iterationId}`);
+    expect([200, 204], deleted.body).toContain(deleted.statusCode);
+
+    const after = await etagOf(id);
+    expect(after).not.toBe(before);
+    const stale = await send('PATCH', `/work-items/${id}`, { title: 'x' }, { 'if-match': before });
+    expect(stale.statusCode, stale.body).toBe(412);
+  });
+
+  it('a RAW SQL update bumps the version (the trigger is the single source of truth)', async () => {
+    const id = await createStory('raw sql writer');
+    const before = await etagOf(id);
+
+    await app
+      .get<{ execute: (query: unknown) => Promise<unknown> }>(DRIZZLE)
+      .execute(sql`UPDATE work.work_items SET blocked_reason = blocked_reason WHERE id = ${id}`);
+
+    expect(await etagOf(id)).not.toBe(before);
   });
 
   it('a malformed If-Match is 400, not 412', async () => {

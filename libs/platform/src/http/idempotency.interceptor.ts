@@ -10,7 +10,7 @@ import {
 import { createHash } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import { Observable, from, of, throwError } from 'rxjs';
-import { catchError, mergeMap, switchMap } from 'rxjs/operators';
+import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
 import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { clientIp, currentUserId } from '@quynhonsemiconductor/platform-http';
@@ -89,6 +89,8 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const reply = context.switchToHttp().getResponse<{
       statusCode: number;
       status(code: number): unknown;
+      header(name: string, value: string): unknown;
+      getHeader(name: string): unknown;
     }>();
     /** What the route answers when nothing overrides it — captured so a replay carries the FIRST
      * call's status, not whatever the route happens to default to when the retry arrives. */
@@ -131,6 +133,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
           );
         }
         if (typeof entry['status'] === 'number') reply.status(entry['status']);
+        // The concurrency token must replay with the answer: a client that retries a create
+        // needs the ETag of the row that was actually created, not a fresh read.
+        if (typeof entry['etag'] === 'string') reply.header('ETag', entry['etag']);
         return of(entry['response']);
       }
       // An entry written before {hash,status} existed: replay its body, route status.
@@ -183,28 +188,44 @@ export class IdempotencyInterceptor implements NestInterceptor {
                   void release();
                   return replay(raced);
                 }
+                // Capture the response on the way out and persist in FINALIZE: finalize runs on
+                // complete, error AND unsubscribe (a client tearing down mid-request), so the
+                // cache write and the lock release are not skipped by a torn-down subscriber.
+                // The persistence itself AWAITS the cache SET before releasing the lock, so a
+                // duplicate arriving right after a release finds the cached answer.
+                let captured: { response?: unknown } = {};
                 return next.handle().pipe(
-                  // AWAIT the write before releasing: a duplicate arriving right after the
-                  // release must find the cached answer, not a second handler run.
-                  mergeMap(async (response: unknown) => {
-                    const status = reply.statusCode !== 200 ? reply.statusCode : defaultStatus;
-                    try {
-                      await this.cache.instance.set(
-                        redisKey,
-                        JSON.stringify({ v: 1, hash: requestHash, status, response }),
-                        'EX',
-                        IDEMPOTENCY_TTL_SECONDS,
-                      );
-                    } catch (err) {
-                      // Cache failure must NOT fail the request
-                      this.logger.warn({ msg: 'idempotency: failed to cache response', err });
-                    }
-                    await release();
-                    return response;
+                  tap({
+                    next: (response: unknown) => {
+                      captured = { response };
+                    },
                   }),
-                  catchError((err: unknown) => {
-                    void release();
-                    return throwError(() => err);
+                  finalize(() => {
+                    const response = captured.response;
+                    const etag = reply.getHeader('etag');
+                    const status = reply.statusCode !== 200 ? reply.statusCode : defaultStatus;
+                    void (async () => {
+                      if (response !== undefined) {
+                        try {
+                          await this.cache.instance.set(
+                            redisKey,
+                            JSON.stringify({
+                              v: 1,
+                              hash: requestHash,
+                              status,
+                              ...(typeof etag === 'string' ? { etag } : {}),
+                              response,
+                            }),
+                            'EX',
+                            IDEMPOTENCY_TTL_SECONDS,
+                          );
+                        } catch (err) {
+                          // Cache failure must NOT fail the request
+                          this.logger.warn({ msg: 'idempotency: failed to cache response', err });
+                        }
+                      }
+                      await release();
+                    })();
                   }),
                 );
               }),
@@ -216,8 +237,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
   }
 }
 
-/** How long a first call holds its "in progress" marker; the TTL also frees a crashed run. */
-const IN_FLIGHT_TTL_SECONDS = 30;
+/**
+ * How long a first call holds its "in progress" marker: 60 s, comfortably above any single
+ * create handler (one DB transaction; the slowest observed create is well under 5 s) and above a
+ * gzip/network stall of the injected call. The TTL also frees a marker whose process crashed.
+ */
+const IN_FLIGHT_TTL_SECONDS = 60;
 
 /** sha256 over a key-sorted JSON form of the body: the body is what the key must not be reused for. */
 export function hashBody(body: unknown): string {
