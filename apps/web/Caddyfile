@@ -3,7 +3,8 @@
 #
 # Why Caddy over nginx-unprivileged: one static binary that parses and validates its own config
 # (`caddy validate`, run at image build) instead of a root-master/worker process model, no writable
-# directory it insists on owning, and a single `/healthz` to answer. The image runs with a read-only
+# directory it insists on owning, and `/healthz` (readiness) + `/livez` (the chart's hardcoded
+# liveness path) to answer. The image runs with a read-only
 # root filesystem; Caddy's only writes go to the `XDG_*` directories under /tmp, which a deployment
 # mounts as emptyDir (see the Dockerfile).
 #
@@ -12,7 +13,7 @@
 #   listens on 8080             (web.port)
 #   doc root   /srv             (dist/ at its root)
 #   config     /srv/config.json (ConfigMap, mounted with subPath — replacing this one file)
-#   health     /healthz         (both probes)
+#   health     /healthz, /livez   (readiness, liveness)
 #   /tmp        the ONLY writable path (read-only root filesystem, any non-root uid)
 #
 # It serves what the Cloudflare Worker served, so the cutover changes the deploy system and nothing
@@ -23,7 +24,7 @@
 #   /guide-assets/*         the User Guide's files, behind the US-119 session gate below
 #   everything else         the built files; an unknown path falls back to index.html (SPA route)
 #   /guide/…                the old standalone User Guide's redirects (apps/web/public/_redirects)
-#   /healthz                liveness/readiness for the probes
+#   /healthz, /livez        readiness / the chart's hardcoded liveness path
 #
 # THE GUIDE GATE. `/guide-assets/*` (the guide's screenshots and the chunks carrying its text) is
 # signed-in-only, and static files are public. `guide-gate.worker.ts` answered that with a session
@@ -86,7 +87,8 @@
 
 	# Probe endpoint. No log line, no dependency: a probe must say "the process answers", not "the
 	# API is healthy" (ArgoCD and the API have their own).
-	handle /healthz {
+	@probes path /healthz /livez
+	handle @probes {
 		respond "ok" 200
 	}
 
