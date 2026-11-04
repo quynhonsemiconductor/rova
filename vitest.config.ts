@@ -118,6 +118,7 @@ export default defineConfig({
         'libs/modules/reporting/src/domain/release-tracking.ts',
         'libs/modules/scm/src/application/scm-backfill.service.ts',
         'libs/modules/scm/src/application/scm-installation.service.ts',
+        'libs/modules/scm/src/application/scm-linker.service.ts',
         'libs/modules/scm/src/infrastructure/github/github-app-auth.service.ts',
         'libs/modules/scm/src/infrastructure/github/github-http.ts',
         'libs/modules/scm/src/infrastructure/github/github-rest.client.ts',

@@ -7,11 +7,12 @@
 export interface GhRestPull {
   number: number;
   title: string;
+  body: string | null;
   html_url: string;
   state: string;
   merged_at: string | null;
   created_at: string;
-  user: { login: string } | null;
+  user: { login: string; type?: string } | null;
   head: { ref: string } | null;
 }
 

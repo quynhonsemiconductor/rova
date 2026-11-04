@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull, desc } from 'drizzle-orm';
+import { and, asc, eq, isNull, desc, inArray } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, PagedResult } from '@platform';
 import {
@@ -305,21 +305,23 @@ export class ScmDrizzleRepository implements IScmStore {
 
   // ── Work-item resolution ──────────────────────────────────────────────────
 
-  async resolveWorkItemId(itemKey: string, workspaceId: string): Promise<string | null> {
+  async resolveWorkItemIds(itemKeys: string[], workspaceId: string): Promise<Map<string, string>> {
     // Workspace-unique keys (Rally FormattedID): (itemKey, workspaceId) resolves a
     // single work item — no projectId needed, which is what makes linking org-level.
-    const [row] = await this.db
-      .select({ id: workItems.id })
+    // ONE query for the whole key set: a PR body can name many keys, and resolving
+    // them one by one costs a round-trip each.
+    if (itemKeys.length === 0) return new Map();
+    const rows = await this.db
+      .select({ id: workItems.id, itemKey: workItems.itemKey })
       .from(workItems)
       .where(
         and(
-          eq(workItems.itemKey, itemKey),
+          inArray(workItems.itemKey, itemKeys),
           eq(workItems.workspaceId, workspaceId),
           isNull(workItems.deletedAt),
         ),
-      )
-      .limit(1);
-    return row?.id ?? null;
+      );
+    return new Map(rows.map((row) => [row.itemKey, row.id]));
   }
 
   // ── Webhook inbox ───────────────────────────────────────────────────────────

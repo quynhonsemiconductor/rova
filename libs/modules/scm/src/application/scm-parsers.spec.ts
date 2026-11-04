@@ -37,6 +37,7 @@ describe('parsePullRequestEvent', () => {
     pull_request: {
       number: 42,
       title: 'fix(US-1): patch',
+      body: null as string | null,
       html_url: 'https://ghe/acme/demo/pull/42',
       state: 'open',
       merged: false,
@@ -75,6 +76,96 @@ describe('parsePullRequestEvent', () => {
         pull_request: { ...base.pull_request, title: 'no key', head: { ref: 'x' } },
       }),
     ).toBeNull();
+  });
+
+  it('links a key named only in the PR description', () => {
+    const pr = parsePullRequestEvent({
+      ...base,
+      pull_request: {
+        ...base.pull_request,
+        title: 'no key in title',
+        head: { ref: 'feature/x' },
+        body: 'Implements US-162 for the training portal.',
+      },
+    });
+    expect(pr?.keys).toEqual(['US-162']);
+  });
+
+  it('merges title/body/branch keys with one de-dupe', () => {
+    const pr = parsePullRequestEvent({
+      ...base,
+      pull_request: {
+        ...base.pull_request,
+        body: 'Also closes DE-7 and us-1.',
+      },
+    });
+    expect(pr?.keys).toEqual(['US-1', 'DE-7']);
+  });
+
+  it('re-links on an edited body that names a new key', () => {
+    const pr = parsePullRequestEvent({
+      ...base,
+      action: 'edited',
+      pull_request: {
+        ...base.pull_request,
+        title: 'no key in title',
+        head: { ref: 'feature/x' },
+        body: 'Fixes US-5',
+      },
+    });
+    expect(pr?.keys).toEqual(['US-5']);
+  });
+
+  it('matches keys inside code blocks and URLs in the body, like the title', () => {
+    const pr = parsePullRequestEvent({
+      ...base,
+      pull_request: {
+        ...base.pull_request,
+        title: 'no key in title',
+        head: { ref: 'feature/x' },
+        body: '```\nUS-8\n```\nSee https://tracker.acme.dev/items/TA-9.',
+      },
+    });
+    expect(pr?.keys).toEqual(['US-8', 'TA-9']);
+  });
+
+  it('ignores key-shaped text with an unknown prefix or a missing number', () => {
+    const pr = parsePullRequestEvent({
+      ...base,
+      pull_request: {
+        ...base.pull_request,
+        title: 'no key in title',
+        head: { ref: 'feature/x' },
+        body: 'Refs XX-6 and US- and USE-4.',
+      },
+    });
+    expect(pr).toBeNull();
+  });
+
+  it('does not read the description of a bot-authored PR, but still reads title and branch', () => {
+    const pr = parsePullRequestEvent({
+      ...base,
+      pull_request: {
+        ...base.pull_request,
+        user: { login: 'release-please[bot]', type: 'Bot' },
+        body: 'Release notes for US-2, US-3 and DE-4.',
+      },
+    });
+    expect(pr?.keys).toEqual(['US-1']);
+  });
+
+  it('ignores a bot PR whose only keys are in the description', () => {
+    const pr = parsePullRequestEvent({
+      ...base,
+      pull_request: {
+        ...base.pull_request,
+        title: 'chore(main): release 0.9.0',
+        head: { ref: 'release-please--branches--main' },
+        user: { login: 'release-please[bot]', type: 'Bot' },
+        body: 'Includes US-2, US-3 and DE-4.',
+      },
+    });
+    expect(pr).toBeNull();
   });
 });
 

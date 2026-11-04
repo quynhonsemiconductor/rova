@@ -16,7 +16,10 @@ const FILE_ACTION: Record<string, ScmChange['action']> = {
 };
 
 export function mapRestPullRequest(pr: GhRestPull, fullName: string): NormalizedPullRequest | null {
-  const keys = extractWorkItemKeys(pr.title, pr.head?.ref);
+  // Same rule as the webhook parser: a bot's description is generated, so only
+  // its title and branch may link it.
+  const body = pr.user?.type === 'Bot' ? null : pr.body;
+  const keys = extractWorkItemKeys(pr.title, pr.head?.ref, body);
   if (keys.length === 0) return null;
   return {
     kind: 'pull_request',

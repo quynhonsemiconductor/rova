@@ -13,11 +13,12 @@ interface GhPullRequestPayload {
   pull_request?: {
     number?: number;
     title?: string;
+    body?: string | null;
     html_url?: string;
     state?: string;
     merged?: boolean;
     created_at?: string;
-    user?: { login?: string };
+    user?: { login?: string; type?: string };
     head?: { ref?: string };
   };
   repository?: { full_name?: string };
@@ -56,7 +57,12 @@ export function parsePullRequestEvent(payload: unknown): NormalizedPullRequest |
   const fullName = p.repository?.full_name;
   if (!pr || !fullName || typeof pr.number !== 'number' || !pr.title || !pr.html_url) return null;
 
-  const keys = extractWorkItemKeys(pr.title, pr.head?.ref);
+  // A bot's description is generated, not written for the item it changes:
+  // release-please lists every key in the release and rewrites the body on each
+  // push, which would link the release PR to the whole release. Title and branch
+  // are still parsed — they name the one item the change is for.
+  const body = pr.user?.type === 'Bot' ? null : pr.body;
+  const keys = extractWorkItemKeys(pr.title, pr.head?.ref, body);
   if (keys.length === 0) return null; // nothing to link
 
   const state = pr.merged ? 'merged' : (pr.state ?? 'open');

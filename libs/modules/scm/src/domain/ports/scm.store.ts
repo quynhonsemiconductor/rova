@@ -80,7 +80,11 @@ export interface IScmStore {
   enqueueBackfill(workspaceId: string, repositoryId: string): Promise<void>;
 
   // ── Work-item resolution (workspace-unique key → id), no actor (webhook) ─────
-  resolveWorkItemId(itemKey: string, workspaceId: string): Promise<string | null>;
+  /**
+   * Resolve many keys in ONE query. Keys that name no live work item in the
+   * workspace are omitted, so the caller can tell misses from hits.
+   */
+  resolveWorkItemIds(itemKeys: string[], workspaceId: string): Promise<Map<string, string>>;
 
   // ── Webhook inbox ───────────────────────────────────────────────────────────
   /** Insert a raw event; returns false if the delivery id already exists (dedup). */
