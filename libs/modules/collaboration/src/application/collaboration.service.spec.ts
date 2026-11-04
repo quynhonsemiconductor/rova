@@ -74,6 +74,9 @@ const makeProjectsService = () => ({
   assertProjectWritable: vi
     .fn()
     .mockResolvedValue({ id: 'proj-9', workspaceId: 'ws-1', status: 'active' }),
+  // The @mention allow-list: who can own work in the SUBJECT's project. Empty by default; the
+  // mention cases below seed it.
+  listProjectMemberOptions: vi.fn().mockResolvedValue([]),
 });
 
 const makeActivityLogger = () => ({
@@ -138,6 +141,139 @@ describe('CollaborationService — project-scoped comment writes', () => {
       expect(commentRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ entityType: 'portfolio_item', entityId: 'pi-1' }),
       );
+    });
+
+    /**
+     * A reply may only attach to a comment on the SAME subject, in the SAME workspace, that is
+     * still live. Without the check a client could thread a reply under another item's (or
+     * another workspace's) comment and the thread view would render a parent the reader cannot
+     * open. Each condition is a separate case, because the guard is one boolean and a test that
+     * only exercises the item mismatch would not notice the workspace half disappearing.
+     */
+    describe('COMMENT_PARENT_MISMATCH', () => {
+      it('refuses a parent comment on another work item', async () => {
+        commentRepo.findById.mockResolvedValue(mockComment({ entityId: 'wi-2' }));
+
+        await expect(
+          service.createComment(mockActor, WORK_ITEM_REF, 'reply', 'c-1'),
+        ).rejects.toMatchObject({ code: 'COMMENT_PARENT_MISMATCH' });
+        expect(commentRepo.create).not.toHaveBeenCalled();
+      });
+
+      it('refuses a parent comment from ANOTHER workspace, same item id', async () => {
+        // The entity pair matches; only the workspace differs. A cross-workspace id must not be
+        // reachable through a same-id item (workspaces share no id space, but the check is the
+        // contract, not the coincidence).
+        commentRepo.findById.mockResolvedValue(mockComment({ workspaceId: 'ws-2' }));
+
+        await expect(
+          service.createComment(mockActor, WORK_ITEM_REF, 'reply', 'c-1'),
+        ).rejects.toMatchObject({ code: 'COMMENT_PARENT_MISMATCH' });
+        expect(commentRepo.create).not.toHaveBeenCalled();
+      });
+
+      it('refuses a parent comment that was soft-deleted', async () => {
+        commentRepo.findById.mockResolvedValue(mockComment({ deletedAt: now }));
+
+        await expect(
+          service.createComment(mockActor, WORK_ITEM_REF, 'reply', 'c-1'),
+        ).rejects.toMatchObject({ code: 'COMMENT_PARENT_MISMATCH' });
+        expect(commentRepo.create).not.toHaveBeenCalled();
+      });
+
+      it('refuses a parent of the other entity type (a portfolio comment on a work item)', async () => {
+        commentRepo.findById.mockResolvedValue(
+          mockComment({ entityType: 'portfolio_item', entityId: 'wi-1' }),
+        );
+
+        await expect(
+          service.createComment(mockActor, WORK_ITEM_REF, 'reply', 'c-1'),
+        ).rejects.toMatchObject({ code: 'COMMENT_PARENT_MISMATCH' });
+        expect(commentRepo.create).not.toHaveBeenCalled();
+      });
+
+      it('refuses a parent id that does not exist', async () => {
+        commentRepo.findById.mockResolvedValue(null);
+
+        await expect(
+          service.createComment(mockActor, WORK_ITEM_REF, 'reply', 'c-missing'),
+        ).rejects.toMatchObject({ code: 'COMMENT_PARENT_MISMATCH' });
+        expect(commentRepo.create).not.toHaveBeenCalled();
+      });
+
+      it('accepts a live parent on the same subject and stores its id', async () => {
+        commentRepo.findById.mockResolvedValue(mockComment());
+
+        await service.createComment(mockActor, WORK_ITEM_REF, 'reply', 'c-1');
+        expect(commentRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({ parentId: 'c-1' }),
+        );
+        expect(projectsService.listProjectMemberOptions).not.toHaveBeenCalled();
+      });
+    });
+
+    /**
+     * @mentions are restricted to people who can own work in the SUBJECT's project, and the
+     * allow-list is the project-scoped picker feed read with the CALLER's workspace. An id from
+     * another project or another workspace must not become a notification target.
+     */
+    describe('COMMENT_MENTION_NOT_IN_PROJECT', () => {
+      it('refuses an id outside the project member feed and writes nothing', async () => {
+        projectsService.listProjectMemberOptions.mockResolvedValue([{ userId: 'user-2' }]);
+
+        await expect(
+          service.createComment(mockActor, WORK_ITEM_REF, 'hi', undefined, ['outsider-1']),
+        ).rejects.toMatchObject({ code: 'COMMENT_MENTION_NOT_IN_PROJECT' });
+        expect(projectsService.listProjectMemberOptions).toHaveBeenCalledWith('ws-1', 'proj-9');
+        expect(commentRepo.create).not.toHaveBeenCalled();
+        expect(workItemsService.notifyCommentAdded).not.toHaveBeenCalled();
+      });
+
+      it('refuses when only ONE of several mentions is an outsider', async () => {
+        projectsService.listProjectMemberOptions.mockResolvedValue([
+          { userId: 'user-2' },
+          { userId: 'user-3' },
+        ]);
+
+        await expect(
+          service.createComment(mockActor, WORK_ITEM_REF, 'hi', undefined, [
+            'user-2',
+            'outsider-1',
+          ]),
+        ).rejects.toMatchObject({ code: 'COMMENT_MENTION_NOT_IN_PROJECT' });
+        expect(commentRepo.create).not.toHaveBeenCalled();
+      });
+
+      it('reads the feed for the subject project, in the CALLER workspace', async () => {
+        await service.createComment(mockActor, PORTFOLIO_REF, 'hi', undefined, []);
+
+        // No mentions: the feed is never read.
+        expect(projectsService.listProjectMemberOptions).not.toHaveBeenCalled();
+
+        projectsService.listProjectMemberOptions.mockResolvedValue([{ userId: 'user-2' }]);
+        await service.createComment(mockActor, PORTFOLIO_REF, 'hi', undefined, ['user-2']);
+
+        // A portfolio subject resolves its own project (proj-7), and the read is workspace-scoped.
+        expect(projectsService.listProjectMemberOptions).toHaveBeenCalledWith('ws-1', 'proj-7');
+        expect(commentRepo.create).toHaveBeenCalledTimes(2);
+      });
+
+      it('accepts every mention that is in the feed', async () => {
+        projectsService.listProjectMemberOptions.mockResolvedValue([
+          { userId: 'user-2' },
+          { userId: 'user-3' },
+        ]);
+
+        await service.createComment(mockActor, WORK_ITEM_REF, 'hi', undefined, [
+          'user-2',
+          'user-3',
+        ]);
+        expect(commentRepo.create).toHaveBeenCalledOnce();
+        expect(workItemsService.notifyCommentAdded).toHaveBeenCalledWith(mockActor, 'wi-1', [
+          'user-2',
+          'user-3',
+        ]);
+      });
     });
 
     // notifyCommentAdded fans out to watchers and the assignee. A portfolio item has
