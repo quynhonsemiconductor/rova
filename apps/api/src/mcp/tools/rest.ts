@@ -214,6 +214,20 @@ export function responseEtag(result: McpRestResult): string | undefined {
 }
 
 /**
+ * True when the REST layer answered from the idempotency cache instead of running the handler:
+ * the marker `@UseIdempotency` sets on a replay (`idempotency-replayed: true`). A write tool
+ * relays it so the model can tell "created" from "this is the row your earlier identical call
+ * created". Read here, and only here, for the same reason as the ETag.
+ */
+export function replayedFrom(result: McpRestResult): boolean {
+  const headers = result.headers ?? {};
+  const key = Object.keys(headers).find((name) => name.toLowerCase() === 'idempotency-replayed');
+  const raw = key ? headers[key] : undefined;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value === 'true';
+}
+
+/**
  * The integer version inside the strong ETag a work-item response carries (`"<version>"`).
  * `undefined` when the header is missing or not the contract's strong form — a write tool must
  * not send an If-Match it could not derive.

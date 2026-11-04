@@ -256,6 +256,8 @@ describe('IdempotencyInterceptor — body reuse, in-flight, cache failure', () =
     await lastValueFrom(interceptor.intercept(context(request({ a: 1 }), reply), handler));
 
     expect(reply.header).toHaveBeenCalledWith('ETag', '"3"');
+    // A replay is marked: the response is the FIRST call's answer, not this request's.
+    expect(reply.header).toHaveBeenCalledWith('idempotency-replayed', 'true');
   });
 
   it('releases the lock when the handler THROWS, so a retry runs again', async () => {

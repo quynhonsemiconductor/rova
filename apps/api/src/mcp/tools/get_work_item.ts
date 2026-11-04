@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, result, type ToolContext, pathSegment } from './rest';
+import { denied, result, versionFromEtag, type ToolContext, pathSegment } from './rest';
 import {
   createRefResolver,
   personRef,
@@ -98,14 +98,20 @@ export function registerGetWorkItem(server: McpServer, ctx: ToolContext) {
     },
     async ({ workItemId }) => {
       const resolver = createRefResolver(ctx);
-      const { statusCode, json } = await ctx.callRest(ctx.principal, {
+      const res = await ctx.callRest(ctx.principal, {
         method: 'GET',
         url: `/v1/work-items/${pathSegment(workItemId)}`,
       });
+      const { statusCode, json } = res;
       if (statusCode >= 400 || json === null || typeof json !== 'object' || Array.isArray(json))
         return denied(statusCode, json);
       const p = json as Record<string, unknown>;
-      return result(statusCode, json, shapeWorkItem(p, await resolveWorkItemRefs(p, resolver)));
+      // `version` is the concurrency token every write takes back as `ifMatch`, and it lives in
+      // the ETag (never the body): read it here so the model can update what it just read.
+      return result(statusCode, json, {
+        ...shapeWorkItem(p, await resolveWorkItemRefs(p, resolver)),
+        version: versionFromEtag(res) ?? null,
+      });
     },
   );
 }

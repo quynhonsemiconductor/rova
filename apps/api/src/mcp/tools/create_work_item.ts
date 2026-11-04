@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, toolError, type ToolContext } from './rest';
+import { denied, replayedFrom, toolError, type ToolContext } from './rest';
 import {
   failureResult,
   resolvePeople,
@@ -28,7 +28,7 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
     {
       title: 'Create work item',
       description:
-        "WRITES a new story or defect as you, and must be used only on the user's explicit request; confirm the project, type and title with the user first. Names (project, team, iteration, release, feature, assignee) are resolved against what you can see — an unknown or ambiguous name comes back with candidates.",
+        "WRITES a new story or defect as you, and must be used only on the user's explicit request; confirm the project, type and title with the user first. Names (project, team, iteration, release, feature, assignee) are resolved against what you can see — an unknown or ambiguous name comes back with candidates. An identical request within 10 minutes returns the first result (`replayed: true`).",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -180,6 +180,7 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
       return workItemWriteResult(
         res,
         Object.keys(body).filter((field) => !['projectId', 'type', 'title'].includes(field)),
+        { replayed: replayedFrom(res) },
       );
     },
   );

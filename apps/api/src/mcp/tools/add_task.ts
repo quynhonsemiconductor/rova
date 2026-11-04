@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { pathSegment, toolError, type ToolContext } from './rest';
+import { pathSegment, replayedFrom, toolError, type ToolContext } from './rest';
 import { failureResult, resolvePeople, resolveWorkItem } from './lookups';
 import { workItemWriteResult } from './work_item_write';
 
@@ -16,7 +16,7 @@ export function registerAddTask(server: McpServer, ctx: ToolContext) {
     {
       title: 'Add task',
       description:
-        "WRITES a task under a story or defect as you, and must be used only on the user's explicit request. The task inherits its iteration from the parent; `parentKey` is the work item key (e.g. US-412) or id.",
+        "WRITES a task under a story or defect as you, and must be used only on the user's explicit request. The task inherits its iteration from the parent; `parentKey` is the work item key (e.g. US-412) or id. An identical request within 10 minutes returns the first result (`replayed: true`).",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -78,6 +78,7 @@ export function registerAddTask(server: McpServer, ctx: ToolContext) {
       return workItemWriteResult(
         res,
         Object.keys(body).filter((field) => field !== 'title'),
+        { replayed: replayedFrom(res) },
       );
     },
   );

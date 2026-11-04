@@ -46,11 +46,11 @@ export function registerUpdateWorkItem(server: McpServer, ctx: ToolContext) {
     {
       title: 'Update work item',
       description:
-        "WRITES changes to one story, defect or task as you, and must be used only on the user's explicit request. Status changes follow the project's workflow; a refused transition comes back as an error — do not retry with another field. Names are resolved (status, assignee, team, iteration, release, feature, parent, devOwner); an unknown or ambiguous name comes back with candidates.",
+        "WRITES changes to one story, defect or task as you, and must be used only on the user's explicit request: show the user the item's CURRENT values (rova_get_work_item or rova_work_item_details) and send the version that read returned as `ifMatch`. Status changes follow the project's workflow; a refused transition comes back as an error — do not retry with another field. Names are resolved (status, assignee, team, iteration, release, feature, parent, devOwner); an unknown or ambiguous name comes back with candidates.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
-        idempotentHint: true,
+        idempotentHint: false,
         openWorldHint: false,
       },
       inputSchema: {
@@ -59,9 +59,8 @@ export function registerUpdateWorkItem(server: McpServer, ctx: ToolContext) {
           .string()
           .min(1)
           .max(32)
-          .optional()
           .describe(
-            'Optional: the version/ETag (e.g. "3") from the read you are acting on. Omit to let the tool read it immediately before the write.',
+            'REQUIRED: the version the read returned (e.g. "3", from rova_get_work_item or rova_work_item_details). The write is refused 412 WORK_ITEM_STALE if the item changed since.',
           ),
         title: z.string().min(1).max(500).optional(),
         description: z.string().max(50_000).nullable().optional(),
@@ -236,23 +235,22 @@ export function registerUpdateWorkItem(server: McpServer, ctx: ToolContext) {
       }
       if (!ctx.idempotencyKey) return toolError('Writes are not enabled on this endpoint.');
 
-      // The If-Match value: the caller's own read when it named one, else the version this
-      // call just read. Both are ETag-derived ("<version>", never a weak or timestamp token).
-      let expected: string | undefined;
-      if (args.ifMatch !== undefined) {
-        const parsed = /^"?([0-9]+)"?$/.exec(args.ifMatch.trim());
-        if (!parsed) {
-          return toolError(
-            `ifMatch must be the item version/ETag the read returned (e.g. "3"); got "${args.ifMatch}".`,
-          );
-        }
-        expected = parsed[1];
-      } else if (item.version >= 0) {
-        expected = String(item.version);
-      }
-      if (expected === undefined) {
+      // REQUIRED (design D4): the caller's own read is the base of the edit. The tool never
+      // substitutes a version it read a moment ago — that would turn "I saw version 3" into
+      // "whatever was current", which is the lost-update this token exists to prevent.
+      // Read through a widened type: the schema requires it, so the SDK refuses a call without
+      // one; the guard here gives a direct caller (and the model, in the unlikely case a client
+      // skips validation) the sentence that says what to send.
+      const ifMatch = (args as { ifMatch?: string }).ifMatch;
+      if (ifMatch === undefined) {
         return toolError(
-          'Could not read this item’s version (ETag); re-read it with rova_get_work_item and retry.',
+          'ifMatch required: pass the version from rova_work_item_details or rova_get_work_item; re-read the item if you lack it',
+        );
+      }
+      const parsed = /^"?([0-9]+)"?$/.exec(ifMatch.trim());
+      if (!parsed) {
+        return toolError(
+          `ifMatch must be the item version the read returned (e.g. "3"); got "${ifMatch}".`,
         );
       }
 
@@ -260,7 +258,7 @@ export function registerUpdateWorkItem(server: McpServer, ctx: ToolContext) {
         method: 'PATCH',
         url: `/v1/work-items/${pathSegment(item.id)}`,
         body,
-        ifMatch: `"${expected}"`,
+        ifMatch: `"${parsed[1]}"`,
       });
 
       if (isStale(res)) {

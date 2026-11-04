@@ -36,6 +36,12 @@ const IDEMPOTENCY_METHODS = new Set(['POST', 'PUT']);
  * Usage (opt-in per route): `@UseIdempotency()`
  * Usage (global):           register as APP_INTERCEPTOR in app.module.ts
  */
+/**
+ * Response header marking a REPLAYED idempotent response. Exported so the MCP bridge reads one
+ * spelling rather than a guess, and so a spec can assert the contract.
+ */
+export const IDEMPOTENCY_REPLAYED_HEADER = 'idempotency-replayed';
+
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
   private readonly logger = new Logger(IdempotencyInterceptor.name);
@@ -105,6 +111,15 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const setEtag = (etag: string): void => {
       if (typeof reply.header === 'function') reply.header('ETag', etag);
     };
+    /**
+     * Tells the caller its response was REPLAYED, not produced by this request. A create cannot
+     * return a different status or body (that is the point), so without this marker an MCP tool
+     * (or any client) cannot say "this is the row the first call made" — and the design requires
+     * that answer in the tool result.
+     */
+    const setReplayed = (): void => {
+      if (typeof reply.header === 'function') reply.header(IDEMPOTENCY_REPLAYED_HEADER, 'true');
+    };
 
     const release = async () => {
       try {
@@ -144,9 +159,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
         // The concurrency token must replay with the answer: a client that retries a create
         // needs the ETag of the row that was actually created, not a fresh read.
         if (typeof entry['etag'] === 'string') setEtag(entry['etag']);
+        setReplayed();
         return of(entry['response']);
       }
       // An entry written before {hash,status} existed: replay its body, route status.
+      setReplayed();
       return of(entry);
     };
     const readCache = () =>

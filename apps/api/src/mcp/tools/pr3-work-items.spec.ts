@@ -8,6 +8,7 @@ import {
   UpdateWorkItemSchema,
 } from '@modules/work-items/interface/http/dto/work-item-request.dto';
 import { registerCreateWorkItem } from './create_work_item';
+import { registerGetWorkItem } from './get_work_item';
 import { registerAddTask } from './add_task';
 import { registerUpdateWorkItem } from './update_work_item';
 
@@ -146,6 +147,7 @@ describe('PR3 work-item write tools', () => {
     expect(body).toMatchObject({
       workItem: { id: ITEM, itemKey: 'US-412', type: 'story' },
       version: 0,
+      replayed: false,
       changed: expect.arrayContaining(['description', 'assigneeId', 'iterationId', 'releaseId']),
     });
   });
@@ -232,7 +234,7 @@ describe('PR3 work-item write tools', () => {
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 
-  it('rova_update_work_item sends If-Match from the read ETag and a UpdateWorkItemSchema body', async () => {
+  it("rova_update_work_item sends the caller's If-Match and a UpdateWorkItemSchema body", async () => {
     const { ctx, calls } = context((call) => {
       const hit = feeds(call);
       if (hit) return hit;
@@ -248,6 +250,7 @@ describe('PR3 work-item write tools', () => {
 
     const { isError, body } = await call(registerUpdateWorkItem, ctx, {
       key: 'US-412',
+      ifMatch: '3',
       title: 'Renamed',
       status: 'In Progress',
       assignee: 'alice@qnsc.dev',
@@ -281,6 +284,7 @@ describe('PR3 work-item write tools', () => {
 
     await call(registerUpdateWorkItem, ctx, {
       key: 'US-412',
+      ifMatch: '"3"',
       assignee: null,
       iteration: null,
       release: null,
@@ -316,6 +320,7 @@ describe('PR3 work-item write tools', () => {
 
     const { isError, body } = await call(registerUpdateWorkItem, ctx, {
       key: 'US-412',
+      ifMatch: '0',
       title: 'Mine',
     });
 
@@ -338,13 +343,16 @@ describe('PR3 work-item write tools', () => {
       if (hit) return hit;
       return { statusCode: 500, json: {} };
     });
-    const { isError, body } = await call(registerUpdateWorkItem, ctx, { key: 'US-412' });
+    const { isError, body } = await call(registerUpdateWorkItem, ctx, {
+      key: 'US-412',
+      ifMatch: '3',
+    });
     expect(isError).toBe(true);
     expect(JSON.stringify(body)).toContain('at least one field');
     expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
   });
 
-  it('rova_update_work_item uses the caller-supplied ifMatch over its own read, and refuses a malformed one', async () => {
+  it("rova_update_work_item sends the caller's ifMatch as given, and refuses a malformed one", async () => {
     const { ctx, calls } = context((call) => {
       const hit = feeds(call);
       if (hit) return hit;
@@ -452,6 +460,7 @@ describe('PR3 work-item write tools', () => {
 
     const { isError, body } = await call(registerUpdateWorkItem, ctx, {
       key: 'US-412',
+      ifMatch: '3',
       description: 'd',
       acceptanceCriteria: 'ac',
       scheduleState: 'completed',
@@ -523,6 +532,7 @@ describe('PR3 work-item write tools', () => {
     });
     await call(registerUpdateWorkItem, ctx, {
       key: 'US-412',
+      ifMatch: '3',
       devOwner: null,
       team: null,
       parent: null,
@@ -575,6 +585,7 @@ describe('PR3 work-item write tools', () => {
     });
     const { isError, body } = await call(registerUpdateWorkItem, ctx, {
       key: 'US-412',
+      ifMatch: '3',
       iteration: 'Sprint 1',
     });
     expect(isError).toBe(true);
@@ -590,12 +601,60 @@ describe('PR3 work-item write tools', () => {
     for (const [register, args] of [
       [registerCreateWorkItem, { project: 'NXP', type: 'story', title: 'x' }],
       [registerAddTask, { parentKey: 'US-412', title: 'x' }],
-      [registerUpdateWorkItem, { key: 'US-412', title: 'x' }],
+      [registerUpdateWorkItem, { key: 'US-412', ifMatch: '3', title: 'x' }],
     ] as const) {
       const { isError, body } = await call(register, ctx, args);
       expect(isError).toBe(true);
       expect(JSON.stringify(body)).toContain('Writes are not enabled');
     }
+  });
+
+  it('rova_update_work_item is REFUSED without ifMatch: the edit must name the version it read', async () => {
+    const { ctx, calls } = context((call) => {
+      const hit = feeds(call);
+      if (hit) return hit;
+      return { statusCode: 500, json: {} };
+    });
+    const { isError, body } = await call(registerUpdateWorkItem, ctx, {
+      key: 'US-412',
+      title: 'x',
+    });
+    expect(isError).toBe(true);
+    expect(JSON.stringify(body)).toContain('ifMatch required: pass the version from');
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  it('an idempotent CREATE reports replayed from the REST marker', async () => {
+    const { ctx } = context((call) => {
+      const hit = feeds(call);
+      if (hit) return hit;
+      if (call.method === 'POST' && call.url === '/v1/work-items') {
+        return {
+          statusCode: 201,
+          json: ITEM_ROW,
+          headers: { ETag: '"0"', 'Idempotency-Replayed': 'true' },
+        };
+      }
+      return { statusCode: 500, json: {} };
+    });
+    const { body } = await call(registerCreateWorkItem, ctx, {
+      project: 'NXP',
+      type: 'story',
+      title: 'twice',
+    });
+    expect(body.replayed).toBe(true);
+  });
+
+  it('rova_get_work_item answers the version from the ETag, so the model can update what it read', async () => {
+    const { ctx } = context((call) => {
+      if (call.url === `/v1/work-items/${ITEM}`) {
+        return { statusCode: 200, json: ITEM_ROW, headers: { ETag: '"7"' } };
+      }
+      return { statusCode: 500, json: {} };
+    });
+    const { isError, body } = await call(registerGetWorkItem, ctx, { workItemId: ITEM });
+    expect(isError).toBeFalsy();
+    expect(body).toMatchObject({ id: ITEM, itemKey: 'US-412', version: 7 });
   });
 
   it('every write tool says WRITES and "explicit request" in its description', async () => {
@@ -610,5 +669,12 @@ describe('PR3 work-item write tools', () => {
       expect(tool.description, 'and must demand an explicit request').toContain('explicit request');
       expect(tool.annotations?.readOnlyHint).toBe(false);
     }
+    // update is destructive and NOT idempotent: the same body twice can move two different
+    // versions (and a Write that changes release/iteration twice is not a no-op).
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const update = registerUpdateWorkItem(server, ctx) as {
+      annotations?: { destructiveHint?: boolean; idempotentHint?: boolean };
+    };
+    expect(update.annotations).toMatchObject({ destructiveHint: true, idempotentHint: false });
   });
 });
