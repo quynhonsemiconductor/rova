@@ -16,6 +16,12 @@ const MAX_ATTEMPTS = 3
 /** No single wait is longer than this, even when Retry-After asks for more. */
 const MAX_DELAY_MS = 10_000
 const BASE_DELAY_MS = 500
+/**
+ * Per-attempt network timeout. Without one a hung connection never settles: the latch stays
+ * pending, `isLoading` never clears, and the recovery screen's retry joins a run that will never
+ * finish. An abort is just another transient failure (the catch below).
+ */
+const REQUEST_TIMEOUT_MS = 15_000
 
 let _bootstrapPromise: Promise<void> | null = null
 /** False while a run is in flight, so a retry can JOIN it instead of starting a second one. */
@@ -61,8 +67,11 @@ export async function retryAuthBootstrap(): Promise<AuthBootstrapOutcome> {
     await bootstrapAuth()
   }
   const state = useAuthStore.getState()
-  if (state.isAuthenticated) return 'restored'
-  return state.authError === 'unavailable' ? 'unavailable' : 'signedOut'
+  // `authError` FIRST, per the store contract: a signed-in profile is KEPT through a transient
+  // outage (setAuthError leaves it), so `isAuthenticated` alone would report 'restored' for a
+  // session we could not reach.
+  if (state.authError === 'unavailable') return 'unavailable'
+  return state.isAuthenticated ? 'restored' : 'signedOut'
 }
 
 /** A retry delay: Retry-After when the server named one, else exponential backoff; capped. */
@@ -104,6 +113,7 @@ async function _run(): Promise<void> {
         credentials: 'include',
         referrerPolicy: 'no-referrer',
         headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       })
     } catch {
       // A network failure has no response: back off and try again.

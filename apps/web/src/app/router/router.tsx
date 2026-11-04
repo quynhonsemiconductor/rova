@@ -10,6 +10,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { bootstrapAuth } from '@/shared/api/auth-bootstrap'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
+import { safeReturnTo } from '@/shared/lib/safe-return-to'
 import { START_CHAPTER, browserGuideLang, isGuideLang } from '@/pages/guide/model/guide-url'
 
 // ── Extend staticData for breadcrumb support (SHELL-FR-007) ──────────────────
@@ -44,7 +45,7 @@ async function requireAuth() {
     // The session check failed for a TRANSIENT reason (429/5xx/network). Not a sign-out: show
     // the recovery screen rather than bouncing a signed-in user to /login. The page it was on
     // travels along, so a successful retry returns the reader where they were.
-    const returnTo = window.location.pathname + window.location.search
+    const returnTo = safeReturnTo(window.location.pathname + window.location.search)
     throw redirect({
       to: '/auth-unavailable',
       search: returnTo === '/' ? {} : { returnTo },
@@ -52,9 +53,8 @@ async function requireAuth() {
   }
   if (!isAuthenticated) {
     // AUTH-FR-012: preserve requested URL so login can redirect back after session expiry
-    const returnTo = window.location.pathname + window.location.search
-    const search =
-      returnTo && returnTo !== '/' && !returnTo.startsWith('/login') ? { returnTo } : undefined
+    const returnTo = safeReturnTo(window.location.pathname + window.location.search)
+    const search = returnTo !== '/' && !returnTo.startsWith('/login') ? { returnTo } : undefined
     throw redirect({ to: '/login', search } as Parameters<typeof redirect>[0])
   }
 }

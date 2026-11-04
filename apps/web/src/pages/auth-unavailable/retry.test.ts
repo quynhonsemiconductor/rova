@@ -18,6 +18,13 @@ describe('safeReturnTo', () => {
     ['javascript:alert(1)', '/'],
     ['https://evil.example/x', '/'],
     ['/login', '/login'],
+    ['/..//evil', '/'],
+    ['\\\\evil', '/'],
+    ['/\\/evil', '/'],
+    ['JavaScript:alert(1)', '/'],
+    ['data:text/html,x', '/'],
+    ['%5c', '/'],
+    ['/%2F%2Fevil', '/'],
   ])('%j -> %j', (raw, expected) => {
     expect(safeReturnTo(raw)).toBe(expected)
   })

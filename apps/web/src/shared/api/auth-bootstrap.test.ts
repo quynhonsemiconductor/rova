@@ -127,6 +127,38 @@ describe('bootstrapAuth', () => {
     expect(useAuthStore.getState().authError).toBeNull()
   })
 
+  it('an ABORTED attempt is transient and retried, and every attempt carries a timeout signal', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'))
+      .mockResolvedValueOnce(jsonResponse(200, ME))
+
+    const done = bootstrapAuth()
+    await vi.advanceTimersByTimeAsync(500)
+    await done
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+
+    const options = fetchMock.mock.calls[0][1] as { signal?: unknown }
+    expect(options.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('reports unavailable, not restored, when a kept profile could not be reached', async () => {
+    useAuthStore.setState({
+      user: { ...ME },
+      memberships: [],
+      isAuthenticated: true,
+      isLoading: false,
+      authError: null,
+    })
+    fetchMock.mockResolvedValue(jsonResponse(503, { error: {} }))
+
+    const outcome = retryAuthBootstrap()
+    await vi.advanceTimersByTimeAsync(10_000)
+    await expect(outcome).resolves.toBe('unavailable')
+    expect(useAuthStore.getState().user?.id).toBe('u-1')
+  })
+
   it('a 200 with a malformed body fails RECOVERABLY: the promise resolves, the screen shows', async () => {
     fetchMock.mockResolvedValue(new Response('<html>gateway</html>', { status: 200 }))
 

@@ -2,6 +2,7 @@ import { BRAND } from '@/shared/config/brand'
 import { useState } from 'react'
 import { signInErrorFrom } from './sign-in-error'
 import { useTranslation } from 'react-i18next'
+import { safeReturnTo } from '@/shared/lib/safe-return-to'
 import { Layers, ShieldCheck, Check, AlertCircle } from 'lucide-react'
 import { ENV } from '@/shared/config/env'
 
@@ -70,8 +71,9 @@ export function LoginPage() {
    * of the company tenant). It is a hint, never an authorization: the API decides who gets in.
    */
   async function startMicrosoftSignIn(loginHint?: string): Promise<boolean> {
-    const requested = new URLSearchParams(window.location.search).get('returnTo') ?? '/'
-    const callbackURL = requested.startsWith('/') && !requested.startsWith('//') ? requested : '/'
+    // The ONE guard: a same-origin path (the router and the recovery screen use the same one).
+    const requested = new URLSearchParams(window.location.search).get('returnTo')
+    const callbackURL = safeReturnTo(requested)
     const res = await fetch('/api/auth/sign-in/social', {
       method: 'POST',
       credentials: 'include',
