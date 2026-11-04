@@ -1,7 +1,7 @@
 /**
  * Work-item key extraction — the link convention. A work-item's formatted key
- * embedded in a PR title, branch name, or commit message associates the SCM
- * artifact to the item (same model as Jira/GitHub/Rally).
+ * embedded in a PR title, PR body, branch name, or commit message associates the
+ * SCM artifact to the item (same model as Jira/GitHub/Rally).
  *
  * Keys are type-prefixed + hyphen + sequence (see ProjectsService.TYPE_PREFIX):
  *   IN- (initiative), FE- (feature), US- (story), TA- (task), DE- (defect).
@@ -12,7 +12,7 @@ const WORK_ITEM_KEY_RE = /\b(?:IN|FE|US|TA|DE)-\d+\b/gi;
 
 /**
  * Extract the de-duplicated, upper-cased set of work-item keys mentioned across
- * any number of free-text fields (PR title, branch ref, commit message …).
+ * any number of free-text fields (PR title, PR body, branch ref, commit message …).
  */
 export function extractWorkItemKeys(...texts: Array<string | null | undefined>): string[] {
   const found = new Set<string>();

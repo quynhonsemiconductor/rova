@@ -7,6 +7,7 @@
 export interface GhRestPull {
   number: number;
   title: string;
+  body: string | null;
   html_url: string;
   state: string;
   merged_at: string | null;

@@ -13,6 +13,7 @@ interface GhPullRequestPayload {
   pull_request?: {
     number?: number;
     title?: string;
+    body?: string | null;
     html_url?: string;
     state?: string;
     merged?: boolean;
@@ -56,7 +57,7 @@ export function parsePullRequestEvent(payload: unknown): NormalizedPullRequest |
   const fullName = p.repository?.full_name;
   if (!pr || !fullName || typeof pr.number !== 'number' || !pr.title || !pr.html_url) return null;
 
-  const keys = extractWorkItemKeys(pr.title, pr.head?.ref);
+  const keys = extractWorkItemKeys(pr.title, pr.body, pr.head?.ref);
   if (keys.length === 0) return null; // nothing to link
 
   const state = pr.merged ? 'merged' : (pr.state ?? 'open');

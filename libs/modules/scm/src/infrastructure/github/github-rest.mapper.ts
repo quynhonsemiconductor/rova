@@ -16,7 +16,7 @@ const FILE_ACTION: Record<string, ScmChange['action']> = {
 };
 
 export function mapRestPullRequest(pr: GhRestPull, fullName: string): NormalizedPullRequest | null {
-  const keys = extractWorkItemKeys(pr.title, pr.head?.ref);
+  const keys = extractWorkItemKeys(pr.title, pr.body, pr.head?.ref);
   if (keys.length === 0) return null;
   return {
     kind: 'pull_request',

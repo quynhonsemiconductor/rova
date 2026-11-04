@@ -6,6 +6,7 @@ describe('mapRestPullRequest', () => {
   const base: GhRestPull = {
     number: 42,
     title: 'fix(US-1): patch',
+    body: null,
     html_url: 'https://github.com/acme/demo/pull/42',
     state: 'open',
     merged_at: null,
@@ -43,6 +44,27 @@ describe('mapRestPullRequest', () => {
     expect(
       mapRestPullRequest({ ...base, title: 'no key', head: { ref: 'x' } }, 'acme/demo'),
     ).toBeNull();
+  });
+
+  it('picks keys up from the description when title and branch have none', () => {
+    const pr = mapRestPullRequest(
+      { ...base, title: 'no key', head: { ref: 'x' }, body: 'Implements US-162.' },
+      'acme/demo',
+    );
+    expect(pr?.keys).toEqual(['US-162']);
+  });
+
+  it('matches description keys inside code blocks and URLs, and ignores unknown keys', () => {
+    const pr = mapRestPullRequest(
+      {
+        ...base,
+        title: 'no key',
+        head: { ref: 'x' },
+        body: '`DE-3` and https://tracker.acme.dev/items/TA-4 and XX-9',
+      },
+      'acme/demo',
+    );
+    expect(pr?.keys).toEqual(['DE-3', 'TA-4']);
   });
 
   it('tolerates a null author', () => {
