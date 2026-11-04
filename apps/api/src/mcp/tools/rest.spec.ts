@@ -4,7 +4,9 @@ import {
   assertReadCarriesNoWritePayload,
   canonicalize,
   idempotencyKeyFor,
+  isRealCalendarDate,
   isWriteMethod,
+  naturalIdempotencyKeyFor,
   pathSegment,
 } from './rest';
 
@@ -119,5 +121,44 @@ describe('idempotencyKeyFor (MCP-generated Idempotency-Key)', () => {
     expect(() => idempotencyKeyFor('', ME, TOOL, { body: 'hi' }, 0)).toThrow(
       /MCP_IDEMPOTENCY_SECRET/,
     );
+  });
+});
+
+describe('naturalIdempotencyKeyFor (design §11 amendment: natural identity, no bucket)', () => {
+  it('is stable for the same request across any amount of wall-clock time', () => {
+    const a = naturalIdempotencyKeyFor(SECRET, ME, TOOL, { build: '1.4.2', verdict: 'pass' });
+    // No `nowMs` argument exists on purpose: nothing about the clock may enter this key.
+    const b = naturalIdempotencyKeyFor(SECRET, ME, TOOL, { verdict: 'pass', build: '1.4.2' });
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    // And it is NOT the bucketed key: the two mechanisms are distinguishable.
+    expect(a).not.toBe(idempotencyKeyFor(SECRET, ME, TOOL, { build: '1.4.2', verdict: 'pass' }, 0));
+  });
+
+  it('separates principal, tool and every argument value', () => {
+    const base = naturalIdempotencyKeyFor(SECRET, ME, TOOL, { verdict: 'pass' });
+    expect(naturalIdempotencyKeyFor(SECRET, 'other-user', TOOL, { verdict: 'pass' })).not.toBe(
+      base,
+    );
+    expect(
+      naturalIdempotencyKeyFor(SECRET, ME, 'rova_save_test_case', { verdict: 'pass' }),
+    ).not.toBe(base);
+    expect(naturalIdempotencyKeyFor(SECRET, ME, TOOL, { verdict: 'fail' })).not.toBe(base);
+  });
+
+  it('refuses to build a key without the server secret', () => {
+    expect(() => naturalIdempotencyKeyFor('', ME, TOOL, { verdict: 'pass' })).toThrow(
+      /MCP_IDEMPOTENCY_SECRET/,
+    );
+  });
+});
+
+describe('isRealCalendarDate', () => {
+  it('accepts a real date and refuses an impossible one inside the allowed range', () => {
+    expect(isRealCalendarDate('2026-11-04')).toBe(true);
+    expect(isRealCalendarDate('2026-02-30')).toBe(false);
+    expect(isRealCalendarDate('1999-12-31')).toBe(false);
+    expect(isRealCalendarDate('2026-13-01')).toBe(false);
+    expect(isRealCalendarDate('2026-1-4')).toBe(false);
   });
 });
