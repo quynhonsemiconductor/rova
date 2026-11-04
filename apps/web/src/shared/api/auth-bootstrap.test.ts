@@ -63,13 +63,17 @@ describe('bootstrapAuth', () => {
     expect(useAuthStore.getState().authError).toBeNull()
   })
 
-  it('403 also clears: the caller lost access', async () => {
+  it('403 is NOT a session fact: /auth/me is self-scoped, so a 403 comes from in front of the route', async () => {
     fetchMock.mockResolvedValue(jsonResponse(403, { error: { code: 'FORBIDDEN' } }))
 
-    await bootstrapAuth()
+    const done = bootstrapAuth()
+    await vi.advanceTimersByTimeAsync(10_000)
+    await done
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(useAuthStore.getState().authError).toBeNull()
+    // Retried like any transient failure, and the store is left alone rather than cleared.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(useAuthStore.getState().authError).toBe('unavailable')
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
   })
 
   it('429 does NOT clear; it waits Retry-After and retries, then restores the session', async () => {
@@ -162,9 +166,36 @@ describe('bootstrapAuth', () => {
     fetchMock.mockResolvedValue(jsonResponse(200, ME))
     const restored = retryAuthBootstrap()
     await vi.runAllTimersAsync()
-    await expect(restored).resolves.toBe(true)
+    await expect(restored).resolves.toBe('restored')
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
     expect(useAuthStore.getState().authError).toBeNull()
+  })
+
+  it('retryAuthBootstrap reports a GENUINELY dead session as signedOut', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(401, { error: { code: 'UNAUTHORIZED' } }))
+
+    await expect(retryAuthBootstrap()).resolves.toBe('signedOut')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(useAuthStore.getState().authError).toBeNull()
+  })
+
+  it('retryAuthBootstrap JOINS a run already in flight instead of starting a second', async () => {
+    let release!: (response: Response) => void
+    fetchMock.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve
+        }),
+    )
+
+    const first = bootstrapAuth()
+    const retry = retryAuthBootstrap()
+    release(jsonResponse(200, ME))
+
+    await expect(first).resolves.toBeUndefined()
+    await expect(retry).resolves.toBe('restored')
+    // One request: the retry awaited the run that was already going.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('never latches a REJECTED promise: an unexpected throw becomes the recovery screen', async () => {

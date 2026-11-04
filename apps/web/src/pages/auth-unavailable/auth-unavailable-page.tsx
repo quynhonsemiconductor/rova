@@ -13,12 +13,13 @@ export function AuthUnavailablePage() {
     try {
       // A full navigation drops every in-memory query of the failed attempt; bootstrap has
       // already proved the session works, so the next load starts clean.
-      const restored = await retrySession(window.location.search, (target) =>
+      const outcome = await retrySession(window.location.search, (target) =>
         window.location.assign(target),
       )
-      if (restored) return
-    } catch {
+      if (outcome !== 'unavailable') return
+    } catch (err) {
       // Treated exactly like a failed retry: the screen stays and the button comes back.
+      console.error('[auth-unavailable] retry failed', err)
     }
     setRetrying(false)
   }

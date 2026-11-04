@@ -199,8 +199,10 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     expect(keys).toEqual(['DEFAULT:ip:203.0.113.7']);
   });
 
-  it('a failed refund is logged and the request is still admitted', async () => {
+  it('a failed refund is LOGGED and the request is still admitted', async () => {
     refund.mockRejectedValue(new Error('valkey down'));
+    const logger = (guard as unknown as { logger: { error: (...a: unknown[]) => void } }).logger;
+    const logError = vi.spyOn(logger, 'error');
     const req = request({ headers: { 'cf-connecting-ip': '203.0.113.7' } });
     (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = {
       key: 'PRE_AUTH:ip:203.0.113.7',
@@ -211,8 +213,49 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     const allowed = await requestContextStorage.run(principalStore('user-1'), () =>
       guard.canActivate(context(req)),
     );
-    await new Promise((resolve) => setImmediate(resolve));
+    // The refund is awaited, so no setImmediate dance is needed and the log is there.
     expect(allowed).toBe(true);
     expect(refund).toHaveBeenCalledTimes(1);
+    expect(logError).toHaveBeenCalled();
+    logError.mockRestore();
+  });
+
+  it('a 429 from the USER bucket KEEPS the address slot: the per-IP floor is not a bypass', async () => {
+    // The user's own budget is exhausted.
+    const cache = {
+      consumeRateLimit: vi
+        .fn()
+        .mockResolvedValueOnce({
+          allowed: false,
+          remaining: 0,
+          resetAt: Math.floor(Date.now() / 1000) + 30,
+        }),
+      refundRateLimit: refund,
+    };
+    const strictGuard = new RateLimitGuard(
+      new Reflector(),
+      cache as never,
+      {
+        recordFailOpen: vi.fn(),
+      } as never,
+    );
+    const req = request({ headers: { 'cf-connecting-ip': '203.0.113.7' } });
+    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = {
+      key: 'PRE_AUTH:ip:203.0.113.7',
+      id: 'slot-10',
+      settled: false,
+    } satisfies PreAuthReservation;
+
+    await expect(
+      requestContextStorage.run(principalStore('user-1'), () =>
+        strictGuard.canActivate(context(req)),
+      ),
+    ).rejects.toThrow(/Rate limit exceeded/);
+
+    expect(refund).not.toHaveBeenCalled();
+    expect(
+      ((req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] as PreAuthReservation)
+        .settled,
+    ).toBe(false);
   });
 });

@@ -18,32 +18,51 @@ const MAX_DELAY_MS = 10_000
 const BASE_DELAY_MS = 500
 
 let _bootstrapPromise: Promise<void> | null = null
+/** False while a run is in flight, so a retry can JOIN it instead of starting a second one. */
+let _bootstrapSettled = true
 
 export function bootstrapAuth(): Promise<void> {
   if (_bootstrapPromise) return _bootstrapPromise
+  _bootstrapSettled = false
   // The latch must RESOLVE whatever happens: `requireAuth` awaits it with no catch, and a
   // rejected latch would leave `isLoading` stuck with neither a session nor a recovery screen.
   // Anything `_run` did not anticipate becomes the same transient failure as a 5xx.
-  _bootstrapPromise = _run().catch(() => {
-    failBootstrap(useAuthStore.getState().setAuthError)
-  })
+  _bootstrapPromise = _run()
+    .catch((err: unknown) => {
+      console.error('[auth-bootstrap] unexpected failure; showing the recovery screen', err)
+      failBootstrap(useAuthStore.getState().setAuthError)
+    })
+    .finally(() => {
+      _bootstrapSettled = true
+    })
   return _bootstrapPromise
 }
 
 /** Clears the once-per-page-load latch. For a harness that re-runs bootstrap in one process. */
 export function resetAuthBootstrap(): void {
   _bootstrapPromise = null
+  _bootstrapSettled = true
 }
 
+/** What a retry found: a working session, a dead one, or still no answer. */
+export type AuthBootstrapOutcome = 'restored' | 'signedOut' | 'unavailable'
+
 /**
- * The recovery screen's retry: re-run the whole bootstrap (latch included) and report whether the
- * session came back. The caller navigates only on `true`; a second transient failure leaves the
- * screen in place rather than bouncing the user somewhere else.
+ * The recovery screen's retry. It JOINS a run already in flight (two concurrent runs would race
+ * on `setUser`/`clearAuth`) and otherwise re-runs the whole bootstrap; the outcome says which
+ * of the three states the session is in, so the caller can sign the user in, return them to
+ * where they were, or leave the screen up.
  */
-export async function retryAuthBootstrap(): Promise<boolean> {
-  resetAuthBootstrap()
-  await bootstrapAuth()
-  return useAuthStore.getState().isAuthenticated
+export async function retryAuthBootstrap(): Promise<AuthBootstrapOutcome> {
+  if (!_bootstrapSettled && _bootstrapPromise) {
+    await _bootstrapPromise
+  } else {
+    resetAuthBootstrap()
+    await bootstrapAuth()
+  }
+  const state = useAuthStore.getState()
+  if (state.isAuthenticated) return 'restored'
+  return state.authError === 'unavailable' ? 'unavailable' : 'signedOut'
 }
 
 /** A retry delay: Retry-After when the server named one, else exponential backoff; capped. */
@@ -133,8 +152,11 @@ async function _run(): Promise<void> {
       return
     }
 
-    if (meRes.status === 401 || meRes.status === 403) {
-      // A SESSION fact: the cookie is dead or the caller lost access. Sign-in is the way back.
+    if (meRes.status === 401) {
+      // A SESSION fact: the cookie is dead. Sign-in is the way back. 403 is NOT treated as one:
+      // the route is self-scoped (`@SelfScoped` + `@Auth()` on `GET /v1/auth/me`), so there is no
+      // permission it can refuse a signed-in caller for; a 403 here comes from something in front
+      // of the route (edge/WAF) and says nothing about the session.
       setCsrfToken(null)
       clearAuth()
       return

@@ -91,12 +91,6 @@ export class RateLimitGuard implements CanActivate {
     if (!userId) (req as unknown as Record<symbol, unknown>)[KEYED_BY_ADDRESS] = true;
     const key = `${tier}:${identifier}`;
 
-    // Identity (or the API-token guard) has verified the caller, so the ADDRESS slot taken by
-    // `PreAuthRateLimitGuard` before it is not needed: giving it back now keeps normal office
-    // traffic off the shared PRE_AUTH bucket. Nothing else refunds it — an unverified request
-    // keeps its slot whatever status it ends with.
-    if (userId) await refundPreAuthReservation(this.cache, this.logger, req);
-
     // ── Consume one token from the bucket ────────────────────────────────────
     let allowed: boolean;
     let remaining: number;
@@ -137,6 +131,13 @@ export class RateLimitGuard implements CanActivate {
 
       throw new RateLimitedException(`Rate limit exceeded (${tier}). Retry after ${retryAfter}s.`);
     }
+
+    // Identity has verified the caller AND the request is admitted by its own budget, so the
+    // ADDRESS slot taken by `PreAuthRateLimitGuard` before it is not needed: giving it back here
+    // keeps normal office traffic off the shared PRE_AUTH bucket. A request the USER bucket
+    // rejects (429) is NOT refunded — it never reached the handler, and a caller stuck over its
+    // own budget must not get an unlimited ride on the per-address floor. Nothing else refunds.
+    if (userId) await refundPreAuthReservation(this.cache, this.logger, req);
 
     return true;
   }
