@@ -172,6 +172,14 @@ export const pageArgs = {
   cursor: z.string().optional().describe('Opaque cursor from the previous page'),
 };
 
+/** A tool-level refusal (an unresolvable reference, an ambiguous name): an MCP error result. */
+export function toolError(message: string) {
+  return {
+    isError: true as const,
+    content: [{ type: 'text' as const, text: JSON.stringify({ error: message }) }],
+  };
+}
+
 /** Passes a REST denial through unchanged: the same status and body the person's REST call gets. */
 export function denied(statusCode: number, json: unknown) {
   return {

@@ -457,8 +457,11 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       'rova_list_releases',
       'rova_list_teams',
       'rova_list_test_cases',
+      'rova_list_test_results',
       'rova_my_work',
+      'rova_project_activity',
       'rova_project_health',
+      'rova_project_vocabulary',
       'rova_quality_defects',
       'rova_release_tracking',
       'rova_search_work_items',
@@ -469,6 +472,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
       'rova_whoami',
       'rova_work_item_activity',
       'rova_work_item_code_changes',
+      'rova_work_item_details',
     ]);
     for (const t of tools) expect(t.annotations?.readOnlyHint).toBe(true);
   });
@@ -872,7 +876,7 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     await initialize(fastify);
     const list = await rpc(fastify, 'tools/list');
     const tools = list.json().result!.tools!;
-    expect(tools.length).toBe(34);
+    expect(tools.length).toBe(38);
     for (const tool of tools) {
       expect(
         JSON.stringify(tool.inputSchema).match(/workspace/i),

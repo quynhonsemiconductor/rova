@@ -76,6 +76,21 @@ export const MCP_REFERENCE_READ_ROUTES: readonly string[] = [
   '/v1/releases/:id/artifacts',
   // The people picker refs.ts uses to name an assignee/lead/author.
   '/v1/workspaces/:workspaceId/member-options',
+  // Reference feeds of rova_project_vocabulary (statuses and the teams are tool routes).
+  '/v1/projects/:id/transitions',
+  '/v1/projects/:id/labels',
+  '/v1/projects/:id/test-case-types',
+  '/v1/projects/:id/teams',
+  // Sub-resources of rova_work_item_details (tasks and test-cases are tool routes).
+  '/v1/work-items/:id/relations',
+  '/v1/work-items/:id/labels',
+  '/v1/work-items/:id/time-logs',
+  '/v1/work-items/:id/watchers',
+  '/v1/work-items/:id/attachments',
+  // rova_list_test_results resolves the case by key before reading its results.
+  '/v1/test-cases/by-key/:key',
+  // rova_list_comments on a portfolio subject.
+  '/v1/portfolio-items/:id/comments',
 ];
 
 /** Every route a bridged READ may reach: the catalogue's GETs plus the reference feeds. */
