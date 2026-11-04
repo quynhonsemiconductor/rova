@@ -21,13 +21,7 @@ import { IS_PUBLIC_KEY } from '../auth/public-key';
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
 
 /** Only mutating methods carry idempotency semantics. */
-/**
- * The methods the interceptor will act on. PATCH is included for the BULK work-item routes,
- * which are whole-selection writes: a retried `PATCH /work-items/bulk-iteration` must not be
- * able to run twice. A PATCH route without `@UseIdempotency` never reaches the header read, so
- * this widens nothing by itself.
- */
-const IDEMPOTENCY_METHODS = new Set(['POST', 'PUT', 'PATCH']);
+const IDEMPOTENCY_METHODS = new Set(['POST', 'PUT']);
 
 /**
  * IdempotencyInterceptor
@@ -166,9 +160,6 @@ export class IdempotencyInterceptor implements NestInterceptor {
         // needs the ETag of the row that was actually created, not a fresh read.
         if (typeof entry['etag'] === 'string') setEtag(entry['etag']);
         setReplayed();
-        // `null` is a cached VOID answer (a 204 route). Replaying it must emit nothing, so the
-        // route's own status (204) goes out with no body — NOT the string "null".
-        if (entry['response'] === null) return of(undefined);
         return of(entry['response']);
       }
       // An entry written before {hash,status} existed: replay its body, route status.
@@ -243,30 +234,27 @@ export class IdempotencyInterceptor implements NestInterceptor {
                       void (async () => {
                         const etag = getEtag();
                         const status = reply.statusCode !== 200 ? reply.statusCode : defaultStatus;
-                        /**
-                         * EVERY completed handler is cached, including a VOID one. A 204 route
-                         * (`addLabel`, `mark_notifications_read`) emits `undefined`, and skipping
-                         * those made `@UseIdempotency` inert on exactly the routes that opted in:
-                         * the first call took the in-flight lock, completed, cached nothing, and
-                         * a retry ran the write again. `response: null` is the explicit marker a
-                         * replay turns back into "no body".
-                         */
-                        try {
-                          await this.cache.instance.set(
-                            redisKey,
-                            JSON.stringify({
-                              v: 1,
-                              hash: requestHash,
-                              status,
-                              ...(typeof etag === 'string' ? { etag } : {}),
-                              response: lastResponse ?? null,
-                            }),
-                            'EX',
-                            IDEMPOTENCY_TTL_SECONDS,
-                          );
-                        } catch (err) {
-                          // Cache failure must NOT fail the request
-                          this.logger.warn({ msg: 'idempotency: failed to cache response', err });
+                        // A VOID (204) answer is deliberately NOT cached: only routes that
+                        // CREATE rows carry `@UseIdempotency`, and those answer a body. A
+                        // naturally-idempotent write must not be turned into a replayed no-op.
+                        if (lastResponse !== undefined) {
+                          try {
+                            await this.cache.instance.set(
+                              redisKey,
+                              JSON.stringify({
+                                v: 1,
+                                hash: requestHash,
+                                status,
+                                ...(typeof etag === 'string' ? { etag } : {}),
+                                response: lastResponse,
+                              }),
+                              'EX',
+                              IDEMPOTENCY_TTL_SECONDS,
+                            );
+                          } catch (err) {
+                            // Cache failure must NOT fail the request
+                            this.logger.warn({ msg: 'idempotency: failed to cache response', err });
+                          }
                         }
                         await release();
                       })().finally(() => {

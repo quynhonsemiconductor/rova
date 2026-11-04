@@ -16,7 +16,13 @@ import { setMcpWritesEnabled } from '../../apps/api/src/mcp/write-policy';
 import { bootstrapApp } from '../../apps/api/src/bootstrap/app.bootstrap';
 import { CSRF_HEADER, CSRF_SECRET_COOKIE, DRIZZLE, type DrizzleDB } from '@platform';
 import { users } from '../../db/schema/identity';
-import { comments, timeLogs, workItemRelations, workItems } from '../../db/schema/work';
+import {
+  comments,
+  timeLogs,
+  workItemLabels,
+  workItemRelations,
+  workItems,
+} from '../../db/schema/work';
 import { inAppNotifications } from '../../db/schema/notifications';
 import {
   NXP_DEFECT_1_ID,
@@ -820,7 +826,7 @@ describe('/mcp write tools (e2e)', () => {
     expect(viaMcp.body.error).toMatchObject({ error: { code: rest.json().error.code } });
   });
 
-  it('rova_link_work_items replays a retry (one row), and an existing link reached fresh is success', async () => {
+  it('rova_link_work_items is naturally idempotent: a re-link is alreadyLinked success, one row', async () => {
     people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
     const mk = async (label: string) => {
       const res = await adminRest('POST', '/work-items', {
@@ -840,26 +846,23 @@ describe('/mcp write tools (e2e)', () => {
     });
     expect(first.isError, JSON.stringify(first.body)).toBeFalsy();
     expect(first.body).toMatchObject({ relationType: 'relates_to', changed: ['relation'] });
-    const relationId = (first.body.relations as { id: string }[])[0].id;
 
-    // The SAME call inside the idempotency window replays the first answer: same relation id,
-    // and exactly ONE row.
-    const replay = await tool('rova_link_work_items', {
+    // A legitimate REPEAT (no time-bucket key) reaches the server, which answers
+    // WORK_ITEM_RELATION_EXISTS — reported as the outcome the caller asked for.
+    const again = await tool('rova_link_work_items', {
       fromKey: from,
       toKey: to,
       relationType: 'relates_to',
     });
-    expect(replay.isError, JSON.stringify(replay.body)).toBeFalsy();
-    expect((replay.body.relations as { id: string }[])[0].id).toBe(relationId);
+    expect(again.isError, JSON.stringify(again.body)).toBeFalsy();
+    expect(again.body).toMatchObject({ alreadyLinked: true, changed: [] });
     const [{ rows }] = await db
       .select({ rows: sql<number>`count(*)::int` })
       .from(workItemRelations)
       .where(eq(workItemRelations.sourceItemId, from));
     expect(Number(rows)).toBe(1);
 
-    // A link that ALREADY exists (made here by REST, so the tool's first key is new) is refused
-    // by the server as WORK_ITEM_RELATION_EXISTS — which is the outcome asked for, so the tool
-    // reports success, not an error.
+    // A link created on ANOTHER surface is refused by REST as well; the tool reports success.
     const otherFrom = await mk('link from 2');
     const otherTo = await mk('link to 2');
     const rest = await adminRest('POST', `/work-items/${otherFrom}/relations`, {
@@ -876,7 +879,7 @@ describe('/mcp write tools (e2e)', () => {
     expect(sameLink.body).toMatchObject({ alreadyLinked: true, changed: [] });
   });
 
-  it('rova_label_work_item replays a retry: one assignment, and plan replays a retried move', async () => {
+  it('label and plan are naturally idempotent: a repeat is a no-op, not a replay', async () => {
     people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
     const labelName = `mcp-replay-${Date.now()}`;
     const label = await adminRest('POST', `/projects/${NXP}/labels`, {
@@ -901,30 +904,11 @@ describe('/mcp write tools (e2e)', () => {
     });
     expect(labels.json<{ name: string }[]>().filter((l) => l.name === labelName)).toHaveLength(1);
 
-    // The 204 label route itself replays under an Idempotency-Key (the interceptor caches VOID
-    // answers too): the second identical POST is marked as a replay.
+    // Duplicate add is a server-side NO-OP (204), which is why this route needs no idempotency.
     const labelId = label.json<{ id?: string }>().id;
     if (typeof labelId === 'string') {
-      const replayHeaders = {
-        cookie: adminCsrf.cookie,
-        [CSRF_HEADER]: adminCsrf.token,
-        'idempotency-key': `e2e-void-replay-${Date.now()}`,
-      };
-      const first = await app.inject({
-        method: 'POST',
-        url: `/v1/work-items/${itemId}/labels`,
-        headers: replayHeaders,
-        payload: { labelId },
-      });
-      const second = await app.inject({
-        method: 'POST',
-        url: `/v1/work-items/${itemId}/labels`,
-        headers: replayHeaders,
-        payload: { labelId },
-      });
-      expect(first.statusCode, first.body).toBe(204);
-      expect(second.statusCode).toBe(204);
-      expect(second.headers['idempotency-replayed']).toBe('true');
+      const duplicate = await adminRest('POST', `/work-items/${itemId}/labels`, { labelId });
+      expect(duplicate.statusCode, duplicate.body).toBe(204);
     }
 
     const iterations = await app.inject({
@@ -944,13 +928,26 @@ describe('/mcp write tools (e2e)', () => {
         dryRun: false,
       });
     const moved = await plan();
-    const replayed = await plan();
+    const again = await plan();
     expect(moved.isError, JSON.stringify(moved.body)).toBeFalsy();
-    expect(replayed.isError, JSON.stringify(replayed.body)).toBeFalsy();
-    expect(replayed.body).toMatchObject({ updated: 1 });
+    // The REAL second call runs (no time-bucket replay): it re-assigns the same value.
+    expect(again.isError, JSON.stringify(again.body)).toBeFalsy();
+    expect(again.body).toMatchObject({ dryRun: false, updated: 1 });
+    const [row] = await db
+      .select({ iterationId: workItems.iterationId })
+      .from(workItems)
+      .where(eq(workItems.id, itemId));
+    expect(row.iterationId).toBe(NXP_ITER_CURRENT_ID);
   });
 
   it('link, label and plan are refused for a caller without access, exactly as REST is', async () => {
+    const count = async (table: typeof workItemRelations | typeof workItemLabels) => {
+      const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(table);
+      return Number(row.n);
+    };
+    const relationsBefore = await count(workItemRelations);
+    const labelsBefore = await count(workItemLabels);
+
     // No Access principal: the RESOLVER read is the refusal both surfaces get.
     people.set(TOKEN, { userId: viewerId, workspaceId: WORKSPACE_ID });
     const restRead = await app.inject({
@@ -970,6 +967,9 @@ describe('/mcp write tools (e2e)', () => {
       expect(viaMcp.isError, `${registerTool}: ${JSON.stringify(viaMcp.body)}`).toBe(true);
       expect(viaMcp.body.statusCode).toBe(restRead.statusCode);
     }
+    // Nothing was written by either refusal.
+    expect(await count(workItemRelations)).toBe(relationsBefore);
+    expect(await count(workItemLabels)).toBe(labelsBefore);
 
     // An Editor OUTSIDE the item's Team: the bulk route refuses it, and the tool's item read
     // refuses it with the same status/code.
@@ -1008,6 +1008,12 @@ describe('/mcp write tools (e2e)', () => {
     expect(viaMcp.isError).toBe(true);
     expect(viaMcp.body.statusCode).toBe(restBulk.statusCode);
     expect(viaMcp.body.error).toMatchObject({ error: { code: restBulk.json().error.code } });
+    // The refused batch moved NOTHING.
+    const [betaRow] = await db
+      .select({ iterationId: workItems.iterationId })
+      .from(workItems)
+      .where(eq(workItems.id, betaId));
+    expect(betaRow.iterationId).toBeNull();
   });
 
   it('rova_label_work_item adds and removes an existing project label by name', async () => {

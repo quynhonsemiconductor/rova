@@ -567,7 +567,9 @@ export class WorkItemsController {
   // Declared before @Patch(':id') so the static paths are not captured as an :id.
 
   @Patch('bulk-release')
-  @UseIdempotency()
+  // NO @UseIdempotency, deliberately: a bulk assignment is a SET operation, so re-running the
+  // same call writes the same value. A time-bucket key + 24 h replay would swallow a legitimate
+  // repeat (release A -> none -> A) and report success without moving anything.
   @ApiOperation({ summary: 'Bulk assign (or clear) a release on selected work items' })
   @RequirePermission('work_item:edit', { from: 'body', field: 'projectId' })
   @ApiResponse({
@@ -590,7 +592,8 @@ export class WorkItemsController {
   }
 
   @Patch('bulk-iteration')
-  @UseIdempotency()
+  // NO @UseIdempotency, deliberately: same SET semantics as bulk-release — re-running moves the
+  // selection to the same iteration, and a replay would hide the user's real second move.
   @ApiOperation({ summary: 'Bulk assign (or clear) an iteration on selected work items' })
   @RequirePermission('work_item:edit', { from: 'body', field: 'projectId' })
   @ApiResponse({
@@ -949,7 +952,9 @@ export class WorkItemsController {
   }
 
   @Post(':id/labels')
-  @UseIdempotency()
+  // NO @UseIdempotency, deliberately: adding an already-attached label is `onConflictDoNothing`
+  // (a no-op row), and removing an absent one deletes nothing — both answer 204. A replay would
+  // swallow the legitimate add -> remove -> add sequence.
   @HttpCode(204)
   @ApiOperation({ summary: 'Add a label to a work item' })
   @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
@@ -993,7 +998,9 @@ export class WorkItemsController {
   }
 
   @Post(':id/relations')
-  @UseIdempotency()
+  // NO @UseIdempotency, deliberately: an existing relation is refused as
+  // WORK_ITEM_RELATION_EXISTS, which the MCP tool reports as `alreadyLinked` success. A replay
+  // here would hand back a stale relation id for an unlink -> re-link sequence.
   @ApiOperation({ summary: 'Link this work item to another (blocks/duplicates/relates/…)' })
   @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

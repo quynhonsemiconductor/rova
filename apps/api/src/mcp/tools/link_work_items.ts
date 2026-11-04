@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, pathSegment, result, toolError, type ToolContext } from './rest';
+import { denied, pathSegment, result, type ToolContext } from './rest';
 import { failureResult, resolveWorkItem } from './lookups';
 
 const RELATION_TYPES = ['blocks', 'duplicates', 'relates_to', 'depends_on'] as const;
@@ -56,7 +56,6 @@ export function registerLinkWorkItems(server: McpServer, ctx: ToolContext) {
       if (!from.ok) return failureResult(from);
       const to = await resolveWorkItem(ctx, toKey);
       if (!to.ok) return failureResult(to);
-      if (!ctx.idempotencyKey) return toolError('Writes are not enabled on this endpoint.');
 
       const endpoints = {
         from: { id: from.id, itemKey: from.itemKey },
@@ -66,14 +65,9 @@ export function registerLinkWorkItems(server: McpServer, ctx: ToolContext) {
         method: 'POST',
         url: `/v1/work-items/${pathSegment(from.id)}/relations`,
         body: { targetId: to.id, relationType },
-        // Keyed on the RESOLVED endpoints: `US-1` and the same item's uuid are one operation, and
-        // a model retry inside the 10-minute window replays the first relation instead of asking
-        // the server for a duplicate.
-        idempotencyKey: ctx.idempotencyKey('rova_link_work_items', {
-          fromId: from.id,
-          toId: to.id,
-          relationType,
-        }),
+        // NO idempotency key: the relation is naturally idempotent — an existing link is
+        // `alreadyLinked` success — and a time-bucket replay would hand back a stale relation id
+        // for an unlink -> re-link. (§11 D2 applies to tools that CREATE rows; this one does not.)
       });
       if (res.statusCode >= 400) {
         // An EXISTING link is the outcome the caller asked for. The idempotency replay covers a

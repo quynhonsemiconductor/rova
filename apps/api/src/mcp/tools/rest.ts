@@ -123,18 +123,6 @@ export function assertIfMatchOnlyOnPatch(call: McpRestCall): void {
   }
 }
 
-/**
- * Refuses, at RUNTIME, a POST with no Idempotency-Key: a create is exactly the call whose
- * duplicate is a new row, so the MCP side must always sign it. A tool that forgot the key fails
- * loudly here instead of silently creating twice on an LLM retry.
- */
-export function assertPostCarriesIdempotencyKey(call: McpRestCall): void {
-  if (call.method !== 'POST') return;
-  if (call.idempotencyKey === undefined || call.idempotencyKey === '') {
-    throw new Error(`MCP bridge: POST ${call.url} carries no Idempotency-Key`);
-  }
-}
-
 const CANONICAL_STRING = (value: string) => value.normalize('NFC');
 
 /**

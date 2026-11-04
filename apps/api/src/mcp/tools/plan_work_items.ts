@@ -202,14 +202,9 @@ export function registerPlanWorkItems(server: McpServer, ctx: ToolContext) {
         method: 'PATCH',
         url,
         body,
-        // Keyed on the RESOLVED selection and target: a retried bulk move replays instead of
-        // running twice (the route is `@UseIdempotency`).
-        idempotencyKey: ctx.idempotencyKey?.('rova_plan_work_items', {
-          projectId: resolvedProject.id,
-          itemIds: [...items.map((item) => item.id)].sort(),
-          iterationId: target === 'iteration' ? (timebox?.id ?? null) : null,
-          releaseId: target === 'release' ? (timebox?.id ?? null) : null,
-        }),
+        // NO idempotency key: the bulk routes are SET assignments — re-running writes the same
+        // value. A time-bucket key + replay would report success while moving nothing for a
+        // legitimate iteration -> backlog -> iteration sequence.
       });
       if (res.statusCode >= 400) return denied(res.statusCode, res.json);
       // The contract answers `{ updated }`; a 2xx without it is contract drift, NOT success —

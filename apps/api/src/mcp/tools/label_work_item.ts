@@ -78,8 +78,6 @@ export function registerLabelWorkItem(server: McpServer, ctx: ToolContext) {
       const toRemove = resolveAll(removeNames);
       if (!Array.isArray(toRemove)) return toRemove;
 
-      if (!ctx.idempotencyKey) return toolError('Writes are not enabled on this endpoint.');
-
       const applied: { name: string; action: 'add' | 'remove' }[] = [];
       const notApplied: { name: string; action: 'add' | 'remove' }[] = [];
       let firstFailure: unknown;
@@ -91,11 +89,8 @@ export function registerLabelWorkItem(server: McpServer, ctx: ToolContext) {
                 method: 'POST',
                 url: `/v1/work-items/${pathSegment(item.id)}/labels`,
                 body: { labelId: label.id },
-                // Keyed on the RESOLVED pair; a retry replays, and the route itself is idempotent.
-                idempotencyKey: ctx.idempotencyKey?.('rova_label_work_item', {
-                  itemId: item.id,
-                  labelId: label.id,
-                }),
+                // NO idempotency key: the add is `onConflictDoNothing` server-side, so a repeat
+                // is a 204 no-op — and a replay would swallow add -> remove -> add.
               })
             : await ctx.callRest(ctx.principal, {
                 method: 'DELETE',

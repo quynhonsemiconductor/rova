@@ -9,7 +9,6 @@ import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER, type McpPrincipalContext } fro
 import { registerTools } from './tools/register';
 import {
   assertIfMatchOnlyOnPatch,
-  assertPostCarriesIdempotencyKey,
   assertReadCarriesNoWritePayload,
   idempotencyKeyFor,
   type McpRestCaller,
@@ -94,7 +93,6 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
     // The TS types already say a GET carries neither, but a tool can build its call object
     // freely; refuse at runtime rather than silently dropping the payload.
     assertReadCarriesNoWritePayload(rest);
-    assertPostCarriesIdempotencyKey(rest);
     assertIfMatchOnlyOnPatch(rest);
     const injected = await app.inject({
       method: rest.method,

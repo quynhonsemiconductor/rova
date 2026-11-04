@@ -62,44 +62,6 @@ const redisKey = 'idem:user-1:POST:/v1/probe:k-1';
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('IdempotencyInterceptor — body reuse, in-flight, cache failure', () => {
-  it('caches a VOID (204) handler and REPLAYS it without running the write twice', async () => {
-    const store = new Map<string, string>();
-    const cache = {
-      get: async (key: string) => store.get(key) ?? null,
-      set: async (...args: unknown[]) => {
-        store.set(String(args[0]), String(args[1]));
-        return 'OK';
-      },
-      del: async () => 1,
-    };
-    const interceptor = interceptorWith(cache);
-    const spy = vi.fn();
-    const handler: CallHandler = {
-      handle: () => {
-        spy();
-        return of(undefined);
-      },
-    };
-    const reply = fakeReply(204);
-
-    await lastValueFrom(
-      interceptor.intercept(context(request({ labelId: 'l-1' }), reply), handler),
-    );
-    // The first completion wrote an entry; a null response is stored explicitly.
-    const stored = JSON.parse(store.get(redisKey) ?? '{}') as Record<string, unknown>;
-    expect(stored).toMatchObject({ v: 1, status: 204, response: null });
-
-    const second = fakeReply(204);
-    const replayed = await lastValueFrom(
-      interceptor.intercept(context(request({ labelId: 'l-1' }), second), handler),
-    );
-    expect(replayed).toBeUndefined();
-    // The write ran ONCE: the retry replayed the cached 204, and it is marked as a replay.
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(second.status).toHaveBeenCalledWith(204);
-    expect(second.header).toHaveBeenCalledWith('idempotency-replayed', 'true');
-  });
-
   it('replays a cached response only for the SAME body', async () => {
     const first = { ok: true, handled: 1 };
     const cache = {

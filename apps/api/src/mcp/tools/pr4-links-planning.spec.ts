@@ -86,7 +86,7 @@ const feeds = (call: McpRestCall): McpRestResult | null => {
 
 describe('PR4 write tools', () => {
   it('rova_link_work_items posts the resolved target and relays the relation list', async () => {
-    const { ctx, calls, idempotencyKey } = context((call) => {
+    const { ctx, calls } = context((call) => {
       const hit = feeds(call);
       if (hit) return hit;
       if (call.method === 'POST' && call.url === `/v1/work-items/${STORY.id}/relations`) {
@@ -119,12 +119,9 @@ describe('PR4 write tools', () => {
     const post = calls.find((c) => c.method === 'POST')!;
     expect(CreateRelationSchema.safeParse(post.body).success).toBe(true);
     expect(post.body).toEqual({ targetId: DEFECT.id, relationType: 'blocks' });
-    expect(post.idempotencyKey).toBe('k-test');
-    expect(idempotencyKey).toHaveBeenCalledWith('rova_link_work_items', {
-      fromId: STORY.id,
-      toId: DEFECT.id,
-      relationType: 'blocks',
-    });
+    // Naturally idempotent: NO key is sent (the relation route does not opt in, and a
+    // time-bucket replay would answer a re-link with a stale relation).
+    expect(post.idempotencyKey).toBeUndefined();
     expect(body).toMatchObject({
       to: { itemKey: 'DE-1' },
       changed: ['relation'],

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   MCP_IDEMPOTENCY_BUCKET_MS,
-  assertPostCarriesIdempotencyKey,
   assertReadCarriesNoWritePayload,
   canonicalize,
   idempotencyKeyFor,
@@ -55,28 +54,6 @@ describe('assertReadCarriesNoWritePayload', () => {
         idempotencyKey: 'abc',
       }),
     ).toThrow(/carries a body/);
-  });
-});
-
-describe('assertPostCarriesIdempotencyKey', () => {
-  it('refuses a POST with no key and accepts one that carries a key', () => {
-    expect(() =>
-      assertPostCarriesIdempotencyKey({ method: 'POST', url: '/v1/work-items' }),
-    ).toThrow(/Idempotency-Key/);
-    expect(() =>
-      assertPostCarriesIdempotencyKey({
-        method: 'POST',
-        url: '/v1/work-items',
-        idempotencyKey: 'k',
-      }),
-    ).not.toThrow();
-    // GETs and PATCHes are not creates; the read rule and the route rules own them.
-    expect(() =>
-      assertPostCarriesIdempotencyKey({ method: 'GET', url: '/v1/work-items' }),
-    ).not.toThrow();
-    expect(() =>
-      assertPostCarriesIdempotencyKey({ method: 'PATCH', url: '/v1/work-items/1' }),
-    ).not.toThrow();
   });
 });
 
