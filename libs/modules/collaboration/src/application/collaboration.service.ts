@@ -140,10 +140,41 @@ export class CollaborationService {
     // that half, not the permission, which the guard has already decided. `subjectProjectId` is
     // the same resolve `assertCanCollaborate` uses, so create cannot end up scoped differently
     // from the edit and delete of the row it produces.
-    await this.projects.assertProjectWritable(
-      actor.workspaceId,
-      await this.subjectProjectId(actor, ref),
-    );
+    const projectId = await this.subjectProjectId(actor, ref);
+    await this.projects.assertProjectWritable(actor.workspaceId, projectId);
+
+    // A reply must attach to a comment on the SAME subject. Without this, a client could thread a
+    // reply under another item's (or another portfolio item's) comment and the thread view would
+    // render a parent from a record the reader cannot open.
+    if (parentId !== undefined) {
+      const parent = await this.commentRepo.findById(parentId);
+      if (
+        !parent ||
+        parent.workspaceId !== actor.workspaceId ||
+        parent.deletedAt ||
+        parent.entityType !== ref.entityType ||
+        parent.entityId !== ref.entityId
+      ) {
+        throw new PreconditionFailedException(
+          'COMMENT_PARENT_MISMATCH',
+          'A reply must be to a comment on the same item.',
+        );
+      }
+    }
+
+    // @mentions are restricted to people who can own work in THIS project — the same picker feed
+    // the web uses. An arbitrary workspace id must not become a notification target.
+    if (mentionedUserIds.length > 0) {
+      const members = await this.projects.listProjectMemberOptions(actor.workspaceId, projectId);
+      const allowed = new Set(members.map((m) => m.userId));
+      if (mentionedUserIds.some((id) => !allowed.has(id))) {
+        throw new PreconditionFailedException(
+          'COMMENT_MENTION_NOT_IN_PROJECT',
+          'Mentioned people must be able to own work in this project.',
+        );
+      }
+    }
+
     const comment = await this.commentRepo.create({
       id: uuidv7(),
       workspaceId: actor.workspaceId,

@@ -52,9 +52,26 @@ export const TOOL_ROUTES = {
  * derives `MCP_WRITE_ROUTES` from this table): a write tool that is not listed here mounts, but
  * its injected request is refused 403 by `McpWriteGuard`. The routes spec keeps the two in step.
  */
-export const WRITE_TOOL_ROUTES = {} as const satisfies Record<
-  string,
-  { method: 'POST' | 'PATCH' | 'PUT' | 'DELETE'; url: string }
->;
+export interface WriteRoute {
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  url: string;
+}
+
+/**
+ * Every write tool and the route(s) it may reach. A tool may name MORE THAN ONE route when its
+ * arguments select the subject (a comment lives on a work item or a portfolio item); every one
+ * of them is required to be reachable from MCP or the tool cannot do its job.
+ */
+export const WRITE_TOOL_ROUTES = {
+  rova_log_time: { method: 'POST', url: '/v1/work-items/:id/time-logs' },
+  rova_add_comment: [
+    { method: 'POST', url: '/v1/work-items/:id/comments' },
+    { method: 'POST', url: '/v1/portfolio-items/:id/comments' },
+  ],
+  rova_mark_notifications_read: [
+    { method: 'POST', url: '/v1/notifications/:id/read' },
+    { method: 'POST', url: '/v1/notifications/read-all' },
+  ],
+} as const satisfies Record<string, WriteRoute | readonly WriteRoute[]>;
 
 export type ToolName = keyof typeof TOOL_ROUTES;

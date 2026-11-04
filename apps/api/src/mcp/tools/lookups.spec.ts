@@ -129,7 +129,9 @@ describe('reference resolution (never guess)', () => {
 
   it('resolves a portfolio item by key through the list search, trying the prefix type first', async () => {
     const { ctx, calls } = context({
-      '/v1/portfolio-items': { data: [{ id: U(30), itemKey: 'F-12', name: 'Wafer map' }] },
+      '/v1/portfolio-items': {
+        data: [{ id: U(30), projectId: U(10), itemKey: 'F-12', name: 'Wafer map' }],
+      },
     });
     await expect(resolvePortfolioItem(ctx, 'F-12')).resolves.toMatchObject({
       ok: true,

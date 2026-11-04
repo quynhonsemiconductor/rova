@@ -204,7 +204,10 @@ describe('PR1 tool handlers through the fake bridge', () => {
       if (call.url === '/v1/portfolio-items') {
         return {
           statusCode: 200,
-          json: { data: [{ id: U(50), itemKey: 'F-12', name: 'Wafer map' }], pageInfo: {} },
+          json: {
+            data: [{ id: U(50), projectId: U(10), itemKey: 'F-12', name: 'Wafer map' }],
+            pageInfo: {},
+          },
         };
       }
       if (call.url === `/v1/portfolio-items/${U(50)}/comments`) {

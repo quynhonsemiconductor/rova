@@ -29,6 +29,7 @@ export interface ResolvedWorkItem {
   itemKey: string;
   title: string;
   version: number;
+  projectId: string;
 }
 
 export interface ResolvedPortfolioItem {
@@ -36,6 +37,7 @@ export interface ResolvedPortfolioItem {
   id: string;
   itemKey: string;
   name: string;
+  projectId: string;
 }
 
 export interface ResolvedTestCase {
@@ -189,6 +191,7 @@ export async function resolveWorkItem(
     itemKey: str(item['itemKey']) ?? '',
     title: str(item['title']) ?? '',
     version: versionOfEtag(res, item['version']),
+    projectId: str(item['projectId']) ?? '',
   };
 }
 
@@ -217,7 +220,20 @@ export async function resolvePortfolioItem(
       const itemKey = str(row['itemKey']);
       if (itemKey) seen.push(itemKey);
       if (itemKey === ref) {
-        return { ok: true, id: String(row['id']), itemKey, name: str(row['name']) ?? '' };
+        const id = String(row['id']);
+        let projectId = str(row['projectId']) ?? '';
+        if (!projectId) {
+          // The list row normally carries projectId; a feed that does not gets one record read.
+          const detail = await ctx.callRest(ctx.principal, {
+            method: 'GET',
+            url: `/v1/portfolio-items/${pathSegment(id)}`,
+          });
+          if (detail.statusCode >= 400) {
+            return { ok: false, statusCode: detail.statusCode, json: detail.json };
+          }
+          projectId = str((detail.json as Record<string, unknown> | null)?.['projectId']) ?? '';
+        }
+        return { ok: true, id, itemKey, name: str(row['name']) ?? '', projectId };
       }
     }
   }
@@ -225,6 +241,62 @@ export async function resolvePortfolioItem(
     ok: false,
     message: `No portfolio item matches "${reference}". Candidates: ${seen.slice(0, 20).join(', ') || 'none'}.`,
   };
+}
+
+export interface ResolvedPeople {
+  ok: true;
+  ids: string[];
+}
+
+/**
+ * People by display name or email, from the caller's OWN workspace picker feed (`member-options`,
+ * scoped to the projects they can read). An unknown reference lists the candidates; an ambiguous
+ * one names every match — a mention must never go to the wrong person.
+ */
+export async function resolvePeople(
+  ctx: ToolContext,
+  projectId: string,
+  references: string[],
+): Promise<Lookup<ResolvedPeople>> {
+  // PROJECT-scoped, not the workspace directory: a mention may only name someone who can own work
+  // in the SUBJECT's project, and the candidates on a miss must not disclose anyone else.
+  const res = await ctx.callRest(ctx.principal, {
+    method: 'GET',
+    url: `/v1/projects/${pathSegment(projectId)}/member-options`,
+  });
+  if (res.statusCode >= 400) return { ok: false, statusCode: res.statusCode, json: res.json };
+  const people = rowsOf(res.json) ?? [];
+  const ids: string[] = [];
+  const candidates = people
+    .slice(0, 20)
+    .map((p) => `${str(p['displayName'])} <${str(p['email'])}>`);
+
+  for (const reference of references) {
+    const wanted = reference.trim().toLowerCase();
+    const matches = people.filter(
+      (p) =>
+        str(p['email'])?.toLowerCase() === wanted ||
+        str(p['displayName'])?.toLowerCase() === wanted,
+    );
+    if (matches.length === 0) {
+      return {
+        ok: false,
+        message: `No person matches "${reference}". Candidates: ${candidates.join(', ') || 'none'}.`,
+      };
+    }
+    if (matches.length > 1) {
+      return {
+        ok: false,
+        message: `"${reference}" matches ${matches.length} people: ${matches
+          .map((p) => `${str(p['displayName'])} <${str(p['email'])}>`)
+          .join(', ')}. Use the email.`,
+      };
+    }
+    const id = str(matches[0]['userId']);
+    if (!id) return { ok: false, message: `"${reference}" resolved to a person without an id.` };
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return { ok: true, ids };
 }
 
 /** A test case by key (TC-12): the by-key route answers the record; its id feeds the results feed. */

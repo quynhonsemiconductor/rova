@@ -10,7 +10,13 @@ import {
 import { McpWriteGuard } from './write.guard';
 import { McpPrincipalGuard } from './principal.guard';
 import { McpModule } from './mcp.module';
-import { mcpReadRouteKey, mcpWriteRouteKey, setMcpWritesEnabled } from './write-policy';
+import {
+  MCP_READ_ROUTES,
+  MCP_WRITE_ROUTES,
+  mcpReadRouteKey,
+  mcpWriteRouteKey,
+  setMcpWritesEnabled,
+} from './write-policy';
 
 interface FakeRequest {
   method?: string;
@@ -103,6 +109,19 @@ describe('McpWriteGuard (REST-side belt for MCP writes)', () => {
     const guard = new McpWriteGuard(READS, WRITES);
     const req = bridged({ method: 'POST', routeOptions: { url: '/v1/work-items' } });
     expect(() => guard.canActivate(contextFor(req))).toThrow(PermissionDeniedException);
+  });
+
+  it('refuses the PR2 write routes when writes are OFF, independent of the catalogue', () => {
+    // The catalogue + allowlist know these routes; the KILL SWITCH alone must refuse them.
+    const guard = new McpWriteGuard(MCP_READ_ROUTES, MCP_WRITE_ROUTES);
+    for (const url of [
+      '/v1/work-items/0194a000-0000-7000-8000-000000000001/time-logs',
+      '/v1/work-items/0194a000-0000-7000-8000-000000000001/comments',
+      '/v1/notifications/0194a000-0000-7000-8000-000000000002/read',
+    ]) {
+      const req = bridged({ method: 'POST', routeOptions: { url } });
+      expect(() => guard.canActivate(contextFor(req)), url).toThrow(PermissionDeniedException);
+    }
   });
 
   it('refuses a bridged write to a route not on the allowlist, even with writes on', () => {

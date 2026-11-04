@@ -1,4 +1,4 @@
-import { TOOL_ROUTES, WRITE_TOOL_ROUTES } from './tools/registry';
+import { TOOL_ROUTES, WRITE_TOOL_ROUTES, type WriteRoute } from './tools/registry';
 
 /**
  * The REST-side route policy for MCP (design §6.1): what a bridged request may reach.
@@ -89,8 +89,10 @@ export const MCP_REFERENCE_READ_ROUTES: readonly string[] = [
   '/v1/work-items/:id/attachments',
   // rova_list_test_results resolves the case by key before reading its results.
   '/v1/test-cases/by-key/:key',
-  // rova_list_comments on a portfolio subject.
+  // rova_list_comments on a portfolio subject; the resolver's record read when a list row
+  // carries no projectId.
   '/v1/portfolio-items/:id/comments',
+  '/v1/portfolio-items/:id',
 ];
 
 /** Every route a bridged READ may reach: the catalogue's GETs plus the reference feeds. */
@@ -102,9 +104,11 @@ export const MCP_READ_ROUTES: ReadonlySet<string> = new Set([
 ]);
 
 export const MCP_WRITE_ROUTES: ReadonlySet<string> = new Set(
-  Object.values<{ method: string; url: string }>(WRITE_TOOL_ROUTES).map((route) =>
-    mcpWriteRouteKey(route.method, route.url),
-  ),
+  Object.values<WriteRoute | readonly WriteRoute[]>(WRITE_TOOL_ROUTES)
+    .flatMap((routes) =>
+      Array.isArray(routes) ? (routes as readonly WriteRoute[]) : [routes as WriteRoute],
+    )
+    .map((route) => mcpWriteRouteKey(route.method, route.url)),
 );
 
 /**
