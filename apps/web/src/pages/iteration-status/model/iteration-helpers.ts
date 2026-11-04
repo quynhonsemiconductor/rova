@@ -9,8 +9,11 @@ export function fmtRange(it: DateRange): string {
   return `${s} - ${e}`
 }
 
-/** Inclusive day count for an iteration; defaults to 10 when bounds are missing. */
-export function computeTotalDays(it: DateRange | undefined): number {
+/**
+ * Inclusive CALENDAR day count; defaults to 10 when bounds are missing. Internal: only the
+ * in-flight fallback of `iterationEndWidget`, whose real total is the server's working days.
+ */
+function computeTotalDays(it: DateRange | undefined): number {
   if (!it?.startDate || !it?.endDate) return 10
   const start = new Date(it.startDate)
   const end = new Date(it.endDate)
@@ -46,26 +49,34 @@ export function iterationEndWidget(
   // the reference feed deliberately does not carry it.
   const done = iteration?.state === 'accepted'
 
-  // Elapsed / total, capped at 100%; a finished iteration always shows full.
-  const iterationProgressPct = done
-    ? 100
-    : tDays > 0 && daysLeft !== null
-      ? Math.min(((tDays - Math.max(daysLeft, 0)) / tDays) * 100, 100)
-      : 0
+  return {
+    iterationEnd: endTile(done, daysLeft, tDays),
+    iterationProgressPct: elapsedPct(done, daysLeft, tDays),
+  }
+}
 
-  const iterationEnd = done
-    ? { value: 'Done', label: 'Completed', color: BRAND.success }
-    : daysLeft === null
-      ? { value: '--', label: 'no end date', color: BRAND.warning }
-      : daysLeft < 0
-        ? {
-            value: String(Math.abs(daysLeft)),
-            label: daysLeft === -1 ? 'day overdue' : 'days overdue',
-            color: BRAND.danger,
-          }
-        : { value: String(daysLeft), label: `of ${tDays} days left`, color: BRAND.warning }
+/** Elapsed / total, capped at 100%; a finished iteration always shows full. */
+function elapsedPct(done: boolean, daysLeft: number | null, tDays: number): number {
+  if (done) return 100
+  if (tDays <= 0 || daysLeft === null) return 0
+  return Math.min(((tDays - Math.max(daysLeft, 0)) / tDays) * 100, 100)
+}
 
-  return { iterationEnd, iterationProgressPct }
+function endTile(
+  done: boolean,
+  daysLeft: number | null,
+  tDays: number,
+): IterationEndDisplay['iterationEnd'] {
+  if (done) return { value: 'Done', label: 'Completed', color: BRAND.success }
+  if (daysLeft === null) return { value: '--', label: 'no end date', color: BRAND.warning }
+  if (daysLeft < 0) {
+    return {
+      value: String(Math.abs(daysLeft)),
+      label: daysLeft === -1 ? 'day overdue' : 'days overdue',
+      color: BRAND.danger,
+    }
+  }
+  return { value: String(daysLeft), label: `of ${tDays} days left`, color: BRAND.warning }
 }
 
 /** One scoped Story/Defect row, in the only fields the Totals row reads. */
