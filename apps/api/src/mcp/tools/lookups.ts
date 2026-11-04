@@ -534,16 +534,26 @@ export interface ResolvedLabel {
   color: string | null;
 }
 
+export interface LabelRow {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+export interface LabelCatalogue {
+  ok: true;
+  labels: LabelRow[];
+}
+
 /**
- * A project label by exact name or id (`GET /v1/projects/:id/labels`, the project's catalogue).
- * Labels are project reference data — `work_item.label_*` is the assignment, and the server
- * checks the label belongs to the item's project on every write.
+ * The project's ENTIRE label catalogue, fetched ONCE per tool call
+ * (`GET /v1/projects/:id/labels`). A multi-label write resolves every name against this one
+ * answer instead of re-reading the feed per label.
  */
-export async function resolveLabel(
+export async function resolveLabelCatalogue(
   ctx: ToolContext,
   projectId: string,
-  reference: string,
-): Promise<Lookup<ResolvedLabel>> {
+): Promise<Lookup<LabelCatalogue>> {
   const res = await ctx.callRest(ctx.principal, {
     method: 'GET',
     url: `/v1/projects/${pathSegment(projectId)}/labels`,
@@ -551,22 +561,27 @@ export async function resolveLabel(
   if (res.statusCode >= 400) return { ok: false, statusCode: res.statusCode, json: res.json };
   const rows = rowsOf(res.json);
   if (!rows) return { ok: false, message: `Unexpected response from the project labels feed.` };
+  return {
+    ok: true,
+    labels: rows.map((row) => ({
+      id: String(row['id']),
+      name: str(row['name']) ?? '',
+      color: str(row['color']),
+    })),
+  };
+}
+
+/** One label matched from a catalogue: id or exact (case-insensitive) name, never a guess. */
+export function matchLabel(catalogue: LabelRow[], reference: string): Lookup<ResolvedLabel> {
   const wanted = reference.trim().toLowerCase();
-  const matches = rows.filter(
-    (row) => str(row['id']) === reference.trim() || str(row['name'])?.toLowerCase() === wanted,
+  const matches = catalogue.filter(
+    (label) => label.id === reference.trim() || label.name.toLowerCase() === wanted,
   );
-  if (matches.length === 1) {
-    return {
-      ok: true,
-      id: String(matches[0]['id']),
-      name: str(matches[0]['name']) ?? '',
-      color: str(matches[0]['color']),
-    };
-  }
-  const candidates = rows
-    .map((row) => str(row['name']))
-    .filter((name): name is string => name !== null)
+  const candidates = catalogue
+    .map((label) => label.name)
+    .filter((name) => name !== '')
     .slice(0, 30);
+  if (matches.length === 1) return { ok: true, ...matches[0] };
   if (matches.length > 1) {
     return {
       ok: false,
@@ -577,4 +592,18 @@ export async function resolveLabel(
     ok: false,
     message: `No label matches "${reference}". Candidates: ${candidates.join(', ') || 'none'}.`,
   };
+}
+
+/**
+ * A project label by exact name or id. Kept for a single-reference caller; a multi-label write
+ * fetches {@link resolveLabelCatalogue} ONCE and uses {@link matchLabel}.
+ */
+export async function resolveLabel(
+  ctx: ToolContext,
+  projectId: string,
+  reference: string,
+): Promise<Lookup<ResolvedLabel>> {
+  const catalogue = await resolveLabelCatalogue(ctx, projectId);
+  if (!catalogue.ok) return catalogue;
+  return matchLabel(catalogue.labels, reference);
 }

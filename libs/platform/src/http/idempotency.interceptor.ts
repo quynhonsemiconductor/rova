@@ -21,7 +21,13 @@ import { IS_PUBLIC_KEY } from '../auth/public-key';
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
 
 /** Only mutating methods carry idempotency semantics. */
-const IDEMPOTENCY_METHODS = new Set(['POST', 'PUT']);
+/**
+ * The methods the interceptor will act on. PATCH is included for the BULK work-item routes,
+ * which are whole-selection writes: a retried `PATCH /work-items/bulk-iteration` must not be
+ * able to run twice. A PATCH route without `@UseIdempotency` never reaches the header read, so
+ * this widens nothing by itself.
+ */
+const IDEMPOTENCY_METHODS = new Set(['POST', 'PUT', 'PATCH']);
 
 /**
  * IdempotencyInterceptor

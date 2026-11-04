@@ -58,24 +58,49 @@ export function registerLinkWorkItems(server: McpServer, ctx: ToolContext) {
       if (!to.ok) return failureResult(to);
       if (!ctx.idempotencyKey) return toolError('Writes are not enabled on this endpoint.');
 
+      const endpoints = {
+        from: { id: from.id, itemKey: from.itemKey },
+        to: { id: to.id, itemKey: to.itemKey },
+      };
       const res = await ctx.callRest(ctx.principal, {
         method: 'POST',
         url: `/v1/work-items/${pathSegment(from.id)}/relations`,
         body: { targetId: to.id, relationType },
+        // Keyed on the RESOLVED endpoints: `US-1` and the same item's uuid are one operation, and
+        // a model retry inside the 10-minute window replays the first relation instead of asking
+        // the server for a duplicate.
         idempotencyKey: ctx.idempotencyKey('rova_link_work_items', {
-          fromKey,
-          toKey,
+          fromId: from.id,
+          toId: to.id,
           relationType,
         }),
       });
-      if (res.statusCode >= 400 || !Array.isArray(res.json)) {
+      if (res.statusCode >= 400) {
+        // An EXISTING link is the outcome the caller asked for. The idempotency replay covers a
+        // retry of the same call; this covers the same link reached with a different request
+        // (another endpoint spelling, or after the key's window), which the server refuses as
+        // WORK_ITEM_RELATION_EXISTS.
+        const envelope = res.json as { error?: { code?: unknown } } | null;
+        if (envelope?.error?.code === 'WORK_ITEM_RELATION_EXISTS') {
+          ctx.noteWrite?.({ targets: [from.id, to.id], fields: ['relation'] });
+          return result(200, res.json, {
+            ...endpoints,
+            relationType,
+            alreadyLinked: true,
+            changed: [],
+          });
+        }
         return denied(res.statusCode, res.json);
       }
+      ctx.noteWrite?.({ targets: [from.id, to.id], fields: ['relation'] });
+      // A 2xx is the write succeeding; the relation LIST is decoration on it, so contract drift
+      // in the body is not reported as a failed link.
       return result(res.statusCode, res.json, {
-        from: { id: from.id, itemKey: from.itemKey },
-        to: { id: to.id, itemKey: to.itemKey },
+        ...endpoints,
         relationType,
-        relations: (res.json as Record<string, unknown>[]).map(shapeRelation),
+        relations: Array.isArray(res.json)
+          ? (res.json as Record<string, unknown>[]).map(shapeRelation)
+          : undefined,
         changed: ['relation'],
       });
     },

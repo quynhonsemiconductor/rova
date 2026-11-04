@@ -53,10 +53,24 @@ export type McpRestCaller = (
   call: McpRestCall,
 ) => Promise<McpRestResult>;
 
+/**
+ * What a WRITE tool may report about its write for the audit line (design §6.7): ids/keys/field
+ * NAMES only. `route.ts` sanitises it again before logging; a tool that passes a value or free
+ * text loses it there.
+ */
+export interface WriteAudit {
+  targets?: string[];
+  fields?: string[];
+  count?: number;
+  dryRun?: boolean;
+}
+
 /** What register.ts hands every tool: the request's ONE principal and the caller. */
 export interface ToolContext {
   principal: McpPrincipalContext;
   callRest: McpRestCaller;
+  /** Tags the request's audit line with what the write touched; present whenever writes mount. */
+  noteWrite?: (meta: WriteAudit) => void;
   /**
    * Builds the `Idempotency-Key` for one idempotent create, bound by route.ts to the principal
    * and the server's `MCP_IDEMPOTENCY_SECRET` (never exposed to a tool). Present whenever writes

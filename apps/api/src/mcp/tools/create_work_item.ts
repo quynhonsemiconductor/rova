@@ -225,6 +225,11 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
         }
       }
 
+      ctx.noteWrite?.({
+        ...(typeof row['id'] === 'string' ? { targets: [row['id']] } : {}),
+        fields: changed,
+        count: 1,
+      });
       if (featureLink === undefined) {
         return workItemWriteResult(res, changed, { replayed });
       }

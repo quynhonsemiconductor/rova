@@ -49,6 +49,11 @@ export function registerMarkNotificationsRead(server: McpServer, ctx: ToolContex
               idempotencyKey,
             });
       if (res.statusCode >= 400) return denied(res.statusCode, res.json);
+      ctx.noteWrite?.({
+        targets: notificationId !== undefined ? [notificationId] : [],
+        fields: ['read'],
+        count: notificationId !== undefined ? 1 : undefined,
+      });
       return result(res.statusCode, res.json, {
         marked: true,
         ...(notificationId !== undefined ? { notificationId } : { all: true }),

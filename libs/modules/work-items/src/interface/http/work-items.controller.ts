@@ -567,6 +567,7 @@ export class WorkItemsController {
   // Declared before @Patch(':id') so the static paths are not captured as an :id.
 
   @Patch('bulk-release')
+  @UseIdempotency()
   @ApiOperation({ summary: 'Bulk assign (or clear) a release on selected work items' })
   @RequirePermission('work_item:edit', { from: 'body', field: 'projectId' })
   @ApiResponse({
@@ -589,6 +590,7 @@ export class WorkItemsController {
   }
 
   @Patch('bulk-iteration')
+  @UseIdempotency()
   @ApiOperation({ summary: 'Bulk assign (or clear) an iteration on selected work items' })
   @RequirePermission('work_item:edit', { from: 'body', field: 'projectId' })
   @ApiResponse({
@@ -947,6 +949,7 @@ export class WorkItemsController {
   }
 
   @Post(':id/labels')
+  @UseIdempotency()
   @HttpCode(204)
   @ApiOperation({ summary: 'Add a label to a work item' })
   @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
@@ -990,6 +993,7 @@ export class WorkItemsController {
   }
 
   @Post(':id/relations')
+  @UseIdempotency()
   @ApiOperation({ summary: 'Link this work item to another (blocks/duplicates/relates/…)' })
   @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

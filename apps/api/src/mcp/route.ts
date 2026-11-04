@@ -15,7 +15,7 @@ import {
   type McpRestCaller,
   type ToolContext,
 } from './tools/rest';
-import { createMcpAudit } from './audit';
+import { createMcpAudit, sanitizeWriteAudit } from './audit';
 
 /**
  * The `/mcp` route: stateless MCP transport — one request, one server, no session.
@@ -70,12 +70,18 @@ export interface McpRouteDeps {
    * writes are enabled (asserted at boot); never reaches a tool, only the key builder below.
    */
   idempotencySecret?: string;
+  /**
+   * The validated `DISABLE_RATE_LIMIT` (dev/CI only; the env schema refuses it in production).
+   * Passed in by the bootstrap rather than read from `process.env` here: one config owns it.
+   * Absent reads as false — the budget stays on.
+   */
+  rateLimitDisabled?: boolean;
 }
 
 export function registerMcpRoute(deps: McpRouteDeps): void {
   const { app, fastify, verifier, cache } = deps;
   const writesEnabled = deps.writesEnabled ?? false;
-  const depsDisabledRateLimit = process.env['DISABLE_RATE_LIMIT'] === 'true';
+  const depsDisabledRateLimit = deps.rateLimitDisabled ?? false;
   // One audit sink per app: the instruments are process-wide and the logger is the shared pino
   // instance, so a per-request copy would only rebuild the same instruments.
   const audit = createMcpAudit();
@@ -178,6 +184,18 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
       }
     }
 
+    // What THIS request's writes touched (§6.7), collected by the tools and merged into the one
+    // audit line. `callRest` records the method/status; `ctx.noteWrite` adds ids/fields/counts.
+    const writeAudit: Record<string, unknown> = {};
+    const auditCallRest: typeof callRest = async (principal, rest) => {
+      const result = await callRest(principal, rest);
+      if (rest.method !== 'GET') {
+        writeAudit['write'] = true;
+        writeAudit['httpStatus'] = result.statusCode;
+      }
+      return result;
+    };
+
     // Stateless: one McpServer + transport per request, no session id ever issued.
     const server = new McpServer(
       { name: 'rova', version: deps.serverVersion },
@@ -201,7 +219,8 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
     const secret = deps.idempotencySecret;
     const toolCtx: ToolContext = {
       principal,
-      callRest,
+      callRest: auditCallRest,
+      noteWrite: (meta) => Object.assign(writeAudit, sanitizeWriteAudit({ ...meta })),
       ...(writesEnabled && secret
         ? {
             idempotencyKey: (tool: string, args: unknown) =>
@@ -209,7 +228,7 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
           }
         : {}),
     };
-    registerTools(server, toolCtx, (event) => audit.onToolCall(event), {
+    registerTools(server, toolCtx, (event) => audit.onToolCall({ ...event, ...writeAudit }), {
       writes: writesEnabled,
     });
     await server.connect(transport);

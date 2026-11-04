@@ -48,6 +48,10 @@ function bulkBody(
  * The real write is ONE call to `PATCH /v1/work-items/bulk-iteration` or `/bulk-release`, which
  * owns every rule — the project, each item's scope, the iteration's team/project, the release
  * field guard (`release:view`), the story-only Manual Move rows and the iteration auto-accept.
+ *
+ * FAN-OUT: there is no batch GET for work items, so the preview resolves each key with one read.
+ * The 25-item cap bounds that to 25 reads per call (the shared per-person DEFAULT budget is
+ * 600/min), and the real write costs one request.
  */
 export function registerPlanWorkItems(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
@@ -68,7 +72,9 @@ export function registerPlanWorkItems(server: McpServer, ctx: ToolContext) {
           .array(z.string().min(1).max(64))
           .min(1)
           .max(MAX_ITEMS)
-          .describe(`Work item keys or ids (at most ${MAX_ITEMS})`),
+          .describe(
+            `Work item keys or ids (at most ${MAX_ITEMS}; each one costs one read in the preview)`,
+          ),
         iteration: z
           .string()
           .min(1)
@@ -186,12 +192,37 @@ export function registerPlanWorkItems(server: McpServer, ctx: ToolContext) {
           ? { iterationId: timebox?.id ?? null }
           : { releaseId: timebox?.id ?? null },
       );
-      const res = await ctx.callRest(ctx.principal, { method: 'PATCH', url, body });
+      ctx.noteWrite?.({
+        targets: items.map((item) => item.id),
+        fields: [`${target}Id`],
+        count: items.length,
+        dryRun: false,
+      });
+      const res = await ctx.callRest(ctx.principal, {
+        method: 'PATCH',
+        url,
+        body,
+        // Keyed on the RESOLVED selection and target: a retried bulk move replays instead of
+        // running twice (the route is `@UseIdempotency`).
+        idempotencyKey: ctx.idempotencyKey?.('rova_plan_work_items', {
+          projectId: resolvedProject.id,
+          itemIds: [...items.map((item) => item.id)].sort(),
+          iterationId: target === 'iteration' ? (timebox?.id ?? null) : null,
+          releaseId: target === 'release' ? (timebox?.id ?? null) : null,
+        }),
+      });
       if (res.statusCode >= 400) return denied(res.statusCode, res.json);
+      // The contract answers `{ updated }`; a 2xx without it is contract drift, NOT success —
+      // reporting `items.length` would claim moves that may not have happened.
       const updated =
         res.json && typeof res.json === 'object'
-          ? ((res.json as { updated?: unknown }).updated ?? items.length)
-          : items.length;
+          ? (res.json as { updated?: unknown }).updated
+          : undefined;
+      if (typeof updated !== 'number' || !Number.isFinite(updated)) {
+        return toolError(
+          'The bulk route answered without an `updated` count; nothing is reported as moved. Re-read the items before retrying.',
+        );
+      }
       return result(res.statusCode, res.json, {
         dryRun: false,
         ...preview,

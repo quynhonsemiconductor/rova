@@ -120,7 +120,11 @@ describe('PR4 write tools', () => {
     expect(CreateRelationSchema.safeParse(post.body).success).toBe(true);
     expect(post.body).toEqual({ targetId: DEFECT.id, relationType: 'blocks' });
     expect(post.idempotencyKey).toBe('k-test');
-    expect(idempotencyKey).toHaveBeenCalledWith('rova_link_work_items', args);
+    expect(idempotencyKey).toHaveBeenCalledWith('rova_link_work_items', {
+      fromId: STORY.id,
+      toId: DEFECT.id,
+      relationType: 'blocks',
+    });
     expect(body).toMatchObject({
       to: { itemKey: 'DE-1' },
       changed: ['relation'],
@@ -128,7 +132,7 @@ describe('PR4 write tools', () => {
     });
   });
 
-  it('rova_link_work_items relays a REST refusal unchanged (duplicate/cycle/self)', async () => {
+  it('an EXISTING link answered 412 is success ("already linked"), not an error', async () => {
     const restBody = { error: { code: 'WORK_ITEM_RELATION_EXISTS', message: 'exists' } };
     const { ctx } = context((call) => {
       const hit = feeds(call);
@@ -140,8 +144,23 @@ describe('PR4 write tools', () => {
       toKey: 'DE-1',
       relationType: 'relates_to',
     });
-    expect(isError).toBe(true);
-    expect(body).toEqual({ statusCode: 412, error: restBody });
+    expect(isError).toBeFalsy();
+    expect(body).toMatchObject({ alreadyLinked: true, changed: [] });
+
+    // Every OTHER refusal is still an error, relayed unchanged.
+    const cycle = { error: { code: 'WORK_ITEM_RELATION_CYCLE', message: 'cycle' } };
+    const { ctx: second } = context((call) => {
+      const hit = feeds(call);
+      if (hit) return hit;
+      return { statusCode: 412, json: cycle };
+    });
+    const refused = await call(registerLinkWorkItems, second, {
+      fromKey: 'US-1',
+      toKey: 'DE-1',
+      relationType: 'blocks',
+    });
+    expect(refused.isError).toBe(true);
+    expect(refused.body).toEqual({ statusCode: 412, error: cycle });
   });
 
   it('rova_label_work_item adds and removes by NAME and answers the post-write label list', async () => {
@@ -259,6 +278,23 @@ describe('PR4 write tools', () => {
       iterationId: ITERATION.id,
     });
     expect(body).toMatchObject({ dryRun: false, updated: 1, changed: ['iterationId'] });
+  });
+
+  it('a bulk write 2xx without an `updated` count is an ERROR, never a guessed success', async () => {
+    const { ctx } = context((call) => {
+      const hit = feeds(call);
+      if (hit) return hit;
+      if (call.method === 'PATCH') return { statusCode: 200, json: { ok: true } };
+      return { statusCode: 500, json: {} };
+    });
+    const { isError, body } = await call(registerPlanWorkItems, ctx, {
+      project: 'NXP',
+      itemKeys: ['US-1'],
+      iteration: 'Sprint 1',
+      dryRun: false,
+    });
+    expect(isError).toBe(true);
+    expect(JSON.stringify(body)).toContain('without an `updated` count');
   });
 
   it('rova_plan_work_items moves to a release, and null clears it (back to the backlog)', async () => {
@@ -382,7 +418,7 @@ describe('PR4 write tools', () => {
     expect(body).toEqual({ statusCode: 403, error: restBody });
   });
 
-  it('a label write failure relays the REST refusal, and the post-write read tolerates a non-array', async () => {
+  it('a label write that fails part-way answers applied/notApplied; a bad label read is an error', async () => {
     const restBody = { error: { code: 'PROJECT_ARCHIVED', message: 'archived' } };
     const { ctx } = context((call) => {
       if (call.method === 'GET' && call.url === '/v1/work-items/by-key') {
@@ -391,44 +427,53 @@ describe('PR4 write tools', () => {
       const hit = feeds(call);
       if (hit) return hit;
       if (call.method === 'POST') return { statusCode: 412, json: restBody };
-      return { statusCode: 200, json: {} };
+      return { statusCode: 200, json: LABELS };
     });
-    const { isError, body } = await call(registerLabelWorkItem, ctx, {
+    const partial = await call(registerLabelWorkItem, ctx, {
       key: 'US-1',
       add: ['api'],
+      remove: ['ui'],
     });
-    expect(isError).toBe(true);
-    expect(body).toEqual({ statusCode: 412, error: restBody });
+    // The add failed; the REMOVE still ran, and the answer says exactly what landed.
+    expect(partial.isError).toBeFalsy();
+    expect(partial.body).toMatchObject({
+      partial: true,
+      applied: [{ name: 'ui', action: 'remove' }],
+      notApplied: [{ name: 'api', action: 'add' }],
+      failure: { statusCode: 412 },
+    });
+    expect(partial.body.added).toEqual([]);
+    expect(partial.body.removed).toEqual(['ui']);
 
-    // A 204 remove followed by a labels answer that is NOT an array degrades to [] rather than throwing.
-    const { ctx: second, calls } = context((call) => {
+    // The post-write label read failing is an ERROR — never an empty list claimed as the set.
+    const { ctx: second } = context((call) => {
       if (call.method === 'GET' && call.url === '/v1/work-items/by-key') {
         return { statusCode: 200, json: { item: STORY }, headers: { ETag: '"0"' } };
       }
       const hit = feeds(call);
       if (hit) return hit;
       if (call.method === 'DELETE') return { statusCode: 204, json: {} };
-      return { statusCode: 200, json: {} };
+      return { statusCode: 502, json: { error: { code: 'BAD_GATEWAY' } } };
     });
-    const removed = await call(registerLabelWorkItem, second, { key: 'US-1', remove: ['ui'] });
-    expect(removed.isError).toBeFalsy();
-    expect(removed.body.labels).toEqual([]);
-    expect(calls.some((c) => c.method === 'DELETE')).toBe(true);
+    const badRead = await call(registerLabelWorkItem, second, { key: 'US-1', remove: ['ui'] });
+    expect(badRead.isError).toBe(true);
+    expect(badRead.body).toMatchObject({ statusCode: 502 });
   });
 
-  it('a link whose REST answer is not the relation list is refused, not shaped', async () => {
+  it('a link 2xx with an unexpected body is still a SUCCESS; only the relation list is omitted', async () => {
     const { ctx } = context((call) => {
       const hit = feeds(call);
       if (hit) return hit;
-      return { statusCode: 200, json: { unexpected: true } };
+      return { statusCode: 201, json: { unexpected: true } };
     });
     const { isError, body } = await call(registerLinkWorkItems, ctx, {
       fromKey: 'US-1',
       toKey: 'DE-1',
       relationType: 'duplicates',
     });
-    expect(isError).toBe(true);
-    expect(body.statusCode).toBe(200);
+    expect(isError).toBeFalsy();
+    expect(body).toMatchObject({ relationType: 'duplicates', changed: ['relation'] });
+    expect(body.relations).toBeUndefined();
   });
 
   it('rova_plan_work_items previews a CLEAR and an eligible all-story batch without warnings', async () => {
