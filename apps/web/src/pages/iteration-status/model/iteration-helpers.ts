@@ -1,3 +1,5 @@
+import { BRAND } from '@/shared/config/brand'
+
 type DateRange = { startDate?: string | null; endDate?: string | null }
 
 /** `start - end` label for an iteration, with em-dash fallbacks for missing bounds. */
@@ -14,6 +16,56 @@ export function computeTotalDays(it: DateRange | undefined): number {
   const end = new Date(it.endDate)
   const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
   return Math.max(1, diff)
+}
+
+export interface IterationEndDisplay {
+  iterationEnd: { value: string; label: string; color: string }
+  iterationProgressPct: number
+}
+
+/**
+ * The "Iteration End" tile: its value, label, colour and elapsed bar, in one place so Done and
+ * Overdue never degrade to a misleading "0 days left".
+ *
+ * The total is the server's `totalDays` — WORKING days in the workspace's own working-day setting
+ * (BA 2026-11-04: Sprint 1 Mon 11-02 → Fri 11-13 is 10 days, not 12), the same calendar
+ * `daysLeft` is counted in. The calendar count is only the fallback while the status read is in
+ * flight, when `daysLeft` is null as well and the tile reads `--` anyway.
+ */
+export function iterationEndWidget(
+  iteration: (DateRange & { state?: string | null }) | undefined,
+  metrics: { daysLeft?: number | null; totalDays?: number | null } | undefined,
+): IterationEndDisplay {
+  // Kept nullable: an iteration with NO end date has no days-left, and `?? 0` fed the elapsed-bar
+  // arithmetic where it reads as "the whole iteration has elapsed".
+  const daysLeft = metrics?.daysLeft ?? null
+  const tDays = metrics?.totalDays ?? computeTotalDays(iteration)
+  // Finished once accepted, regardless of the end-date arithmetic. `state === 'accepted'` alone:
+  // `iterations.completed_at` is the ACCEPTANCE stamp and the service writes it on accept and
+  // clears it on every other transition (`iterations.service.ts`), so the two move in lockstep and
+  // the reference feed deliberately does not carry it.
+  const done = iteration?.state === 'accepted'
+
+  // Elapsed / total, capped at 100%; a finished iteration always shows full.
+  const iterationProgressPct = done
+    ? 100
+    : tDays > 0 && daysLeft !== null
+      ? Math.min(((tDays - Math.max(daysLeft, 0)) / tDays) * 100, 100)
+      : 0
+
+  const iterationEnd = done
+    ? { value: 'Done', label: 'Completed', color: BRAND.success }
+    : daysLeft === null
+      ? { value: '--', label: 'no end date', color: BRAND.warning }
+      : daysLeft < 0
+        ? {
+            value: String(Math.abs(daysLeft)),
+            label: daysLeft === -1 ? 'day overdue' : 'days overdue',
+            color: BRAND.danger,
+          }
+        : { value: String(daysLeft), label: `of ${tDays} days left`, color: BRAND.warning }
+
+  return { iterationEnd, iterationProgressPct }
 }
 
 /** One scoped Story/Defect row, in the only fields the Totals row reads. */

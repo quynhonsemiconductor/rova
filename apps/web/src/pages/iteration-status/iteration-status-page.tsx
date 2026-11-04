@@ -40,7 +40,11 @@ import { defaultIterationId } from '@/features/iterations/default-iteration'
 import { StatusRow } from './ui/status-row'
 import { AddItemModal } from './ui/add-item-modal'
 import { IterationHeader, MetricsStrip, Toolbar, TableFooterTotals } from './ui/iteration-chrome'
-import { computeTotalDays, iterationStatusTotals, sortStatusRows } from './model/iteration-helpers'
+import {
+  iterationEndWidget,
+  iterationStatusTotals,
+  sortStatusRows,
+} from './model/iteration-helpers'
 import { stepIndexInTime } from '@/shared/lib/step-in-time'
 import { type ColKey, ITERATION_STATUS_COLUMNS, HEADER_META } from './model/columns'
 import { useIterationFilterFields, toIterationStatusQuery } from './model/filter-fields'
@@ -327,39 +331,7 @@ export function IterationStatusPage() {
   // service stopped flattening it, so this must not flatten it back.
   const velocityPct = metrics?.plannedVelocityPercent ?? null
   const acceptedPct = metrics?.acceptedPercent ?? 0
-  // Kept nullable: an iteration with NO end date has no days-left, and `?? 0` fed the
-  // elapsed-bar arithmetic below where it reads as "the whole iteration has elapsed".
-  const daysLeft = metrics?.daysLeft ?? null
-  // WORKING days, from the server, in the workspace's own working-day setting (BA 2026-11-04:
-  // Sprint 1 Mon 11-02 → Fri 11-13 is 10 days, not 12). The calendar count stays only as the
-  // fallback while the status read is in flight.
-  const tDays = metrics?.totalDays ?? computeTotalDays(selected)
-  // An iteration is finished once it's been accepted or explicitly completed —
-  // regardless of the raw end-date arithmetic (which reads 0/negative when past
-  // due and otherwise misleadingly shows "0 days left" on a done sprint).
-  // `state === 'accepted'` alone: `iterations.completed_at` is the ACCEPTANCE stamp and the service
-  // writes it on accept and clears it on every other transition (`iterations.service.ts`), so the
-  // two are maintained in lockstep and the reference feed deliberately does not carry it.
-  const iterationDone = selected?.state === 'accepted'
-  // Elapsed / total, capped at 100%; a finished iteration always shows full.
-  const iterationProgressPct = iterationDone
-    ? 100
-    : tDays > 0 && daysLeft !== null
-      ? Math.min(((tDays - Math.max(daysLeft, 0)) / tDays) * 100, 100)
-      : 0
-  // Single source of truth for the "Iteration End" widget value/label/colour so
-  // Done and Overdue states never degrade to a misleading "0 days left".
-  const iterationEnd: { value: string; label: string; color: string } = iterationDone
-    ? { value: 'Done', label: 'Completed', color: BRAND.success }
-    : metrics?.daysLeft == null
-      ? { value: '--', label: 'no end date', color: BRAND.warning }
-      : metrics.daysLeft < 0
-        ? {
-            value: String(Math.abs(metrics.daysLeft)),
-            label: metrics.daysLeft === -1 ? 'day overdue' : 'days overdue',
-            color: BRAND.danger,
-          }
-        : { value: String(metrics.daysLeft), label: `of ${tDays} days left`, color: BRAND.warning }
+  const { iterationEnd, iterationProgressPct } = iterationEndWidget(selected, metrics)
 
   // Column sizing comes straight from the shared engine — see `useDataTable().colStyles`.
   //

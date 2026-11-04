@@ -6,7 +6,8 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { iterationStatusTotals, sortStatusRows } from './iteration-helpers'
+import { BRAND } from '@/shared/config/brand'
+import { iterationEndWidget, iterationStatusTotals, sortStatusRows } from './iteration-helpers'
 
 describe('iterationStatusTotals', () => {
   it('sums Plan Est, and Task Est as To Do + Actual', () => {
@@ -150,3 +151,43 @@ describe('sortStatusRows', () => {
 
 // `stepIndexInTime` moved to `shared/lib/step-in-time.ts` (and its tests to
 // `shared/lib/step-in-time.test.ts`) — see the docblock left in `iteration-helpers.ts` for why.
+
+describe('iterationEndWidget — Iteration End counts WORKING days (BA 2026-11-04)', () => {
+  // Mon 2026-11-02 → Fri 2026-11-13: twelve calendar days, ten working days.
+  const sprint = { startDate: '2026-11-02', endDate: '2026-11-13', state: 'committed' }
+
+  it("labels the total with the server's working-day count, not the calendar span", () => {
+    const { iterationEnd, iterationProgressPct } = iterationEndWidget(sprint, {
+      daysLeft: 8,
+      totalDays: 10,
+    })
+    expect(iterationEnd).toEqual({ value: '8', label: 'of 10 days left', color: BRAND.warning })
+    expect(iterationProgressPct).toBe(20) // 2 of 10 working days elapsed
+  })
+
+  it('falls back to the calendar span only while the status read has no total', () => {
+    expect(iterationEndWidget(sprint, { daysLeft: 8, totalDays: null }).iterationEnd.label).toBe(
+      'of 12 days left',
+    )
+  })
+
+  it('reads overdue in red and a finished sprint as Done', () => {
+    expect(iterationEndWidget(sprint, { daysLeft: -3, totalDays: 10 }).iterationEnd).toEqual({
+      value: '3',
+      label: 'days overdue',
+      color: BRAND.danger,
+    })
+    const done = iterationEndWidget(
+      { ...sprint, state: 'accepted' },
+      { daysLeft: -3, totalDays: 10 },
+    )
+    expect(done.iterationEnd.value).toBe('Done')
+    expect(done.iterationProgressPct).toBe(100)
+  })
+
+  it('shows -- with an empty bar when there is no end date', () => {
+    const r = iterationEndWidget({ ...sprint, endDate: null }, { daysLeft: null, totalDays: null })
+    expect(r.iterationEnd.value).toBe('--')
+    expect(r.iterationProgressPct).toBe(0)
+  })
+})

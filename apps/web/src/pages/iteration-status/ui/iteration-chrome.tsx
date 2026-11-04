@@ -272,7 +272,7 @@ export function IterationHeader({
 
 /** Planned points exceed the velocity target (BA 2026-11-04). Null = no target, never red. */
 function isOverCommitted(velocityPct: number | null): boolean {
-  return velocityPct != null && velocityPct > 100
+  return velocityPct !== null && velocityPct > 100
 }
 
 export function MetricsStrip({

@@ -772,7 +772,7 @@ function EstimationSettingsBlock({ projectId, isWA }: { projectId: string; isWA:
   const parsed = parseEstimationDraft(effective)
 
   function patch(key: EstimationField, text: string) {
-    setDraft({ ...effective, [key]: text })
+    setDraft((d) => ({ ...(d ?? effective), [key]: text }))
   }
 
   function errorFor(key: EstimationField) {
