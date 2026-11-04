@@ -28,6 +28,7 @@ export interface ResolvedWorkItem {
   id: string;
   itemKey: string;
   title: string;
+  type: string;
   version: number;
   projectId: string;
 }
@@ -38,6 +39,8 @@ export interface ResolvedPortfolioItem {
   itemKey: string;
   name: string;
   projectId: string;
+  /** `epic` | `feature` when the feed says; a Feature is the only valid work-item link. */
+  type: string | null;
 }
 
 export interface ResolvedTestCase {
@@ -190,6 +193,7 @@ export async function resolveWorkItem(
     id,
     itemKey: str(item['itemKey']) ?? '',
     title: str(item['title']) ?? '',
+    type: str(item['type']) ?? '',
     version: versionOfEtag(res, item['version']),
     projectId: str(item['projectId']) ?? '',
   };
@@ -233,7 +237,14 @@ export async function resolvePortfolioItem(
           }
           projectId = str((detail.json as Record<string, unknown> | null)?.['projectId']) ?? '';
         }
-        return { ok: true, id, itemKey, name: str(row['name']) ?? '', projectId };
+        return {
+          ok: true,
+          id,
+          itemKey,
+          name: str(row['name']) ?? '',
+          projectId,
+          type: str(row['type']),
+        };
       }
     }
   }
@@ -320,5 +331,193 @@ export async function resolveTestCase(
     id,
     testCaseKey: str(row['testCaseKey']) ?? testCaseKey,
     name: str(row['name']) ?? '',
+  };
+}
+
+export interface ResolvedTimebox {
+  ok: true;
+  id: string;
+  name: string;
+  /** The iteration state or release status, so the model can see a committed/accepted target. */
+  state: string | null;
+}
+
+/** The feed row fields the two timebox resolvers share. */
+function matchTimebox(
+  rows: Record<string, unknown>[],
+  reference: string,
+  label: 'iteration' | 'release',
+  nameFields: string[],
+): Lookup<ResolvedTimebox> {
+  const wanted = reference.trim();
+  const byId = rows.find((row) => str(row['id']) === wanted);
+  const named = (row: Record<string, unknown>) =>
+    nameFields.some((field) => str(row[field])?.toLowerCase() === wanted.toLowerCase());
+  const byName = rows.filter(named);
+  const describe = (row: Record<string, unknown>) =>
+    `${str(row['name']) ?? '(unnamed)'}${str(row['id']) === wanted ? '' : ` [${str(row['id'])}]`}`;
+
+  const toResolved = (row: Record<string, unknown>): ResolvedTimebox => ({
+    ok: true,
+    id: String(row['id']),
+    name: str(row['name']) ?? '',
+    state: str(row['state']) ?? str(row['status']) ?? null,
+  });
+
+  if (byId) return toResolved(byId);
+  if (byName.length === 1) return toResolved(byName[0]);
+  if (byName.length > 1) {
+    return {
+      ok: false,
+      message: `"${reference}" matches ${byName.length} ${label}s: ${byName
+        .slice(0, 20)
+        .map(describe)
+        .join(', ')}. Use the id.`,
+    };
+  }
+  return {
+    ok: false,
+    message: `No ${label} matches "${reference}" in this project. Candidates: ${
+      rows.slice(0, 20).map(describe).join(', ') || 'none'
+    }.`,
+  };
+}
+
+/** An iteration of one project by id, name or iteration key (`GET /v1/iterations/options`). */
+export async function resolveIteration(
+  ctx: ToolContext,
+  projectId: string,
+  reference: string,
+): Promise<Lookup<ResolvedTimebox>> {
+  const res = await ctx.callRest(ctx.principal, {
+    method: 'GET',
+    url: '/v1/iterations/options',
+    query: { projectId },
+  });
+  if (res.statusCode >= 400) return { ok: false, statusCode: res.statusCode, json: res.json };
+  const rows = rowsOf(res.json);
+  if (!rows) return { ok: false, message: `Unexpected response from /v1/iterations/options.` };
+  return matchTimebox(rows, reference, 'iteration', ['name', 'iterationKey']);
+}
+
+/** A release of one project by id, name or release key (`GET /v1/releases/options`). */
+export async function resolveRelease(
+  ctx: ToolContext,
+  projectId: string,
+  reference: string,
+): Promise<Lookup<ResolvedTimebox>> {
+  const res = await ctx.callRest(ctx.principal, {
+    method: 'GET',
+    url: '/v1/releases/options',
+    query: { projectId },
+  });
+  if (res.statusCode >= 400) return { ok: false, statusCode: res.statusCode, json: res.json };
+  const rows = rowsOf(res.json);
+  if (!rows) return { ok: false, message: `Unexpected response from /v1/releases/options.` };
+  return matchTimebox(rows, reference, 'release', ['name', 'releaseKey']);
+}
+
+export interface ResolvedTeam {
+  ok: true;
+  id: string;
+  name: string;
+  key: string | null;
+}
+
+/**
+ * An ACTIVE team linked to one project, by team id, name or key
+ * (`GET /v1/projects/:id/teams`, the READER-scoped feed: an Editor is offered only their own
+ * teams, which is what the write's team scope would accept anyway).
+ */
+export async function resolveTeam(
+  ctx: ToolContext,
+  projectId: string,
+  reference: string,
+): Promise<Lookup<ResolvedTeam>> {
+  const res = await ctx.callRest(ctx.principal, {
+    method: 'GET',
+    url: `/v1/projects/${pathSegment(projectId)}/teams`,
+  });
+  if (res.statusCode >= 400) return { ok: false, statusCode: res.statusCode, json: res.json };
+  const rows = rowsOf(res.json);
+  if (!rows) return { ok: false, message: `Unexpected response from the project teams feed.` };
+  const active = rows.filter((row) => str(row['status']) === null || row['status'] === 'active');
+  const wanted = reference.trim().toLowerCase();
+  const matches = active.filter(
+    (row) =>
+      str(row['teamId']) === reference.trim() ||
+      str(row['id']) === reference.trim() ||
+      str(row['name'])?.toLowerCase() === wanted ||
+      str(row['key'])?.toLowerCase() === wanted,
+  );
+  const describe = (row: Record<string, unknown>) =>
+    `${str(row['name']) ?? '(unnamed)'}${str(row['key']) ? ` (${str(row['key'])})` : ''}`;
+  if (matches.length === 1) {
+    const row = matches[0];
+    const id = str(row['teamId']) ?? str(row['id']);
+    if (!id) return { ok: false, message: `"${reference}" resolved to a team without an id.` };
+    return { ok: true, id, name: str(row['name']) ?? '', key: str(row['key']) };
+  }
+  if (matches.length > 1) {
+    return {
+      ok: false,
+      message: `"${reference}" matches ${matches.length} teams: ${matches
+        .map(describe)
+        .join(', ')}. Use the key.`,
+    };
+  }
+  return {
+    ok: false,
+    message: `No active team of this project matches "${reference}". Candidates: ${
+      active.map(describe).join(', ') || 'none'
+    }.`,
+  };
+}
+
+export interface ResolvedStatus {
+  ok: true;
+  id: string;
+  name: string;
+  category: string | null;
+}
+
+/**
+ * A workflow status of one project by name or id (`GET /v1/projects/:id/statuses`). The server
+ * still checks the TRANSITION in the PATCH; this only resolves the name the user said.
+ */
+export async function resolveStatus(
+  ctx: ToolContext,
+  projectId: string,
+  reference: string,
+): Promise<Lookup<ResolvedStatus>> {
+  const res = await ctx.callRest(ctx.principal, {
+    method: 'GET',
+    url: `/v1/projects/${pathSegment(projectId)}/statuses`,
+  });
+  if (res.statusCode >= 400) return { ok: false, statusCode: res.statusCode, json: res.json };
+  const rows = rowsOf(res.json);
+  if (!rows) return { ok: false, message: `Unexpected response from the project statuses feed.` };
+  const wanted = reference.trim().toLowerCase();
+  const matches = rows.filter(
+    (row) => str(row['id']) === reference.trim() || str(row['name'])?.toLowerCase() === wanted,
+  );
+  if (matches.length === 1) {
+    return {
+      ok: true,
+      id: String(matches[0]['id']),
+      name: str(matches[0]['name']) ?? '',
+      category: str(matches[0]['category']),
+    };
+  }
+  const candidates = rows.map((row) => str(row['name'])).filter((n): n is string => n !== null);
+  if (matches.length > 1) {
+    return {
+      ok: false,
+      message: `"${reference}" matches ${matches.length} statuses: ${candidates.join(', ')}. Use the id.`,
+    };
+  }
+  return {
+    ok: false,
+    message: `No status matches "${reference}". Candidates: ${candidates.join(', ') || 'none'}.`,
   };
 }

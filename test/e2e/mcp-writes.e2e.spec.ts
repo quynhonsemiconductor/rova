@@ -16,10 +16,15 @@ import { setMcpWritesEnabled } from '../../apps/api/src/mcp/write-policy';
 import { bootstrapApp } from '../../apps/api/src/bootstrap/app.bootstrap';
 import { CSRF_HEADER, CSRF_SECRET_COOKIE, DRIZZLE, type DrizzleDB } from '@platform';
 import { users } from '../../db/schema/identity';
-import { comments, timeLogs } from '../../db/schema/work';
+import { comments, timeLogs, workItems } from '../../db/schema/work';
 import { inAppNotifications } from '../../db/schema/notifications';
 import {
+  NXP_DEFECT_1_ID,
+  TEAM_ALPHA_ID,
   NXP_FEATURE_3_ID,
+  NXP_ITER_CURRENT_ID,
+  NXP_RELEASE_1_ID,
+  TEAM_BETA_ID,
   NXP_STORY_1_ID,
   SEED_PROJECTS,
   WORKSPACE_ID,
@@ -35,10 +40,13 @@ describe('/mcp write tools (e2e)', () => {
   let people = new Map<string, { userId: string; workspaceId: string }>();
   let adminCookie: string;
   let viewerCookie: string;
+  let devCookie: string;
   let adminCsrf: { cookie: string; token: string };
   let viewerCsrf: { cookie: string; token: string };
+  let devCsrf: { cookie: string; token: string };
   let adminId: string;
   let viewerId: string;
+  let devId: string;
 
   const verifier: McpAccessVerifier = { verify: async (bearer) => people.get(bearer) ?? null };
 
@@ -103,6 +111,7 @@ describe('/mcp write tools (e2e)', () => {
 
     adminId = await userId('admin@qnsc.dev');
     viewerId = await userId('viewer@qnsc.dev');
+    devId = await userId('dev@qnsc.dev');
     people = new Map([[TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID }]]);
 
     setMcpWritesEnabled(true);
@@ -120,6 +129,7 @@ describe('/mcp write tools (e2e)', () => {
 
     adminCookie = await signIn(app, 'admin@qnsc.dev');
     viewerCookie = await signIn(app, 'viewer@qnsc.dev');
+    devCookie = await signIn(app, 'dev@qnsc.dev');
     // CSRF, exactly as the SPA obtains it: /v1/auth/me plants the secret cookie + token.
     const csrfFor = async (cookie: string) => {
       const me = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie } });
@@ -130,6 +140,7 @@ describe('/mcp write tools (e2e)', () => {
     };
     adminCsrf = await csrfFor(adminCookie);
     viewerCsrf = await csrfFor(viewerCookie);
+    devCsrf = await csrfFor(devCookie);
     await mcp('initialize', {
       protocolVersion: '2025-06-18',
       capabilities: {},
@@ -227,6 +238,27 @@ describe('/mcp write tools (e2e)', () => {
       return copy;
     };
     expect(strip(viaMcp.body.error)).toEqual(strip(rest.json()));
+
+    // UPDATE and ADD_TASK are refused by the same archived-project rule on their own routes.
+    const restUpdate = await admin('PATCH', `/work-items/${itemId}`, { title: 'archived edit' });
+    expect(restUpdate.statusCode, restUpdate.body).toBeGreaterThanOrEqual(400);
+    const viaMcpUpdate = await tool('rova_update_work_item', {
+      key: itemId,
+      ifMatch: '0',
+      title: 'archived edit',
+    });
+    expect(viaMcpUpdate.isError).toBe(true);
+    expect(viaMcpUpdate.body.statusCode).toBe(restUpdate.statusCode);
+    expect(viaMcpUpdate.body.error).toMatchObject({
+      error: { code: restUpdate.json().error.code },
+    });
+
+    const restTask = await admin('POST', `/work-items/${itemId}/tasks`, { title: 'archived task' });
+    expect(restTask.statusCode, restTask.body).toBeGreaterThanOrEqual(400);
+    const viaMcpTask = await tool('rova_add_task', { parentKey: itemId, title: 'archived task' });
+    expect(viaMcpTask.isError).toBe(true);
+    expect(viaMcpTask.body.statusCode).toBe(restTask.statusCode);
+    expect(viaMcpTask.body.error).toMatchObject({ error: { code: restTask.json().error.code } });
   });
 
   it('an idempotent replay returns the SAME time-log id, not a duplicate', async () => {
@@ -381,6 +413,300 @@ describe('/mcp write tools (e2e)', () => {
       return copy;
     };
     expect(strip(viaMcp.body.error)).toEqual(strip(rest.json()));
+  });
+
+  it('rova_create_work_item seeds iteration and release atomically, and a replay returns the SAME row', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+
+    // Names, resolved from the same feeds the tool uses — never a guess at the seed.
+    const iterations = await app.inject({
+      method: 'GET',
+      url: '/v1/iterations/options',
+      query: { projectId: NXP },
+      headers: { cookie: adminCookie },
+    });
+    const iterationName = iterations
+      .json<{ id: string; name: string }[]>()
+      .find((i) => i.id === NXP_ITER_CURRENT_ID)?.name;
+    const releases = await app.inject({
+      method: 'GET',
+      url: '/v1/releases/options',
+      query: { projectId: NXP },
+      headers: { cookie: adminCookie },
+    });
+    const releaseName = releases
+      .json<{ id: string; name: string }[]>()
+      .find((r) => r.id === NXP_RELEASE_1_ID)?.name;
+    expect(iterationName, iterations.body).toBeTruthy();
+    expect(releaseName, releases.body).toBeTruthy();
+
+    const args = {
+      project: 'NXP',
+      type: 'story',
+      title: `mcp create probe ${Date.now()}`,
+      iteration: iterationName as string,
+      release: releaseName as string,
+    };
+    const first = await tool('rova_create_work_item', args);
+    const second = await tool('rova_create_work_item', args);
+    expect(first.isError, JSON.stringify(first.body)).toBeFalsy();
+    expect(second.body.workItem.id).toBe(first.body.workItem.id);
+    // The REST idempotency layer says which call actually wrote the row.
+    expect(first.body.replayed).toBe(false);
+    expect(second.body.replayed).toBe(true);
+    // ONE row: the replay replayed the idempotent response, it did not create twice.
+    const [{ n }] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(workItems)
+      .where(eq(workItems.title, args.title));
+    expect(Number(n)).toBe(1);
+
+    // The create SEEDED both timeboxes in the same write, not via a follow-up PATCH.
+    const row = await app.inject({
+      method: 'GET',
+      url: `/v1/work-items/${first.body.workItem.id}`,
+      headers: { cookie: adminCookie },
+    });
+    expect(row.statusCode).toBe(200);
+    const detail = row.json<{ item?: Record<string, unknown> }>();
+    expect(detail.item ?? detail).toMatchObject({
+      iterationId: NXP_ITER_CURRENT_ID,
+      releaseId: NXP_RELEASE_1_ID,
+    });
+  });
+
+  it('a non-member updating a work item gets the resolver refusal, exactly as REST does', async () => {
+    people.set(TOKEN, { userId: viewerId, workspaceId: WORKSPACE_ID });
+    const rest = await app.inject({
+      method: 'GET',
+      url: '/v1/work-items/by-key',
+      query: { itemKey: 'OBSE-42' },
+      headers: { cookie: viewerCookie },
+    });
+    const viaMcp = await tool('rova_update_work_item', {
+      key: 'OBSE-42',
+      ifMatch: '0',
+      title: 'nope',
+    });
+    expect(viaMcp.isError).toBe(true);
+    expect(viaMcp.body.statusCode, JSON.stringify(viaMcp.body)).toBe(rest.statusCode);
+    const strip = (body: unknown): unknown => {
+      const copy = JSON.parse(JSON.stringify(body)) as { error?: { correlationId?: string } };
+      if (copy.error) delete copy.error.correlationId;
+      return copy;
+    };
+    expect(strip(viaMcp.body.error)).toEqual(strip(rest.json()));
+  });
+
+  it('creating in an archived project is refused with the REST body', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const key = `ARCW${Date.now() % 100000}`;
+    const project = await adminRest('POST', '/projects', { key, name: 'Archived write probe' });
+    expect(project.statusCode, project.body).toBe(201);
+    const projectId = project.json().id as string;
+    expect((await adminRest('POST', `/projects/${projectId}/archive`)).statusCode).toBeLessThan(
+      300,
+    );
+
+    const rest = await adminRest('POST', '/work-items', {
+      projectId,
+      type: 'story',
+      title: 'archived create',
+    });
+    const viaMcp = await tool('rova_create_work_item', {
+      project: key,
+      type: 'story',
+      title: 'archived create',
+    });
+    expect(viaMcp.isError, JSON.stringify(viaMcp.body)).toBe(true);
+    expect(viaMcp.body.statusCode, `rest=${rest.body} mcp=${JSON.stringify(viaMcp.body)}`).toBe(
+      rest.statusCode,
+    );
+    const strip = (body: unknown): unknown => {
+      const copy = JSON.parse(JSON.stringify(body)) as { error?: { correlationId?: string } };
+      if (copy.error) delete copy.error.correlationId;
+      return copy;
+    };
+    expect(strip(viaMcp.body.error)).toEqual(strip(rest.json()));
+  });
+
+  it('a stale If-Match answers 412 WORK_ITEM_STALE with the FRESH item and its new version', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const created = await adminRest('POST', '/work-items', {
+      projectId: NXP,
+      type: 'story',
+      title: `stale probe ${Date.now()}`,
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const id = created.json().id as string;
+
+    // Someone else's write wins first: the version moves from "0" to "1".
+    const bump = await adminRest('PATCH', `/work-items/${id}`, { title: 'theirs' });
+    expect(bump.statusCode, bump.body).toBe(200);
+    const rest = await app.inject({
+      method: 'PATCH',
+      url: `/v1/work-items/${id}`,
+      headers: {
+        cookie: adminCsrf.cookie,
+        [CSRF_HEADER]: adminCsrf.token,
+        'if-match': '"0"',
+      },
+      payload: { title: 'mine' },
+    });
+    expect(rest.statusCode, rest.body).toBe(412);
+
+    const viaMcp = await tool('rova_update_work_item', {
+      key: id,
+      title: 'mine',
+      ifMatch: '0',
+    });
+    expect(viaMcp.isError).toBe(true);
+    expect(viaMcp.body.statusCode).toBe(412);
+    // The refusal is REST's, and the tool adds the row as it stands — re-apply without re-reading.
+    expect(viaMcp.body.error).toMatchObject({ error: { code: 'WORK_ITEM_STALE' } });
+    expect(viaMcp.body.version).toBe(1);
+    expect(viaMcp.body.current).toMatchObject({ id, title: 'theirs' });
+  });
+
+  it("a task's iteration is refused through MCP exactly as it is through REST", async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const task = await tool('rova_add_task', {
+      parentKey: NXP_STORY_1_ID,
+      title: `task probe ${Date.now()}`,
+    });
+    expect(task.isError, JSON.stringify(task.body)).toBeFalsy();
+    const taskId = task.body.workItem.id as string;
+
+    const iterations = await app.inject({
+      method: 'GET',
+      url: '/v1/iterations/options',
+      query: { projectId: NXP },
+      headers: { cookie: adminCookie },
+    });
+    const iterationName = iterations
+      .json<{ id: string; name: string }[]>()
+      .find((i) => i.id === NXP_ITER_CURRENT_ID)?.name;
+
+    const rest = await adminRest('PATCH', `/work-items/${taskId}`, {
+      iterationId: NXP_ITER_CURRENT_ID,
+    });
+    expect(rest.statusCode, rest.body).toBe(412);
+    const viaMcp = await tool('rova_update_work_item', {
+      key: taskId,
+      ifMatch: String(task.body.version),
+      iteration: iterationName,
+    });
+    expect(viaMcp.isError).toBe(true);
+    expect(viaMcp.body.statusCode).toBe(rest.statusCode);
+    expect(viaMcp.body.error).toMatchObject({ error: { code: 'TASK_ITERATION_DERIVED' } });
+  });
+
+  it('an Editor cannot set a release — on create AND update — and the refusal equals REST', async () => {
+    people.set(TOKEN, { userId: devId, workspaceId: WORKSPACE_ID });
+    const devRest = (method: 'POST' | 'PATCH', url: string, payload: object) =>
+      app.inject({
+        method,
+        url: `/v1${url}`,
+        headers: { cookie: devCsrf.cookie, [CSRF_HEADER]: devCsrf.token },
+        payload,
+      });
+    const releases = await app.inject({
+      method: 'GET',
+      url: '/v1/releases/options',
+      query: { projectId: NXP },
+      headers: { cookie: devCookie },
+    });
+    const releaseName = releases
+      .json<{ id: string; name: string }[]>()
+      .find((r) => r.id === NXP_RELEASE_1_ID)?.name as string;
+
+    // CREATE: assertMayAssignRelease (release:view) is an Editor's refusal on the REST route.
+    const restCreate = await devRest('POST', '/work-items', {
+      projectId: NXP,
+      type: 'story',
+      title: `editor release create ${Date.now()}`,
+      teamId: TEAM_ALPHA_ID,
+      releaseId: NXP_RELEASE_1_ID,
+    });
+    expect(restCreate.statusCode, restCreate.body).toBe(403);
+    const viaMcpCreate = await tool('rova_create_work_item', {
+      project: 'NXP',
+      type: 'story',
+      title: `editor release create mcp ${Date.now()}`,
+      team: 'Alpha',
+      release: releaseName,
+    });
+    expect(viaMcpCreate.isError).toBe(true);
+    expect(viaMcpCreate.body.statusCode).toBe(restCreate.statusCode);
+    expect(viaMcpCreate.body.error).toMatchObject({
+      error: { code: restCreate.json().error.code },
+    });
+
+    // UPDATE: the same field-level rule on PATCH /work-items/:id.
+    const read = await app.inject({
+      method: 'GET',
+      url: '/v1/work-items/by-key',
+      query: { itemKey: 'DE-1' },
+      headers: { cookie: devCookie },
+    });
+    expect(read.statusCode, read.body).toBe(200);
+    const version = String(read.headers.etag).replaceAll('"', '');
+    const restUpdate = await devRest('PATCH', `/work-items/${NXP_DEFECT_1_ID}`, {
+      releaseId: NXP_RELEASE_1_ID,
+    });
+    expect(restUpdate.statusCode, restUpdate.body).toBe(403);
+    const viaMcpUpdate = await tool('rova_update_work_item', {
+      key: NXP_DEFECT_1_ID,
+      ifMatch: version,
+      release: releaseName,
+    });
+    expect(viaMcpUpdate.isError).toBe(true);
+    expect(viaMcpUpdate.body.statusCode).toBe(restUpdate.statusCode);
+    expect(viaMcpUpdate.body.error).toMatchObject({
+      error: { code: restUpdate.json().error.code },
+    });
+  });
+
+  it("an Editor outside the item's Team is refused on update and add_task, exactly as REST is", async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const beta = await adminRest('POST', '/work-items', {
+      projectId: NXP,
+      type: 'story',
+      title: `team beta probe ${Date.now()}`,
+      teamId: TEAM_BETA_ID,
+    });
+    expect(beta.statusCode, beta.body).toBe(201);
+    const betaId = beta.json().id as string;
+
+    // The Editor (dev) is scoped to Team Alpha, and team scope reaches the READ as well.
+    people.set(TOKEN, { userId: devId, workspaceId: WORKSPACE_ID });
+    const devRest = (method: 'POST' | 'PATCH', url: string, payload: object) =>
+      app.inject({
+        method,
+        url: `/v1${url}`,
+        headers: { cookie: devCsrf.cookie, [CSRF_HEADER]: devCsrf.token },
+        payload,
+      });
+
+    const restPatch = await devRest('PATCH', `/work-items/${betaId}`, { title: 'nope' });
+    expect(restPatch.statusCode, restPatch.body).toBe(403);
+    const viaMcpUpdate = await tool('rova_update_work_item', {
+      key: betaId,
+      ifMatch: '0',
+      title: 'nope',
+    });
+    expect(viaMcpUpdate.isError).toBe(true);
+    expect(viaMcpUpdate.body.statusCode).toBe(restPatch.statusCode);
+    expect(viaMcpUpdate.body.error).toMatchObject({ error: { code: restPatch.json().error.code } });
+
+    const restTask = await devRest('POST', `/work-items/${betaId}/tasks`, { title: 'nope' });
+    expect(restTask.statusCode, restTask.body).toBe(403);
+    const viaMcpTask = await tool('rova_add_task', { parentKey: betaId, title: 'nope' });
+    expect(viaMcpTask.isError).toBe(true);
+    expect(viaMcpTask.body.statusCode).toBe(restTask.statusCode);
+    expect(viaMcpTask.body.error).toMatchObject({
+      error: { code: restTask.json().error.code },
+    });
   });
 
   it('rova_log_time refuses 2026-02-30 at the tool schema, before any write', async () => {
