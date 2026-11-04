@@ -6,7 +6,7 @@
 # a writable /tmp, config.json mounted at /srv/config.json, an arbitrary non-root uid, port 8080),
 # and exercises the contract plus the User Guide session gate against a stub API.
 #
-#   contract      /healthz 200; doc root /srv; the process runs as the uid asked for
+#   contract      /healthz and /livez 200; doc root /srv; the process runs as the uid asked for
 #   caching       / and SPA routes no-cache; an existing /assets/* immutable; a MISSING asset 404
 #                 with no Cache-Control promise
 #   headers       every value of the Worker's `_headers` on the app, and the same set plus the
@@ -197,6 +197,7 @@ if [ "$uid" = "12345" ]; then ok "the server runs as the uid the pod asked for (
 root="$(docker exec --user 0 "$web" sh -c 'test -f /srv/index.html && echo /srv')"
 if [ "$root" = "/srv" ]; then ok "doc root /srv holds index.html"; else bad "doc root" "/srv/index.html is missing"; fi
 expect_status "/healthz" 200 "$base/healthz"
+expect_status "/livez" 200 "$base/livez"
 expect_status "/" 200 "$base/"
 expect_status "/config.json (mounted)" 200 "$base/config.json"
 expect_status "unknown path falls back to the SPA" 200 "$base/some/spa/route"
