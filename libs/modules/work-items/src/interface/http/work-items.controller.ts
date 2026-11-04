@@ -1,8 +1,10 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   Param,
   ParseUUIDPipe,
@@ -11,8 +13,10 @@ import {
   Put,
   Query,
   Redirect,
+  Res,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { FastifyReply } from 'fastify';
+import { ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   ApiCommonErrors,
   ApiPagedResponse,
@@ -82,6 +86,53 @@ import {
 } from '@modules/attachments';
 
 // ── Mappers ─────────────────────────────────────────────────────────────────
+
+/**
+ * The record's concurrency token (MCP v2 G1): a strong ETag around the integer `version` column.
+ * Every write path increments the counter in the same statement, so the token changes on EVERY
+ * write — two updates inside one millisecond still get different tokens (a timestamp cannot make
+ * that promise).
+ */
+export function etagFor(version: number): string {
+  return `"${version}"`;
+}
+
+/**
+ * A record response MUST carry its version (the column is NOT NULL). Emitting a fake "0" would
+ * hand the client a token that silently overwrites unknown state, so a missing version is a
+ * server bug surfaced loudly instead.
+ */
+function versionOf(item: { version?: number }): number {
+  if (typeof item.version !== 'number') {
+    throw new Error('work item response is missing its version');
+  }
+  return item.version;
+}
+
+/**
+ * Parses `If-Match` per RFC 9110 into the integer version the repository matches in the UPDATE.
+ *   - absent/blank: no precondition (the web path);
+ *   - `*`: the item must merely EXIST — the route's own 404 answers that, so no version check;
+ *   - `W/"n"`: a weak validator NEVER matches, so it is mapped to a version that cannot exist
+ *     and the write answers 412 `WORK_ITEM_STALE`;
+ *   - `"n"`: the strong token the GET emitted;
+ *   - anything else: 400, because the precondition cannot be evaluated.
+ */
+export function parseIfMatch(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === '') return undefined;
+  const token = value.trim();
+  if (token === '*') return undefined;
+  if (token.startsWith('W/')) return -1;
+  const strong = /^"(0|[1-9][0-9]*)"$/.exec(token);
+  if (!strong) {
+    throw new BadRequestException('If-Match must be "*" or a strong ETag: "<version>"');
+  }
+  const version = Number(strong[1]);
+  if (!Number.isSafeInteger(version)) {
+    throw new BadRequestException('If-Match version is out of range');
+  }
+  return version;
+}
 
 function numOrNull(v: string | null): number | null {
   return v === null ? null : Number(v);
@@ -382,13 +433,24 @@ export class WorkItemsController {
   // ── Create ─────────────────────────────────────────────────────────────────
 
   @Post()
+  @UseIdempotency()
   @ApiOperation({ summary: 'Create a work item' })
   @RequirePermission('work_item:create', { from: 'body', field: 'projectId' })
-  @ApiResponse({ status: 201, type: WorkItemResponseDto })
+  @ApiResponse({
+    status: 201,
+    type: WorkItemResponseDto,
+    headers: {
+      ETag: {
+        description: 'Strong validator "<version>" of the created row.',
+        schema: { type: 'string' },
+      },
+    },
+  })
   @ApiCommonErrors(400, 401, 404, 409, 422)
   async createWorkItem(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateWorkItemDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemResponseDto> {
     const item = await this.workItemsService.createWorkItem(
       user,
@@ -404,6 +466,11 @@ export class WorkItemsController {
         reporterId: dto.reporterId,
         parentId: dto.parentId,
         teamId: dto.teamId,
+        // G3: a create may seed its iteration and release ATOMICALLY (the same
+        // `assertAssignmentScope` the update path uses validates both, including
+        // `assertIterationAssignable` for a team-scoped timebox).
+        iterationId: dto.iterationId,
+        releaseId: dto.releaseId,
         storyPoints: dto.storyPoints,
         estimateHours: dto.estimateHours,
         todoHours: dto.todoHours,
@@ -422,6 +489,7 @@ export class WorkItemsController {
         fixedInBuild: dto.fixedInBuild,
       },
     );
+    reply.header('ETag', etagFor(versionOf(item)));
     return toWorkItemDto(item);
   }
 
@@ -449,28 +517,50 @@ export class WorkItemsController {
    * cell answered 403 for the two roles that do the work. Invisible in testing because the dev
    * principal is a Workspace Admin, exactly as the `report:view` bug was.
    */
-  @ApiResponse({ status: 200, type: WorkItemDetailResponseDto })
+  @ApiResponse({
+    status: 200,
+    type: WorkItemDetailResponseDto,
+    headers: {
+      ETag: {
+        description: 'Strong validator "<version>"; send it back as If-Match on PATCH.',
+        schema: { type: 'string' },
+      },
+    },
+  })
   @ApiCommonErrors(400, 401, 404)
   async getWorkItemByKey(
     @CurrentUser() user: JwtPayload,
     @Query() query: WorkItemByKeyQueryDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemDetailResponseDto> {
-    return toWorkItemDetailDto(
-      await this.workItemsService.getWorkItemDetailByKey(user, query.itemKey),
-    );
+    const detail = await this.workItemsService.getWorkItemDetailByKey(user, query.itemKey);
+    reply.header('ETag', etagFor(versionOf(detail.item)));
+    return toWorkItemDetailDto(detail);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a work item by ID' })
   @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, type: WorkItemDetailResponseDto })
+  @ApiResponse({
+    status: 200,
+    type: WorkItemDetailResponseDto,
+    headers: {
+      ETag: {
+        description: 'Strong validator "<version>"; send it back as If-Match on PATCH.',
+        schema: { type: 'string' },
+      },
+    },
+  })
   @ApiCommonErrors(401, 404)
   async getWorkItem(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemDetailResponseDto> {
-    return toWorkItemDetailDto(await this.workItemsService.getWorkItemDetail(user, id));
+    const detail = await this.workItemsService.getWorkItemDetail(user, id);
+    reply.header('ETag', etagFor(versionOf(detail.item)));
+    return toWorkItemDetailDto(detail);
   }
 
   // ── Bulk assign release / iteration (P2-BL-03 / P2-BL-04) ────────────────────
@@ -524,16 +614,37 @@ export class WorkItemsController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a work item' })
+  @ApiHeader({
+    name: 'If-Match',
+    required: false,
+    description:
+      'Optimistic concurrency: the ETag returned by GET for this item. When it no longer matches, the update is refused 412 WORK_ITEM_STALE.',
+  })
   @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, type: WorkItemResponseDto })
+  @ApiResponse({
+    status: 200,
+    type: WorkItemResponseDto,
+    headers: {
+      ETag: {
+        description: 'Strong validator "<version>" of the updated row.',
+        schema: { type: 'string' },
+      },
+    },
+  })
   @ApiCommonErrors(400, 401, 404, 422)
   async updateWorkItem(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateWorkItemDto,
+    @Headers('if-match') ifMatch: string | undefined,
+    @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemResponseDto> {
-    const item = await this.workItemsService.updateWorkItem(user, id, dto);
+    const item = await this.workItemsService.updateWorkItem(user, id, dto, {
+      expectedVersion: parseIfMatch(ifMatch),
+    });
+    // The new token, so a caller that chains edits does not have to re-read.
+    reply.header('ETag', etagFor(versionOf(item)));
     return toWorkItemDto(item);
   }
 
@@ -639,15 +750,26 @@ export class WorkItemsController {
   }
 
   @Post(':id/tasks')
+  @UseIdempotency()
   @ApiOperation({ summary: 'Create a child task under a work item' })
   @RequirePermission('work_item:create', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 201, type: WorkItemResponseDto })
+  @ApiResponse({
+    status: 201,
+    type: WorkItemResponseDto,
+    headers: {
+      ETag: {
+        description: 'Strong validator "<version>" of the created task.',
+        schema: { type: 'string' },
+      },
+    },
+  })
   @ApiCommonErrors(400, 401, 404, 409, 422)
   async createTask(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateTaskDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<WorkItemResponseDto> {
     const task = await this.workItemsService.createTask(user, id, dto.title, {
       description: dto.description,
@@ -661,6 +783,7 @@ export class WorkItemsController {
       todoHours: dto.todoHours,
       actualHours: dto.actualHours,
     });
+    reply.header('ETag', etagFor(versionOf(task)));
     return toWorkItemDto(task);
   }
 

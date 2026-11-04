@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
+import { ApiCommonErrors, ApiPagedResponse, buildPageArgs, UseIdempotency } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { AuthPolicy, RequirePermission } from '@modules/access';
@@ -32,6 +32,7 @@ export class WorkItemTestCasesController {
   }
 
   @Post()
+  @UseIdempotency()
   @RequirePermission('test_case:create', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Create a Test Case under a Work Item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

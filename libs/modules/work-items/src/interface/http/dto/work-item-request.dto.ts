@@ -158,6 +158,14 @@ export const CreateWorkItemSchema = z.object({
   reporterId: z.string().uuid().optional(),
   parentId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
+  /**
+   * G3 (MCP v2): a create may seed its iteration and release in the same statement instead of a
+   * create followed by a PATCH. Both go through the create path's `assertAssignmentScope` — the
+   * same `assertIterationAssignable` validation an update uses — on the same project.
+   */
+  iterationId: z.string().uuid().optional(),
+  /** Nullable so a null is refused with a clear 400 by the service, not a schema 422. */
+  releaseId: z.string().uuid().nullable().optional(),
   storyPoints: pointsOptional,
   estimateHours: hoursOptional,
   todoHours: hoursOptional,

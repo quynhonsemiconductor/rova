@@ -623,6 +623,16 @@ describe('WorkItemsService', () => {
       },
     );
 
+    it('refuses a create that SEEDS a Release when the caller may not assign one (G3)', async () => {
+      accessService.assertProjectPermission.mockRejectedValueOnce(
+        new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'Not allowed'),
+      );
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'story', 'Story', { releaseId: 'rel-x' }),
+      ).rejects.toThrow(PermissionDeniedException);
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
     it('rejects an iteration that belongs to a different project', async () => {
       workItemRepo.findIterationScope.mockResolvedValue({ projectId: 'other-proj', teamId: null });
       await expect(
@@ -1086,6 +1096,29 @@ describe('WorkItemsService', () => {
 
       const result = await service.updateWorkItem(mockActor, 'wi-1', { title: 'Updated' });
       expect(result.title).toBe('Updated');
+    });
+
+    // G1: If-Match (MCP v2). The service does not compare — it forwards the expected timestamp
+    // to the repository, where the UPDATE's WHERE enforces it atomically.
+    it('forwards the expected version to the repository', async () => {
+      const expected = 7;
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ title: 'x' }));
+
+      await service.updateWorkItem(
+        mockActor,
+        'wi-1',
+        { title: 'x' },
+        { expectedVersion: expected },
+      );
+
+      expect(workItemRepo.update).toHaveBeenCalledWith(
+        'wi-1',
+        expect.objectContaining({ title: 'x' }),
+        'ws-1',
+        expect.anything(),
+        expected,
+      );
     });
 
     /**

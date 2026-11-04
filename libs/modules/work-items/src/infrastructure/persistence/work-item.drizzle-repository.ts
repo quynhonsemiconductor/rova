@@ -16,6 +16,7 @@ import {
 } from 'drizzle-orm';
 import { alias, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
+import { PreconditionFailedException } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
   portfolioItems,
@@ -251,6 +252,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       updatedBy: t.updatedBy,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
+      version: t.version,
       deletedAt: t.deletedAt,
       severity: null,
       foundInEnvironment: null,
@@ -515,7 +517,11 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     const exec = executor ?? this.db;
     await exec
       .update(workItems)
-      .set({ iterationId, updatedBy, updatedAt: new Date() })
+      .set({
+        iterationId,
+        updatedBy,
+        updatedAt: new Date(),
+      })
       .where(
         and(
           inArray(workItems.id, ids),
@@ -1355,6 +1361,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         updatedBy: t.updatedBy,
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,
+        version: t.version,
         deletedAt: t.deletedAt,
         severity: null,
         foundInEnvironment: null,
@@ -1423,8 +1430,19 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     input: UpdateWorkItemInput,
     workspaceId: string,
     executor?: DbExecutor,
+    expectedVersion?: number,
   ): Promise<WorkItem> {
     const exec = executor ?? this.db;
+
+    /**
+     * Optimistic concurrency (MCP v2 G1): the token is the row's integer `version`. The match
+     * rides the UPDATE's WHERE — `version = $n` — and every update increments the counter in the
+     * SAME statement, so two writes inside one millisecond cannot share a token and a stale
+     * ETag can never silently win. 0 affected rows is a 412. Absent the argument the WHERE is
+     * unchanged (the web never sends If-Match). Weak tokens arrive as -1 and match nothing.
+     */
+    const ifVersion = (column: AnyPgColumn) =>
+      expectedVersion !== undefined ? eq(column, expectedVersion) : undefined;
 
     // P3: If this is a task (exists in tasks table), update there instead.
     const taskCheck = await exec
@@ -1462,10 +1480,17 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       if (input.rank !== undefined) setFields.rank = input.rank;
       if (input.updatedBy !== undefined) setFields.updatedBy = input.updatedBy;
 
-      await exec
+      const taskRows = await exec
         .update(tasks)
         .set(setFields)
-        .where(and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId)));
+        .where(and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId), ifVersion(tasks.version)))
+        .returning({ id: tasks.id });
+      if (expectedVersion !== undefined && taskRows.length === 0) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_STALE',
+          'The work item changed after the version you read. Re-read it and retry.',
+        );
+      }
 
       // Re-fetch and return as WorkItem (use exec/tx for transaction consistency)
       return (await this.findById(id, workspaceId, exec))!;
@@ -1535,8 +1560,20 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         ...(input.targetEndDate !== undefined && { targetEndDate: input.targetEndDate }),
         updatedAt: new Date(),
       })
-      .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)))
+      .where(
+        and(
+          eq(workItems.id, id),
+          eq(workItems.workspaceId, workspaceId),
+          ifVersion(workItems.version),
+        ),
+      )
       .returning();
+    if (expectedVersion !== undefined && rows.length === 0) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_STALE',
+        'The work item changed after the version you read. Re-read it and retry.',
+      );
+    }
     return toWorkItem(rows[0]);
   }
 

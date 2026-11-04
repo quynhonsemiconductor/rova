@@ -70,6 +70,12 @@ export interface WorkItem {
   updatedBy: string | null;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * Optimistic-concurrency counter (migration 0138); the strong ETag a record read returns.
+   * Optional only so read-model fixtures that predate the column stay valid — every row the
+   * repository returns carries it.
+   */
+  version?: number;
   deletedAt: Date | null;
   // P3.4 — Defect-specific fields
   severity: string | null;

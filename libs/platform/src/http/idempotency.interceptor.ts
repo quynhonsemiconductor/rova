@@ -9,10 +9,12 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
-import { Observable, from, of } from 'rxjs';
-import { switchMap, tap } from 'rxjs/operators';
+import { Observable, from, of, throwError } from 'rxjs';
+import { catchError, switchMap } from 'rxjs/operators';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { clientIp, currentUserId } from '@quynhonsemiconductor/platform-http';
+import { ConflictException, DomainException } from '../errors/exceptions';
 import { IS_PUBLIC_KEY } from '../auth/public-key';
 
 /** TTL for cached idempotent responses (24 hours). */
@@ -82,32 +84,195 @@ export class IdempotencyInterceptor implements NestInterceptor {
         .slice(0, 16);
     }
     const redisKey = `idem:${userId}:${req.method}:${req.url}:${idempotencyKey}`;
+    const inFlightKey = `${redisKey}:inflight`;
+    const requestHash = hashBody((req as FastifyRequest & { body?: unknown }).body);
+    const reply = context.switchToHttp().getResponse<{
+      statusCode: number;
+      status(code: number): unknown;
+      header(name: string, value: string): unknown;
+      getHeader(name: string): unknown;
+    }>();
+    /** What the route answers when nothing overrides it — captured so a replay carries the FIRST
+     * call's status, not whatever the route happens to default to when the retry arrives. */
+    const defaultStatus =
+      (Reflect.getMetadata(HTTP_CODE_METADATA, context.getHandler()) as number | undefined) ??
+      (req.method === 'POST' ? 201 : 200);
 
-    return from(this.cache.instance.get(redisKey)).pipe(
-      switchMap((cached: string | null) => {
-        if (cached !== null) {
-          this.logger.debug({ msg: 'idempotency: cache hit', redisKey });
-          return of(JSON.parse(cached) as unknown);
+    // The reply object in unit fixtures may be a minimal stub; a missing header API must not
+    // turn a cached replay into an unhandled error.
+    const getEtag = (): unknown =>
+      typeof reply.getHeader === 'function' ? reply.getHeader('etag') : undefined;
+    const setEtag = (etag: string): void => {
+      if (typeof reply.header === 'function') reply.header('ETag', etag);
+    };
+
+    const release = async () => {
+      try {
+        await this.cache.instance.del(inFlightKey);
+      } catch {
+        // Releasing is best-effort; the TTL frees a marker whose release failed.
+      }
+    };
+
+    const parseEntry = (cached: string | null | undefined): Record<string, unknown> | undefined => {
+      if (cached === undefined) return undefined; // a read failure (already logged)
+      if (cached === null) return null as unknown as undefined; // no entry: caller distinguishes
+      try {
+        return JSON.parse(cached) as Record<string, unknown>;
+      } catch {
+        return undefined;
+      }
+    };
+    const cachedValue = (cached: string | null | undefined) =>
+      cached === undefined ? undefined : parseEntry(cached);
+    const replay = (entry: Record<string, unknown>) => {
+      if (entry['v'] === 1) {
+        // IETF idempotency-key draft: the same key with a DIFFERENT body is a client error, not
+        // a replay. Without this, a model retry that edited its arguments would silently receive
+        // the first request's response.
+        if (entry['hash'] !== requestHash) {
+          return throwError(
+            () =>
+              new DomainException(
+                'IDEMPOTENCY_KEY_REUSED',
+                'This Idempotency-Key was already used with a different request body.',
+                'VALIDATION_FAILED',
+              ),
+          );
         }
+        if (typeof entry['status'] === 'number') reply.status(entry['status']);
+        // The concurrency token must replay with the answer: a client that retries a create
+        // needs the ETag of the row that was actually created, not a fresh read.
+        if (typeof entry['etag'] === 'string') setEtag(entry['etag']);
+        return of(entry['response']);
+      }
+      // An entry written before {hash,status} existed: replay its body, route status.
+      return of(entry);
+    };
+    const readCache = () =>
+      from(this.cache.instance.get(redisKey)).pipe(
+        catchError(() => {
+          this.logger.warn({ msg: 'idempotency: cache read failed; passing through', redisKey });
+          return of(undefined as string | null | undefined);
+        }),
+      );
 
-        return next.handle().pipe(
-          tap(async (response: unknown) => {
-            try {
-              await this.cache.instance.set(
-                redisKey,
-                JSON.stringify(response),
-                'EX',
-                IDEMPOTENCY_TTL_SECONDS,
+    return readCache().pipe(
+      switchMap((first: string | null | undefined) => {
+        const entry = cachedValue(first);
+        if (entry === undefined) return next.handle(); // read/parse failure: pass through
+        if (entry !== null) return replay(entry);
+
+        // First call: take a short in-flight lock so two concurrent duplicates do not both run.
+        return from(
+          this.cache.instance.set(inFlightKey, requestHash, 'EX', IN_FLIGHT_TTL_SECONDS, 'NX'),
+        ).pipe(
+          catchError(() => of('OK')), // cache unavailable: let the request run
+          switchMap((acquired: unknown) => {
+            if (acquired === null) {
+              // The lock is held. The holder may have FINISHED between our first read and the
+              // NX: re-read before deciding it is still in flight.
+              return readCache().pipe(
+                switchMap((again) => {
+                  const raced = cachedValue(again);
+                  if (raced) return replay(raced);
+                  return throwError(
+                    () =>
+                      new ConflictException(
+                        'IDEMPOTENCY_IN_FLIGHT',
+                        'A request with this Idempotency-Key is already in progress. Retry shortly.',
+                      ),
+                  );
+                }),
               );
-            } catch (err) {
-              // Cache failure must NOT fail the request
-              this.logger.warn({ msg: 'idempotency: failed to cache response', err });
             }
+
+            // Lock taken; re-read once more: another holder may have written between our read
+            // and the NX (the GET-miss / SET-NX race), in which case replay instead of running.
+            return readCache().pipe(
+              switchMap((again) => {
+                const raced = cachedValue(again);
+                if (raced) {
+                  void release();
+                  return replay(raced);
+                }
+                // Persistence is driven by the HANDLER's own completion, not by the
+                // subscriber: a client that tears down mid-request must not release the lock
+                // (the async handler can still commit — a retry would then create twice). The
+                // inner subscription is deliberately NOT torn down on unsubscribe; when the
+                // handler completes, the cache entry is written and the lock released, so a
+                // retry replays. A handler that never completes leaves the lock to its TTL.
+                let lastResponse: unknown;
+                return new Observable<unknown>((subscriber) => {
+                  next.handle().subscribe({
+                    next: (response: unknown) => {
+                      lastResponse = response;
+                      if (!subscriber.closed) subscriber.next(response);
+                    },
+                    error: (err: unknown) => {
+                      void release();
+                      if (!subscriber.closed) subscriber.error(err);
+                    },
+                    complete: () => {
+                      void (async () => {
+                        const etag = getEtag();
+                        const status = reply.statusCode !== 200 ? reply.statusCode : defaultStatus;
+                        if (lastResponse !== undefined) {
+                          try {
+                            await this.cache.instance.set(
+                              redisKey,
+                              JSON.stringify({
+                                v: 1,
+                                hash: requestHash,
+                                status,
+                                ...(typeof etag === 'string' ? { etag } : {}),
+                                response: lastResponse,
+                              }),
+                              'EX',
+                              IDEMPOTENCY_TTL_SECONDS,
+                            );
+                          } catch (err) {
+                            // Cache failure must NOT fail the request
+                            this.logger.warn({ msg: 'idempotency: failed to cache response', err });
+                          }
+                        }
+                        await release();
+                      })().finally(() => {
+                        if (!subscriber.closed) subscriber.complete();
+                      });
+                    },
+                  });
+                  // No teardown: unsubscribe leaves the handler running on purpose.
+                });
+              }),
+            );
           }),
         );
       }),
     );
   }
+}
+
+/**
+ * How long a first call holds its "in progress" marker: 60 s, comfortably above any single
+ * create handler (one DB transaction; the slowest observed create is well under 5 s) and above a
+ * gzip/network stall of the injected call. The TTL also frees a marker whose process crashed.
+ */
+const IN_FLIGHT_TTL_SECONDS = 60;
+
+/** sha256 over a key-sorted JSON form of the body: the body is what the key must not be reused for. */
+export function hashBody(body: unknown): string {
+  return createHash('sha256').update(stableJson(body)).digest('hex');
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  const source = value as Record<string, unknown>;
+  return `{${Object.keys(source)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableJson(source[key])}`)
+    .join(',')}}`;
 }
 
 /** Convenience decorator — apply IdempotencyInterceptor to a single route. */
