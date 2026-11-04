@@ -31,9 +31,15 @@ import {
   useUpdateProjectEstimationSettings,
   useUpdateProject,
   useDeleteProject,
-  type ProjectEstimationSettings,
   type Project,
 } from '@/features/projects/api'
+import {
+  estimationFieldError,
+  parseEstimationDraft,
+  toEstimationDraft,
+  type EstimationDraft,
+  type EstimationField,
+} from '@/features/projects/estimation-draft'
 import { useProjectTeams, type Team } from '@/features/teams/api'
 import { useProjectPermissions } from '@/features/access/api'
 import {
@@ -304,7 +310,7 @@ function EditProjectModal({ project, onClose }: { project: Project; onClose: () 
         id: project.id,
         input: {
           name: name.trim(),
-            key,
+          key,
           description: description.trim() || null,
           startDate: startDate || null,
           endDate: endDate || null,
@@ -327,20 +333,20 @@ function EditProjectModal({ project, onClose }: { project: Project; onClose: () 
         <FormField label="Project name" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </FormField>
-          <FormField label="Project key" hint="2–10 uppercase letters/numbers" required>
-            <Input
-              value={key}
-              onChange={(e) =>
-                setKey(
-                  e.target.value
-                    .toUpperCase()
-                    .replace(/[^A-Z0-9]/g, '')
-                    .slice(0, 10),
-                )
-              }
-              className="font-mono"
-            />
-          </FormField>
+        <FormField label="Project key" hint="2–10 uppercase letters/numbers" required>
+          <Input
+            value={key}
+            onChange={(e) =>
+              setKey(
+                e.target.value
+                  .toUpperCase()
+                  .replace(/[^A-Z0-9]/g, '')
+                  .slice(0, 10),
+              )
+            }
+            className="font-mono"
+          />
+        </FormField>
         <FormField label="Description">
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
         </FormField>
@@ -748,30 +754,36 @@ function FieldGrid({ project }: { project: Project }) {
  * read the effective scale the progress bars compute with. Defaults 1/3/5/8/13 + 8.
  */
 function EstimationSettingsBlock({ projectId, isWA }: { projectId: string; isWA: boolean }) {
+  const { t } = useTranslation('projects')
   const { data, isLoading } = useProjectEstimationSettings(projectId)
   const save = useUpdateProjectEstimationSettings()
-  const [draft, setDraft] = useState<ProjectEstimationSettings | null>(null)
+  // The TEXT in each box, only once the user has touched one — see `estimation-draft.ts`.
+  const [draft, setDraft] = useState<EstimationDraft | null>(null)
 
-  // Seed local draft once the read lands (or when it changes after save).
-  const current = draft ?? data ?? null
-  if (!current && isLoading) {
+  if (!data && !draft) {
+    if (!isLoading) return null
     return (
       <div className="flex items-center gap-2 text-ui-sm text-foreground-subtle">
         <Loader2 size={13} className="animate-spin" /> Loading estimation settings…
       </div>
     )
   }
-  if (!current) return null
-  const effective = draft ?? data ?? current
+  const effective: EstimationDraft = draft ?? toEstimationDraft(data!)
+  const parsed = parseEstimationDraft(effective)
 
-  function patch(key: keyof ProjectEstimationSettings, value: number) {
-    setDraft((d) => ({ ...(d ?? data!), [key]: value }))
+  function patch(key: EstimationField, text: string) {
+    setDraft({ ...effective, [key]: text })
+  }
+
+  function errorFor(key: EstimationField) {
+    const code = estimationFieldError(key, effective[key])
+    return code ? t(`form.${code}`) : undefined
   }
 
   function commit() {
-    if (!draft) return
+    if (!draft || !parsed) return
     save.mutate(
-      { id: projectId, input: draft },
+      { id: projectId, input: parsed },
       {
         onSuccess: () => {
           notify.success('Estimation settings saved')
@@ -790,40 +802,36 @@ function EstimationSettingsBlock({ projectId, isWA }: { projectId: string; isWA:
       </p>
       <div className="mt-3 grid grid-cols-5 gap-2">
         {SIZES.map((s) => (
-          <FormField key={s.key} label={s.label}>
+          <FormField key={s.key} label={s.label} error={errorFor(s.key)}>
             <Input
               type="number"
               min={1}
+              aria-label={s.label}
               disabled={!isWA}
-              value={String(effective[s.key])}
-              onChange={(e) => {
-                const v = Number(e.target.value)
-                if (v > 0) patch(s.key, v)
-              }}
+              value={effective[s.key]}
+              onChange={(e) => patch(s.key, e.target.value)}
               className="text-center"
             />
           </FormField>
         ))}
       </div>
       <div className="mt-3">
-        <FormField label="Hours per point">
+        <FormField label="Hours per point" error={errorFor('hoursPerPoint')}>
           <Input
             type="number"
             min={0.5}
             step={0.5}
+            aria-label="Hours per point"
             disabled={!isWA}
-            value={String(effective.hoursPerPoint)}
-            onChange={(e) => {
-              const v = Number(e.target.value)
-              if (v > 0) patch('hoursPerPoint', v)
-            }}
+            value={effective.hoursPerPoint}
+            onChange={(e) => patch('hoursPerPoint', e.target.value)}
             className="w-24"
           />
         </FormField>
       </div>
       {isWA && (
         <div className="mt-3 flex justify-end">
-          <Button type="button" disabled={!draft || save.isPending} onClick={commit}>
+          <Button type="button" disabled={!draft || !parsed || save.isPending} onClick={commit}>
             {save.isPending && <Loader2 size={12} className="animate-spin" />}
             Save estimation
           </Button>

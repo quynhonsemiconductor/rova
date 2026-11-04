@@ -74,7 +74,9 @@
     "loading": "Loading…",
     "noTeams": "No teams in this workspace yet.",
     "teamsHint": "A team can be linked to multiple projects.",
-    "teamsSelected": "{{num}} selected"
+    "teamsSelected": "{{num}} selected",
+    "pointsInvalid": "Enter a whole number of at least 1",
+    "hoursInvalid": "Enter a number greater than 0"
   },
   "create": {
     "title": "New Project",

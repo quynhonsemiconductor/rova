@@ -15,6 +15,14 @@ import {
   type Project,
   type ProjectEstimationSettings,
 } from '@/features/projects/api'
+import {
+  DEFAULT_ESTIMATION,
+  estimationFieldError,
+  parseEstimationDraft,
+  toEstimationDraft,
+  type EstimationDraft,
+  type EstimationField,
+} from '@/features/projects/estimation-draft'
 import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import {
   useWorkspaceTeams,
@@ -142,13 +150,17 @@ interface ProjectFormValues {
   startDate: string
   endDate: string
   teamIds: string[]
-  xsPoints?: number
-  sPoints?: number
-  mPoints?: number
-  lPoints?: number
-  xlPoints?: number
-  hoursPerPoint?: number
+  /** Raw text per field — see `estimation-draft.ts` for why it is not a number. */
+  estimation: EstimationDraft
 }
+
+const ESTIMATION_SIZES = [
+  { field: 'xsPoints', label: 'XS' },
+  { field: 'sPoints', label: 'S' },
+  { field: 'mPoints', label: 'M' },
+  { field: 'lPoints', label: 'L' },
+  { field: 'xlPoints', label: 'XL' },
+] as const satisfies ReadonlyArray<{ field: EstimationField; label: string }>
 
 function ProjectFormFields({
   workspaceId,
@@ -168,6 +180,12 @@ function ProjectFormFields({
   isWorkspaceAdmin?: boolean
 }) {
   const { t } = useTranslation('projects')
+  const patchEstimation = (field: EstimationField, text: string) =>
+    onPatch({ estimation: { ...values.estimation, [field]: text } })
+  const estimationError = (field: EstimationField) => {
+    const code = estimationFieldError(field, values.estimation[field])
+    return code ? t(`form.${code}`) : undefined
+  }
   return (
     <>
       <div className="grid grid-cols-[1fr_9rem] gap-3">
@@ -257,39 +275,27 @@ function ProjectFormFields({
             Reports.
           </p>
           <div className="grid grid-cols-5 gap-2">
-            {(['xsPoints', 'sPoints', 'mPoints', 'lPoints', 'xlPoints'] as const).map(
-              (field, i) => {
-                const label = ['XS', 'S', 'M', 'L', 'XL'][i]
-                return (
-                  <FormField key={field} label={label}>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={String(
-                        (values as unknown as Record<string, unknown>)[field] ??
-                          [1, 3, 5, 8, 13][i],
-                      )}
-                      onChange={(e) => {
-                        const v = Number(e.target.value)
-                        if (v > 0) onPatch({ [field]: v } as Partial<ProjectFormValues>)
-                      }}
-                      className="text-center"
-                    />
-                  </FormField>
-                )
-              },
-            )}
+            {ESTIMATION_SIZES.map(({ field, label }) => (
+              <FormField key={field} label={label} error={estimationError(field)}>
+                <Input
+                  type="number"
+                  min={1}
+                  aria-label={label}
+                  value={values.estimation[field]}
+                  onChange={(e) => patchEstimation(field, e.target.value)}
+                  className="text-center"
+                />
+              </FormField>
+            ))}
           </div>
-          <FormField label="Hours per point">
+          <FormField label="Hours per point" error={estimationError('hoursPerPoint')}>
             <Input
               type="number"
               min={0.5}
               step={0.5}
-              value={String((values as unknown as Record<string, unknown>).hoursPerPoint ?? 8)}
-              onChange={(e) => {
-                const v = Number(e.target.value)
-                if (v > 0) onPatch({ hoursPerPoint: v } as Partial<ProjectFormValues>)
-              }}
+              aria-label="Hours per point"
+              value={values.estimation.hoursPerPoint}
+              onChange={(e) => patchEstimation('hoursPerPoint', e.target.value)}
               className="w-24"
             />
           </FormField>
@@ -319,13 +325,11 @@ export function NewProjectModal({
     startDate: '',
     endDate: '',
     teamIds: [],
-    xsPoints: 1,
-    sPoints: 3,
-    mPoints: 5,
-    lPoints: 8,
-    xlPoints: 13,
-    hoursPerPoint: 8,
+    estimation: toEstimationDraft(DEFAULT_ESTIMATION),
   })
+  // Only a Workspace Admin sees (and sends) the scale, so only they can be blocked by it.
+  const parsedEstimation = parseEstimationDraft(values.estimation)
+  const estimationInvalid = isWA && parsedEstimation === null
   const { mutateAsync, isPending } = useCreateProject()
 
   // The shared rule, so a third form cannot hand-roll a third one — which is how the Create-team form
@@ -347,7 +351,7 @@ export function NewProjectModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmedKey = values.key.trim().toUpperCase()
-    if (values.name.trim().length < 2 || !trimmedKey) return
+    if (values.name.trim().length < 2 || !trimmedKey || estimationInvalid) return
     if (trimmedKey.length < 2) {
       notify.error(t('create.keyTooShort'))
       return
@@ -368,16 +372,8 @@ export function NewProjectModal({
        * renders those fields for a Workspace Admin. That gate is belt-and-braces: `project:create`
        * is a `workspace_admin`-only code, so a non-WA never reaches this submit at all.
        */
-      const estimationSettings: ProjectEstimationSettings | undefined = isWA
-        ? {
-            xsPoints: values.xsPoints ?? 1,
-            sPoints: values.sPoints ?? 3,
-            mPoints: values.mPoints ?? 5,
-            lPoints: values.lPoints ?? 8,
-            xlPoints: values.xlPoints ?? 13,
-            hoursPerPoint: values.hoursPerPoint ?? 8,
-          }
-        : undefined
+      const estimationSettings: ProjectEstimationSettings | undefined =
+        isWA && parsedEstimation ? parsedEstimation : undefined
       await mutateAsync({
         workspaceId,
         name: values.name.trim(),
@@ -429,7 +425,9 @@ export function NewProjectModal({
           </Button>
           <Button
             type="submit"
-            disabled={isPending || values.name.trim().length < 2 || !values.key.trim()}
+            disabled={
+              isPending || values.name.trim().length < 2 || !values.key.trim() || estimationInvalid
+            }
           >
             {isPending && <Loader2 size={12} className="animate-spin" />}
             {t('create.submit')}
