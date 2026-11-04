@@ -682,6 +682,23 @@ describe('/mcp (stateless; MCP_ENABLED gates the registration in the bootstrap)'
     expect(consumedKeys).toEqual([`mcp:uid:${VICTIM}`, `mcp:uid:${ATTACKER}`]);
   });
 
+  it('DISABLE_RATE_LIMIT (dev/CI) skips the per-person budget entirely', async () => {
+    process.env['DISABLE_RATE_LIMIT'] = 'true';
+    try {
+      consumedKeys.length = 0;
+      const fastify = await boot();
+      const res = await rpc(fastify, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+      });
+      expect(res.statusCode).toBe(200);
+      // No bucket was touched, and even a full budget cannot refuse the call.
+      expect(consumedKeys).toEqual([]);
+    } finally {
+      delete process.env['DISABLE_RATE_LIMIT'];
+    }
+  });
+
   it('an unverified Access token is one uniform 401', async () => {
     const fastify = await boot();
     const bad = await rpc(fastify, 'initialize', { protocolVersion: '2025-06-18' }, 'garbage.x.y');

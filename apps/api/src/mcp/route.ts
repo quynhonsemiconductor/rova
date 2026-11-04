@@ -75,6 +75,7 @@ export interface McpRouteDeps {
 export function registerMcpRoute(deps: McpRouteDeps): void {
   const { app, fastify, verifier, cache } = deps;
   const writesEnabled = deps.writesEnabled ?? false;
+  const depsDisabledRateLimit = process.env['DISABLE_RATE_LIMIT'] === 'true';
   // One audit sink per app: the instruments are process-wide and the logger is the shared pino
   // instance, so a per-request copy would only rebuild the same instruments.
   const audit = createMcpAudit();
@@ -159,17 +160,22 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
       sessionId: `mcp:${request.id}`,
     };
 
-    // Per person, from the VERIFIED principal — never per IP (MCP-PLAN §4).
-    const { allowed, resetAt } = await cache.consumeRateLimit(
-      `mcp:uid:${principal.userId}`,
-      MCP_RATE_LIMIT.limit,
-      MCP_RATE_LIMIT.windowSeconds,
-    );
-    if (!allowed) {
-      audit.onRateLimited(principal.userId, MCP_RATE_LIMIT.limit, MCP_RATE_LIMIT.windowSeconds);
-      throw new RateLimitedException(
-        `Rate limit exceeded (MCP). Retry after ${Math.max(resetAt - Math.floor(Date.now() / 1000), 1)}s.`,
+    // Per person, from the VERIFIED principal — never per IP (MCP-PLAN §4). The SAME
+    // DISABLE_RATE_LIMIT escape every other limiter honours: it is for dev/CI only (the env
+    // schema refuses it in production), and a test suite that deliberately makes dozens of
+    // calls in a minute must not be throttled by the product budget.
+    if (!depsDisabledRateLimit) {
+      const { allowed, resetAt } = await cache.consumeRateLimit(
+        `mcp:uid:${principal.userId}`,
+        MCP_RATE_LIMIT.limit,
+        MCP_RATE_LIMIT.windowSeconds,
       );
+      if (!allowed) {
+        audit.onRateLimited(principal.userId, MCP_RATE_LIMIT.limit, MCP_RATE_LIMIT.windowSeconds);
+        throw new RateLimitedException(
+          `Rate limit exceeded (MCP). Retry after ${Math.max(resetAt - Math.floor(Date.now() / 1000), 1)}s.`,
+        );
+      }
     }
 
     // Stateless: one McpServer + transport per request, no session id ever issued.
