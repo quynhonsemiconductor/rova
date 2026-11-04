@@ -4,7 +4,9 @@ import {
   assertReadCarriesNoWritePayload,
   canonicalize,
   idempotencyKeyFor,
+  isRealCalendarDate,
   isWriteMethod,
+  clientIdempotencyKeyFor,
   pathSegment,
 } from './rest';
 
@@ -119,5 +121,47 @@ describe('idempotencyKeyFor (MCP-generated Idempotency-Key)', () => {
     expect(() => idempotencyKeyFor('', ME, TOOL, { body: 'hi' }, 0)).toThrow(
       /MCP_IDEMPOTENCY_SECRET/,
     );
+  });
+});
+
+describe("clientIdempotencyKeyFor (design §11 amendment: the caller's requestId, no bucket)", () => {
+  it('is stable for the same request id across any amount of wall-clock time', () => {
+    const a = clientIdempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-1' });
+    // No `nowMs` argument exists on purpose: nothing about the clock may enter this key.
+    const b = clientIdempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-1' });
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    // And it is NOT the bucketed key: the two mechanisms are distinguishable.
+    expect(a).not.toBe(idempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-1' }, 0));
+  });
+
+  it('separates principal, tool, the request id and the per-row test case', () => {
+    const base = clientIdempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-1' });
+    expect(clientIdempotencyKeyFor(SECRET, 'other-user', TOOL, { requestId: 'req-1' })).not.toBe(
+      base,
+    );
+    expect(
+      clientIdempotencyKeyFor(SECRET, ME, 'rova_save_test_case', { requestId: 'req-1' }),
+    ).not.toBe(base);
+    expect(clientIdempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-2' })).not.toBe(base);
+    expect(
+      clientIdempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-1', testCaseId: 'tc' }),
+    ).not.toBe(base);
+  });
+
+  it('refuses to build a key without the server secret', () => {
+    expect(() => clientIdempotencyKeyFor('', ME, TOOL, { requestId: 'req-1' })).toThrow(
+      /MCP_IDEMPOTENCY_SECRET/,
+    );
+  });
+});
+
+describe('isRealCalendarDate', () => {
+  it('accepts a real date and refuses an impossible one inside the allowed range', () => {
+    expect(isRealCalendarDate('2026-11-04')).toBe(true);
+    expect(isRealCalendarDate('2026-02-30')).toBe(false);
+    expect(isRealCalendarDate('1999-12-31')).toBe(false);
+    expect(isRealCalendarDate('2026-13-01')).toBe(false);
+    expect(isRealCalendarDate('2026-1-4')).toBe(false);
   });
 });

@@ -77,6 +77,12 @@ export interface ToolContext {
    * are enabled; a write tool must refuse to create without it rather than send no key.
    */
   idempotencyKey?: (tool: string, args: unknown) => string;
+  /**
+   * The same builder with NO time bucket, for a create the caller keyed with its own `requestId`
+   * ({@link clientIdempotencyKeyFor}; design §11 amendment). Also present whenever writes are
+   * enabled; a tool sends the key ONLY when the model supplied a `requestId`.
+   */
+  clientIdempotencyKey?: (tool: string, args: unknown) => string;
 }
 
 /** A write is one of the four mutating methods; the guard and the ratchets share this predicate. */
@@ -158,13 +164,19 @@ export function canonicalize(value: unknown): unknown {
 export const MCP_IDEMPOTENCY_BUCKET_MS = 10 * 60 * 1000;
 
 /**
- * The `Idempotency-Key` an MCP create sends: HMAC-SHA256, keyed by the server-only
- * `MCP_IDEMPOTENCY_SECRET`, over {principal, tool, canonical arguments, 10-minute bucket}.
- *
  * WHY HMAC and not a bare hash: the key is stored in Valkey and, on a dedup hit, the first
  * response is replayed. A plain sha256 of low-entropy arguments ({"body":"lgtm"}) is guessable,
  * so someone able to write that cache could pre-plant a response for a key the model would
  * later compute. Without the secret the key cannot be predicted.
+ */
+function signIdempotencyKey(secret: string, body: unknown): string {
+  if (!secret) throw new Error('MCP idempotency: MCP_IDEMPOTENCY_SECRET is not set');
+  return createHmac('sha256', secret).update(JSON.stringify(body)).digest('hex');
+}
+
+/**
+ * The `Idempotency-Key` an MCP create sends: HMAC-SHA256, keyed by the server-only
+ * `MCP_IDEMPOTENCY_SECRET`, over {principal, tool, canonical arguments, 10-minute bucket}.
  *
  * The model never supplies the key, so an LLM retry of the SAME call replays the first response
  * instead of creating a duplicate. KNOWN, ACCEPTED: the bucket is wall-clock aligned, so the
@@ -178,15 +190,53 @@ export function idempotencyKeyFor(
   args: unknown,
   nowMs: number = Date.now(),
 ): string {
-  if (!secret) throw new Error('MCP idempotency: MCP_IDEMPOTENCY_SECRET is not set');
   const bucket = Math.floor(nowMs / MCP_IDEMPOTENCY_BUCKET_MS);
-  return createHmac('sha256', secret)
-    .update(JSON.stringify({ principalId, tool, bucket, args: canonicalize(args) }))
-    .digest('hex');
+  return signIdempotencyKey(secret, { principalId, tool, bucket, args: canonicalize(args) });
+}
+
+/**
+ * The `Idempotency-Key` an MCP create sends for a CLIENT-SUPPLIED request id (design §11
+ * amendment, revised 2026-11-04 after review): the same HMAC over {principal, tool, canonical
+ * arguments} and **no wall-clock bucket**.
+ *
+ * WHY a client id and NOT a hash of the content: content is not an identity. Two test cases with
+ * the same name under one story, or two identical runs of one test case against one build, are
+ * both legitimate — a content hash would answer the second with the first one's row for the
+ * cache's whole 24-hour TTL, and a wall-clock bucket only makes the collision harder to predict.
+ * The CALLER therefore decides when two calls are "the same request": generate an id once per
+ * user request and send the SAME value on a retry. A tool with no `requestId` sends NO key, and
+ * its description says a retry may then duplicate the row.
+ *
+ * The interceptor's `IDEMPOTENCY_KEY_REUSED` (same key, different body) remains the guard: a
+ * reused id with a different body is a client error, never a silent replay.
+ */
+export function clientIdempotencyKeyFor(
+  secret: string,
+  principalId: string,
+  tool: string,
+  args: unknown,
+): string {
+  return signIdempotencyKey(secret, { principalId, tool, args: canonicalize(args) });
 }
 
 /** Tools cap the page below the REST max: an agent re-asks with a cursor rather than reading 100 rows. */
 export const MCP_TOOL_PAGE_LIMIT = 20;
+
+/**
+ * A real calendar date (`YYYY-MM-DD`) in 2000–2100 — the same rule the REST date schemas state.
+ * The shape alone is not enough: `2026-02-30` matches the regex and `new Date` would roll it into
+ * March, so the components are read back and compared.
+ */
+export function isRealCalendarDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  if (year < 2000 || year > 2100) return false;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
 
 /** Shared list-tool page args: `limit` + `cursor`, mirroring the REST `PageQuerySchema`. */
 export const pageArgs = {
