@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.8](https://github.com/quynhonsemiconductor/rova/compare/v0.8.7...v0.8.8) (2026-11-04)
+
+
+### ✨ Features
+
+* **activity:** record MCP provenance and the two missing audit rows ([#886](https://github.com/quynhonsemiconductor/rova/issues/886)) ([74ca4f7](https://github.com/quynhonsemiconductor/rova/commit/74ca4f74e9e0e4772d5e31f80237ba038bf423d7))
+* **work-items:** rest prerequisites for MCP writes ([#884](https://github.com/quynhonsemiconductor/rova/issues/884)) ([d541f7a](https://github.com/quynhonsemiconductor/rova/commit/d541f7a42ecd7aa5347373ef1b83ce945d8bd52a))
+
+
+### 🐛 Bug Fixes
+
+* **iteration-status:** planned velocity, working-day Iteration End, editable estimation inputs ([#887](https://github.com/quynhonsemiconductor/rova/issues/887)) ([d86f5d6](https://github.com/quynhonsemiconductor/rova/commit/d86f5d67ee6078a1fdc70e171c98d4aa5355e7ad))
+* **web:** answer /livez as well as /healthz ([#890](https://github.com/quynhonsemiconductor/rova/issues/890)) ([4f7c46d](https://github.com/quynhonsemiconductor/rova/commit/4f7c46ded559cc266028ee109612fb87d8488134))
+
 ## [0.8.7](https://github.com/quynhonsemiconductor/rova/compare/v0.8.6...v0.8.7) (2026-11-04)
 
 
