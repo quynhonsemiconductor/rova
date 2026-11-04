@@ -67,7 +67,18 @@ FROM caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079e
 
 # Latest patches within the pinned Alpine: Trivy gates on fixable CRITICALs and the base's busybox
 # and libssl move faster than the tag.
-RUN apk upgrade --no-cache && rm -rf /var/cache/apk/*
+#
+# STRIP THE UPSTREAM FILE CAPABILITIES. The official Caddy image ships `cap_net_bind_service` on
+# /usr/bin/caddy; every pod here runs with ALL caps dropped (and no-new-privileges), where the
+# kernel refuses the exec itself — "exec /usr/bin/caddy: operation not permitted", a crash loop
+# for a server that binds 8080 and needs no capability at all. Removing them at build time makes
+# the image runnable under the policy; the assert fails the BUILD if they come back.
+RUN apk upgrade --no-cache \
+ && apk add --no-cache --virtual .setcap libcap \
+ && setcap -r /usr/bin/caddy \
+ && test -z "$(getcap /usr/bin/caddy)" \
+ && apk del .setcap \
+ && rm -rf /var/cache/apk/*
 
 COPY --from=build /app/apps/web/dist /srv
 COPY apps/web/Caddyfile /etc/caddy/Caddyfile
