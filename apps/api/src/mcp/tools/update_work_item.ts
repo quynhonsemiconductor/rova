@@ -145,13 +145,31 @@ export function registerUpdateWorkItem(server: McpServer, ctx: ToolContext) {
         if (args.blocked.reason !== undefined) body['blockedReason'] = args.blocked.reason;
       }
 
+      // The Team is resolved FIRST: the candidate feed is row-scoped, and the server validates the
+      // person against the team this PATCH would leave the item in (`effectiveTeamId =
+      // input.teamId ?? item.teamId`), so the picker must be narrowed by that same value.
+      let feedTeamId: string | null = item.teamId;
+      if (args.team !== undefined) {
+        if (args.team === null) {
+          body['teamId'] = null;
+          feedTeamId = null;
+        } else {
+          const team = await resolveTeam(ctx, item.projectId, args.team);
+          if (!team.ok) return failureResult(team);
+          body['teamId'] = team.id;
+          feedTeamId = team.id;
+        }
+      }
+
       /** One nullable person reference → assigneeId/devOwnerId (a name is resolved project-scoped). */
       const personRef = async (
         reference: string | null | undefined,
         field: string,
       ): Promise<ReturnType<typeof failureResult> | null> => {
         if (reference === undefined || reference === null) return null;
-        const people = await resolvePeople(ctx, item.projectId, [reference]);
+        const people = await resolvePeople(ctx, item.projectId, [reference], {
+          teamId: feedTeamId,
+        });
         if (!people.ok) return failureResult(people);
         body[field] = people.ids[0];
         return null;
@@ -166,14 +184,6 @@ export function registerUpdateWorkItem(server: McpServer, ctx: ToolContext) {
       if (args.assignee === null) body['assigneeId'] = null;
       if (args.devOwner === null) body['devOwnerId'] = null;
 
-      if (args.team !== undefined) {
-        if (args.team === null) body['teamId'] = null;
-        else {
-          const team = await resolveTeam(ctx, item.projectId, args.team);
-          if (!team.ok) return failureResult(team);
-          body['teamId'] = team.id;
-        }
-      }
       if (args.iteration !== undefined) {
         if (args.iteration === null) body['iterationId'] = null;
         else {

@@ -1095,13 +1095,20 @@ describe('/mcp write tools (e2e)', () => {
     expect(after[0].n).toBe(before[0].n);
   });
 
-  it('rova_save_test_case creates once and REPLAYS the same row on an identical call', async () => {
+  it('rova_save_test_case creates once and REPLAYS the same row when the request id is reused', async () => {
     people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
     await ensureTestCaseType();
-    // Unique per run: the natural key has no time bucket, so a stale idempotency entry from an
-    // earlier run (different database, same Valkey) would replay a row that no longer exists.
+    // A fresh request id per run: a stale idempotency entry from an earlier run (different
+    // database, same Valkey) would replay a row that no longer exists.
+    const requestId = `req-${Date.now()}`;
     const name = `mcp test case ${Date.now()}`;
-    const args = { workItemKey: NXP_STORY_1_ID, name, type: 'Functional', priority: 'high' };
+    const args = {
+      workItemKey: NXP_STORY_1_ID,
+      name,
+      type: 'Functional',
+      priority: 'high',
+      requestId,
+    };
 
     const first = await tool('rova_save_test_case', args);
     expect(first.isError, JSON.stringify(first.body)).toBeFalsy();
@@ -1217,9 +1224,11 @@ describe('/mcp write tools (e2e)', () => {
   it('rova_record_test_results records the good entries and reports the unknown key per item', async () => {
     people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
     const build = `mcp-build-${Date.now()}`;
+    const requestId = `req-${build}`;
     const recorded = await tool('rova_record_test_results', {
       build,
       runDate: '2026-11-04',
+      requestId,
       results: [
         { testCaseKey: 'TC-1', verdict: 'pass', durationMinutes: 2 },
         { testCaseKey: 'TC-999999', verdict: 'fail' },
@@ -1232,16 +1241,19 @@ describe('/mcp write tools (e2e)', () => {
     expect(good).toMatchObject({ testCaseKey: 'TC-1', ok: true, verdict: 'pass' });
     expect(bad).toMatchObject({ testCaseKey: 'TC-999999', ok: false });
 
-    // A retry of the SAME batch replays the row that landed instead of recording it twice.
+    // A retry of the SAME request id replays the row that landed instead of recording it twice.
     const retried = await tool('rova_record_test_results', {
       build,
       runDate: '2026-11-04',
+      requestId,
       results: [
         { testCaseKey: 'TC-1', verdict: 'pass', durationMinutes: 2 },
         { testCaseKey: 'TC-999999', verdict: 'fail' },
       ],
     });
-    expect(retried.body.created).toBe(1);
+    expect(retried.body.created).toBe(0);
+    expect(retried.body.replayed).toBe(1);
+    expect(retried.body.failed).toBe(1);
     expect((retried.body.results as Array<Record<string, unknown>>)[0]).toMatchObject({
       ok: true,
       replayed: true,
@@ -1278,13 +1290,20 @@ describe('/mcp write tools (e2e)', () => {
       headers: { cookie: devCookie },
     });
     expect(restItem.statusCode, restItem.body).toBe(403);
+    const deniedName = `nope ${Date.now()}`;
     const viaMcpCreate = await tool('rova_save_test_case', {
       workItemKey: betaId,
-      name: `nope ${Date.now()}`,
+      name: deniedName,
     });
     expect(viaMcpCreate.isError).toBe(true);
     expect(viaMcpCreate.body.statusCode).toBe(restItem.statusCode);
     expect(viaMcpCreate.body.error).toMatchObject({ error: { code: restItem.json().error.code } });
+    // A refused create writes NOTHING.
+    const deniedRows = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(testCases)
+      .where(eq(testCases.name, deniedName));
+    expect(deniedRows[0].n, 'a refused create must not leave a row').toBe(0);
 
     const restCase = await app.inject({
       method: 'GET',
@@ -1292,8 +1311,9 @@ describe('/mcp write tools (e2e)', () => {
       headers: { cookie: devCookie },
     });
     expect(restCase.statusCode, restCase.body).toBe(403);
+    const deniedBuild = `denied-${Date.now()}`;
     const viaMcpResult = await tool('rova_record_test_results', {
-      build: '1.4.2',
+      build: deniedBuild,
       runDate: '2026-11-04',
       results: [{ testCaseKey, verdict: 'pass' }],
     });
@@ -1303,5 +1323,11 @@ describe('/mcp write tools (e2e)', () => {
     expect((item.error as { error: { code: string } }).error.code).toBe(
       restCase.json<{ error: { code: string } }>().error.code,
     );
+    // A refused record writes NOTHING.
+    const deniedResults = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(testResults)
+      .where(eq(testResults.build, deniedBuild));
+    expect(deniedResults[0].n, 'a refused record must not leave a row').toBe(0);
   });
 });

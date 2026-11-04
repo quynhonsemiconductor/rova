@@ -6,7 +6,7 @@ import {
   idempotencyKeyFor,
   isRealCalendarDate,
   isWriteMethod,
-  naturalIdempotencyKeyFor,
+  clientIdempotencyKeyFor,
   pathSegment,
 } from './rest';
 
@@ -124,30 +124,33 @@ describe('idempotencyKeyFor (MCP-generated Idempotency-Key)', () => {
   });
 });
 
-describe('naturalIdempotencyKeyFor (design §11 amendment: natural identity, no bucket)', () => {
-  it('is stable for the same request across any amount of wall-clock time', () => {
-    const a = naturalIdempotencyKeyFor(SECRET, ME, TOOL, { build: '1.4.2', verdict: 'pass' });
+describe("clientIdempotencyKeyFor (design §11 amendment: the caller's requestId, no bucket)", () => {
+  it('is stable for the same request id across any amount of wall-clock time', () => {
+    const a = clientIdempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-1' });
     // No `nowMs` argument exists on purpose: nothing about the clock may enter this key.
-    const b = naturalIdempotencyKeyFor(SECRET, ME, TOOL, { verdict: 'pass', build: '1.4.2' });
+    const b = clientIdempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-1' });
     expect(a).toBe(b);
     expect(a).toMatch(/^[0-9a-f]{64}$/);
     // And it is NOT the bucketed key: the two mechanisms are distinguishable.
-    expect(a).not.toBe(idempotencyKeyFor(SECRET, ME, TOOL, { build: '1.4.2', verdict: 'pass' }, 0));
+    expect(a).not.toBe(idempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-1' }, 0));
   });
 
-  it('separates principal, tool and every argument value', () => {
-    const base = naturalIdempotencyKeyFor(SECRET, ME, TOOL, { verdict: 'pass' });
-    expect(naturalIdempotencyKeyFor(SECRET, 'other-user', TOOL, { verdict: 'pass' })).not.toBe(
+  it('separates principal, tool, the request id and the per-row test case', () => {
+    const base = clientIdempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-1' });
+    expect(clientIdempotencyKeyFor(SECRET, 'other-user', TOOL, { requestId: 'req-1' })).not.toBe(
       base,
     );
     expect(
-      naturalIdempotencyKeyFor(SECRET, ME, 'rova_save_test_case', { verdict: 'pass' }),
+      clientIdempotencyKeyFor(SECRET, ME, 'rova_save_test_case', { requestId: 'req-1' }),
     ).not.toBe(base);
-    expect(naturalIdempotencyKeyFor(SECRET, ME, TOOL, { verdict: 'fail' })).not.toBe(base);
+    expect(clientIdempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-2' })).not.toBe(base);
+    expect(
+      clientIdempotencyKeyFor(SECRET, ME, TOOL, { requestId: 'req-1', testCaseId: 'tc' }),
+    ).not.toBe(base);
   });
 
   it('refuses to build a key without the server secret', () => {
-    expect(() => naturalIdempotencyKeyFor('', ME, TOOL, { verdict: 'pass' })).toThrow(
+    expect(() => clientIdempotencyKeyFor('', ME, TOOL, { requestId: 'req-1' })).toThrow(
       /MCP_IDEMPOTENCY_SECRET/,
     );
   });

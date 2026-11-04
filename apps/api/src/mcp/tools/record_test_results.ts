@@ -20,24 +20,45 @@ const VERDICTS = ['pass', 'fail', 'blocked', 'error', 'inconclusive'] as const;
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * The person's own calendar today, from THEIR timezone on `GET /v1/auth/me` — never a guessed
- * zone. A missing/blank zone falls back to UTC; an invalid one cannot throw into the tool.
+ * The CALLER's own calendar today, from THEIR timezone on `GET /v1/auth/me`.
+ *
+ * NO SILENT FLOOR: a missing profile, an unreadable one, or one with no usable IANA zone makes
+ * this return a tool error that asks for an explicit `runDate`, rather than quietly writing a UTC
+ * date that may be the neighbouring day for the person recording it.
  */
-async function localToday(ctx: ToolContext): Promise<string> {
+type TodayOutcome =
+  { ok: true; date: string; zone: string } | { ok: false; result: ReturnType<typeof toolError> };
+
+async function localToday(ctx: ToolContext): Promise<TodayOutcome> {
   const res = await ctx.callRest(ctx.principal, { method: 'GET', url: '/v1/auth/me' });
-  const profile =
-    res.statusCode < 400 && res.json !== null && typeof res.json === 'object'
-      ? (res.json as Record<string, unknown>)
-      : {};
-  const zone = typeof profile['timezone'] === 'string' ? profile['timezone'] : '';
-  if (zone !== '') {
-    try {
-      return workspaceLocalDate(new Date(), zone);
-    } catch {
-      // An unknown IANA zone in the profile must not fail a write: UTC is the documented floor.
-    }
+  if (res.statusCode >= 400 || res.json === null || typeof res.json !== 'object') {
+    return {
+      ok: false,
+      result: toolError(
+        'Pass runDate explicitly (YYYY-MM-DD): your profile could not be read, so your local today cannot be resolved.',
+      ),
+    };
   }
-  return workspaceLocalDate(new Date(), 'UTC');
+  const profile = res.json as Record<string, unknown>;
+  const zone = typeof profile['timezone'] === 'string' ? profile['timezone'].trim() : '';
+  if (zone === '') {
+    return {
+      ok: false,
+      result: toolError(
+        'Pass runDate explicitly (YYYY-MM-DD): your profile has no timezone, so your local today cannot be resolved.',
+      ),
+    };
+  }
+  try {
+    return { ok: true, date: workspaceLocalDate(new Date(), zone), zone };
+  } catch {
+    return {
+      ok: false,
+      result: toolError(
+        `Pass runDate explicitly (YYYY-MM-DD): your profile timezone "${zone}" is not a valid IANA zone.`,
+      ),
+    };
+  }
 }
 
 /** One batch entry's outcome: the row it created, or the refusal that stopped it. */
@@ -62,10 +83,11 @@ interface ItemOutcome {
  * ITEMS ARE INDEPENDENT: an unknown key or a refusal on one entry is reported in that entry and
  * the rest still run, because a batch of twenty results must not be all-or-nothing over a typo.
  *
- * Idempotency (design §11 amendment): each create sends the NATURAL key of its own row (test case,
- * build, run date, verdict, tester, notes) — no wall-clock bucket — so retrying the batch replays
- * the rows that already landed and runs only the one that failed, while a corrected verdict is a
- * different record rather than a refusal.
+ * Idempotency (design §11 amendment, revised 2026-11-04): with a `requestId`, each row's create is
+ * keyed by {requestId, test case} — no wall-clock bucket, never a hash of the content, because a
+ * second identical RUN of one test case on one build is legitimate. Retrying a partly-failed batch
+ * with the SAME requestId replays the rows that landed and re-runs only the one that failed. With
+ * no `requestId` nothing is keyed, and the description says a retry may record duplicates.
  */
 export function registerRecordTestResults(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
@@ -73,7 +95,7 @@ export function registerRecordTestResults(server: McpServer, ctx: ToolContext) {
     {
       title: 'Record test results',
       description:
-        "WRITES one test result per test case on one build, as you, and must be used only on the user's explicit request. `results` holds up to 20 entries (test case key, verdict, optional minutes and notes). Items are independent: the answer reports each one's status, so an unknown key or a refusal does not stop the rest. `tester` defaults to you; `runDate` defaults to your local today (YYYY-MM-DD). An identical entry returns the first result (`replayed: true`).",
+        "WRITES one test result per test case on one build, as you, and must be used only on the user's explicit request. `results` holds up to 20 entries (test case key, verdict, optional minutes and notes). Items are independent: the answer reports each one's status, so an unknown key or a refusal does not stop the rest. `tester` defaults to you. `runDate` is YOUR local date (the recorder's): it defaults to your local today — pass it explicitly when retrying across midnight, or when your profile has no timezone. DUPLICATES: a retry is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying it; without one a retry records duplicates.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -94,6 +116,14 @@ export function registerRecordTestResults(server: McpServer, ctx: ToolContext) {
           .max(255)
           .optional()
           .describe('Tester by display name or email; defaults to you'),
+        requestId: z
+          .string()
+          .min(1)
+          .max(64)
+          .optional()
+          .describe(
+            'A retry guard: generate once per user request and reuse the SAME value when retrying that request. Rows already recorded under this id are replayed, not duplicated; omit it and a retry may record duplicates.',
+          ),
         results: z
           .array(
             z.object({
@@ -109,11 +139,18 @@ export function registerRecordTestResults(server: McpServer, ctx: ToolContext) {
       },
     },
     async (args) => {
-      if (!ctx.naturalIdempotencyKey) {
+      if (!ctx.clientIdempotencyKey) {
         return toolError('Writes are not enabled on this endpoint.');
       }
       const defaulted = args.runDate === undefined;
-      const runDate = args.runDate ?? (await localToday(ctx));
+      let runDate = args.runDate;
+      let runDateZone: string | undefined;
+      if (runDate === undefined) {
+        const today = await localToday(ctx);
+        if (!today.ok) return today.result;
+        runDate = today.date;
+        runDateZone = today.zone;
+      }
 
       // A named tester is resolved ONCE per project it appears in — the feed is project-scoped.
       const testerByScope = new Map<string, { ok: true; id: string } | LookupFailure>();
@@ -172,17 +209,20 @@ export function registerRecordTestResults(server: McpServer, ctx: ToolContext) {
             : {}),
           ...(entry.notes !== undefined ? { notes: entry.notes } : {}),
         };
-        // The record's own identity: this test case, this build, this date, this verdict, this
-        // tester. A retry of the batch replays it; a corrected verdict is its own record.
-        const idempotencyKey = ctx.naturalIdempotencyKey('rova_record_test_results', {
-          testCaseId: testCase.id,
-          ...body,
-        });
+        // Keyed by the CALLER's request id and THIS row's test case — never by the content, which
+        // cannot tell a retry from a legitimate second run of the same case on the same build.
+        const idempotencyKey =
+          args.requestId !== undefined
+            ? ctx.clientIdempotencyKey('rova_record_test_results', {
+                requestId: args.requestId,
+                testCaseId: testCase.id,
+              })
+            : undefined;
         const res = await ctx.callRest(ctx.principal, {
           method: 'POST',
           url: `/v1/test-cases/${pathSegment(testCase.id)}/test-results`,
           body,
-          idempotencyKey,
+          ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         });
         if (res.statusCode >= 400 || res.json === null || typeof res.json !== 'object') {
           items.push({
@@ -194,16 +234,22 @@ export function registerRecordTestResults(server: McpServer, ctx: ToolContext) {
           continue;
         }
         const row = res.json as Record<string, unknown>;
-        if (typeof row['id'] === 'string') createdIds.push(row['id']);
+        const replayed = replayedFrom(res);
+        // A replayed row already existed: it is NOT a new write, so it must not be counted as one
+        // or listed as an audit target.
+        if (!replayed && typeof row['id'] === 'string') createdIds.push(row['id']);
         items.push({
           testCaseKey: testCase.testCaseKey,
           ok: true,
           id: row['id'] as string,
           testResultKey: row['testResultKey'] as string,
           verdict: row['verdict'] as string,
-          replayed: replayedFrom(res),
+          replayed,
         });
       }
+
+      const replayedCount = items.filter((item) => item.ok && item.replayed === true).length;
+      const recorded = createdIds.length + replayedCount;
 
       ctx.noteWrite?.({
         targets: createdIds,
@@ -214,14 +260,17 @@ export function registerRecordTestResults(server: McpServer, ctx: ToolContext) {
       const payload = {
         build: args.build,
         runDate,
-        // Stated, so the model never has to infer which date the rows carry.
-        ...(defaulted ? { runDateDefaulted: true } : {}),
+        // Stated, so the model never has to infer which date (and zone) the rows carry.
+        ...(defaulted ? { runDateDefaulted: true, runDateZone } : {}),
         created: createdIds.length,
-        failed: items.length - createdIds.length,
+        // Rows this call answered from the idempotency cache: already written by the earlier call.
+        replayed: replayedCount,
+        failed: items.length - recorded,
         results: items,
       };
-      // Every entry failing is a failed call, even though each refusal is in the payload.
-      if (createdIds.length === 0) {
+      // Every entry failing is a failed call, even though each refusal is in the payload. A batch
+      // that only REPLAYED is a success: the rows exist.
+      if (recorded === 0) {
         return {
           isError: true as const,
           content: [{ type: 'text' as const, text: JSON.stringify(payload) }],

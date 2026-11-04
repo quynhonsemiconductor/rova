@@ -11,7 +11,7 @@ import {
   assertIfMatchOnlyOnPatch,
   assertReadCarriesNoWritePayload,
   idempotencyKeyFor,
-  naturalIdempotencyKeyFor,
+  clientIdempotencyKeyFor,
   type McpRestCaller,
   type ToolContext,
 } from './tools/rest';
@@ -224,8 +224,8 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
         ? {
             idempotencyKey: (tool: string, args: unknown) =>
               idempotencyKeyFor(secret, principal.userId, tool, args),
-            naturalIdempotencyKey: (tool: string, args: unknown) =>
-              naturalIdempotencyKeyFor(secret, principal.userId, tool, args),
+            clientIdempotencyKey: (tool: string, args: unknown) =>
+              clientIdempotencyKeyFor(secret, principal.userId, tool, args),
           }
         : {}),
     };

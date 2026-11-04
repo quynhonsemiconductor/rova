@@ -71,7 +71,7 @@ export function registerSaveTestCase(server: McpServer, ctx: ToolContext) {
     {
       title: 'Save test case',
       description:
-        "WRITES a test case as you, and must be used only on the user's explicit request. Pass `workItemKey` to CREATE one under a story/defect (name required), or `testCaseKey` (TC-12) to UPDATE one. Content fields (description, objective, preconditions, validation input/expected result, postconditions, notes) are update-only in the API, so on a create they are applied with one follow-up edit and its outcome is reported as `content`. `owner`/`assignee` are people by display name or email; pass null on an update to clear them. An identical create returns the first result (`replayed: true`).",
+        "WRITES a test case as you, and must be used only on the user's explicit request. Pass `workItemKey` to CREATE one under a story/defect (name required), or `testCaseKey` (TC-12) to UPDATE one. Content fields (description, objective, preconditions, validation input/expected result, postconditions, notes) are update-only in the API, so on a create they are applied with one follow-up edit and its outcome is reported as `content`. `owner`/`assignee` are people by display name or email; pass null on an update to clear them. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request. Without it a retry may create a second test case (two same-named cases are legitimate, so nothing else can tell them apart).",
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
@@ -91,6 +91,14 @@ export function registerSaveTestCase(server: McpServer, ctx: ToolContext) {
           .max(64)
           .optional()
           .describe('CREATE under this story/defect, by key (e.g. US-412) or id'),
+        requestId: z
+          .string()
+          .min(1)
+          .max(64)
+          .optional()
+          .describe(
+            'A create-only retry guard: generate once per user request and reuse the SAME value when retrying that request. A repeat with the same id returns the first test case; omit it and a retry may create a duplicate.',
+          ),
         name: z
           .string()
           .min(1)
@@ -200,7 +208,7 @@ export function registerSaveTestCase(server: McpServer, ctx: ToolContext) {
       if (args.name === undefined) {
         return toolError('name is required to create a test case.');
       }
-      if (!ctx.naturalIdempotencyKey) {
+      if (!ctx.clientIdempotencyKey) {
         return toolError('Writes are not enabled on this endpoint.');
       }
       const parent = await resolveWorkItem(ctx, args.workItemKey as string);
@@ -226,38 +234,34 @@ export function registerSaveTestCase(server: McpServer, ctx: ToolContext) {
         if (value !== undefined && value !== null) content[field] = value;
       }
 
-      // The natural identity of the record asked for: everything this call would write, so an
-      // identical retry replays and a request that differs in ANY field is a different record.
-      const idempotencyKey = ctx.naturalIdempotencyKey('rova_save_test_case', {
-        workItemId: parent.id,
-        ...body,
-        ...content,
-      });
+      // Idempotency is the CALLER's, never a hash of the content: two test cases with the same
+      // name under one story are legitimate, so only a reused `requestId` may collapse two calls
+      // into one row. With no `requestId` this create sends NO key (a retry may duplicate).
+      const idempotencyKey =
+        args.requestId !== undefined
+          ? ctx.clientIdempotencyKey('rova_save_test_case', { requestId: args.requestId })
+          : undefined;
       const res = await ctx.callRest(ctx.principal, {
         method: 'POST',
         url: `/v1/work-items/${pathSegment(parent.id)}/test-cases`,
         body,
-        idempotencyKey,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
       });
       if (res.statusCode >= 400 || res.json === null || typeof res.json !== 'object') {
         return denied(res.statusCode, res.json);
       }
       const row = res.json as Record<string, unknown>;
       const replayed = replayedFrom(res);
-      const changed =
-        Object.keys(content).length > 0 ? ['created', ...Object.keys(content)] : ['created'];
+      const createdId = typeof row['id'] === 'string' ? row['id'] : undefined;
 
-      // The row to answer: the create's own response until the follow-up edit replaces it with
-      // the server's post-edit record (so `testCase` states what the content ACTUALLY became).
+      // ALWAYS re-send the content edit, replay or not. A replayed create answers the row as the
+      // FIRST call left it — and that call's edit may itself have failed — so skipping the PATCH
+      // here would answer blank content the caller asked for. The PATCH is a SET with no key, so
+      // re-sending it converges on the requested values. The record returned is the post-edit one.
       let saved = shapeSavedTestCase(row);
-      let contentOutcome: { applied: boolean | null; error?: unknown } | undefined;
+      let contentOutcome: { applied: boolean; error?: unknown } | undefined;
       if (Object.keys(content).length > 0) {
-        const createdId = typeof row['id'] === 'string' ? row['id'] : undefined;
-        if (replayed) {
-          // The first identical call (same content, same key) already applied it; a second PATCH
-          // would only rewrite the same values.
-          contentOutcome = { applied: null };
-        } else if (createdId === undefined) {
+        if (createdId === undefined) {
           contentOutcome = {
             applied: false,
             error: 'the create response carried no id, so the content fields were not applied',
@@ -278,10 +282,15 @@ export function registerSaveTestCase(server: McpServer, ctx: ToolContext) {
         }
       }
 
+      // Only what THIS call actually applied. A replay proves the create ran earlier, not that it
+      // ran now; the content keys count only when this call's edit landed.
+      const appliedContent = contentOutcome?.applied === true ? Object.keys(content) : [];
+      const changed = [...(replayed ? [] : ['created']), ...appliedContent];
+
       ctx.noteWrite?.({
-        targets: typeof row['id'] === 'string' ? [row['id']] : [],
+        targets: createdId !== undefined ? [createdId] : [],
         fields: changed,
-        count: 1,
+        count: replayed && appliedContent.length === 0 ? 0 : 1,
       });
       return result(res.statusCode, res.json, {
         testCase: saved,

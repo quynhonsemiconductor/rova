@@ -78,11 +78,11 @@ export interface ToolContext {
    */
   idempotencyKey?: (tool: string, args: unknown) => string;
   /**
-   * The same builder with NO time bucket, for a create whose identity is its own content
-   * ({@link naturalIdempotencyKeyFor}; design §11 amendment). Also present whenever writes are
-   * enabled.
+   * The same builder with NO time bucket, for a create the caller keyed with its own `requestId`
+   * ({@link clientIdempotencyKeyFor}; design §11 amendment). Also present whenever writes are
+   * enabled; a tool sends the key ONLY when the model supplied a `requestId`.
    */
-  naturalIdempotencyKey?: (tool: string, args: unknown) => string;
+  clientIdempotencyKey?: (tool: string, args: unknown) => string;
 }
 
 /** A write is one of the four mutating methods; the guard and the ratchets share this predicate. */
@@ -195,18 +195,22 @@ export function idempotencyKeyFor(
 }
 
 /**
- * The `Idempotency-Key` an MCP create with a NATURAL identity sends (design §11 amendment):
- * the same HMAC over {principal, tool, canonical arguments} and **no wall-clock bucket**, so the
- * request's own content is its identity.
+ * The `Idempotency-Key` an MCP create sends for a CLIENT-SUPPLIED request id (design §11
+ * amendment, revised 2026-11-04 after review): the same HMAC over {principal, tool, canonical
+ * arguments} and **no wall-clock bucket**.
  *
- * WHY no bucket: a record whose identity is its content (a test case under one work item with
- * one name; a verdict for one test case on one build) does not become a SECOND record because a
- * retry crossed a ten-minute boundary, and a legitimate repeat whose content differs must never
- * be answered from a bucket that happens to be open. The interceptor already refuses the same
- * key with a different body (`IDEMPOTENCY_KEY_REUSED`), so keying on the exact request can only
- * ever replay the identical call — across the cache's 24-hour TTL.
+ * WHY a client id and NOT a hash of the content: content is not an identity. Two test cases with
+ * the same name under one story, or two identical runs of one test case against one build, are
+ * both legitimate — a content hash would answer the second with the first one's row for the
+ * cache's whole 24-hour TTL, and a wall-clock bucket only makes the collision harder to predict.
+ * The CALLER therefore decides when two calls are "the same request": generate an id once per
+ * user request and send the SAME value on a retry. A tool with no `requestId` sends NO key, and
+ * its description says a retry may then duplicate the row.
+ *
+ * The interceptor's `IDEMPOTENCY_KEY_REUSED` (same key, different body) remains the guard: a
+ * reused id with a different body is a client error, never a silent replay.
  */
-export function naturalIdempotencyKeyFor(
+export function clientIdempotencyKeyFor(
   secret: string,
   principalId: string,
   tool: string,
