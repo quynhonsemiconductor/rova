@@ -124,6 +124,7 @@ describe('/mcp write tools (e2e)', () => {
       serverVersion: 'e2e',
       writesEnabled: true,
       idempotencySecret: 'x'.repeat(32),
+      rateLimitDisabled: process.env['DISABLE_RATE_LIMIT'] === 'true',
     });
     await app.init();
     await fastify.ready();
