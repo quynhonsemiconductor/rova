@@ -15,17 +15,11 @@ export interface DeletePlan {
   targetId: string;
   /** The subject key/id the caller named, echoed so the result is self-contained. */
   subject: string;
+  /** A task's parent, so the tool can re-read it after the delete (no prediction). */
+  parentId?: string;
 }
 
-export type DeleteRefusal = LookupFailure & {
-  /**
-   * The caller CAN see the parent and the CHILD (comment, time log, relation, test result) is
-   * gone — what a retry after a successful delete sees. A missing parent, or a 403/404 on a
-   * target read, is never marked: 403 and 404 must answer identically so neither is an existence
-   * oracle.
-   */
-  targetMissing?: true;
-};
+export type DeleteRefusal = LookupFailure;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -121,9 +115,13 @@ function targetDenial(failure: LookupFailure): DeleteRefusal {
   return failure;
 }
 
-/** The caller can see the parent, and the CHILD is gone: the retry of a delete that landed. */
-function childMissing(message: string): DeleteRefusal {
-  return { ok: false, message, targetMissing: true };
+/**
+ * A child id absent from THIS parent's list is not proven gone: it may belong to another item,
+ * and no route here resolves a child by id alone. A missing child is therefore never reported as
+ * `alreadyDeleted`; the caller gets the same generic refusal as any other absent record.
+ */
+function absentChild(): DeleteRefusal {
+  return { ok: false, message: NOT_FOUND_OR_NOT_YOURS };
 }
 
 /**
@@ -150,7 +148,7 @@ export async function planDelete(
     });
     if (!comments.ok) return targetDenial(comments);
     const comment = comments.rows.find((row) => str(row['id']) === id);
-    if (!comment) return childMissing(`No comment ${id} on ${key}.`);
+    if (!comment) return absentChild();
     if (str(comment['authorId']) !== me) {
       return {
         ok: false,
@@ -186,7 +184,7 @@ export async function planDelete(
       };
     }
     const log = logs.rows.find((row) => str(row['id']) === id);
-    if (!log) return childMissing(`No time log ${id} on ${key}.`);
+    if (!log) return absentChild();
     if (str(log['userId']) !== me) {
       return { ok: false, message: 'You can only delete your own time log.' };
     }
@@ -243,7 +241,7 @@ export async function planDelete(
     });
     if (!results.ok) return targetDenial(results);
     const result = results.rows.find((row) => str(row['id']) === id);
-    if (!result) return childMissing(`No result ${id} on ${key}.`);
+    if (!result) return absentChild();
     // `created_by` is the RECORDER: REST stamps it from the authenticated caller, while
     // `tester_id` may name a different person the result is about. Ownership follows the recorder.
     if (str(result['createdBy']) !== me) {
@@ -308,12 +306,41 @@ export async function planDelete(
     };
   }
 
+  // Deleting a task soft-deletes its test cases AND every result under them, whoever recorded
+  // them. Any live test case therefore blocks the delete. The test-case list is scoped only by a
+  // readable parent (the task itself), so an empty page is proof; the other two feeds are
+  // RETAINED by REST, and a foreign comment/relation still makes this "not one thing the caller
+  // owns" even when a scope-hidden far end is unknowable here.
+  const [testCases, comments, relations] = await Promise.all([
+    readRows(ctx, {
+      method: 'GET',
+      url: `/v1/work-items/${pathSegment(itemId)}/test-cases`,
+      query: { limit: 1 },
+    }),
+    readRows(ctx, { method: 'GET', url: `/v1/work-items/${pathSegment(itemId)}/comments` }),
+    readRows(ctx, { method: 'GET', url: `/v1/work-items/${pathSegment(itemId)}/relations` }),
+  ]);
+  if (!testCases.ok) return targetDenial(testCases);
+  if (!comments.ok) return targetDenial(comments);
+  if (!relations.ok) return targetDenial(relations);
+  if (testCases.rows.length > 0) {
+    return { ok: false, message: `${key} has test cases; use the web.` };
+  }
+  if (comments.rows.some((row) => str(row['authorId']) !== me)) {
+    return { ok: false, message: `${key} has comments by other people; use the web.` };
+  }
+  if (relations.rows.some((row) => str(row['createdBy']) !== me)) {
+    return { ok: false, message: `${key} has relations by other people; use the web.` };
+  }
+
+  const parentId = str(item['parentId']);
   return {
     ok: true,
     kind: 'task',
     path: `/v1/work-items/${pathSegment(itemId)}`,
     targetId: itemId,
     subject: key,
+    ...(parentId ? { parentId } : {}),
   };
 }
 

@@ -78,7 +78,6 @@ function feeds(overrides: {
   tasks?: Record<string, unknown>[];
   testCases?: Record<string, unknown>[];
   results?: Record<string, unknown>[];
-  iterations?: Record<string, unknown>[];
   timeLogTotal?: number;
   omitTimeLogTotal?: boolean;
 }) {
@@ -124,9 +123,6 @@ function feeds(overrides: {
     }
     if (call.url.endsWith('/test-results'))
       return { statusCode: 200, json: overrides.results ?? [] };
-    if (call.url === '/v1/iterations/options') {
-      return { statusCode: 200, json: overrides.iterations ?? [] };
-    }
     if (call.url.startsWith('/v1/test-cases/by-key/')) {
       return { statusCode: 200, json: { id: TEST_CASE, testCaseKey: 'TC-12' } };
     }
@@ -319,9 +315,9 @@ describe('rova_delete guard (§5)', () => {
       deleted: { kind: 'task', id: TASK, subject: 'TA-9' },
       reason: 'finished by mistake',
     });
-    // The audit line names the target and the KIND, and records the stated reason.
+    // The audit line names the target and the KIND, and records only the reason's LENGTH.
     expect(notes).toEqual([
-      { targets: [TASK], fields: ['task'], count: 1, reason: 'finished by mistake' },
+      { targets: [TASK], fields: ['task'], count: 1, reasonLength: 'finished by mistake'.length },
     ]);
   });
 
@@ -362,38 +358,69 @@ describe('rova_delete guard (§5)', () => {
     }
   });
 
-  it('answers a retry after a CHILD delete landed as alreadyDeleted, where absence is provable', async () => {
-    // The parent is visible (it resolved) and the child is gone: a retry of a delete that landed.
+  it('never calls an absent child alreadyDeleted: the id may belong to another item', async () => {
+    // Absence from THIS parent's list is not proof the row is gone; no route resolves a child by
+    // id alone. Every child kind must answer the generic refusal and delete nothing.
     const cases: Array<[string, Record<string, unknown>, Parameters<typeof feeds>[0]]> = [
       ['comment', { kind: 'comment', key: 'US-500', id: COMMENT }, { comments: [] }],
       ['time_log', { kind: 'time_log', key: 'US-500', id: LOG }, { timeLogs: [] }],
+      ['relation', { kind: 'relation', key: 'US-500', id: RELATION }, { relations: [] }],
       ['test_result', { kind: 'test_result', key: 'TC-12', id: RESULT }, { results: [] }],
     ];
     for (const [kind, args, overrides] of cases) {
       const retryCtx = context(feeds(overrides));
       const retry = await call(retryCtx.ctx, { ...args, reason: 'already gone' });
-      expect(retry.isError, kind).toBeFalsy();
-      expect(retry.body, kind).toMatchObject({
-        deleted: { kind, id: args['id'] },
-        alreadyDeleted: true,
-        reason: 'already gone',
+      expect(retry.isError, kind).toBe(true);
+      expect(retry.body, kind).toEqual({
+        error: 'That record was not found, or it is not yours.',
       });
       expect(deleteCalls(retryCtx.calls), kind).toHaveLength(0);
-      expect(retryCtx.notes, kind).toEqual([
-        { targets: [], fields: [kind], count: 0, reason: 'already gone' },
-      ]);
+      expect(retryCtx.notes, kind).toEqual([]);
     }
   });
 
-  it('does NOT claim alreadyDeleted for an absent relation: it may be live but not visible', async () => {
-    // admitRelationEnds drops a relation whose far end the caller cannot read, so an empty list
-    // cannot tell "deleted" from "not visible". The generic refusal is the only true answer.
-    const { ctx, calls, notes } = context(feeds({ relations: [] }));
-    const res = await call(ctx, { kind: 'relation', key: 'US-500', id: RELATION });
-    expect(res.isError).toBe(true);
-    expect(res.body).toEqual({ error: 'That record was not found, or it is not yours.' });
-    expect(deleteCalls(calls)).toHaveLength(0);
-    expect(notes).toEqual([]);
+  it('refuses a task with test cases, a foreign comment, or a foreign relation', async () => {
+    const task = item({ id: TASK, type: 'task', createdBy: ME });
+    const cases: Array<[string, Parameters<typeof feeds>[0], RegExp]> = [
+      ['test case', { item: task, testCases: [{ id: U(80) }] }, /test cases/],
+      [
+        'foreign comment',
+        { item: task, comments: [{ id: COMMENT, authorId: OTHER }] },
+        /comments by other people/,
+      ],
+      [
+        'foreign relation',
+        { item: task, relations: [{ id: RELATION, createdBy: OTHER }] },
+        /relations by other people/,
+      ],
+    ];
+    for (const [label, overrides, message] of cases) {
+      const blocked = context(feeds(overrides));
+      const res = await call(blocked.ctx, { kind: 'task', key: 'TA-9' });
+      expect(res.isError, label).toBe(true);
+      expect(res.body['error'], label).toMatch(message);
+      expect(deleteCalls(blocked.calls), label).toHaveLength(0);
+    }
+  });
+
+  it('re-reads the parent after a task delete and reports the stored auto-completion', async () => {
+    const parentId = U(90);
+    const { ctx, calls } = context((routeCall) => {
+      if (routeCall.method === 'DELETE') return { statusCode: 204, json: null };
+      if (routeCall.method === 'GET' && routeCall.url === `/v1/work-items/${parentId}`) {
+        return {
+          statusCode: 200,
+          json: item({ id: parentId, type: 'story', scheduleState: 'completed' }),
+        };
+      }
+      return feeds({ item: item({ id: TASK, type: 'task', createdBy: ME, parentId }) })(routeCall);
+    });
+    const { isError, body } = await call(ctx, { kind: 'task', key: 'TA-9' });
+    expect(isError, JSON.stringify(body)).toBeFalsy();
+    expect(body['parentAutoCompleted']).toBe(true);
+    expect(calls.some((c) => c.method === 'GET' && c.url === `/v1/work-items/${parentId}`)).toBe(
+      true,
+    );
   });
 
   it('relays the REST refusal from the DELETE itself instead of reporting success', async () => {

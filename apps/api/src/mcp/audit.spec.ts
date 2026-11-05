@@ -9,7 +9,7 @@ const instruments = (): AuditInstruments => ({
 });
 
 describe('MCP write audit (§6.7)', () => {
-  it('keeps exactly the write fields and drops everything else', () => {
+  it('keeps exactly the write fields and drops every free-text value', () => {
     const sanitized = sanitizeWriteAudit({
       write: true,
       httpStatus: 201,
@@ -20,8 +20,9 @@ describe('MCP write audit (§6.7)', () => {
       // A tool that "helpfully" attaches values must lose them here.
       title: 'SENSITIVE TITLE',
       body: 'SENSITIVE BODY',
-      // `reason` is the ONE free text the audit line keeps: a delete must record why.
-      reason: 'duplicate I just created',
+      reason: 'SENSITIVE REASON',
+      // A NUMBER describing the reason is not the free text itself.
+      reasonLength: 17,
     });
     expect(sanitized).toEqual({
       write: true,
@@ -30,14 +31,15 @@ describe('MCP write audit (§6.7)', () => {
       fields: ['title', 'iterationId'],
       count: 2,
       dryRun: false,
-      reason: 'duplicate I just created',
+      reasonLength: 17,
     });
     expect(JSON.stringify(sanitized)).not.toContain('SENSITIVE');
   });
 
-  it('bounds the recorded reason and drops a non-string one', () => {
-    expect(sanitizeWriteAudit({ reason: 'x'.repeat(600) }).reason).toHaveLength(500);
-    expect(sanitizeWriteAudit({ reason: 42 }).reason).toBeUndefined();
+  it('drops a non-numeric reasonLength', () => {
+    expect(sanitizeWriteAudit({ reasonLength: 17 }).reasonLength).toBe(17);
+    expect(sanitizeWriteAudit({ reasonLength: '17' }).reasonLength).toBeUndefined();
+    expect(sanitizeWriteAudit({ reasonLength: Number.NaN }).reasonLength).toBeUndefined();
   });
 
   it('truncates targets to 25 and drops non-string entries', () => {

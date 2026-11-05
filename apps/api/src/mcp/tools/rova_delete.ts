@@ -1,17 +1,17 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, result, toolError, type ToolContext } from './rest';
+import { denied, pathSegment, result, toolError, type ToolContext } from './rest';
 import { DELETE_KINDS, planDelete } from './delete_guard';
 
 /**
  * `rova_delete` — delete ONE thing the caller owns, per §5 of the MCP v2 design.
  *
- * The guard in `delete_guard.ts` runs FIRST and narrows every kind (authorship, ownership, age,
- * dependants, iteration state). The REST route still enforces its own rules, so a bypass of the
- * guard reaches the same refusal the web would give, never a wider one.
+ * The guard in `delete_guard.ts` runs FIRST and narrows every kind (authorship, ownership,
+ * dependants). The REST route still enforces its own rules, so a bypass of the guard reaches the
+ * same refusal the web would give, never a wider one.
  *
- * `reason` is echoed back to the model AND written to the audit line: the MCP v2 review asked for
- * the operator's stated reason to be recorded, and the audit allowlist bounds it at 500 characters.
+ * `reason` is echoed back to the caller only. It never reaches the audit line (free text may carry
+ * personal data); the audit records its LENGTH, which is enough to show a justification was given.
  */
 export function registerDelete(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
@@ -19,7 +19,7 @@ export function registerDelete(server: McpServer, ctx: ToolContext) {
     {
       title: 'Delete one thing you own',
       description:
-        "DELETES one thing as you, and must be used only on the user's explicit request. Kinds: your own comment (`key` = the work item or portfolio item, `id` = comment), your own time log (`key` = work item, `id` = log), a relation YOU created (`key` = work item, `id` = relation), a test result YOU recorded within 7 days (`key` = test case, e.g. TC-12, `id` = result), or one task you created or own (`key` = task). Deleting a whole story or defect is NOT supported; tell the user to use the web for that. Anything with dependants on a task is refused. A retry of a deleted comment, time log or test result answers `alreadyDeleted: true`; a task or relation answers the generic 'not found or not yours' (a relation is listed only while its far end is readable, so 'gone' cannot be told from 'not visible').",
+        "DELETES one thing as you, and must be used only on the user's explicit request. Kinds: your own comment (`key` = the work item or portfolio item, `id` = comment), your own time log (`key` = work item, `id` = log), a relation YOU created (`key` = work item, `id` = relation), a test result YOU recorded within 7 days (`key` = test case, e.g. TC-12, `id` = result), or one task you created or own (`key` = task). Deleting a whole story or defect is NOT supported; tell the user to use the web for that. Anything with dependants on a task is refused. A retry of a delete that already landed answers the generic 'not found or not yours'; absence is never reported as 'already deleted', because an id may simply belong to another item.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
@@ -44,7 +44,7 @@ export function registerDelete(server: McpServer, ctx: ToolContext) {
           .string()
           .max(500)
           .optional()
-          .describe('Why you are deleting it; echoed back and recorded in the audit log'),
+          .describe('Why you are deleting it; echoed back to you, not written to the audit log'),
       },
     },
     async (args) => {
@@ -54,30 +54,6 @@ export function registerDelete(server: McpServer, ctx: ToolContext) {
         ...(args.id !== undefined ? { id: args.id } : {}),
       });
       if (!plan.ok) {
-        if (plan.targetMissing) {
-          // A retry of the same request after the delete landed. The caller is authenticated and
-          // the TARGET no longer resolves; that is the same 404 a stranger's key gets, so the
-          // answer reveals nothing about whether the row ever existed or who owned it.
-          ctx.noteWrite?.({
-            targets: [],
-            fields: [args.kind],
-            count: 0,
-            ...(args.reason !== undefined ? { reason: args.reason } : {}),
-          });
-          return result(
-            200,
-            {},
-            {
-              deleted: {
-                kind: args.kind,
-                ...(args.key !== undefined ? { subject: args.key } : {}),
-                ...(args.id !== undefined ? { id: args.id } : {}),
-              },
-              alreadyDeleted: true,
-              ...(args.reason !== undefined ? { reason: args.reason } : {}),
-            },
-          );
-        }
         if ('statusCode' in plan) return denied(plan.statusCode, plan.json);
         return toolError(plan.message);
       }
@@ -85,11 +61,18 @@ export function registerDelete(server: McpServer, ctx: ToolContext) {
       const res = await ctx.callRest(ctx.principal, { method: 'DELETE', url: plan.path });
       if (res.statusCode >= 400) return denied(res.statusCode, res.json);
 
+      // Deleting the parent's last open task completes the parent. REPORT the stored outcome by
+      // re-reading it, never a prediction: a scope-hidden sibling could make a prediction wrong.
+      const parentAutoCompleted =
+        plan.kind === 'task' &&
+        plan.parentId !== undefined &&
+        (await parentIsCompleted(ctx, plan.parentId));
+
       ctx.noteWrite?.({
         targets: [plan.targetId],
         fields: [plan.kind],
         count: 1,
-        ...(args.reason !== undefined ? { reason: args.reason } : {}),
+        ...(args.reason !== undefined ? { reasonLength: args.reason.length } : {}),
       });
       return result(res.statusCode, res.json, {
         deleted: {
@@ -97,8 +80,21 @@ export function registerDelete(server: McpServer, ctx: ToolContext) {
           id: plan.targetId,
           subject: plan.subject,
         },
+        ...(parentAutoCompleted ? { parentAutoCompleted: true } : {}),
         ...(args.reason !== undefined ? { reason: args.reason } : {}),
       });
     },
   );
+}
+
+/** The parent's stored schedule state after the delete; a read failure simply omits the flag. */
+async function parentIsCompleted(ctx: ToolContext, parentId: string): Promise<boolean> {
+  const res = await ctx.callRest(ctx.principal, {
+    method: 'GET',
+    url: `/v1/work-items/${pathSegment(parentId)}`,
+  });
+  if (res.statusCode >= 400) return false;
+  const body = res.json as Record<string, unknown> | null;
+  const item = (body?.['item'] as Record<string, unknown> | undefined) ?? body;
+  return item?.['scheduleState'] === 'completed';
 }
