@@ -40,6 +40,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TEST_RESULT_MAX_AGE_MS = 7 * DAY_MS;
 
+/**
+ * The DONE schedule states, lowercase as the API sends them. Mirrors
+ * `COMPLETED_SCHEDULE_STATES`/`isCompletedScheduleState` (db/schema/enums); a tool may not import
+ * the DB schema (the MCP ratchet), so the list is restated here — comparing `'Completed'` matched
+ * nothing and silently disabled the parent-completion warning.
+ */
+const COMPLETED_SCHEDULE_STATES = new Set(['completed', 'accepted', 'release']);
+
+const isCompletedScheduleState = (state: string | undefined): boolean =>
+  state !== undefined && COMPLETED_SCHEDULE_STATES.has(state);
+
 /** A full work-item record (the detail's `item`), not the narrow lookup projection. */
 async function fetchItem(
   ctx: ToolContext,
@@ -59,7 +70,12 @@ async function fetchItem(
     return { ok: false, statusCode: res.statusCode, json: res.json };
   }
   const body = res.json as Record<string, unknown> | null;
-  const item = body?.['item'] as Record<string, unknown> | undefined;
+  // BOTH routes answer the FLATTENED detail (the item's fields plus `splitLink`); the `{ item }`
+  // shape is accepted too for tolerance. Reading only `body.item` made every task/story look
+  // missing, by UUID AND by key.
+  const item =
+    (body?.['item'] as Record<string, unknown> | undefined) ??
+    (typeof body?.['id'] === 'string' ? body : undefined);
   if (!item || typeof item['id'] !== 'string') {
     return { ok: false, message: `No work item matches "${reference}".` };
   }
@@ -175,12 +191,20 @@ export async function planDelete(
       return { ok: false, message: 'time_log needs key (the work item) and id (the log).' };
     const item = await resolveWorkItem(ctx, key);
     if (!item.ok) return targetDenial(item);
-    const logs = await readRows(ctx, {
+    const logs = await readPage(ctx, {
       method: 'GET',
       url: `/v1/work-items/${pathSegment(item.id)}/time-logs`,
       query: { page: 1, pageSize: 100 },
     });
     if (!logs.ok) return targetDenial(logs);
+    // Same rule as the task branch: one page is the whole set only when the server says so.
+    // Otherwise a caller's own log #101+ would answer alreadyDeleted and delete nothing.
+    if (logs.total === undefined || logs.total > logs.rows.length) {
+      return {
+        ok: false,
+        message: `${key} has more time logs than one page can show; use the web.`,
+      };
+    }
     const log = logs.rows.find((row) => str(row['id']) === id);
     if (!log) return childMissing(`No time log ${id} on ${key}.`);
     if (str(log['userId']) !== me) {
@@ -206,7 +230,10 @@ export async function planDelete(
     });
     if (!relations.ok) return targetDenial(relations);
     const relation = relations.rows.find((row) => str(row['id']) === id);
-    if (!relation) return childMissing(`No relation ${id} touches ${key}.`);
+    // NOT alreadyDeleted: `admitRelationEnds` filters out a relation whose far end the caller
+    // cannot read, so an absent row may be a LIVE link on a work item they lost sight of. The
+    // generic answer is the only one true for both "gone" and "not visible".
+    if (!relation) return { ok: false, message: NOT_FOUND_OR_NOT_YOURS };
     // "One thing the caller owns" has no exception: a link created by someone else is theirs to
     // remove, even on an item the caller can edit.
     if (str(relation['createdBy']) !== me) {
@@ -467,7 +494,7 @@ async function parentAutoCompleteWarning(
   if (!siblings.ok) return targetDenial(siblings);
   const others = siblings.rows.filter((row) => String(row['id']) !== String(item['id']));
   if (others.length === 0) return undefined;
-  const allCompleted = others.every((row) => str(row['scheduleState']) === 'Completed');
+  const allCompleted = others.every((row) => isCompletedScheduleState(str(row['scheduleState'])));
   return allCompleted
     ? 'This is the parent’s last open task: deleting it will mark the parent Completed.'
     : undefined;
