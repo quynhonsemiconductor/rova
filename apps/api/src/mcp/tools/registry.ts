@@ -99,6 +99,15 @@ export const WRITE_TOOL_ROUTES = {
     { method: 'POST', url: '/v1/iterations' },
     { method: 'PATCH', url: '/v1/iterations/:id' },
   ],
+  // One tool, six kinds; every route its guard may delete through, and nothing else.
+  rova_delete: [
+    { method: 'DELETE', url: '/v1/work-items/:id/comments/:commentId' },
+    { method: 'DELETE', url: '/v1/portfolio-items/:id/comments/:commentId' },
+    { method: 'DELETE', url: '/v1/work-items/:id/time-logs/:logId' },
+    { method: 'DELETE', url: '/v1/work-items/:id/relations/:relationId' },
+    { method: 'DELETE', url: '/v1/test-results/:id' },
+    { method: 'DELETE', url: '/v1/work-items/:id' },
+  ],
 } as const satisfies Record<string, WriteRoute | readonly WriteRoute[]>;
 
 export type ToolName = keyof typeof TOOL_ROUTES;
