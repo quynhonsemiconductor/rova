@@ -173,6 +173,8 @@ export default defineConfig({
         // test/coverage-include.spec.ts excludes only test/ and apps/web — so it must be measured.
         'apps/api/src/bootstrap/platform-admin-emails.ts',
         'apps/api/src/bootstrap/service-version.ts',
+        // GET /v1/meta: the running version the SPA user menu shows.
+        'apps/api/src/meta/meta.controller.ts',
         // MCP P1: the principal bridge and the /mcp route. No apostrophes in this comment: the
         // coverage-include spec parses this list naively, and one would poison it.
         'apps/api/src/mcp/principal.guard.ts',

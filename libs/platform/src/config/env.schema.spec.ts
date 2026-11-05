@@ -57,6 +57,26 @@ describe('EnvSchema — identity 8 sign-in', () => {
   });
 });
 
+describe('EnvSchema — the chart-injected APP_COMMIT', () => {
+  // The chart sets APP_COMMIT only for a `sha-<commit>` image tag. A release tag, a URL or a
+  // truncated value is not a commit: it must read as unknown, and must never stop the API booting.
+  it('accepts a hex commit, lowercased and trimmed', () => {
+    const result = EnvSchema.safeParse(env({ APP_COMMIT: '  ABC1234 ' }));
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.APP_COMMIT).toBe('abc1234');
+  });
+
+  it('maps anything that is not a hex commit to undefined', () => {
+    for (const value of ['v0.1.2', 'sha-0123456789ab', 'prod', 'abc', '0123456789abzz', '']) {
+      const result = EnvSchema.safeParse(env({ APP_COMMIT: value }));
+      expect(result.success, value).toBe(true);
+      if (!result.success) return;
+      expect(result.data.APP_COMMIT, value).toBeUndefined();
+    }
+  });
+});
+
 describe('EnvSchema — REDIS_URL', () => {
   // It used to default to redis://localhost:6379. That is harmless locally and
   // dangerous everywhere else: a deployed task missing the injection connected to

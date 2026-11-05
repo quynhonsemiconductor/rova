@@ -33,6 +33,7 @@ import { isFeatureEnabled } from '@/shared/config/feature-flags'
 // the router checked nothing, so a bookmarked `/portfolio` rendered an empty grid for a project
 // Editor. See `shared/config/nav.ts` for the full note; do NOT copy a code back into this file.
 import { NAV_ITEMS, isNavGroupActive, isNavPathActive, type NavItem } from '@/shared/config/nav'
+import { VersionFooter } from './version-footer'
 import { queryClient } from '@/shared/api/query-client'
 import { NotificationPopover } from '@/widgets/notification-popover/notification-popover'
 import { GlobalSearch } from './global-search'
@@ -799,6 +800,9 @@ export function AppShell() {
                     {t('signOut')}
                   </button>
                 </div>
+
+                {/* The running version(s); commit on hover. */}
+                <VersionFooter />
               </div>
             )}
           </div>
