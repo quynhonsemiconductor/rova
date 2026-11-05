@@ -1,14 +1,21 @@
-# Alert: rate-limit-authenticated-user
+# Alert: rova-prod-authenticated-429
 
-A **signed-in person** was refused with HTTP 429. The counter is
-`rate_limit_rejected_total{keyed_by="user"}`; the suggested rule is any increase over 5 minutes:
+The live rule is `rova-prod-authenticated-429` (`infra/live/observability-alerting/rate-limit-429.tf`,
+warning, 15-minute window, `no_data = OK`):
 
 ```promql
-sum(increase(rate_limit_rejected_total{keyed_by="user"}[5m])) > 0
+sum by (job, tier, route) (increase(rate_limit_rejected_total{
+  job=~"rova/.+", deployment_environment_name="prod", keyed_by="user"
+}[15m])) > 0
 ```
 
-`keyed_by="address"` refusals are the PRE_AUTH floor doing its job and are not this alert: they
-mean traffic that never proved who it was.
+A **signed-in person** was refused with HTTP 429. The alert's own `tier` and `route` labels name
+where; the guard's log line names who.
+
+`keyed_by="address"` refusals are normally the PRE_AUTH floor doing its job and are NOT this alert.
+Two exceptions: a MCP-internal call's PRE_AUTH refusal is keyed by `user` (the call token names the
+person), and a `DEFAULT` refusal on a PUBLIC route has no principal, so it is keyed by `address`.
+Read the tier with that in mind.
 
 ## What this means
 
@@ -27,7 +34,9 @@ authenticated user is therefore one of three things:
 1. **Which tier and route?** In Grafana:
 
    ```promql
-   sum by (tier, route) (increase(rate_limit_rejected_total{keyed_by="user"}[15m]))
+   sum by (tier, route) (increase(rate_limit_rejected_total{
+     job=~"rova/.+", deployment_environment_name="prod", keyed_by="user"
+   }[15m]))
    ```
 
    Tiers and their meaning:
@@ -36,13 +45,16 @@ authenticated user is therefore one of three things:
    |---|---|---|
    | `DEFAULT` | 1,200 / 60 s | only an abnormal burst or a retry loop |
    | `STRICT` | 20 / 60 s | uploads presign and invitation emails — bulk or abusive use |
-   | `PRE_AUTH` (address) | 1,200 / 60 s per IP | abuse prevention; a signed-in request must NOT consume it |
-   | `PRE_AUTH_TOKEN` (address) | 300 / 60 s per IP | token guessing; a valid token's slot is refunded after auth |
+   | `PRE_AUTH` | 1,200 / 60 s per IP | abuse prevention; a signed-in request must NOT consume it. An MCP-internal refusal is keyed by `user`, because the call token names the person |
+   | `PRE_AUTH_TOKEN` | 300 / 60 s per IP | token guessing; a valid token's slot is refunded after auth |
+   | `DEFAULT` on a PUBLIC route | 1,200 / 60 s per IP | no principal exists, so this one is keyed `address` and is not a signed-in 429 |
 
-2. **Who and where?** In Loki / Logs Explorer:
+2. **Who and where?** In Loki / Logs Explorer. The live rule's own text uses the pod namespace
+   selector, which is the one verified against the alert (`{service_name="rova-api"}` is NOT
+   confirmed here — this session had no Grafana access):
 
    ```logql
-   {service_name="rova-api"} | json | msg="Rate limit exceeded"
+   {namespace="rova-prod"} |= "Rate limit exceeded"
    ```
 
    The line carries `userId`, `tier`, `route` (template), `ip` and the bucket `key`. Group by
@@ -53,7 +65,7 @@ authenticated user is therefore one of three things:
    `PRE_AUTH:ip:` key on normal signed-in traffic means the refund did not run.
 
 4. **Did a deploy just land?** Check the Deploys annotation. #905 changed the tiers; a pod still on
-   an older image runs the old 100/120 limits and produces refusals this alert will see.
+   an older image runs the old 100/min `DEFAULT` ceiling and produces refusals this alert will see.
 
 5. **Check the refund path** if the tier is `PRE_AUTH`: search logs for
    `Rate limit slot not refunded`. That line means Valkey refused the refund, so every later request
