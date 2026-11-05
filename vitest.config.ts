@@ -100,6 +100,7 @@ export default defineConfig({
         'libs/platform/src/email/providers/smtp.provider.ts',
         'libs/platform/src/outbox/relay-lease.ts',
         'libs/platform/src/rate-limit/rate-limit.guard.ts',
+        'libs/platform/src/rate-limit/rate-limit.metrics.ts',
         'libs/platform/src/outbox/retry-after.ts',
         'libs/modules/iterations/src/application/iteration-status.service.ts',
         'libs/modules/iterations/src/application/iterations.service.ts',

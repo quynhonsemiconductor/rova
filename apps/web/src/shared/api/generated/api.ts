@@ -7666,13 +7666,6 @@ export interface operations {
         }
         content?: never
       }
-      /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
-      429: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
     }
   }
   AuthController_updateProfile: {
@@ -8688,13 +8681,6 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
-      429: {
         headers: {
           [name: string]: unknown
         }
