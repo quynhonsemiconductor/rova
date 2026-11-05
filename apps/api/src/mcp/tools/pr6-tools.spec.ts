@@ -146,6 +146,20 @@ const feeds = (call: McpRestCall): McpRestResult | null => {
   return null;
 };
 
+/** The registered tool's zod input shape, what an MCP client's arguments are validated against. */
+function inputShape(
+  register: (server: McpServer, ctx: ToolContext) => unknown,
+): Record<string, { safeParse: (value: unknown) => { success: boolean } }> {
+  const server = new McpServer({ name: 'test', version: '0.0.0' });
+  const { ctx } = context(() => ({ statusCode: 500, json: {} }));
+  const tool = register(server, ctx) as {
+    inputSchema: {
+      shape: Record<string, { safeParse: (value: unknown) => { success: boolean } }>;
+    };
+  };
+  return tool.inputSchema.shape;
+}
+
 describe('rova_save_portfolio_item', () => {
   it('creates a Feature with resolved parent/team/release/owner and the REST create contract', async () => {
     const { ctx, calls, notes } = context((call) => {
@@ -237,6 +251,13 @@ describe('rova_save_portfolio_item', () => {
     });
     // A PATCH is a SET: no Idempotency-Key, even when a requestId was supplied.
     expect(patch.idempotencyKey).toBeUndefined();
+  });
+
+  it('refuses a planned date that is not a real calendar date', () => {
+    const shape = inputShape(registerSavePortfolioItem);
+    expect(shape['plannedStartDate'].safeParse('2026-02-30').success).toBe(false);
+    expect(shape['plannedEndDate'].safeParse('2026-13-01').success).toBe(false);
+    expect(shape['plannedStartDate'].safeParse('2026-11-17').success).toBe(true);
   });
 
   it('relays the REST refusal: an Editor creating a Feature gets the same 403 the web sees', async () => {
@@ -339,6 +360,13 @@ describe('rova_save_iteration', () => {
     const patch = calls.find((c) => c.method === 'PATCH')!;
     expect(patch.url).toBe(`/v1/iterations/${ITERATION}`);
     expect(patch.body).toEqual({ endDate: '2026-12-05' });
+  });
+
+  it('refuses a start/end date that is not a real calendar date', () => {
+    const shape = inputShape(registerSaveIteration);
+    expect(shape['startDate'].safeParse('2026-02-30').success).toBe(false);
+    expect(shape['endDate'].safeParse('2026-11-31').success).toBe(false);
+    expect(shape['startDate'].safeParse('2026-11-17').success).toBe(true);
   });
 
   it('a name without a project is refused before any write', async () => {

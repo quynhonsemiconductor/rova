@@ -1,6 +1,14 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, pathSegment, replayedFrom, result, toolError, type ToolContext } from './rest';
+import {
+  denied,
+  isRealCalendarDate,
+  pathSegment,
+  replayedFrom,
+  result,
+  toolError,
+  type ToolContext,
+} from './rest';
 import {
   failureResult,
   resolveIteration,
@@ -10,8 +18,11 @@ import {
 } from './lookups';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** `YYYY-MM-DD`, the form the REST schema declares (a bare date, not a datetime). */
-const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
+/** `YYYY-MM-DD`, a real calendar date — the shape alone lets `2026-02-30` reach the REST body. */
+const DATE = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
+  .refine(isRealCalendarDate, 'Must be a real calendar date between 2000 and 2100');
 
 /** The fields a model chains on after a save, from `IterationResponseDto`. */
 export function shapeSavedIteration(row: Record<string, unknown>) {

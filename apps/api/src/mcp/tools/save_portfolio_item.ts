@@ -1,6 +1,14 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, pathSegment, replayedFrom, result, toolError, type ToolContext } from './rest';
+import {
+  denied,
+  isRealCalendarDate,
+  pathSegment,
+  replayedFrom,
+  result,
+  toolError,
+  type ToolContext,
+} from './rest';
 import {
   failureResult,
   resolvePeople,
@@ -26,8 +34,11 @@ const STATES = [
 
 const SIZES = ['no_entry', 'xs', 's', 'm', 'l', 'xl'] as const;
 
-/** `YYYY-MM-DD`, the form the REST schema declares (a bare date, not a datetime). */
-const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
+/** `YYYY-MM-DD`, a real calendar date — the shape alone lets `2026-02-30` reach the REST body. */
+const DATE = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
+  .refine(isRealCalendarDate, 'Must be a real calendar date between 2000 and 2100');
 
 /** The fields a model chains on after a save, from `PortfolioItemResponseDto`. */
 export function shapeSavedPortfolioItem(row: Record<string, unknown>) {
@@ -89,12 +100,7 @@ export function registerSavePortfolioItem(server: McpServer, ctx: ToolContext) {
           .max(64)
           .optional()
           .describe('UPDATE this Epic or Feature by key (e.g. FE-12)'),
-        project: z
-          .string()
-          .min(1)
-          .max(64)
-          .optional()
-          .describe('CREATE: project key or id. Also accepted on update to disambiguate names'),
+        project: z.string().min(1).max(64).optional().describe('CREATE only: project key or id'),
         type: z.enum(['epic', 'feature']).optional().describe('CREATE only: the item kind'),
         requestId: z
           .string()
