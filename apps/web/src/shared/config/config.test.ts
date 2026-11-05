@@ -109,6 +109,15 @@ describe('loadConfig', () => {
     expect(ENV.APP_COMMIT).toBeUndefined()
   })
 
+  it('treats JSON null like an absent version and commit instead of failing the boot', () => {
+    // A templated chart can render `null` for an unset value; YAML/JSON does not distinguish it
+    // from absent once parsed, and neither must the schema.
+    const parsed = configSchema.safeParse({ ...VALID, appVersion: null, appCommit: null })
+    expect(parsed.success).toBe(true)
+    expect(parsed.success && parsed.data.appVersion).toBeUndefined()
+    expect(parsed.success && parsed.data.appCommit).toBeUndefined()
+  })
+
   it('keeps a non-commit appCommit out of the UI without failing the boot', () => {
     for (const value of ['v0.1.2', 'sha-0123456789ab', 'prod', 'abc', '0123456789abzz']) {
       const parsed = configSchema.safeParse({ ...VALID, appCommit: value })

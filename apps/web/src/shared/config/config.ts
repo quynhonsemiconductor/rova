@@ -61,7 +61,7 @@ export const configSchema = z.object({
    */
   appVersion: z
     .string()
-    .optional()
+    .nullish()
     .transform((value) => {
       const version = (value ?? '').trim()
       return version === '' ? undefined : version
@@ -73,7 +73,7 @@ export const configSchema = z.object({
    */
   appCommit: z
     .string()
-    .optional()
+    .nullish()
     .transform((value) => {
       const commit = (value ?? '').trim().toLowerCase()
       return /^[0-9a-f]{7,40}$/.test(commit) ? commit : undefined
