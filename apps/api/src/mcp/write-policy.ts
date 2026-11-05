@@ -59,6 +59,10 @@ export function mcpReadRouteKey(url: string): string {
  * Listed by hand on purpose — the routes spec fails when a tool composes one that is missing.
  */
 export const MCP_REFERENCE_READ_ROUTES: readonly string[] = [
+  // `rova_save_iteration` resolves an update by UUID through the record read; a name goes through
+  // the options feed below. The PATCH to the same template is a WRITE and does not make the GET
+  // reachable — `McpWriteGuard` checks a GET against the read set alone.
+  '/v1/iterations/:id',
   '/v1/iterations/options',
   '/v1/releases/options',
   // The paged notification feed (the tool's registry route names the unpaged one).

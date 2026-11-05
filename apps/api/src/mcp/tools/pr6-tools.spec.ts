@@ -12,6 +12,7 @@ import { CreatePortfolioItemSchema } from '@modules/portfolio/interface/http/dto
 import { CreateIterationSchema } from '@modules/iterations/interface/http/dto/iteration-request.dto';
 import { registerSavePortfolioItem } from './save_portfolio_item';
 import { registerSaveIteration } from './save_iteration';
+import { MCP_READ_ROUTES, MCP_WRITE_ROUTES, mcpRequestAllowed } from '../write-policy';
 
 const U = (n: number) => `0194a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const ME = U(1);
@@ -342,6 +343,36 @@ describe('rova_save_iteration', () => {
     expect(patch.url).toBe(`/v1/iterations/${ITERATION}`);
     expect(patch.body).toEqual({ goal: 'Ship it', plannedVelocity: 25 });
     expect(patch.body).not.toHaveProperty('state');
+  });
+
+  it('updates by UUID through the real read allowlist (the guard allows the record GET)', async () => {
+    const { ctx, calls } = context((call) => {
+      const hit = feeds(call);
+      if (hit) return hit;
+      return { statusCode: 200, json: iterationRow() };
+    });
+    const inner = ctx.callRest;
+    // The bridge checks the TEMPLATE Fastify matched, not the concrete URL; this tool's only
+    // parameterized route here is the iteration record.
+    const template = (url: string) =>
+      url === `/v1/iterations/${ITERATION}` ? '/v1/iterations/:id' : url;
+    ctx.callRest = async (principal, call) =>
+      mcpRequestAllowed(call.method, template(call.url), {
+        writesEnabled: true,
+        reads: MCP_READ_ROUTES,
+        writes: MCP_WRITE_ROUTES,
+      })
+        ? inner(principal, call)
+        : { statusCode: 403, json: { error: { code: 'MCP_ROUTE_NOT_ALLOWED' } } };
+
+    const { isError, body } = await call(registerSaveIteration, ctx, {
+      iteration: ITERATION,
+      goal: 'Ship it',
+    });
+    expect(isError, JSON.stringify(body)).toBeFalsy();
+    expect(calls).toContainEqual(
+      expect.objectContaining({ method: 'GET', url: `/v1/iterations/${ITERATION}` }),
+    );
   });
 
   it('updates by NAME through the project reference feed', async () => {
