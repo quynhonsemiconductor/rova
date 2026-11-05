@@ -261,8 +261,11 @@ overrides:
   # drops every optional peer — all 16 — so a newly installed devDependency cannot reopen the leak.
   # drizzle-orm and pg stay: identity uses them. scripts/check-better-auth-overrides.mjs compares
   # this list against better-auth's installed peerDependenciesMeta and fails on any Better Auth
-  # peer change. pnpm 11 honours these; pnpm 10.33.2 keeps the peers out of the --prod tree too,
-  # though it still records the peer declarations in the lockfile manifest copy (checked 2026-10-26).
+  # peer change. pnpm 11 and 12 honour these (re-checked on 12.16.1: better-auth's installed directory
+  # links none of vitest/vite/react/solid-js/svelte/vue/prisma/drizzle-kit, and
+  # scripts/check-better-auth-overrides.mjs still reports 16 overrides = its optional peers minus
+  # drizzle-orm/pg); pnpm 10.33.2 keeps the peers out of the --prod tree too, though it still records the
+  # peer declarations in the lockfile manifest copy (checked 2026-10-26).
   "better-auth>@lynx-js/react": "-"
   "better-auth>@prisma/client": "-"
   "better-auth>@sveltejs/kit": "-"
@@ -289,8 +292,8 @@ overrides:
   # pnpm 11 wrote this block during its migration and left every value as the literal
   # placeholder "set this to true or false". Unresolved, pnpm treats the decision as unmade,
   # refuses to run those postinstalls, and exits 1 with ERR_PNPM_IGNORED_BUILDS — and because
-  # pnpm 11 runs an implicit `install` before every script, that failure blocks EVERY
-  # `pnpm <script>` in this repo, `db:migrate` included. The values below mirror
+  # pnpm 11 and 12 run an implicit `install` before every script (re-checked on 12.16.1),
+  # that failure blocks EVERY `pnpm <script>` in this repo, `db:migrate` included. The values below mirror
   # `onlyBuiltDependencies` beneath, which is the allowlist this repo already committed;
   # they are not a new trust decision.
 allowBuilds:
@@ -330,13 +333,15 @@ onlyBuiltDependencies:
 # pnpm's `minimumReleaseAge` is a cooldown against a hijacked THIRD-PARTY release: a malicious version is usually
 # caught and yanked within hours, so not installing anything younger than a day removes most of that exposure.
 #
-# SET EXPLICITLY (1440 minutes = 24 h). pnpm 11, which this repo runs, defaults to 24 h; pnpm 10 (opshub's) has NO
-# default. Written out, the behaviour does not depend on which pnpm reads the file, and matches opshub's.
+# SET EXPLICITLY (1440 minutes = 24 h). pnpm 11 and 12 (this repo runs 12.16.1) default to 24 h; pnpm 10
+# (opshub's) has NO default. Written out, the behaviour does not depend on which pnpm reads the file, and matches
+# opshub's. Verified on 12.16.1: a frozen install reports "Lockfile passes supply-chain policies".
 #
 # Our own `@quynhonsemiconductor/*` packages are published by this organisation, from app-platform, by a pipeline we
 # control, so the cooldown protects nothing there and costs a day on every release: platform-http 4.3.0 blocked this
 # repo's CI for ~22 hours on `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`. They are exempt, as a scope pattern (verified on
-# pnpm 10.33.2 and 11: a <24 h `@quynhonsemiconductor/*` version is refused without the exclusion and resolves with it).
+# pnpm 10.33.2 and 11: a <24 h `@quynhonsemiconductor/*` version is refused without the exclusion and resolves with it;
+# the 12.16.1 frozen install keeps the exclusion and passes the supply-chain policy check).
 #
 # This does NOT exempt a third-party package that a first-party one depends on, and it does not touch Renovate: the
 # org preset (`quynhonsemiconductor/.github:renovate-config`) sets no `minimumReleaseAge`, so Renovate proposes our
