@@ -30,10 +30,11 @@
 # Install ALL packages (dev + prod) so the builder has everything it needs.
 # The pnpm store is cached via BuildKit so subsequent builds skip downloads.
 #
-# Registry auth: pnpm 11 ignores `${NODE_AUTH_TOKEN}` in the committed project .npmrc, so each install
-# step writes a USER-level npmrc (NPM_CONFIG_USERCONFIG, a fresh mktemp file) holding the same
-# placeholder line. The file never contains the token: pnpm expands it from the NODE_AUTH_TOKEN
-# environment variable, which exists only inside that RUN (read from the BuildKit secret).
+# Registry auth: pnpm 11 and 12 ignore `${NODE_AUTH_TOKEN}` in the committed project .npmrc (verified on
+# 12.16.1: the install warns that it ignored the project-level auth setting), so each install step writes
+# a USER-level npmrc (NPM_CONFIG_USERCONFIG, a fresh mktemp file) holding the same placeholder line. The
+# file never contains the token: pnpm expands it from the NODE_AUTH_TOKEN environment variable, which
+# exists only inside that RUN (read from the BuildKit secret).
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:24-alpine3.22 AS deps
 RUN corepack enable
@@ -82,11 +83,12 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
 FROM node:24-alpine3.22 AS builder
 RUN corepack enable
 
-# pnpm 11 runs an implicit `install` before every script when node_modules does not match the workspace.
-# Here it never does, on purpose: node_modules is copied from `deps` (root package only), while the full
-# source below includes apps/web, whose dependencies this image does not install. The check would try to
-# install the whole workspace for every `pnpm build:*` below, and fail on registry auth (the builder has
-# no token). pnpm 10 did not check; the build needs no install, so say so.
+# pnpm 11 and 12 run an implicit `install` before every script when node_modules does not match the
+# workspace (re-checked on 12.16.1: `pnpm run <script>` installs first, and this env var still suppresses
+# it). Here it must not: node_modules is copied from `deps` (root package only), while the full source
+# below includes apps/web, whose dependencies this image does not install. The check would try to install
+# the whole workspace for every `pnpm build:*` below, and fail on registry auth (the builder has no
+# token). pnpm 10 did not check; the build needs no install, so say so.
 ENV pnpm_config_verify_deps_before_run=false
 
 WORKDIR /app

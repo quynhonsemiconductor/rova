@@ -33,9 +33,9 @@ RUN corepack enable
 WORKDIR /app
 
 # The build runs `pnpm --filter rova-web build` with a filtered install, so the API workspace is
-# never installed; pnpm 11's implicit "node_modules is stale, install first" check would then try to
-# install the whole workspace (and fail: no registry token in that step). Same setting as the root
-# Dockerfile's builder stage.
+# never installed; pnpm 11 and 12's implicit "node_modules is stale, install first" check would then try
+# to install the whole workspace (re-checked on 12.16.1; the env var still suppresses it). Same setting
+# as the root Dockerfile's builder stage.
 ENV pnpm_config_verify_deps_before_run=false
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./

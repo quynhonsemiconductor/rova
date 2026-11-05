@@ -33,11 +33,12 @@ rova/
 
 A clean clone runs with **`cp .env.example .env` and the commands below, nothing else**. CI proves it on every PR (the `local quickstart` job boots exactly this) and `test/env-example.spec.ts` checks `.env.example` against the env schema and the dev tooling.
 
-**You need:** Docker with Compose v2, Node 24 (`.nvmrc`), pnpm (the version in `package.json` `packageManager`; pnpm 10 fetches it for you), and a GitHub token that can read the org's packages: the shared `@quynhonsemiconductor/*` libraries install from GitHub Packages. **Do not mint a personal PAT**: reuse your GitHub CLI login (`gh auth login`, needs the `read:packages` scope).
+**You need:** Docker with Compose v2, Node 24 (`.nvmrc`), pnpm (the version in `package.json` `packageManager`; corepack fetches it for you), and a GitHub token that can read the org's packages: the shared `@quynhonsemiconductor/*` libraries install from GitHub Packages. **Do not mint a personal PAT**: reuse your GitHub CLI login (`gh auth login`, needs the `read:packages` scope).
 
 ```bash
-# Once per machine. pnpm 11+ ignores a token written in a project .npmrc (that file is committed, so an environment
-# variable in it could leak to a registry the repo names), but expands one in your user-level file, on every version.
+# Once per machine. pnpm 11 and 12 ignore a token written in a project .npmrc (that file is committed, so an
+# environment variable in it could leak to a registry the repo names), but expand one in your user-level file, on
+# every version. Verified on 12.16.1: the install logs the ignored project-level setting and reads the user file.
 grep -qs 'npm.pkg.github.com/:_authToken' ~/.npmrc || echo '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' >> ~/.npmrc
 
 export NODE_AUTH_TOKEN="$(gh auth token)"      # per shell (or wire via direnv)

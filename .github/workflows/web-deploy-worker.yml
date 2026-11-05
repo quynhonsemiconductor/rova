@@ -138,7 +138,7 @@ jobs:
   # wrangler is an EXACT devDependency of rova-web (4.149.0) and is run from the
   # workspace, never `npx wrangler@latest`: the deploy must ship with the same
   # bundler the lockfile pinned (`pnpm build` above already proved wrangler
-  # installs on pnpm 11 — see web-ci "Deploy tooling").
+  # installs on pnpm 12 — see web-ci "Deploy tooling").
   # ───────────────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy ${{ needs.target.outputs.script }}
