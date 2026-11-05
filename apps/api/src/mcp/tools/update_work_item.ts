@@ -50,7 +50,7 @@ export function registerUpdateWorkItem(server: McpServer, ctx: ToolContext) {
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
-        idempotentHint: false,
+        idempotentHint: true,
         openWorldHint: false,
       },
       inputSchema: {
