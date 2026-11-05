@@ -36,7 +36,7 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
     {
       title: 'Create work item',
       description:
-        "WRITES a new story or defect as you, and must be used only on the user's explicit request; confirm the project, type and title with the user first. Names (project, team, iteration, release, feature, assignee) are resolved against what you can see — an unknown or ambiguous name comes back with candidates. A `feature` is linked with one follow-up update after the create and its outcome is reported as `featureLink`. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request; without one a retry may create a duplicate. A reused `requestId` replays the first record for 24 h; during a Valkey outage a retry may create a duplicate.",
+        "WRITES a new story or defect as you, and must be used only on the user's explicit request; confirm the project, type and title with the user first. Names (project, team, iteration, release, feature, assignee) are resolved against what you can see — an unknown or ambiguous name comes back with candidates. A `feature` is linked with one follow-up update after the create and its outcome is reported as `featureLink`; on a replay it is `{linked:'unknown', replayed:true}` because the cached response cannot know whether that first link landed. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request; without one a retry may create a duplicate. A reused `requestId` replays the first record for 24 h; during a Valkey outage a retry may create a duplicate.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -211,7 +211,8 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
         (field) => !['projectId', 'type', 'title'].includes(field),
       );
 
-      let featureLink: { linked: boolean; error?: unknown } | 'unknown on replay' | undefined;
+      let featureLink:
+        { linked: boolean | 'unknown'; replayed?: true; error?: unknown } | undefined;
       if (featureId !== undefined) {
         const createdId = typeof row['id'] === 'string' ? row['id'] : undefined;
         const version = versionFromEtag(res);
@@ -220,7 +221,7 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
           // version the caller is about to use. The create's cached response cannot say whether
           // that first PATCH landed, so the replay reports the outcome as unknown rather than
           // claiming "not linked".
-          featureLink = 'unknown on replay';
+          featureLink = { linked: 'unknown', replayed: true };
         } else if (createdId === undefined || version === undefined) {
           featureLink = {
             linked: false,
