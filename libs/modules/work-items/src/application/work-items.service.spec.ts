@@ -2688,6 +2688,7 @@ describe('WorkItemsService', () => {
         type: 'story',
         scheduleState: 'defined',
       },
+      createdBy: 'user-1',
       createdAt: now,
     });
 
