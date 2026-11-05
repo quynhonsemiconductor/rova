@@ -36,7 +36,7 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
     {
       title: 'Create work item',
       description:
-        "WRITES a new story or defect as you, and must be used only on the user's explicit request; confirm the project, type and title with the user first. Names (project, team, iteration, release, feature, assignee) are resolved against what you can see — an unknown or ambiguous name comes back with candidates. A `feature` is linked with one follow-up update after the create and its outcome is reported as `featureLink`. An identical request within 10 minutes returns the first result (`replayed: true`).",
+        "WRITES a new story or defect as you, and must be used only on the user's explicit request; confirm the project, type and title with the user first. Names (project, team, iteration, release, feature, assignee) are resolved against what you can see — an unknown or ambiguous name comes back with candidates. A `feature` is linked with one follow-up update after the create and its outcome is reported as `featureLink`. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request; without one a retry may create a duplicate.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -44,6 +44,14 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
         openWorldHint: false,
       },
       inputSchema: {
+        requestId: z
+          .string()
+          .min(1)
+          .max(64)
+          .optional()
+          .describe(
+            'A create-only retry guard: generate once per user request and reuse the SAME value when retrying that request. A repeat with the same id returns the first record; omit it and a retry may create a duplicate.',
+          ),
         project: z.string().min(1).max(255).describe('Project key, exact name or id'),
         type: z.enum(['story', 'defect']).describe('story (User Story) or defect'),
         title: z.string().min(1).max(500).describe('The item title'),
@@ -103,7 +111,7 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
       },
     },
     async (args) => {
-      if (!ctx.idempotencyKey) return toolError('Writes are not enabled on this endpoint.');
+      if (!ctx.clientIdempotencyKey) return toolError('Writes are not enabled on this endpoint.');
 
       const project = await resolveProject(ctx, args.project);
       if (!project.ok) return failureResult(project);
@@ -186,12 +194,15 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
         body['foundInReleaseId'] = found.id;
       }
 
-      const idempotencyKey = ctx.idempotencyKey('rova_create_work_item', args);
+      const idempotencyKey =
+        args.requestId !== undefined
+          ? ctx.clientIdempotencyKey('rova_create_work_item', { requestId: args.requestId })
+          : undefined;
       const res = await ctx.callRest(ctx.principal, {
         method: 'POST',
         url: '/v1/work-items',
         body,
-        idempotencyKey,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
       });
       if (res.statusCode >= 400) return denied(res.statusCode, res.json);
       const row = res.json as Record<string, unknown>;

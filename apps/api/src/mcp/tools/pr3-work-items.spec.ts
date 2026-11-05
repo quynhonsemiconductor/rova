@@ -26,6 +26,7 @@ const ITEM_ROW = {
 function context(route: (call: McpRestCall) => McpRestResult) {
   const calls: McpRestCall[] = [];
   const idempotencyKey = vi.fn((_tool: string, _args: unknown) => 'k-test');
+  const clientIdempotencyKey = vi.fn((_tool: string, _args: unknown) => 'k-test');
   const ctx: ToolContext = {
     principal: { userId: U(1), workspaceId: U(2), sessionId: 'mcp:writes' },
     callRest: async (_p, call) => {
@@ -33,8 +34,9 @@ function context(route: (call: McpRestCall) => McpRestResult) {
       return route(call);
     },
     idempotencyKey,
+    clientIdempotencyKey,
   };
-  return { ctx, calls, idempotencyKey };
+  return { ctx, calls, idempotencyKey, clientIdempotencyKey };
 }
 
 async function call(
@@ -97,7 +99,7 @@ function feeds(call: McpRestCall): McpRestResult | null {
 
 describe('PR3 work-item write tools', () => {
   it('rova_create_work_item resolves every named reference and posts a body the real DTO accepts', async () => {
-    const { ctx, calls, idempotencyKey } = context((call) => {
+    const { ctx, calls, clientIdempotencyKey } = context((call) => {
       const hit = feeds(call);
       if (hit) return hit;
       if (call.method === 'POST' && call.url === '/v1/work-items') {
@@ -124,6 +126,7 @@ describe('PR3 work-item write tools', () => {
       release: 'R-1',
       feature: 'FE-3',
       storyPoints: 3,
+      requestId: 'req-create',
     };
     const { isError, body } = await call(registerCreateWorkItem, ctx, args);
 
@@ -131,7 +134,9 @@ describe('PR3 work-item write tools', () => {
     const post = calls.find((c) => c.method === 'POST')!;
     expect(post.url).toBe('/v1/work-items');
     expect(post.idempotencyKey).toBe('k-test');
-    expect(idempotencyKey).toHaveBeenCalledWith('rova_create_work_item', args);
+    expect(clientIdempotencyKey).toHaveBeenCalledWith('rova_create_work_item', {
+      requestId: 'req-create',
+    });
     expect(post.body).toEqual({
       projectId: PROJECT,
       type: 'story',
@@ -201,8 +206,30 @@ describe('PR3 work-item write tools', () => {
     expect(JSON.stringify(wrongFeature.body)).toContain('another project');
   });
 
-  it('rova_add_task posts a CreateTaskSchema body under the parent and carries the idempotency key', async () => {
-    const { ctx, calls, idempotencyKey } = context((call) => {
+  it('the SAME requestId produces the same key on a retry; no requestId produces none', async () => {
+    const { ctx, calls, clientIdempotencyKey } = context((call) => {
+      const hit = feeds(call);
+      if (hit) return hit;
+      return { statusCode: 201, json: ITEM_ROW, headers: { ETag: '"0"' } };
+    });
+
+    const args = { project: 'NXP', type: 'story', title: 'same', requestId: 'req-same' };
+    await call(registerCreateWorkItem, ctx, args);
+    await call(registerCreateWorkItem, ctx, args);
+    expect(clientIdempotencyKey.mock.calls).toEqual([
+      ['rova_create_work_item', { requestId: 'req-same' }],
+      ['rova_create_work_item', { requestId: 'req-same' }],
+    ]);
+
+    const before = calls.filter((c) => c.method === 'POST').length;
+    await call(registerCreateWorkItem, ctx, { project: 'NXP', type: 'story', title: 'no key' });
+    const posts = calls.filter((c) => c.method === 'POST');
+    expect(posts).toHaveLength(before + 1);
+    expect(posts[posts.length - 1]?.idempotencyKey).toBeUndefined();
+  });
+
+  it('rova_add_task posts a CreateTaskSchema body under the parent and keys only an explicit requestId', async () => {
+    const { ctx, calls, clientIdempotencyKey } = context((call) => {
       const hit = feeds(call);
       if (hit) return hit;
       if (call.method === 'POST' && call.url === `/v1/work-items/${ITEM}/tasks`) {
@@ -222,6 +249,7 @@ describe('PR3 work-item write tools', () => {
       state: 'in_progress',
       assignee: 'alice@qnsc.dev',
       estimateHours: 2,
+      requestId: 'req-task',
     };
     const { isError, body } = await call(registerAddTask, ctx, args);
 
@@ -235,7 +263,8 @@ describe('PR3 work-item write tools', () => {
       estimateHours: 2,
     });
     expect(CreateTaskSchema.safeParse(post.body).success).toBe(true);
-    expect(idempotencyKey).toHaveBeenCalledWith('rova_add_task', args);
+    expect(clientIdempotencyKey).toHaveBeenCalledWith('rova_add_task', { requestId: 'req-task' });
+    expect(post.idempotencyKey).toBe('k-test');
     expect(body).toMatchObject({ workItem: { type: 'task', itemKey: 'TA-1' }, version: 0 });
   });
 
@@ -690,6 +719,7 @@ describe('PR3 work-item write tools', () => {
       type: 'story',
       title: 'twice',
       feature: 'FE-3',
+      requestId: 'req-replay',
     });
     expect(body.replayed).toBe(true);
     expect(body.featureLink).toEqual({ linked: null });
@@ -713,6 +743,7 @@ describe('PR3 work-item write tools', () => {
       project: 'NXP',
       type: 'story',
       title: 'twice',
+      requestId: 'req-replay',
     });
     expect(body.replayed).toBe(true);
   });

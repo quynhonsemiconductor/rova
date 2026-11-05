@@ -13,6 +13,7 @@ const U = (n: number) => `0194a000-0000-7000-8000-${String(n).padStart(12, '0')}
 function context(route: (call: McpRestCall) => McpRestResult) {
   const calls: McpRestCall[] = [];
   const idempotencyKey = vi.fn((_tool: string, _args: unknown) => 'k-test');
+  const clientIdempotencyKey = vi.fn((_tool: string, _args: unknown) => 'k-test');
   const ctx: ToolContext = {
     principal: { userId: U(1), workspaceId: U(2), sessionId: 'mcp:writes' },
     callRest: async (_p, call) => {
@@ -20,8 +21,9 @@ function context(route: (call: McpRestCall) => McpRestResult) {
       return route(call);
     },
     idempotencyKey,
+    clientIdempotencyKey,
   };
-  return { ctx, calls, idempotencyKey };
+  return { ctx, calls, idempotencyKey, clientIdempotencyKey };
 }
 
 async function call(
@@ -51,8 +53,8 @@ const resolved = (call: McpRestCall): McpRestResult | null => {
 };
 
 describe('PR2 write tools', () => {
-  it('rova_log_time posts the log with the generated idempotency key and relays the row', async () => {
-    const { ctx, calls, idempotencyKey } = context((call) => {
+  it('rova_log_time keys only an explicit requestId and relays the row', async () => {
+    const { ctx, calls, clientIdempotencyKey } = context((call) => {
       const hit = resolved(call);
       if (hit) return hit;
       if (call.url === `/v1/work-items/${U(20)}/time-logs`) {
@@ -77,12 +79,10 @@ describe('PR2 write tools', () => {
       hours: 2,
       date: '2026-06-20',
       description: 'api',
+      requestId: 'req-log',
     });
 
-    expect(idempotencyKey).toHaveBeenCalledWith(
-      'rova_log_time',
-      expect.objectContaining({ hours: 2 }),
-    );
+    expect(clientIdempotencyKey).toHaveBeenCalledWith('rova_log_time', { requestId: 'req-log' });
     const post = calls.find((c) => c.method === 'POST')!;
     expect(post.body).toEqual({ loggedDate: '2026-06-20', hours: 2, description: 'api' });
     expect(post.idempotencyKey).toBe('k-test');
@@ -90,6 +90,34 @@ describe('PR2 write tools', () => {
       timeLog: { id: U(60) },
       changed: ['hours', 'loggedDate', 'description'],
     });
+  });
+
+  it('a genuine repeat WITHOUT requestId is two creates and sends NO Idempotency-Key', async () => {
+    const { ctx, calls, clientIdempotencyKey } = context((call) => {
+      const hit = resolved(call);
+      if (hit) return hit;
+      return {
+        statusCode: 201,
+        json: {
+          id: U(60),
+          workItemId: U(20),
+          userId: U(1),
+          hours: '2.00',
+          loggedDate: '2026-06-20',
+          description: 'api',
+          createdAt: '2026-06-20T10:00:00.000Z',
+        },
+      };
+    });
+
+    const args = { key: 'US-412', hours: 2, date: '2026-06-20', description: 'api' };
+    await call(registerLogTime, ctx, args);
+    await call(registerLogTime, ctx, args);
+
+    const posts = calls.filter((c) => c.method === 'POST');
+    expect(posts).toHaveLength(2);
+    expect(posts.every((post) => post.idempotencyKey === undefined)).toBe(true);
+    expect(clientIdempotencyKey).not.toHaveBeenCalled();
   });
 
   it('the logged date is a real calendar date (REST and the tool) — 2026-02-30 is refused', () => {
