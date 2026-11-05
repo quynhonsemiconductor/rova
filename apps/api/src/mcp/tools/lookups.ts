@@ -31,6 +31,8 @@ export interface ResolvedWorkItem {
   type: string;
   version: number;
   projectId: string;
+  /** The item's Team — what a person reference is resolved against (the feed is row-scoped). */
+  teamId: string | null;
   /** The item's current timeboxes, for a plan PREVIEW (read from the same record). */
   iterationId: string | null;
   releaseId: string | null;
@@ -51,6 +53,12 @@ export interface ResolvedTestCase {
   id: string;
   testCaseKey: string;
   name: string;
+  /** The owning project — what a person reference for `tester`/`owner` is resolved against. */
+  projectId: string;
+  /** The owning Team, or null ("Project backlog") — the feed is narrow on the row's own team. */
+  teamId: string | null;
+  /** The parent work item, or null for a test case not attached to one (D2). */
+  workItemId: string | null;
 }
 
 /** A reference that did not resolve: a candidate message, or the REST refusal to relay. */
@@ -199,6 +207,7 @@ export async function resolveWorkItem(
     type: str(item['type']) ?? '',
     version: versionOfEtag(res, item['version']),
     projectId: str(item['projectId']) ?? '',
+    teamId: str(item['teamId']),
     iterationId: str(item['iterationId']),
     releaseId: str(item['releaseId']),
   };
@@ -268,17 +277,23 @@ export interface ResolvedPeople {
  * People by display name or email, from the caller's OWN workspace picker feed (`member-options`,
  * scoped to the projects they can read). An unknown reference lists the candidates; an ambiguous
  * one names every match — a mention must never go to the wrong person.
+ *
+ * `teamId` narrows the feed to that Team's candidates, exactly as the web's pickers do (the
+ * assignment rule itself is per ROW: a Team is selected -> project admins, that team's editors and
+ * its WA roster; no Team -> project admins only). Omitting it asks the team-less question.
  */
 export async function resolvePeople(
   ctx: ToolContext,
   projectId: string,
   references: string[],
+  options: { teamId?: string | null } = {},
 ): Promise<Lookup<ResolvedPeople>> {
   // PROJECT-scoped, not the workspace directory: a mention may only name someone who can own work
   // in the SUBJECT's project, and the candidates on a miss must not disclose anyone else.
   const res = await ctx.callRest(ctx.principal, {
     method: 'GET',
     url: `/v1/projects/${pathSegment(projectId)}/member-options`,
+    ...(options.teamId ? { query: { teamId: options.teamId } } : {}),
   });
   if (res.statusCode >= 400) return { ok: false, statusCode: res.statusCode, json: res.json };
   const people = rowsOf(res.json) ?? [];
@@ -336,6 +351,9 @@ export async function resolveTestCase(
     id,
     testCaseKey: str(row['testCaseKey']) ?? testCaseKey,
     name: str(row['name']) ?? '',
+    projectId: str(row['projectId']) ?? '',
+    teamId: str(row['teamId']),
+    workItemId: str(row['workItemId']),
   };
 }
 

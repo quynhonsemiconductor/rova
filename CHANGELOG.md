@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.8.9](https://github.com/quynhonsemiconductor/rova/compare/v0.8.8...v0.8.9) (2026-11-05)
+
+
+### ✨ Features
+
+* **mcp:** create, update and add-task write tools ([#895](https://github.com/quynhonsemiconductor/rova/issues/895)) ([bd12174](https://github.com/quynhonsemiconductor/rova/commit/bd1217491756cfcfe3ee05c0fd26fd9e4c62e9ba))
+* **mcp:** first three write tools behind MCP_WRITES_ENABLED ([#891](https://github.com/quynhonsemiconductor/rova/issues/891)) ([54bd0d5](https://github.com/quynhonsemiconductor/rova/commit/54bd0d523108de37664a146e9d1ae8ca667366de))
+* **mcp:** four read tools and portfolio comments ([#888](https://github.com/quynhonsemiconductor/rova/issues/888)) ([3939ab8](https://github.com/quynhonsemiconductor/rova/commit/3939ab8b7a1a381b4f15927ddb24f688789be44e))
+* **mcp:** link, label and plan write tools ([#899](https://github.com/quynhonsemiconductor/rova/issues/899)) ([6e7d0fe](https://github.com/quynhonsemiconductor/rova/commit/6e7d0fec39ca25ea0816407373fe6d261f65f47d))
+* **mcp:** test-case and test-result write tools ([#902](https://github.com/quynhonsemiconductor/rova/issues/902)) ([cb52605](https://github.com/quynhonsemiconductor/rova/commit/cb52605d3d2108231733fa6d615e6635240e244a))
+
+
+### 🐛 Bug Fixes
+
+* **auth:** keep the session through rate limits and outages ([#896](https://github.com/quynhonsemiconductor/rova/issues/896)) ([c64bc07](https://github.com/quynhonsemiconductor/rova/commit/c64bc07d4608e90594979031c89a4c45b18f33ec))
+* **iteration-status:** show the Actual total in the Totals row ([#892](https://github.com/quynhonsemiconductor/rova/issues/892)) ([9463069](https://github.com/quynhonsemiconductor/rova/commit/9463069382ed10669e3d0b43d818b6ef0651efd6))
+* **scm:** link work items named only in the PR description ([#897](https://github.com/quynhonsemiconductor/rova/issues/897)) ([a0f3626](https://github.com/quynhonsemiconductor/rova/commit/a0f3626ce5a96232afe5e1c7c8698bf6025a2de2))
+* **web:** strip Caddy's file capabilities so pods can exec it ([#893](https://github.com/quynhonsemiconductor/rova/issues/893)) ([0b38caa](https://github.com/quynhonsemiconductor/rova/commit/0b38caaa4c57f88a835d7e8dbad5a9d443e79ce5))
+
 ## [0.8.8](https://github.com/quynhonsemiconductor/rova/compare/v0.8.7...v0.8.8) (2026-11-04)
 
 

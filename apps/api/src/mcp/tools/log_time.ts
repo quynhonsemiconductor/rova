@@ -1,19 +1,14 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, pathSegment, result, toolError, type ToolContext } from './rest';
+import {
+  denied,
+  isRealCalendarDate,
+  pathSegment,
+  result,
+  toolError,
+  type ToolContext,
+} from './rest';
 import { failureResult, resolveWorkItem } from './lookups';
-
-/** Same rule as the REST `LoggedDateSchema`: a real calendar date in 2000–2100 (2026-02-30 is refused). */
-function isRealLoggedDate(value: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return false;
-  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  if (year < 2000 || year > 2100) return false;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-  );
-}
 
 /**
  * `rova_log_time` — log hours the CALLER worked on a work item (W7). Wraps
@@ -22,7 +17,7 @@ function isRealLoggedDate(value: string): boolean {
  * of double-logging.
  *
  * `date` is REQUIRED (YYYY-MM-DD): "today" is a database-clock question and a tool must not guess
- * it from the process clock.
+ * it from the process clock. ({@link isRealCalendarDate} is the shared check.)
  */
 export function registerLogTime(server: McpServer, ctx: ToolContext) {
   return server.registerTool(
@@ -43,7 +38,7 @@ export function registerLogTime(server: McpServer, ctx: ToolContext) {
         date: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
-          .refine(isRealLoggedDate, 'Must be a real calendar date between 2000 and 2100')
+          .refine(isRealCalendarDate, 'Must be a real calendar date between 2000 and 2100')
           .describe('The work date'),
         description: z.string().max(2000).optional().describe('What the time was for'),
       },
