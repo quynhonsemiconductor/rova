@@ -16,7 +16,7 @@ export function registerAddTask(server: McpServer, ctx: ToolContext) {
     {
       title: 'Add task',
       description:
-        "WRITES a task under a story or defect as you, and must be used only on the user's explicit request. The task inherits its iteration from the parent; `parentKey` is the work item key (e.g. US-412) or id. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request; without one a retry may create a duplicate.",
+        "WRITES a task under a story or defect as you, and must be used only on the user's explicit request. The task inherits its iteration from the parent; `parentKey` is the work item key (e.g. US-412) or id. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request; without one a retry may create a duplicate. A reused `requestId` replays the first record for 24 h; during a Valkey outage a retry may create a duplicate.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,

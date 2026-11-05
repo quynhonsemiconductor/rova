@@ -26,7 +26,7 @@ export function registerLogTime(server: McpServer, ctx: ToolContext) {
     {
       title: 'Log time',
       description:
-        "WRITES a time log on a work item as YOU, and must be used only on the user's explicit request. `date` is the work date (YYYY-MM-DD, a real calendar date) and is required. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request; without one a retry may create a duplicate.",
+        "WRITES a time log on a work item as YOU, and must be used only on the user's explicit request. `date` is the work date (YYYY-MM-DD, a real calendar date) and is required. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request; without one a retry may create a duplicate. A reused `requestId` replays the first record for 24 h; during a Valkey outage a retry may create a duplicate.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,

@@ -722,7 +722,7 @@ describe('PR3 work-item write tools', () => {
       requestId: 'req-replay',
     });
     expect(body.replayed).toBe(true);
-    expect(body.featureLink).toEqual({ linked: null });
+    expect(body.featureLink).toBe('unknown on replay');
     expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
   });
 

@@ -15,7 +15,7 @@ export function registerAddComment(server: McpServer, ctx: ToolContext) {
     {
       title: 'Add comment',
       description:
-        "WRITES a comment on one work item (key/id) or portfolio item (key) as you; @mentions notify the named people. Use only on the user's explicit request. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request; without one a retry may create a duplicate.",
+        "WRITES a comment on one work item (key/id) or portfolio item (key) as you; @mentions notify the named people. Use only on the user's explicit request. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request; without one a retry may create a duplicate. A reused `requestId` replays the first record for 24 h; during a Valkey outage a retry may create a duplicate.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
