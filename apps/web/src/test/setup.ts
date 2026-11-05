@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom'
+import '@testing-library/jest-dom/vitest'
 
 /**
  * jsdom ships no ResizeObserver, and Radix measures with it — `Popover.Arrow` goes through
