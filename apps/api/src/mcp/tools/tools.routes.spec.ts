@@ -62,6 +62,39 @@ function toolRouteLiterals(): Array<{ file: string; path: string }> {
   return found;
 }
 
+/**
+ * Every `METHOD /v1/...` a tool CALLS, from the `method`/`url` pair it hands `callRest`. The
+ * allowlist is checked by METHOD: a path that is a write route is not thereby readable, which is
+ * how `GET /v1/iterations/:id` (the update-by-UUID fast path) was refused at runtime while the
+ * narrower literal test below still passed.
+ */
+function toolCallRoutes(): Array<{ file: string; method: string; path: string }> {
+  const found: Array<{ file: string; method: string; path: string }> = [];
+  for (const entry of readdirSync(__dirname, { withFileTypes: true })) {
+    if (
+      !entry.isFile() ||
+      !entry.name.endsWith('.ts') ||
+      entry.name.endsWith('.spec.ts') ||
+      entry.name === 'registry.ts'
+    ) {
+      continue;
+    }
+    const src = readFileSync(join(__dirname, entry.name), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    for (const match of src.matchAll(
+      /method:\s*'(GET|POST|PATCH|PUT|DELETE)'\s*,\s*url:\s*(`|')([^`']*)\2/g,
+    )) {
+      found.push({
+        file: entry.name,
+        method: match[1],
+        path: match[3].replace(/\$\{[^}]*\}/g, ':param'),
+      });
+    }
+  }
+  return found;
+}
+
 function allowedPaths(): Set<string> {
   return new Set(
     [...MCP_READ_ROUTES, ...MCP_WRITE_ROUTES].map((key) => key.split(' ').slice(1).join(' ')),
@@ -464,6 +497,19 @@ describe('MCP tool catalogue maps to real routes', () => {
         `${name}: no such REST route`,
       ).toBe(true);
     }
+  });
+
+  it('every route a tool CALLS is allowed for its own METHOD', () => {
+    const routes = toolCallRoutes();
+    expect(routes.length).toBeGreaterThan(40);
+    const offenders = routes
+      .filter(({ method, path }) =>
+        method === 'GET'
+          ? !MCP_READ_ROUTES.has(`GET ${normalizeRouteTemplate(path)}`)
+          : !MCP_WRITE_ROUTES.has(mcpWriteRouteKey(method, path)),
+      )
+      .map(({ file, method, path }) => `${file}: ${method} ${path}`);
+    expect(offenders).toEqual([]);
   });
 
   it('every /v1 route literal a tool composes is on the READ or WRITE allowlist', () => {

@@ -90,6 +90,15 @@ export const WRITE_TOOL_ROUTES = {
     { method: 'PATCH', url: '/v1/test-cases/:id' },
   ],
   rova_record_test_results: { method: 'POST', url: '/v1/test-cases/:id/test-results' },
+  // A portfolio item is created at the collection and edited by its own id.
+  rova_save_portfolio_item: [
+    { method: 'POST', url: '/v1/portfolio-items' },
+    { method: 'PATCH', url: '/v1/portfolio-items/:id' },
+  ],
+  rova_save_iteration: [
+    { method: 'POST', url: '/v1/iterations' },
+    { method: 'PATCH', url: '/v1/iterations/:id' },
+  ],
 } as const satisfies Record<string, WriteRoute | readonly WriteRoute[]>;
 
 export type ToolName = keyof typeof TOOL_ROUTES;

@@ -49,6 +49,8 @@ import { registerLabelWorkItem } from './label_work_item';
 import { registerPlanWorkItems } from './plan_work_items';
 import { registerSaveTestCase } from './save_test_case';
 import { registerRecordTestResults } from './record_test_results';
+import { registerSavePortfolioItem } from './save_portfolio_item';
+import { registerSaveIteration } from './save_iteration';
 import type { ToolCallObserver, ToolContext } from './rest';
 import { instrumentToolHandler } from './rest';
 
@@ -95,6 +97,8 @@ export const WRITE_TOOL_REGISTRARS: readonly WriteToolRegistrar[] = [
   { name: 'rova_plan_work_items', register: registerPlanWorkItems },
   { name: 'rova_save_test_case', register: registerSaveTestCase },
   { name: 'rova_record_test_results', register: registerRecordTestResults },
+  { name: 'rova_save_portfolio_item', register: registerSavePortfolioItem },
+  { name: 'rova_save_iteration', register: registerSaveIteration },
 ];
 
 export interface RegisterToolsOptions {
