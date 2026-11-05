@@ -81,6 +81,7 @@ function feeds(overrides: {
   testCases?: Record<string, unknown>[];
   results?: Record<string, unknown>[];
   iterations?: Record<string, unknown>[];
+  timeLogTotal?: number;
 }) {
   return (call: McpRestCall): McpRestResult => {
     if (call.method === 'DELETE') return { statusCode: 204, json: null };
@@ -94,7 +95,10 @@ function feeds(overrides: {
     if (call.url.endsWith('/comments')) return { statusCode: 200, json: overrides.comments ?? [] };
     if (call.url.endsWith('/time-logs')) {
       const logs = overrides.timeLogs ?? [];
-      return { statusCode: 200, json: { items: logs, total: logs.length } };
+      return {
+        statusCode: 200,
+        json: { items: logs, total: overrides.timeLogTotal ?? logs.length },
+      };
     }
     if (call.url.endsWith('/relations'))
       return { statusCode: 200, json: overrides.relations ?? [] };
@@ -144,18 +148,42 @@ describe('rova_delete guard (§5)', () => {
     expect(deleteCalls(calls)).toHaveLength(0);
   });
 
-  it('deletes a relation that touches the named item', async () => {
-    const { ctx, calls } = context(
+  it('deletes a relation only when the caller created it', async () => {
+    const mine = context(
       feeds({
-        relations: [{ id: RELATION, relationType: 'blocks', relatedItem: { id: 'x' } }],
+        relations: [
+          {
+            id: RELATION,
+            relationType: 'blocks',
+            createdBy: ME,
+            relatedItem: { id: 'x' },
+          },
+        ],
       }),
     );
-    const { isError } = await call(ctx, { kind: 'relation', key: 'US-500', id: RELATION });
+    const { isError } = await call(mine.ctx, { kind: 'relation', key: 'US-500', id: RELATION });
     expect(isError).toBeFalsy();
-    expect(deleteCalls(calls)[0]?.url).toBe(`/v1/work-items/${STORY}/relations/${RELATION}`);
+    expect(deleteCalls(mine.calls)[0]?.url).toBe(`/v1/work-items/${STORY}/relations/${RELATION}`);
+
+    const theirs = context(
+      feeds({
+        relations: [
+          {
+            id: RELATION,
+            relationType: 'blocks',
+            createdBy: OTHER,
+            relatedItem: { id: 'x' },
+          },
+        ],
+      }),
+    );
+    const refused = await call(theirs.ctx, { kind: 'relation', key: 'US-500', id: RELATION });
+    expect(refused.isError).toBe(true);
+    expect(refused.body['error']).toMatch(/relation you created/);
+    expect(deleteCalls(theirs.calls)).toHaveLength(0);
   });
 
-  it('bounds a test-result delete to 7 days and to a result you recorded or tested', async () => {
+  it('bounds a test-result delete to 7 days and to the caller who RECORDED it', async () => {
     const theirs = context(
       feeds({
         results: [{ id: RESULT, createdBy: OTHER, testerId: OTHER, createdAt: now() }],
@@ -165,6 +193,21 @@ describe('rova_delete guard (§5)', () => {
       (await call(theirs.ctx, { kind: 'test_result', key: 'TC-12', id: RESULT })).isError,
     ).toBe(true);
     expect(deleteCalls(theirs.calls)).toHaveLength(0);
+
+    // `tester_id` names who the result is ABOUT; only `created_by` is the recorder.
+    const testerOnly = context(
+      feeds({
+        results: [{ id: RESULT, createdBy: OTHER, testerId: ME, createdAt: now() }],
+      }),
+    );
+    const testerOnlyRes = await call(testerOnly.ctx, {
+      kind: 'test_result',
+      key: 'TC-12',
+      id: RESULT,
+    });
+    expect(testerOnlyRes.isError).toBe(true);
+    expect(testerOnlyRes.body['error']).toMatch(/recorded/);
+    expect(deleteCalls(testerOnly.calls)).toHaveLength(0);
 
     const stale = context(
       feeds({
@@ -208,6 +251,24 @@ describe('rova_delete guard (§5)', () => {
     expect(res.isError).toBe(true);
     expect(res.body['error']).toMatch(/someone else/);
     expect(deleteCalls(foreignTime.calls)).toHaveLength(0);
+  });
+
+  it('refuses a task whose time logs exceed one page, so a foreign log cannot hide on page 2', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      id: U(100 + index),
+      userId: ME,
+    }));
+    const { ctx, calls } = context(
+      feeds({
+        item: item({ id: TASK, type: 'task', createdBy: ME }),
+        timeLogs: firstPage,
+        timeLogTotal: 101,
+      }),
+    );
+    const res = await call(ctx, { kind: 'task', key: 'TA-9' });
+    expect(res.isError).toBe(true);
+    expect(res.body['error']).toMatch(/more time logs than one page/);
+    expect(deleteCalls(calls)).toHaveLength(0);
   });
 
   it('warns when deleting the parent’s last open task, because the parent auto-completes', async () => {
@@ -268,8 +329,38 @@ describe('rova_delete guard (§5)', () => {
       deleted: { kind: 'work_item', id: STORY, subject: 'US-500' },
       reason: 'duplicate I just made',
     });
-    // The audit line names the target and the KIND only; free text never reaches it.
-    expect(notes).toEqual([{ targets: [STORY], fields: ['work_item'], count: 1 }]);
+    // The audit line names the target and the KIND, and records the stated reason.
+    expect(notes).toEqual([
+      { targets: [STORY], fields: ['work_item'], count: 1, reason: 'duplicate I just made' },
+    ]);
+  });
+
+  it('answers a retry after the delete landed as alreadyDeleted, not a refusal', async () => {
+    // The target no longer resolves: exactly what a successful delete leaves behind.
+    const gone = context(feeds({}));
+    const first = await call(gone.ctx, { kind: 'work_item', key: 'US-500', reason: 'duplicate' });
+    expect(first.isError).toBeFalsy();
+
+    const retryCtx = context((call) =>
+      call.method === 'GET'
+        ? { statusCode: 404, json: { error: { code: 'WORK_ITEM_NOT_FOUND' } } }
+        : { statusCode: 500, json: {} },
+    );
+    const retry = await call(retryCtx.ctx, {
+      kind: 'work_item',
+      key: 'US-500',
+      reason: 'duplicate',
+    });
+    expect(retry.isError, JSON.stringify(retry.body)).toBeFalsy();
+    expect(retry.body).toEqual({
+      deleted: { kind: 'work_item', subject: 'US-500' },
+      alreadyDeleted: true,
+      reason: 'duplicate',
+    });
+    expect(deleteCalls(retryCtx.calls)).toHaveLength(0);
+    expect(retryCtx.notes).toEqual([
+      { targets: [], fields: ['work_item'], count: 0, reason: 'duplicate' },
+    ]);
   });
 
   it('relays the REST refusal instead of reporting success', async () => {

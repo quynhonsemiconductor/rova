@@ -18,9 +18,10 @@ import type { Counter, Histogram } from '@opentelemetry/api';
 export type ToolOutcome = 'ok' | 'error';
 
 /**
- * What a write tool may report about the write it made (design §6.7). IDS, KEYS and FIELD NAMES
- * only — never a value and never free text (a title, a comment body, a reason). `sanitize` keeps
- * exactly these keys and nothing else, so a tool that passes extra fields cannot leak them.
+ * What a write tool may report about the write it made (design §6.7). IDS, KEYS and FIELD NAMES,
+ * plus `reason` — the justification the MCP v2 review requires `rova_delete` to record. No other
+ * value and no other free text (a title, a comment body) passes. `sanitize` keeps exactly these
+ * keys and nothing else, and bounds `reason` to 500 characters.
  */
 export interface WriteAuditData {
   write?: boolean;
@@ -33,6 +34,8 @@ export interface WriteAuditData {
   count?: number;
   /** A plan preview: `true` means nothing was written. */
   dryRun?: boolean;
+  /** The caller's stated reason for a destructive write (≤ 500 characters). */
+  reason?: string;
 }
 
 export interface ToolCallEvent extends WriteAuditData {
@@ -42,12 +45,22 @@ export interface ToolCallEvent extends WriteAuditData {
   outcome: ToolOutcome;
 }
 
-const WRITE_KEYS = new Set(['write', 'httpStatus', 'targets', 'fields', 'count', 'dryRun']);
+const WRITE_KEYS = new Set([
+  'write',
+  'httpStatus',
+  'targets',
+  'fields',
+  'count',
+  'dryRun',
+  'reason',
+]);
 const MAX_TARGETS = 25;
+const MAX_REASON = 500;
 
 /**
  * Keeps exactly the §6.7 write fields and drops everything else. Arrays are truncated, entries
- * that are not strings are dropped, and no string is copied from a non-whitelisted key.
+ * that are not strings are dropped, and no string is copied from a non-whitelisted key. `reason`
+ * is the one free-text field, kept only because the review requires an audited justification.
  */
 export function sanitizeWriteAudit(input: Record<string, unknown>): WriteAuditData {
   const out: WriteAuditData = {};
@@ -63,6 +76,8 @@ export function sanitizeWriteAudit(input: Record<string, unknown>): WriteAuditDa
           .filter((entry): entry is string => typeof entry === 'string')
           .slice(0, MAX_TARGETS);
       }
+    } else if (key === 'reason') {
+      if (typeof value === 'string') out.reason = value.slice(0, MAX_REASON);
     }
   }
   return out;
@@ -137,7 +152,7 @@ export function createMcpAudit(
           durationMs,
           outcome,
           rateLimited: false,
-          // §6.7: ids/keys/field NAMES/counts only — no values, no free text.
+          // §6.7: ids/keys/field NAMES/counts, plus the bounded `reason` a delete records.
           ...sanitizeWriteAudit(event as unknown as Record<string, unknown>),
         },
         'MCP tool call',

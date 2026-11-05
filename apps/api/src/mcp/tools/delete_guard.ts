@@ -26,7 +26,15 @@ export interface DeletePlan {
   warning?: string;
 }
 
-export type DeleteRefusal = LookupFailure;
+export type DeleteRefusal = LookupFailure & {
+  /**
+   * The 404 was the TARGET itself (its key no longer resolves), which is what a retry after a
+   * successful delete sees. The caller is already known and a plain lookup has no ownership to
+   * judge, so the tool reports the retry as `alreadyDeleted` — the same answer a stranger's
+   * 404 gets, revealing nothing about whether the row ever existed.
+   */
+  targetMissing?: true;
+};
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -81,6 +89,23 @@ async function readRows(
     return { ok: false, message: `Unexpected response from ${call.url}.` };
   }
   return { ok: true, rows };
+}
+
+/** A paged read whose `total` decides whether ONE page is the whole collection. */
+async function readPage(
+  ctx: ToolContext,
+  call: McpRestCall,
+): Promise<Lookup<{ ok: true; rows: Record<string, unknown>[]; total?: number }>> {
+  const res: McpRestResult = await ctx.callRest(ctx.principal, call);
+  if (res.statusCode >= 400) {
+    return { ok: false, statusCode: res.statusCode, json: res.json };
+  }
+  const rows = rowsOf(res.json);
+  if (!rows) {
+    return { ok: false, message: `Unexpected response from ${call.url}.` };
+  }
+  const total = (res.json as { total?: unknown } | null)?.total;
+  return { ok: true, rows, ...(typeof total === 'number' ? { total } : {}) };
 }
 
 const str = (value: unknown): string | undefined =>
@@ -165,6 +190,11 @@ export async function planDelete(
     if (!relations.ok) return relations;
     const relation = relations.rows.find((row) => str(row['id']) === id);
     if (!relation) return { ok: false, message: `No relation ${id} touches ${key}.` };
+    // "One thing the caller owns" has no exception: a link created by someone else is theirs to
+    // remove, even on an item the caller can edit.
+    if (str(relation['createdBy']) !== me) {
+      return { ok: false, message: 'You can only delete a relation you created.' };
+    }
     return {
       ok: true,
       kind: 'relation',
@@ -190,9 +220,10 @@ export async function planDelete(
     if (!results.ok) return results;
     const result = results.rows.find((row) => str(row['id']) === id);
     if (!result) return { ok: false, message: `No result ${id} on ${key}.` };
-    const mine = str(result['createdBy']) === me || str(result['testerId']) === me;
-    if (!mine) {
-      return { ok: false, message: 'You can only delete a result you recorded or tested.' };
+    // `created_by` is the RECORDER: REST stamps it from the authenticated caller, while
+    // `tester_id` may name a different person the result is about. Ownership follows the recorder.
+    if (str(result['createdBy']) !== me) {
+      return { ok: false, message: 'You can only delete a result you recorded.' };
     }
     const createdAt = Date.parse(str(result['createdAt']) ?? '');
     if (!Number.isFinite(createdAt) || Date.now() - createdAt > TEST_RESULT_MAX_AGE_MS) {
@@ -213,7 +244,14 @@ export async function planDelete(
   }
 
   const item = await fetchItem(ctx, key);
-  if (!item.ok) return item;
+  if (!item.ok) {
+    // The key no longer resolves: a retry of a delete that already landed. Mark it so the tool
+    // can answer idempotently instead of turning a success into a refusal.
+    if ('statusCode' in item && item.statusCode === 404) {
+      return { ...item, targetMissing: true };
+    }
+    return item;
+  }
   const itemId = String(item['id']);
   const type = str(item['type']);
 
@@ -225,12 +263,20 @@ export async function planDelete(
       return { ok: false, message: 'A task may be deleted only by its creator or its owner.' };
     }
 
-    const logs = await readRows(ctx, {
+    const logs = await readPage(ctx, {
       method: 'GET',
       url: `/v1/work-items/${pathSegment(itemId)}/time-logs`,
       query: { page: 1, pageSize: 100 },
     });
     if (!logs.ok) return logs;
+    // One page is only the whole set when the server says it is. A 101st row on page 2 could be
+    // someone else's, and this guard must never let it be hidden behind a page boundary.
+    if (logs.total !== undefined && logs.total > logs.rows.length) {
+      return {
+        ok: false,
+        message: `${key} has more time logs than one page can show; use the web.`,
+      };
+    }
     const foreignLog = logs.rows.find((row) => str(row['userId']) !== me);
     if (foreignLog) {
       return {

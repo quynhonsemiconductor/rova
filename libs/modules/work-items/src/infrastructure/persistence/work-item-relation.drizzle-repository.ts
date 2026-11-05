@@ -28,6 +28,7 @@ export class WorkItemRelationDrizzleRepository implements IWorkItemRelationRepos
       .select({
         id: rel.id,
         relationType: rel.relationType,
+        createdBy: rel.createdBy,
         createdAt: rel.createdAt,
         otherId: other.id,
         otherKey: other.itemKey,
@@ -51,6 +52,7 @@ export class WorkItemRelationDrizzleRepository implements IWorkItemRelationRepos
       .select({
         id: rel.id,
         relationType: rel.relationType,
+        createdBy: rel.createdBy,
         createdAt: rel.createdAt,
         otherId: other.id,
         otherKey: other.itemKey,
@@ -80,6 +82,7 @@ export class WorkItemRelationDrizzleRepository implements IWorkItemRelationRepos
     r: {
       id: string;
       relationType: WorkItemRelationType;
+      createdBy: string;
       createdAt: Date;
       otherId: string;
       otherKey: string;
@@ -102,6 +105,7 @@ export class WorkItemRelationDrizzleRepository implements IWorkItemRelationRepos
         type: r.otherType,
         scheduleState: r.otherScheduleState,
       },
+      createdBy: r.createdBy,
       createdAt: r.createdAt,
     };
   }

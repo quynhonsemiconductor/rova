@@ -64,6 +64,8 @@ export interface WorkItemRelationView {
     type: string;
     scheduleState: string;
   };
+  /** Who created the link; `rova_delete` allows only the creator to remove it. */
+  createdBy: string;
   createdAt: Date;
 }
 

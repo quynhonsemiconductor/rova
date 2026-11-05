@@ -20,7 +20,8 @@ describe('MCP write audit (§6.7)', () => {
       // A tool that "helpfully" attaches values must lose them here.
       title: 'SENSITIVE TITLE',
       body: 'SENSITIVE BODY',
-      reason: 'SENSITIVE REASON',
+      // `reason` is the ONE free text the audit line keeps: a delete must record why.
+      reason: 'duplicate I just created',
     });
     expect(sanitized).toEqual({
       write: true,
@@ -29,8 +30,14 @@ describe('MCP write audit (§6.7)', () => {
       fields: ['title', 'iterationId'],
       count: 2,
       dryRun: false,
+      reason: 'duplicate I just created',
     });
     expect(JSON.stringify(sanitized)).not.toContain('SENSITIVE');
+  });
+
+  it('bounds the recorded reason and drops a non-string one', () => {
+    expect(sanitizeWriteAudit({ reason: 'x'.repeat(600) }).reason).toHaveLength(500);
+    expect(sanitizeWriteAudit({ reason: 42 }).reason).toBeUndefined();
   });
 
   it('truncates targets to 25 and drops non-string entries', () => {
