@@ -403,11 +403,40 @@ describe('rova_delete guard (§5)', () => {
     }
   });
 
-  it('re-reads the parent after a task delete and reports the stored auto-completion', async () => {
+  it('reports parentAutoCompleted only on the not-completed -> completed transition', async () => {
     const parentId = U(90);
+    let parentReads = 0;
     const { ctx, calls } = context((routeCall) => {
       if (routeCall.method === 'DELETE') return { statusCode: 204, json: null };
       if (routeCall.method === 'GET' && routeCall.url === `/v1/work-items/${parentId}`) {
+        parentReads += 1;
+        return {
+          statusCode: 200,
+          json: item({
+            id: parentId,
+            type: 'story',
+            scheduleState: parentReads === 1 ? 'in_progress' : 'completed',
+          }),
+        };
+      }
+      return feeds({ item: item({ id: TASK, type: 'task', createdBy: ME, parentId }) })(routeCall);
+    });
+    const { isError, body } = await call(ctx, { kind: 'task', key: 'TA-9' });
+    expect(isError, JSON.stringify(body)).toBeFalsy();
+    expect(body['parentAutoCompleted']).toBe(true);
+    expect(parentReads).toBe(2);
+    expect(calls.some((c) => c.method === 'GET' && c.url === `/v1/work-items/${parentId}`)).toBe(
+      true,
+    );
+  });
+
+  it('does NOT report parentAutoCompleted when the parent was already completed', async () => {
+    const parentId = U(91);
+    let parentReads = 0;
+    const { ctx } = context((routeCall) => {
+      if (routeCall.method === 'DELETE') return { statusCode: 204, json: null };
+      if (routeCall.method === 'GET' && routeCall.url === `/v1/work-items/${parentId}`) {
+        parentReads += 1;
         return {
           statusCode: 200,
           json: item({ id: parentId, type: 'story', scheduleState: 'completed' }),
@@ -417,10 +446,8 @@ describe('rova_delete guard (§5)', () => {
     });
     const { isError, body } = await call(ctx, { kind: 'task', key: 'TA-9' });
     expect(isError, JSON.stringify(body)).toBeFalsy();
-    expect(body['parentAutoCompleted']).toBe(true);
-    expect(calls.some((c) => c.method === 'GET' && c.url === `/v1/work-items/${parentId}`)).toBe(
-      true,
-    );
+    expect(body).not.toHaveProperty('parentAutoCompleted');
+    expect(parentReads).toBe(2);
   });
 
   it('relays the REST refusal from the DELETE itself instead of reporting success', async () => {

@@ -308,9 +308,11 @@ export async function planDelete(
 
   // Deleting a task soft-deletes its test cases AND every result under them, whoever recorded
   // them. Any live test case therefore blocks the delete. The test-case list is scoped only by a
-  // readable parent (the task itself), so an empty page is proof; the other two feeds are
-  // RETAINED by REST, and a foreign comment/relation still makes this "not one thing the caller
-  // owns" even when a scope-hidden far end is unknowable here.
+  // readable parent (the task itself), so an empty page is proof. Comments and relations are
+  // RETAINED by REST (soft delete, no data loss), so refusing a VISIBLE foreign one is
+  // best-effort ownership hygiene, not a cascade guard. This relations feed also drops relations
+  // whose far end the caller cannot read, so a hidden foreign relation is NOT detected here — and
+  // that is harmless for data loss, because REST keeps it.
   const [testCases, comments, relations] = await Promise.all([
     readRows(ctx, {
       method: 'GET',

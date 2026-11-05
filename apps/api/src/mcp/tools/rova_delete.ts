@@ -58,15 +58,21 @@ export function registerDelete(server: McpServer, ctx: ToolContext) {
         return toolError(plan.message);
       }
 
+      // Read the parent BEFORE the delete, then again after it: `parentAutoCompleted` means the
+      // not-completed -> completed TRANSITION this delete caused, not "the parent is completed".
+      // A scope-hidden sibling cannot make this a prediction because both sides are stored reads.
+      const parentBefore =
+        plan.kind === 'task' && plan.parentId !== undefined
+          ? await parentIsCompleted(ctx, plan.parentId)
+          : undefined;
       const res = await ctx.callRest(ctx.principal, { method: 'DELETE', url: plan.path });
       if (res.statusCode >= 400) return denied(res.statusCode, res.json);
 
-      // Deleting the parent's last open task completes the parent. REPORT the stored outcome by
-      // re-reading it, never a prediction: a scope-hidden sibling could make a prediction wrong.
-      const parentAutoCompleted =
-        plan.kind === 'task' &&
-        plan.parentId !== undefined &&
-        (await parentIsCompleted(ctx, plan.parentId));
+      const parentAfter =
+        plan.kind === 'task' && plan.parentId !== undefined
+          ? await parentIsCompleted(ctx, plan.parentId)
+          : undefined;
+      const parentAutoCompleted = parentBefore === false && parentAfter === true;
 
       ctx.noteWrite?.({
         targets: [plan.targetId],
@@ -87,13 +93,16 @@ export function registerDelete(server: McpServer, ctx: ToolContext) {
   );
 }
 
-/** The parent's stored schedule state after the delete; a read failure simply omits the flag. */
-async function parentIsCompleted(ctx: ToolContext, parentId: string): Promise<boolean> {
+/**
+ * The parent's stored schedule state at one moment: `undefined` when the read failed, so an
+ * uncompleted-before result can never be inferred from a failed read.
+ */
+async function parentIsCompleted(ctx: ToolContext, parentId: string): Promise<boolean | undefined> {
   const res = await ctx.callRest(ctx.principal, {
     method: 'GET',
     url: `/v1/work-items/${pathSegment(parentId)}`,
   });
-  if (res.statusCode >= 400) return false;
+  if (res.statusCode >= 400) return undefined;
   const body = res.json as Record<string, unknown> | null;
   const item = (body?.['item'] as Record<string, unknown> | undefined) ?? body;
   return item?.['scheduleState'] === 'completed';
