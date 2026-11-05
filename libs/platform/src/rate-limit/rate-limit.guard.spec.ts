@@ -15,7 +15,7 @@ import { Reflector } from '@nestjs/core';
 import { requestContextStorage, type RequestContext } from '@quynhonsemiconductor/observability';
 import { KEYED_BY_ADDRESS } from '@quynhonsemiconductor/platform-http';
 import { RateLimitGuard } from './rate-limit.guard';
-import { PRE_AUTH_RESERVATION, type PreAuthReservation } from './pre-auth-rate-limit.guard';
+import { PRE_AUTH_RESERVATIONS, type PreAuthReservation } from './pre-auth-rate-limit.guard';
 import {
   RATE_LIMIT_METADATA_KEY,
   RATE_LIMIT_TIERS,
@@ -60,12 +60,14 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
   let keys: string[];
   let consumed: Array<{ limit: number; window: number }>;
   let refund: ReturnType<typeof vi.fn>;
+  let rejected: ReturnType<typeof vi.fn>;
   let guard: RateLimitGuard;
 
   beforeEach(() => {
     keys = [];
     consumed = [];
     refund = vi.fn().mockResolvedValue(undefined);
+    rejected = vi.fn();
     const cache = {
       consumeRateLimit: vi.fn((key: string, limit: number, window: number) => {
         keys.push(key);
@@ -76,7 +78,14 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     };
     const metrics = { recordFailOpen: vi.fn() };
     delete process.env['DISABLE_RATE_LIMIT'];
-    guard = new RateLimitGuard(new Reflector(), cache as never, metrics as never);
+    guard = new RateLimitGuard(
+      new Reflector(),
+      cache as never,
+      metrics as never,
+      {
+        recordRejected: rejected,
+      } as never,
+    );
   });
 
   it('gives two visitors behind the same tunnel address DIFFERENT buckets', async () => {
@@ -153,18 +162,14 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     await guard.canActivate(
       context(request({ headers: { 'cf-connecting-ip': '1.1.1.1' } }), 'STRICT'),
     );
-    await guard.canActivate(
-      context(request({ headers: { 'cf-connecting-ip': '1.1.1.1' } }), 'AUTH_ME'),
-    );
-
     expect(consumed).toEqual([
-      { limit: 600, window: 60 },
+      { limit: 1200, window: 60 },
       { limit: 20, window: 60 },
-      { limit: 120, window: 60 },
     ]);
-    expect(RATE_LIMIT_TIERS.DEFAULT).toEqual({ limit: 600, windowSeconds: 60 });
+    expect(RATE_LIMIT_TIERS.DEFAULT).toEqual({ limit: 1200, windowSeconds: 60 });
     expect(RATE_LIMIT_TIERS.STRICT).toEqual({ limit: 20, windowSeconds: 60 });
-    expect(RATE_LIMIT_TIERS.AUTH_ME).toEqual({ limit: 120, windowSeconds: 60 });
+    // AUTH_ME is gone on purpose: SPA-bootstrap reads ride DEFAULT, never a tighter per-user tier.
+    expect('AUTH_ME' in RATE_LIMIT_TIERS).toBe(false);
   });
 
   it('an AUTHENTICATED request gives back the address slot the pre-auth guard reserved', async () => {
@@ -174,7 +179,7 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
       id: 'slot-7',
       settled: false,
     };
-    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = reservation;
+    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATIONS] = [reservation];
 
     await requestContextStorage.run(principalStore('user-1'), () =>
       guard.canActivate(context(req)),
@@ -194,7 +199,7 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
       id: 'slot-8',
       settled: false,
     };
-    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = reservation;
+    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATIONS] = [reservation];
 
     await requestContextStorage.run(principalStore(), () => guard.canActivate(context(req)));
 
@@ -208,11 +213,13 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     const logger = (guard as unknown as { logger: { error: (...a: unknown[]) => void } }).logger;
     const logError = vi.spyOn(logger, 'error');
     const req = request({ headers: { 'cf-connecting-ip': '203.0.113.7' } });
-    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = {
-      key: 'PRE_AUTH:ip:203.0.113.7',
-      id: 'slot-9',
-      settled: false,
-    } satisfies PreAuthReservation;
+    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATIONS] = [
+      {
+        key: 'PRE_AUTH:ip:203.0.113.7',
+        id: 'slot-9',
+        settled: false,
+      } satisfies PreAuthReservation,
+    ];
 
     const allowed = await requestContextStorage.run(principalStore('user-1'), () =>
       guard.canActivate(context(req)),
@@ -222,6 +229,47 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
     expect(refund).toHaveBeenCalledTimes(1);
     expect(logError).toHaveBeenCalled();
     logError.mockRestore();
+  });
+
+  it('a 429 to a signed-in user is LOGGED with user/route and COUNTED as a user-keyed refusal', async () => {
+    const cache = {
+      consumeRateLimit: vi.fn().mockResolvedValueOnce({
+        allowed: false,
+        remaining: 0,
+        resetAt: Math.floor(Date.now() / 1000) + 30,
+      }),
+      refundRateLimit: refund,
+    };
+    const gaugeGuard = new RateLimitGuard(
+      new Reflector(),
+      cache as never,
+      { recordFailOpen: vi.fn() } as never,
+      { recordRejected: rejected } as never,
+    );
+    const logger = (gaugeGuard as unknown as { logger: { warn: (...a: unknown[]) => void } })
+      .logger;
+    const logWarn = vi.spyOn(logger, 'warn');
+    const req = request({
+      headers: { 'cf-connecting-ip': '203.0.113.7' },
+      url: '/v1/work-items/019f8a00-0000-7000-8000-000000000001',
+    });
+
+    await expect(
+      requestContextStorage.run(principalStore('user-1'), () =>
+        gaugeGuard.canActivate(context(req)),
+      ),
+    ).rejects.toThrow(/Rate limit exceeded/);
+
+    expect(rejected).toHaveBeenCalledWith({
+      tier: 'DEFAULT',
+      route: '/v1/work-items/:id',
+      keyedBy: 'user',
+    });
+    expect(logWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1', route: '/v1/work-items/:id', tier: 'DEFAULT' }),
+      'Rate limit exceeded',
+    );
+    logWarn.mockRestore();
   });
 
   it('honours @SkipRateLimit() (probes and metrics scrapes)', async () => {
@@ -246,7 +294,14 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
       consumeRateLimit: vi.fn().mockRejectedValue(new Error('valkey down')),
       refundRateLimit: refund,
     };
-    const failingGuard = new RateLimitGuard(new Reflector(), cache as never, metrics as never);
+    const failingGuard = new RateLimitGuard(
+      new Reflector(),
+      cache as never,
+      metrics as never,
+      {
+        recordRejected: rejected,
+      } as never,
+    );
     await expect(
       requestContextStorage.run(principalStore('user-1'), () =>
         failingGuard.canActivate(
@@ -273,6 +328,7 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
       new Reflector(),
       { consumeRateLimit: vi.fn(), refundRateLimit: refund } as never,
       { recordFailOpen: vi.fn() } as never,
+      { recordRejected: rejected } as never,
     );
     expect(await disabledGuard.canActivate(context(request()))).toBe(true);
     delete process.env['DISABLE_RATE_LIMIT'];
@@ -294,13 +350,16 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
       {
         recordFailOpen: vi.fn(),
       } as never,
+      { recordRejected: rejected } as never,
     );
     const req = request({ headers: { 'cf-connecting-ip': '203.0.113.7' } });
-    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = {
-      key: 'PRE_AUTH:ip:203.0.113.7',
-      id: 'slot-10',
-      settled: false,
-    } satisfies PreAuthReservation;
+    (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATIONS] = [
+      {
+        key: 'PRE_AUTH:ip:203.0.113.7',
+        id: 'slot-10',
+        settled: false,
+      } satisfies PreAuthReservation,
+    ];
 
     await expect(
       requestContextStorage.run(principalStore('user-1'), () =>
@@ -310,8 +369,9 @@ describe('RateLimitGuard — the bucket is the CLIENT, not the tunnel', () => {
 
     expect(refund).not.toHaveBeenCalled();
     expect(
-      ((req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] as PreAuthReservation)
-        .settled,
+      (
+        (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATIONS] as PreAuthReservation[]
+      )[0].settled,
     ).toBe(false);
   });
 });

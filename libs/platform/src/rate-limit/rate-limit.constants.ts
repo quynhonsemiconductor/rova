@@ -5,9 +5,13 @@
  * intentionally named by intent, not by numbers, so callers read like documentation.
  *
  *  DEFAULT        - every route without an explicit @RateLimit(), per USER once authenticated, per IP on a public route
- *  STRICT         - sensitive writes (project delete, member removal, etc.)
+ *  STRICT         - the few writes where abuse matters (uploads, invitation email), per USER
  *  PRE_AUTH       - every request, per IP, BEFORE authentication (PreAuthRateLimitGuard)
  *  PRE_AUTH_TOKEN - a request presenting an API token (`Authorization: Bearer rly_...`), per IP, BEFORE authentication
+ *
+ * Internal staff apps must never be throttled for working fast. Every per-USER tier is set at least 10x the
+ * measured peak per-user rate, and the DEFAULT floor is 1,200 per minute. Only the buckets where abuse is the
+ * threat (pre-auth per address, uploads, AI) stay tight.
  *
  * The sign-in tiers identity 7 needed (AUTH_LOGIN, AUTH_SSO_START, AUTH_IDP_LOOKUP, AUTH_REFRESH) are gone with the BFF controller that
  * used them: `/api/auth/*` is identity 8's, which rate-limits itself per IP in Valkey (the redirect endpoints 120 per 60 s, the callbacks
@@ -19,24 +23,20 @@ export const SKIP_RATE_LIMIT_KEY = 'rova:rate_limit:skip';
 
 export const RATE_LIMIT_TIERS = {
   /**
-   * All routes without an explicit @RateLimit() decorator: 600 req/min per user.
+   * All routes without an explicit @RateLimit() decorator: 1,200 req/min per user.
    *
-   * 100 was the per-USER ceiling, but a single page refresh fires a burst of queries (the shell,
-   * the notifications feed, the active project's lists), so an ordinary user clicking around could
-   * approach it and a slow client retrying could reach it. 600 is still far below what one person
-   * can send abusively, and the per-address PRE_AUTH floor is a separate, NAT-sized bucket.
-   */
-  DEFAULT: { limit: 600, windowSeconds: 60 },
-
-  /**
-   * `GET /v1/auth/me`: 120 req/min per user.
+   * A limit must protect against abuse, never shape normal use. Rova is an internal staff app and
+   * people work fast: the measured peak was 103 requests in one minute by one user — 58 answered and
+   * 45 refused, mid-session — under the old 100 ceiling (18.5 hours of prod access logs,
+   * 2026-11-04/05; busiest all-user minute 102; 69 refusals in the window). 10x the peak is 1,030,
+   * so the floor of 1,200 is what ships — a page refresh fires a burst of queries (shell,
+   * notifications feed, the active project's lists) and a slow client retrying must not approach the
+   * ceiling.
    *
-   * The SPA calls it once per page load (and each guide asset asks the Worker, which calls it
-   * too), so it is cheap in isolation — but it is also the endpoint every stuck client retries
-   * first. Its own, lower ceiling keeps a retry loop from spending the user's whole DEFAULT
-   * budget on one read, and the client's 429 retry policy honours the window.
+   * 1,200 per minute is still far below what one person can send abusively, and the per-address
+   * PRE_AUTH floor is a separate, NAT-sized bucket that a signed-in request refunds.
    */
-  AUTH_ME: { limit: 120, windowSeconds: 60 },
+  DEFAULT: { limit: 1200, windowSeconds: 60 },
 
   /** Sensitive write operations: 20 req/min */
   STRICT: { limit: 20, windowSeconds: 60 },
@@ -49,8 +49,10 @@ export const RATE_LIMIT_TIERS = {
    * office shares one address.
    *
    * An AUTHENTICATED request gives its slot back (`RateLimitGuard` refunds it once the principal is known), so a signed-in user
-   * spends only their own tier and a day's normal office traffic cannot fill the shared address. What keeps a slot is traffic that
-   * never proves who it is: failed logins, forged cookies, a sweep of guessed tokens.
+   * spends only their own tier and a day's normal office traffic cannot fill the shared address. The SAME is true of a valid API
+   * token's PRE_AUTH_TOKEN slot: only a presentation that never authenticates keeps it, so each client is held by its user tier
+   * and a shared CI/office egress is not penalised for having several clients behind it. What keeps a slot is traffic that never
+   * proves who it is: failed logins, forged cookies, a sweep of guessed tokens.
    */
   PRE_AUTH: { limit: 1200, windowSeconds: 60 },
 

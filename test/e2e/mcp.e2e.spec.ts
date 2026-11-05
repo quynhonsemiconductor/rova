@@ -829,14 +829,14 @@ describe('/mcp over the real guard chain (e2e)', () => {
     const added = (await redis.keys('*')).filter((key) => !before.has(key)).sort();
 
     // Two buckets survive, both keyed by PERSON, under the cache's prefix (`rova:rl:`):
-    //   AUTH_ME — RateLimitGuard, on the injected REST call (`rova_whoami` → GET /v1/auth/me,
-    //             which has its own 120/min tier)
+    //   DEFAULT — RateLimitGuard, on the injected REST call (`rova_whoami` → GET /v1/auth/me,
+    //             which rides the generous DEFAULT budget like every other SPA read)
     //   mcp     — the /mcp route's own per-person budget
     // The third, PreAuthRateLimitGuard's PRE_AUTH, IS consumed first (keyed by the peeked call
     // token's person — pinned by pre-auth-rate-limit.guard.spec) and REFUNDED by RateLimitGuard
     // once the caller is verified, so it leaves no key behind. That absence is the refund.
     expect(added.filter((key) => key.includes(':rl:'))).toEqual([
-      `rova:rl:AUTH_ME:uid:${userId}`,
+      `rova:rl:DEFAULT:uid:${userId}`,
       `rova:rl:mcp:uid:${userId}`,
     ]);
     // belt: nothing address-keyed was created by this request at all (the permission cache also

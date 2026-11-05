@@ -12,7 +12,7 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CacheService } from '@quynhonsemiconductor/platform-cache';
-import { createBootstrappedApp, signIn } from './support/session';
+import { createBootstrappedApp, provisionUser, signIn } from './support/session';
 
 const previous = process.env['DISABLE_RATE_LIMIT'];
 let app: NestFastifyApplication;
@@ -66,16 +66,17 @@ describe('rate limits around authentication', () => {
     const headers = (cookie: string) => ({ cookie, 'cf-connecting-ip': ip });
     const cache = app.get(CacheService);
 
-    // The store the guard writes to, spent directly: 599 of DEFAULT's 600 to start the window now.
+    // The store the guard writes to, spent directly: the /auth/me read above is slot 1, then 1,198 more
+    // so the next request is DEFAULT's 1,200th and the one after it is the refusal.
     const me = await get(headers(alice), '/v1/auth/me');
     expect(me.statusCode, me.body).toBe(200);
     const aliceId = me.json<{ id: string }>().id;
-    for (let i = 0; i < 599; i++) await cache.consumeRateLimit(`DEFAULT:uid:${aliceId}`, 600, 60);
+    for (let i = 0; i < 1198; i++) await cache.consumeRateLimit(`DEFAULT:uid:${aliceId}`, 1200, 60);
 
-    expect((await get(headers(alice), '/v1/projects')).statusCode, 'the 600th is admitted').toBe(
+    expect((await get(headers(alice), '/v1/projects')).statusCode, 'the 1200th is admitted').toBe(
       200,
     );
-    expect((await get(headers(alice), '/v1/projects')).statusCode, 'the 601st is limited').toBe(
+    expect((await get(headers(alice), '/v1/projects')).statusCode, 'the 1201st is limited').toBe(
       429,
     );
     expect(
@@ -84,33 +85,46 @@ describe('rate limits around authentication', () => {
     ).toBe(200);
   });
 
-  it('GET /v1/auth/me has its own, lower ceiling so a retry loop cannot spend DEFAULT', async () => {
+  it('a signed-in person working fast is NOT throttled: 300 requests in one minute all pass', async () => {
     const ip = visitor();
-    const bob = await signIn(app, 'dev@qnsc.dev');
-    const headers = { cookie: bob, 'cf-connecting-ip': ip };
+    // A fresh principal: the burst must not inherit a bucket another test already spent.
+    const alice = await provisionUser(app, 'rate-burst');
+    const headers = { cookie: alice.credential, 'cf-connecting-ip': ip };
+
+    // The burst the owner cares about — an SPA bootstrap read repeated while someone works fast. All of
+    // it is normal use, so every response must be 200, and each also refunds the address slot it took
+    // (asserted separately below), so several people behind one office IP cannot exhaust PRE_AUTH.
+    for (let i = 0; i < 300; i++) {
+      const response = await get(headers, '/v1/auth/me');
+      expect(response.statusCode, `request ${i + 1} of the burst: ${response.body}`).toBe(200);
+    }
+  }, 30_000);
+
+  it('GET /v1/auth/me rides DEFAULT, never a tighter SPA-bootstrap tier', async () => {
+    const ip = visitor();
+    const bob = await provisionUser(app, 'rate-auth-me');
+    const headers = { cookie: bob.credential, 'cf-connecting-ip': ip };
     const cache = app.get(CacheService);
 
-    // This read spends the first AUTH_ME slot; spend 118 more so the 120th is the next request.
     const me = await get(headers, '/v1/auth/me');
     expect(me.statusCode, me.body).toBe(200);
     const bobId = me.json<{ id: string }>().id;
-    for (let i = 0; i < 118; i++) await cache.consumeRateLimit(`AUTH_ME:uid:${bobId}`, 120, 60);
-
-    expect((await get(headers, '/v1/auth/me')).statusCode, 'the 120th is admitted').toBe(200);
+    // No AUTH_ME series exists; the read above spent the user's DEFAULT slot instead.
+    for (let i = 0; i < 1198; i++) await cache.consumeRateLimit(`DEFAULT:uid:${bobId}`, 1200, 60);
+    expect((await get(headers, '/v1/auth/me')).statusCode, 'the 1200th is admitted').toBe(200);
     const limited = await get(headers, '/v1/auth/me');
-    expect(limited.statusCode, 'the 121st is limited').toBe(429);
+    expect(limited.statusCode, 'the next one is limited by DEFAULT').toBe(429);
     expect(limited.headers['retry-after'], 'and says when to try again').toBeDefined();
-    // The user's DEFAULT budget is untouched by the refusal.
-    expect((await get(headers, '/v1/projects')).statusCode).toBe(200);
   });
 
   it('PRE_AUTH is a floor under UNVERIFIED traffic only: a signed-in request gives its address slot back', async () => {
     const sharedIp = visitor();
-    const alice = await signIn(app, 'admin@qnsc.dev');
+    const alice = await provisionUser(app, 'rate-pre-auth');
     const cache = app.get(CacheService);
     for (let i = 0; i < 30; i++) {
       expect(
-        (await get({ cookie: alice, 'cf-connecting-ip': sharedIp }, '/v1/auth/me')).statusCode,
+        (await get({ cookie: alice.credential, 'cf-connecting-ip': sharedIp }, '/v1/auth/me'))
+          .statusCode,
       ).toBe(200);
     }
     // The guard awaits the refund before answering, so the bucket is settled here.

@@ -11,6 +11,7 @@ import {
   type RateLimitTier,
 } from './rate-limit.constants';
 import { refundPreAuthReservation } from './pre-auth-rate-limit.guard';
+import { RateLimitMetrics, rateLimitRouteLabel } from './rate-limit.metrics';
 
 import { failOpenLog, SecurityMetrics } from '@quynhonsemiconductor/observability';
 
@@ -50,6 +51,7 @@ export class RateLimitGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly cache: CacheService,
     private readonly securityMetrics: SecurityMetrics,
+    private readonly rateLimitMetrics: RateLimitMetrics,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -127,7 +129,12 @@ export class RateLimitGuard implements CanActivate {
       const retryAfter = Math.max(resetAt - Math.floor(Date.now() / 1000), 1);
       setHeader('Retry-After', retryAfter);
 
-      this.logger.warn({ key, tier, ip, userId }, 'Rate limit exceeded');
+      // A 429 to a signed-in person is a SIGNAL, not routine backpressure: log who/where, and count it
+      // so SA/G can alert on `rate_limit_rejected_total{keyed_by="user"}`. Labels are the tier and the
+      // route TEMPLATE; the user id stays in the log line (an id must never become a series).
+      const route = rateLimitRouteLabel(req);
+      this.rateLimitMetrics.recordRejected({ tier, route, keyedBy: userId ? 'user' : 'address' });
+      this.logger.warn({ key, tier, ip, userId, route }, 'Rate limit exceeded');
 
       throw new RateLimitedException(`Rate limit exceeded (${tier}). Retry after ${retryAfter}s.`);
     }
