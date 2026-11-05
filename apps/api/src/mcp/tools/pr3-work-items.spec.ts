@@ -741,14 +741,13 @@ describe('PR3 work-item write tools', () => {
       expect(tool.description, 'and must demand an explicit request').toContain('explicit request');
       expect(tool.annotations?.readOnlyHint).toBe(false);
     }
-    // update is destructive but IDEMPOTENT WITH THE SAME ARGUMENTS, which is what the hint means:
-    // `ifMatch` pins the version, so a retry of the same call cannot apply the change twice (the
-    // second answers 412). A caller that re-reads and patches again sends different args — a new
-    // request, not a retry.
+    // update is destructive and NOT idempotent: a retry after the first call succeeded sends the
+    // same `ifMatch`, which the route answers 412 WORK_ITEM_STALE. A host that reads
+    // `idempotentHint: true` would auto-retry into a guaranteed failure.
     const server = new McpServer({ name: 'test', version: '0.0.0' });
     const update = registerUpdateWorkItem(server, ctx) as {
       annotations?: { destructiveHint?: boolean; idempotentHint?: boolean };
     };
-    expect(update.annotations).toMatchObject({ destructiveHint: true, idempotentHint: true });
+    expect(update.annotations).toMatchObject({ destructiveHint: true, idempotentHint: false });
   });
 });
