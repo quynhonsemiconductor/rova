@@ -82,6 +82,7 @@ function feeds(overrides: {
   results?: Record<string, unknown>[];
   iterations?: Record<string, unknown>[];
   timeLogTotal?: number;
+  omitTimeLogTotal?: boolean;
 }) {
   return (call: McpRestCall): McpRestResult => {
     if (call.method === 'DELETE') return { statusCode: 204, json: null };
@@ -97,7 +98,10 @@ function feeds(overrides: {
       const logs = overrides.timeLogs ?? [];
       return {
         statusCode: 200,
-        json: { items: logs, total: overrides.timeLogTotal ?? logs.length },
+        json: {
+          items: logs,
+          ...(overrides.omitTimeLogTotal ? {} : { total: overrides.timeLogTotal ?? logs.length }),
+        },
       };
     }
     if (call.url.endsWith('/relations'))
@@ -269,6 +273,19 @@ describe('rova_delete guard (§5)', () => {
     expect(res.isError).toBe(true);
     expect(res.body['error']).toMatch(/more time logs than one page/);
     expect(deleteCalls(calls)).toHaveLength(0);
+
+    // No total at all is not "one page is everything": fail closed, exactly as for a longer page.
+    const unknown = context(
+      feeds({
+        item: item({ id: TASK, type: 'task', createdBy: ME }),
+        timeLogs: [],
+        omitTimeLogTotal: true,
+      }),
+    );
+    const unknownRes = await call(unknown.ctx, { kind: 'task', key: 'TA-9' });
+    expect(unknownRes.isError).toBe(true);
+    expect(unknownRes.body['error']).toMatch(/more time logs than one page/);
+    expect(deleteCalls(unknown.calls)).toHaveLength(0);
   });
 
   it('warns when deleting the parent’s last open task, because the parent auto-completes', async () => {
@@ -335,35 +352,60 @@ describe('rova_delete guard (§5)', () => {
     ]);
   });
 
-  it('answers a retry after the delete landed as alreadyDeleted, not a refusal', async () => {
-    // The target no longer resolves: exactly what a successful delete leaves behind.
-    const gone = context(feeds({}));
-    const first = await call(gone.ctx, { kind: 'work_item', key: 'US-500', reason: 'duplicate' });
-    expect(first.isError).toBeFalsy();
-
-    const retryCtx = context((call) =>
-      call.method === 'GET'
-        ? { statusCode: 404, json: { error: { code: 'WORK_ITEM_NOT_FOUND' } } }
-        : { statusCode: 500, json: {} },
-    );
-    const retry = await call(retryCtx.ctx, {
-      kind: 'work_item',
-      key: 'US-500',
-      reason: 'duplicate',
-    });
-    expect(retry.isError, JSON.stringify(retry.body)).toBeFalsy();
-    expect(retry.body).toEqual({
-      deleted: { kind: 'work_item', subject: 'US-500' },
-      alreadyDeleted: true,
-      reason: 'duplicate',
-    });
-    expect(deleteCalls(retryCtx.calls)).toHaveLength(0);
-    expect(retryCtx.notes).toEqual([
-      { targets: [], fields: ['work_item'], count: 0, reason: 'duplicate' },
-    ]);
+  it('answers a 403 and a 404 on a target read with byte-identical output', async () => {
+    // A foreign item answers 403; a missing one 404. Relaying either status (or reporting the
+    // 404 as alreadyDeleted) would let a chat user probe keys in projects they cannot see.
+    const denial = (statusCode: number) =>
+      context((routeCall) =>
+        routeCall.method === 'GET'
+          ? { statusCode, json: { error: { code: 'DENIED' } } }
+          : { statusCode: 204, json: null },
+      );
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ['work_item', { kind: 'work_item', key: 'US-500' }],
+      ['task', { kind: 'task', key: 'TA-9' }],
+      ['comment', { kind: 'comment', key: 'US-500', id: COMMENT }],
+      ['time_log', { kind: 'time_log', key: 'US-500', id: LOG }],
+      ['relation', { kind: 'relation', key: 'US-500', id: RELATION }],
+      ['test_result', { kind: 'test_result', key: 'TC-12', id: RESULT }],
+    ];
+    for (const [label, args] of cases) {
+      const forbidden = await call(denial(403).ctx, args);
+      const missing = await call(denial(404).ctx, args);
+      expect(forbidden.isError, label).toBe(true);
+      expect(missing.isError, label).toBe(true);
+      expect(JSON.stringify(forbidden.body), label).toBe(JSON.stringify(missing.body));
+      expect(forbidden.body, label).toEqual({
+        error: 'That record was not found, or it is not yours.',
+      });
+    }
   });
 
-  it('relays the REST refusal instead of reporting success', async () => {
+  it('answers a retry after a CHILD delete landed as alreadyDeleted, for every child kind', async () => {
+    // The parent is visible (it resolved) and the child is gone: a retry of a delete that landed.
+    const cases: Array<[string, Record<string, unknown>, Parameters<typeof feeds>[0]]> = [
+      ['comment', { kind: 'comment', key: 'US-500', id: COMMENT }, { comments: [] }],
+      ['time_log', { kind: 'time_log', key: 'US-500', id: LOG }, { timeLogs: [] }],
+      ['relation', { kind: 'relation', key: 'US-500', id: RELATION }, { relations: [] }],
+      ['test_result', { kind: 'test_result', key: 'TC-12', id: RESULT }, { results: [] }],
+    ];
+    for (const [kind, args, overrides] of cases) {
+      const retryCtx = context(feeds(overrides));
+      const retry = await call(retryCtx.ctx, { ...args, reason: 'already gone' });
+      expect(retry.isError, kind).toBeFalsy();
+      expect(retry.body, kind).toMatchObject({
+        deleted: { kind, id: args['id'] },
+        alreadyDeleted: true,
+        reason: 'already gone',
+      });
+      expect(deleteCalls(retryCtx.calls), kind).toHaveLength(0);
+      expect(retryCtx.notes, kind).toEqual([
+        { targets: [], fields: [kind], count: 0, reason: 'already gone' },
+      ]);
+    }
+  });
+
+  it('relays the REST refusal from the DELETE itself instead of reporting success', async () => {
     const { ctx } = context((call) =>
       call.method === 'DELETE'
         ? { statusCode: 403, json: { error: { code: 'FORBIDDEN' } } }
