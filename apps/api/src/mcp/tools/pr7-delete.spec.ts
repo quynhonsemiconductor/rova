@@ -91,7 +91,9 @@ function feeds(overrides: {
       call.url === '/v1/work-items/by-key' ||
       /^\/v1\/work-items\/[0-9a-f-]{36}$/.test(call.url)
     ) {
-      return { statusCode: 200, json: { item: overrides.item ?? item() } };
+      // Both record routes answer the FLATTENED detail DTO — not `{ item }`. The guard once
+      // read `body.item`, so a mock in that shape kept a production bug green.
+      return { statusCode: 200, json: overrides.item ?? item() };
     }
     if (call.url.endsWith('/comments')) return { statusCode: 200, json: overrides.comments ?? [] };
     if (call.url.endsWith('/time-logs')) {
@@ -286,6 +288,13 @@ describe('rova_delete guard (§5)', () => {
     expect(unknownRes.isError).toBe(true);
     expect(unknownRes.body['error']).toMatch(/more time logs than one page/);
     expect(deleteCalls(unknown.calls)).toHaveLength(0);
+
+    // The time_log branch reads the same page: its own log #101+ must not become alreadyDeleted.
+    const manyLogs = context(feeds({ timeLogs: firstPage, timeLogTotal: 101 }));
+    const logRes = await call(manyLogs.ctx, { kind: 'time_log', key: 'US-500', id: LOG });
+    expect(logRes.isError).toBe(true);
+    expect(logRes.body['error']).toMatch(/more time logs than one page/);
+    expect(deleteCalls(manyLogs.calls)).toHaveLength(0);
   });
 
   it('warns when deleting the parent’s last open task, because the parent auto-completes', async () => {
@@ -293,8 +302,8 @@ describe('rova_delete guard (§5)', () => {
       feeds({
         item: item({ id: TASK, type: 'task', createdBy: ME, parentId: PARENT }),
         tasks: [
-          { id: TASK, scheduleState: 'In-Progress' },
-          { id: U(60), scheduleState: 'Completed' },
+          { id: TASK, scheduleState: 'in_progress' },
+          { id: U(60), scheduleState: 'completed' },
         ],
       }),
     );
@@ -381,12 +390,11 @@ describe('rova_delete guard (§5)', () => {
     }
   });
 
-  it('answers a retry after a CHILD delete landed as alreadyDeleted, for every child kind', async () => {
+  it('answers a retry after a CHILD delete landed as alreadyDeleted, where absence is provable', async () => {
     // The parent is visible (it resolved) and the child is gone: a retry of a delete that landed.
     const cases: Array<[string, Record<string, unknown>, Parameters<typeof feeds>[0]]> = [
       ['comment', { kind: 'comment', key: 'US-500', id: COMMENT }, { comments: [] }],
       ['time_log', { kind: 'time_log', key: 'US-500', id: LOG }, { timeLogs: [] }],
-      ['relation', { kind: 'relation', key: 'US-500', id: RELATION }, { relations: [] }],
       ['test_result', { kind: 'test_result', key: 'TC-12', id: RESULT }, { results: [] }],
     ];
     for (const [kind, args, overrides] of cases) {
@@ -403,6 +411,17 @@ describe('rova_delete guard (§5)', () => {
         { targets: [], fields: [kind], count: 0, reason: 'already gone' },
       ]);
     }
+  });
+
+  it('does NOT claim alreadyDeleted for an absent relation: it may be live but not visible', async () => {
+    // admitRelationEnds drops a relation whose far end the caller cannot read, so an empty list
+    // cannot tell "deleted" from "not visible". The generic refusal is the only true answer.
+    const { ctx, calls, notes } = context(feeds({ relations: [] }));
+    const res = await call(ctx, { kind: 'relation', key: 'US-500', id: RELATION });
+    expect(res.isError).toBe(true);
+    expect(res.body).toEqual({ error: 'That record was not found, or it is not yours.' });
+    expect(deleteCalls(calls)).toHaveLength(0);
+    expect(notes).toEqual([]);
   });
 
   it('relays the REST refusal from the DELETE itself instead of reporting success', async () => {
