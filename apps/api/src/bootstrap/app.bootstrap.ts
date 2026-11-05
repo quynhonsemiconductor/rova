@@ -178,6 +178,9 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
       writesEnabled: config.get('MCP_WRITES_ENABLED'),
       // The HMAC key for MCP-generated Idempotency-Key values (asserted above when writes are on).
       idempotencySecret: config.get('MCP_IDEMPOTENCY_SECRET'),
+      // The SAME validated dev/CI escape every limiter honours; read here, not from process.env
+      // inside the route, so one config validation owns the flag.
+      rateLimitDisabled: config.get('DISABLE_RATE_LIMIT'),
     });
   }
 

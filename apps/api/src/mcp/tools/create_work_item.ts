@@ -118,15 +118,20 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
           : {}),
       };
 
-      if (args.assignee !== undefined) {
-        const people = await resolvePeople(ctx, project.id, [args.assignee]);
-        if (!people.ok) return failureResult(people);
-        body['assigneeId'] = people.ids[0];
-      }
+      // The Team is resolved FIRST: the assignee feed is row-scoped (a Team offers its own
+      // editors; a team-less item offers project admins only), so passing the target team here is
+      // what keeps the picker offering exactly who the write will accept.
+      let teamId: string | undefined;
       if (args.team !== undefined) {
         const team = await resolveTeam(ctx, project.id, args.team);
         if (!team.ok) return failureResult(team);
+        teamId = team.id;
         body['teamId'] = team.id;
+      }
+      if (args.assignee !== undefined) {
+        const people = await resolvePeople(ctx, project.id, [args.assignee], { teamId });
+        if (!people.ok) return failureResult(people);
+        body['assigneeId'] = people.ids[0];
       }
       if (args.iteration !== undefined) {
         const iteration = await resolveIteration(ctx, project.id, args.iteration);
@@ -225,6 +230,11 @@ export function registerCreateWorkItem(server: McpServer, ctx: ToolContext) {
         }
       }
 
+      ctx.noteWrite?.({
+        ...(typeof row['id'] === 'string' ? { targets: [row['id']] } : {}),
+        fields: changed,
+        count: 1,
+      });
       if (featureLink === undefined) {
         return workItemWriteResult(res, changed, { replayed });
       }

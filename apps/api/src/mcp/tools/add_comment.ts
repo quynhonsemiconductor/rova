@@ -91,6 +91,17 @@ export function registerAddComment(server: McpServer, ctx: ToolContext) {
         return denied(res.statusCode, res.json);
       }
       const c = res.json as Record<string, unknown>;
+      const subjectId =
+        typeof subject['workItemId'] === 'string'
+          ? subject['workItemId']
+          : typeof subject['portfolioItemId'] === 'string'
+            ? subject['portfolioItemId']
+            : undefined;
+      ctx.noteWrite?.({
+        ...(subjectId !== undefined ? { targets: [subjectId] } : {}),
+        fields: ['body'],
+        count: 1,
+      });
       return result(res.statusCode, res.json, {
         subject,
         comment: {

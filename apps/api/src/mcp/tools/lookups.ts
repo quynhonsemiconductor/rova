@@ -31,6 +31,11 @@ export interface ResolvedWorkItem {
   type: string;
   version: number;
   projectId: string;
+  /** The item's Team — what a person reference is resolved against (the feed is row-scoped). */
+  teamId: string | null;
+  /** The item's current timeboxes, for a plan PREVIEW (read from the same record). */
+  iterationId: string | null;
+  releaseId: string | null;
 }
 
 export interface ResolvedPortfolioItem {
@@ -48,6 +53,12 @@ export interface ResolvedTestCase {
   id: string;
   testCaseKey: string;
   name: string;
+  /** The owning project — what a person reference for `tester`/`owner` is resolved against. */
+  projectId: string;
+  /** The owning Team, or null ("Project backlog") — the feed is narrow on the row's own team. */
+  teamId: string | null;
+  /** The parent work item, or null for a test case not attached to one (D2). */
+  workItemId: string | null;
 }
 
 /** A reference that did not resolve: a candidate message, or the REST refusal to relay. */
@@ -196,6 +207,9 @@ export async function resolveWorkItem(
     type: str(item['type']) ?? '',
     version: versionOfEtag(res, item['version']),
     projectId: str(item['projectId']) ?? '',
+    teamId: str(item['teamId']),
+    iterationId: str(item['iterationId']),
+    releaseId: str(item['releaseId']),
   };
 }
 
@@ -263,17 +277,23 @@ export interface ResolvedPeople {
  * People by display name or email, from the caller's OWN workspace picker feed (`member-options`,
  * scoped to the projects they can read). An unknown reference lists the candidates; an ambiguous
  * one names every match — a mention must never go to the wrong person.
+ *
+ * `teamId` narrows the feed to that Team's candidates, exactly as the web's pickers do (the
+ * assignment rule itself is per ROW: a Team is selected -> project admins, that team's editors and
+ * its WA roster; no Team -> project admins only). Omitting it asks the team-less question.
  */
 export async function resolvePeople(
   ctx: ToolContext,
   projectId: string,
   references: string[],
+  options: { teamId?: string | null } = {},
 ): Promise<Lookup<ResolvedPeople>> {
   // PROJECT-scoped, not the workspace directory: a mention may only name someone who can own work
   // in the SUBJECT's project, and the candidates on a miss must not disclose anyone else.
   const res = await ctx.callRest(ctx.principal, {
     method: 'GET',
     url: `/v1/projects/${pathSegment(projectId)}/member-options`,
+    ...(options.teamId ? { query: { teamId: options.teamId } } : {}),
   });
   if (res.statusCode >= 400) return { ok: false, statusCode: res.statusCode, json: res.json };
   const people = rowsOf(res.json) ?? [];
@@ -331,6 +351,9 @@ export async function resolveTestCase(
     id,
     testCaseKey: str(row['testCaseKey']) ?? testCaseKey,
     name: str(row['name']) ?? '',
+    projectId: str(row['projectId']) ?? '',
+    teamId: str(row['teamId']),
+    workItemId: str(row['workItemId']),
   };
 }
 
@@ -520,4 +543,85 @@ export async function resolveStatus(
     ok: false,
     message: `No status matches "${reference}". Candidates: ${candidates.join(', ') || 'none'}.`,
   };
+}
+
+export interface ResolvedLabel {
+  ok: true;
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+export interface LabelRow {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+export interface LabelCatalogue {
+  ok: true;
+  labels: LabelRow[];
+}
+
+/**
+ * The project's ENTIRE label catalogue, fetched ONCE per tool call
+ * (`GET /v1/projects/:id/labels`). A multi-label write resolves every name against this one
+ * answer instead of re-reading the feed per label.
+ */
+export async function resolveLabelCatalogue(
+  ctx: ToolContext,
+  projectId: string,
+): Promise<Lookup<LabelCatalogue>> {
+  const res = await ctx.callRest(ctx.principal, {
+    method: 'GET',
+    url: `/v1/projects/${pathSegment(projectId)}/labels`,
+  });
+  if (res.statusCode >= 400) return { ok: false, statusCode: res.statusCode, json: res.json };
+  const rows = rowsOf(res.json);
+  if (!rows) return { ok: false, message: `Unexpected response from the project labels feed.` };
+  return {
+    ok: true,
+    labels: rows.map((row) => ({
+      id: String(row['id']),
+      name: str(row['name']) ?? '',
+      color: str(row['color']),
+    })),
+  };
+}
+
+/** One label matched from a catalogue: id or exact (case-insensitive) name, never a guess. */
+export function matchLabel(catalogue: LabelRow[], reference: string): Lookup<ResolvedLabel> {
+  const wanted = reference.trim().toLowerCase();
+  const matches = catalogue.filter(
+    (label) => label.id === reference.trim() || label.name.toLowerCase() === wanted,
+  );
+  const candidates = catalogue
+    .map((label) => label.name)
+    .filter((name) => name !== '')
+    .slice(0, 30);
+  if (matches.length === 1) return { ok: true, ...matches[0] };
+  if (matches.length > 1) {
+    return {
+      ok: false,
+      message: `"${reference}" matches ${matches.length} labels: ${candidates.join(', ')}. Use the id.`,
+    };
+  }
+  return {
+    ok: false,
+    message: `No label matches "${reference}". Candidates: ${candidates.join(', ') || 'none'}.`,
+  };
+}
+
+/**
+ * A project label by exact name or id. Kept for a single-reference caller; a multi-label write
+ * fetches {@link resolveLabelCatalogue} ONCE and uses {@link matchLabel}.
+ */
+export async function resolveLabel(
+  ctx: ToolContext,
+  projectId: string,
+  reference: string,
+): Promise<Lookup<ResolvedLabel>> {
+  const catalogue = await resolveLabelCatalogue(ctx, projectId);
+  if (!catalogue.ok) return catalogue;
+  return matchLabel(catalogue.labels, reference);
 }

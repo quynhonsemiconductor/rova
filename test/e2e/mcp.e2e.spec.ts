@@ -195,6 +195,9 @@ describe('/mcp over the real guard chain (e2e)', () => {
       verifier,
       cache: app.get(CacheService),
       serverVersion: 'e2e',
+      // CI runs with rate limiting off; the route reads it from the config in production, so a
+      // direct registration mirrors that hand-off from the same env the suite runs under.
+      rateLimitDisabled: process.env['DISABLE_RATE_LIMIT'] === 'true',
     });
     await app.init();
     await fastify.ready();

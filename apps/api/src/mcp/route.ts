@@ -9,13 +9,13 @@ import { mintMcpCallToken, MCP_CALL_TOKEN_HEADER, type McpPrincipalContext } fro
 import { registerTools } from './tools/register';
 import {
   assertIfMatchOnlyOnPatch,
-  assertPostCarriesIdempotencyKey,
   assertReadCarriesNoWritePayload,
   idempotencyKeyFor,
+  clientIdempotencyKeyFor,
   type McpRestCaller,
   type ToolContext,
 } from './tools/rest';
-import { createMcpAudit } from './audit';
+import { createMcpAudit, sanitizeWriteAudit } from './audit';
 
 /**
  * The `/mcp` route: stateless MCP transport — one request, one server, no session.
@@ -70,11 +70,18 @@ export interface McpRouteDeps {
    * writes are enabled (asserted at boot); never reaches a tool, only the key builder below.
    */
   idempotencySecret?: string;
+  /**
+   * The validated `DISABLE_RATE_LIMIT` (dev/CI only; the env schema refuses it in production).
+   * Passed in by the bootstrap rather than read from `process.env` here: one config owns it.
+   * Absent reads as false — the budget stays on.
+   */
+  rateLimitDisabled?: boolean;
 }
 
 export function registerMcpRoute(deps: McpRouteDeps): void {
   const { app, fastify, verifier, cache } = deps;
   const writesEnabled = deps.writesEnabled ?? false;
+  const depsDisabledRateLimit = deps.rateLimitDisabled ?? false;
   // One audit sink per app: the instruments are process-wide and the logger is the shared pino
   // instance, so a per-request copy would only rebuild the same instruments.
   const audit = createMcpAudit();
@@ -87,7 +94,6 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
     // The TS types already say a GET carries neither, but a tool can build its call object
     // freely; refuse at runtime rather than silently dropping the payload.
     assertReadCarriesNoWritePayload(rest);
-    assertPostCarriesIdempotencyKey(rest);
     assertIfMatchOnlyOnPatch(rest);
     const injected = await app.inject({
       method: rest.method,
@@ -159,18 +165,35 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
       sessionId: `mcp:${request.id}`,
     };
 
-    // Per person, from the VERIFIED principal — never per IP (MCP-PLAN §4).
-    const { allowed, resetAt } = await cache.consumeRateLimit(
-      `mcp:uid:${principal.userId}`,
-      MCP_RATE_LIMIT.limit,
-      MCP_RATE_LIMIT.windowSeconds,
-    );
-    if (!allowed) {
-      audit.onRateLimited(principal.userId, MCP_RATE_LIMIT.limit, MCP_RATE_LIMIT.windowSeconds);
-      throw new RateLimitedException(
-        `Rate limit exceeded (MCP). Retry after ${Math.max(resetAt - Math.floor(Date.now() / 1000), 1)}s.`,
+    // Per person, from the VERIFIED principal — never per IP (MCP-PLAN §4). The SAME
+    // DISABLE_RATE_LIMIT escape every other limiter honours: it is for dev/CI only (the env
+    // schema refuses it in production), and a test suite that deliberately makes dozens of
+    // calls in a minute must not be throttled by the product budget.
+    if (!depsDisabledRateLimit) {
+      const { allowed, resetAt } = await cache.consumeRateLimit(
+        `mcp:uid:${principal.userId}`,
+        MCP_RATE_LIMIT.limit,
+        MCP_RATE_LIMIT.windowSeconds,
       );
+      if (!allowed) {
+        audit.onRateLimited(principal.userId, MCP_RATE_LIMIT.limit, MCP_RATE_LIMIT.windowSeconds);
+        throw new RateLimitedException(
+          `Rate limit exceeded (MCP). Retry after ${Math.max(resetAt - Math.floor(Date.now() / 1000), 1)}s.`,
+        );
+      }
     }
+
+    // What THIS request's writes touched (§6.7), collected by the tools and merged into the one
+    // audit line. `callRest` records the method/status; `ctx.noteWrite` adds ids/fields/counts.
+    const writeAudit: Record<string, unknown> = {};
+    const auditCallRest: typeof callRest = async (principal, rest) => {
+      const result = await callRest(principal, rest);
+      if (rest.method !== 'GET') {
+        writeAudit['write'] = true;
+        writeAudit['httpStatus'] = result.statusCode;
+      }
+      return result;
+    };
 
     // Stateless: one McpServer + transport per request, no session id ever issued.
     const server = new McpServer(
@@ -195,15 +218,18 @@ export function registerMcpRoute(deps: McpRouteDeps): void {
     const secret = deps.idempotencySecret;
     const toolCtx: ToolContext = {
       principal,
-      callRest,
+      callRest: auditCallRest,
+      noteWrite: (meta) => Object.assign(writeAudit, sanitizeWriteAudit({ ...meta })),
       ...(writesEnabled && secret
         ? {
             idempotencyKey: (tool: string, args: unknown) =>
               idempotencyKeyFor(secret, principal.userId, tool, args),
+            clientIdempotencyKey: (tool: string, args: unknown) =>
+              clientIdempotencyKeyFor(secret, principal.userId, tool, args),
           }
         : {}),
     };
-    registerTools(server, toolCtx, (event) => audit.onToolCall(event), {
+    registerTools(server, toolCtx, (event) => audit.onToolCall({ ...event, ...writeAudit }), {
       writes: writesEnabled,
     });
     await server.connect(transport);

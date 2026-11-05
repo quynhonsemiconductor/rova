@@ -234,6 +234,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
                       void (async () => {
                         const etag = getEtag();
                         const status = reply.statusCode !== 200 ? reply.statusCode : defaultStatus;
+                        // A VOID (204) answer is deliberately NOT cached: only routes that
+                        // CREATE rows carry `@UseIdempotency`, and those answer a body. A
+                        // naturally-idempotent write must not be turned into a replayed no-op.
                         if (lastResponse !== undefined) {
                           try {
                             await this.cache.instance.set(

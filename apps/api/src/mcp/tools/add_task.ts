@@ -55,13 +55,19 @@ export function registerAddTask(server: McpServer, ctx: ToolContext) {
       const body: Record<string, unknown> = { title: args.title };
       if (args.description !== undefined) body['description'] = args.description;
       if (args.state !== undefined) body['state'] = args.state;
+      // The candidate feed is row-scoped, and a task's Team defaults to its parent's (SRS P1-04),
+      // so that is the Team the write will validate against.
       if (args.assignee !== undefined) {
-        const people = await resolvePeople(ctx, parent.projectId, [args.assignee]);
+        const people = await resolvePeople(ctx, parent.projectId, [args.assignee], {
+          teamId: parent.teamId,
+        });
         if (!people.ok) return failureResult(people);
         body['assigneeId'] = people.ids[0];
       }
       if (args.devOwner !== undefined) {
-        const people = await resolvePeople(ctx, parent.projectId, [args.devOwner]);
+        const people = await resolvePeople(ctx, parent.projectId, [args.devOwner], {
+          teamId: parent.teamId,
+        });
         if (!people.ok) return failureResult(people);
         body['devOwnerId'] = people.ids[0];
       }
@@ -74,6 +80,12 @@ export function registerAddTask(server: McpServer, ctx: ToolContext) {
         url: `/v1/work-items/${pathSegment(parent.id)}/tasks`,
         body,
         idempotencyKey,
+      });
+      const createdId = (res.json as Record<string, unknown>)['id'];
+      ctx.noteWrite?.({
+        targets: [parent.id, ...(typeof createdId === 'string' ? [createdId] : [])],
+        fields: Object.keys(body).filter((field) => field !== 'title'),
+        count: 1,
       });
       return workItemWriteResult(
         res,
