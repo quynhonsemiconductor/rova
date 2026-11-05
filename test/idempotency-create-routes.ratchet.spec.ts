@@ -11,9 +11,9 @@ import { PortfolioItemsController } from '@modules/portfolio/interface/http/port
 import { IterationsController } from '@modules/iterations/interface/http/iterations.controller';
 
 /**
- * G2 (MCP v2): the seven CREATE routes carry `@UseIdempotency()`. MCP sends an
- * `Idempotency-Key` on every create it makes, and the interceptor is opt-in per route — a route
- * without it silently ignores the header, so an LLM retry would create a duplicate.
+ * G2 (MCP v2): every create route a tool can reach carries `@UseIdempotency()`. MCP sends an
+ * `Idempotency-Key` only when the caller supplied a `requestId`, and the interceptor is opt-in per
+ * route — a route without it silently ignores the header, so that retry would create a duplicate.
  *
  * Asserted from the decorator metadata rather than by calling a route: the question is "is the
  * interceptor attached", and Nest stores exactly that.
@@ -28,6 +28,11 @@ const CREATE_ROUTES: Array<{ label: string; controller: object; method: string }
     label: 'POST /v1/work-items/:id/tasks',
     controller: WorkItemsController.prototype,
     method: 'createTask',
+  },
+  {
+    label: 'POST /v1/work-items/:id/time-logs',
+    controller: WorkItemsController.prototype,
+    method: 'logTime',
   },
   {
     label: 'POST /v1/work-items/:id/comments',

@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { denied, pathSegment, result, toolError, type ToolContext } from './rest';
+import { denied, pathSegment, replayedFrom, result, toolError, type ToolContext } from './rest';
 import { failureResult, resolvePeople, resolvePortfolioItem, resolveWorkItem } from './lookups';
 
 /**
@@ -15,7 +15,7 @@ export function registerAddComment(server: McpServer, ctx: ToolContext) {
     {
       title: 'Add comment',
       description:
-        "WRITES a comment on one work item (key/id) or portfolio item (key) as you; @mentions notify the named people. Use only on the user's explicit request.",
+        "WRITES a comment on one work item (key/id) or portfolio item (key) as you; @mentions notify the named people. Use only on the user's explicit request. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request; without one a retry may create a duplicate. A reused `requestId` replays the first record for 24 h; during a Valkey outage a retry may create a duplicate.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -23,6 +23,14 @@ export function registerAddComment(server: McpServer, ctx: ToolContext) {
         openWorldHint: false,
       },
       inputSchema: {
+        requestId: z
+          .string()
+          .min(1)
+          .max(64)
+          .optional()
+          .describe(
+            'A create-only retry guard: generate once per user request and reuse the SAME value when retrying that request. A repeat with the same id returns the first record; omit it and a retry may create a duplicate.',
+          ),
         workItemKey: z.string().min(1).max(64).optional().describe('The work item key or id'),
         portfolioItemKey: z
           .string()
@@ -39,7 +47,7 @@ export function registerAddComment(server: McpServer, ctx: ToolContext) {
           .describe('People to @mention, by display name or email'),
       },
     },
-    async ({ workItemKey, portfolioItemKey, body, replyTo, mention }) => {
+    async ({ workItemKey, portfolioItemKey, body, replyTo, mention, requestId }) => {
       if ((workItemKey === undefined) === (portfolioItemKey === undefined)) {
         return toolError('Pass exactly one of workItemKey or portfolioItemKey.');
       }
@@ -67,14 +75,11 @@ export function registerAddComment(server: McpServer, ctx: ToolContext) {
         mentionedUserIds = people.ids;
       }
 
-      if (!ctx.idempotencyKey) return toolError('Writes are not enabled on this endpoint.');
-      const idempotencyKey = ctx.idempotencyKey('rova_add_comment', {
-        workItemKey,
-        portfolioItemKey,
-        body,
-        replyTo,
-        mention,
-      });
+      if (!ctx.clientIdempotencyKey) return toolError('Writes are not enabled on this endpoint.');
+      const idempotencyKey =
+        requestId !== undefined
+          ? ctx.clientIdempotencyKey('rova_add_comment', { requestId })
+          : undefined;
       const res = await ctx.callRest(ctx.principal, {
         method: 'POST',
         url,
@@ -85,7 +90,7 @@ export function registerAddComment(server: McpServer, ctx: ToolContext) {
             ? { mentionedUserIds }
             : {}),
         },
-        idempotencyKey,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
       });
       if (res.statusCode >= 400 || res.json === null || typeof res.json !== 'object') {
         return denied(res.statusCode, res.json);
@@ -113,6 +118,7 @@ export function registerAddComment(server: McpServer, ctx: ToolContext) {
           createdAt: c['createdAt'],
         },
         changed: ['body'],
+        replayed: replayedFrom(res),
       });
     },
   );
