@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.11](https://github.com/quynhonsemiconductor/rova/compare/v0.8.10...v0.8.11) (2026-11-05)
+
+
+### ✨ Features
+
+* **mcp:** save portfolio items and iterations (v2 PR6) ([#908](https://github.com/quynhonsemiconductor/rova/issues/908)) ([3e4407e](https://github.com/quynhonsemiconductor/rova/commit/3e4407e3995c27dd4b9256eefc75d825d1cd8535))
+* **meta:** show the running version in the API and the user menu ([#907](https://github.com/quynhonsemiconductor/rova/issues/907)) ([a03fe22](https://github.com/quynhonsemiconductor/rova/commit/a03fe2248089f13e8e1f542413d52db6adf0e1e4))
+
+
+### 🐛 Bug Fixes
+
+* **mcp:** create tools dedupe only by an explicit requestId ([#912](https://github.com/quynhonsemiconductor/rova/issues/912)) ([054015b](https://github.com/quynhonsemiconductor/rova/commit/054015b7d511c60e9fca20e150f320335ff845a0))
+* **mcp:** report featureLink as an object on a replayed create ([#917](https://github.com/quynhonsemiconductor/rova/issues/917)) ([8f8a43c](https://github.com/quynhonsemiconductor/rova/commit/8f8a43ce259aa7328f2cda2cc2f6ad3218050012))
+
 ## [0.8.10](https://github.com/quynhonsemiconductor/rova/compare/v0.8.9...v0.8.10) (2026-11-05)
 
 
