@@ -1,0 +1,387 @@
+import type { McpRestCall, McpRestResult, ToolContext } from './rest';
+import { pathSegment } from './rest';
+import { resolvePortfolioItem, resolveWorkItem, type Lookup, type LookupFailure } from './lookups';
+
+/** The kinds §5 of the MCP v2 design allows a chat user to delete, and nothing else. */
+export type DeleteKind = 'comment' | 'time_log' | 'relation' | 'test_result' | 'task';
+
+export const DELETE_KINDS = ['comment', 'time_log', 'relation', 'test_result', 'task'] as const;
+
+/** What the tool needs to perform exactly one REST delete, and what to echo back. */
+export interface DeletePlan {
+  ok: true;
+  kind: DeleteKind;
+  path: string;
+  targetId: string;
+  /** The subject key/id the caller named, echoed so the result is self-contained. */
+  subject: string;
+  /** A task's parent, so the tool can re-read it after the delete (no prediction). */
+  parentId?: string;
+}
+
+export type DeleteRefusal = LookupFailure;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const TEST_RESULT_MAX_AGE_MS = 7 * DAY_MS;
+
+/** A full work-item record (the detail's `item`), not the narrow lookup projection. */
+async function fetchItem(
+  ctx: ToolContext,
+  reference: string,
+): Promise<Lookup<{ ok: true } & Record<string, unknown>>> {
+  const res = UUID.test(reference.trim())
+    ? await ctx.callRest(ctx.principal, {
+        method: 'GET',
+        url: `/v1/work-items/${pathSegment(reference.trim())}`,
+      })
+    : await ctx.callRest(ctx.principal, {
+        method: 'GET',
+        url: '/v1/work-items/by-key',
+        query: { itemKey: reference.trim() },
+      });
+  if (res.statusCode >= 400) {
+    return { ok: false, statusCode: res.statusCode, json: res.json };
+  }
+  const body = res.json as Record<string, unknown> | null;
+  // BOTH routes answer the FLATTENED detail (the item's fields plus `splitLink`); the `{ item }`
+  // shape is accepted too for tolerance. Reading only `body.item` made every task/story look
+  // missing, by UUID AND by key.
+  const item =
+    (body?.['item'] as Record<string, unknown> | undefined) ??
+    (typeof body?.['id'] === 'string' ? body : undefined);
+  if (!item || typeof item['id'] !== 'string') {
+    return { ok: false, message: `No work item matches "${reference}".` };
+  }
+  return { ok: true, ...item };
+}
+
+/** Rows of a bare-array or paged REST answer, or a refusal to relay. */
+function rowsOf(json: unknown): Record<string, unknown>[] | null {
+  const body = Array.isArray(json)
+    ? json
+    : ((json as { data?: unknown; items?: unknown } | null)?.data ??
+      (json as { items?: unknown } | null)?.items);
+  return Array.isArray(body) ? (body as Record<string, unknown>[]) : null;
+}
+
+/** Reads a collection the guard needs, relaying a refusal instead of guessing. */
+async function readRows(
+  ctx: ToolContext,
+  call: McpRestCall,
+): Promise<Lookup<{ ok: true; rows: Record<string, unknown>[] }>> {
+  const res: McpRestResult = await ctx.callRest(ctx.principal, call);
+  if (res.statusCode >= 400) {
+    return { ok: false, statusCode: res.statusCode, json: res.json };
+  }
+  const rows = rowsOf(res.json);
+  if (!rows) {
+    return { ok: false, message: `Unexpected response from ${call.url}.` };
+  }
+  return { ok: true, rows };
+}
+
+/** A paged read whose `total` decides whether ONE page is the whole collection. */
+async function readPage(
+  ctx: ToolContext,
+  call: McpRestCall,
+): Promise<Lookup<{ ok: true; rows: Record<string, unknown>[]; total?: number }>> {
+  const res: McpRestResult = await ctx.callRest(ctx.principal, call);
+  if (res.statusCode >= 400) {
+    return { ok: false, statusCode: res.statusCode, json: res.json };
+  }
+  const rows = rowsOf(res.json);
+  if (!rows) {
+    return { ok: false, message: `Unexpected response from ${call.url}.` };
+  }
+  const total = (res.json as { total?: unknown } | null)?.total;
+  return { ok: true, rows, ...(typeof total === 'number' ? { total } : {}) };
+}
+
+const str = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length > 0 ? value : undefined;
+
+/**
+ * ONE answer for a 403 and a 404 on any target read. Relaying the status would let a chat user
+ * probe keys in projects they cannot see: a foreign item answers 403, a missing one 404, and the
+ * difference is an existence oracle. The caller learns only "not found, or not yours".
+ */
+const NOT_FOUND_OR_NOT_YOURS = 'That record was not found, or it is not yours.';
+
+function targetDenial(failure: LookupFailure): DeleteRefusal {
+  if ('statusCode' in failure && (failure.statusCode === 403 || failure.statusCode === 404)) {
+    return { ok: false, message: NOT_FOUND_OR_NOT_YOURS };
+  }
+  return failure;
+}
+
+/**
+ * A child id absent from THIS parent's list is not proven gone: it may belong to another item,
+ * and no route here resolves a child by id alone. A missing child is therefore never reported as
+ * `alreadyDeleted`; the caller gets the same generic refusal as any other absent record.
+ */
+function absentChild(): DeleteRefusal {
+  return { ok: false, message: NOT_FOUND_OR_NOT_YOURS };
+}
+
+/**
+ * The §5 guard: every condition is checked BEFORE the REST delete, and each refusal says what is
+ * holding the record. On TOCTOU the REST rules still hold — this only ever NARROWS what a chat
+ * user may do, never widens it.
+ */
+export async function planDelete(
+  ctx: ToolContext,
+  args: { kind: DeleteKind; key?: string; id?: string },
+): Promise<DeletePlan | DeleteRefusal> {
+  const me = ctx.principal.userId;
+  const key = args.key?.trim();
+  const id = args.id?.trim();
+
+  if (args.kind === 'comment') {
+    if (!key || !id)
+      return { ok: false, message: 'comment needs key (the item) and id (the comment).' };
+    const subject = await resolveAnyItem(ctx, key);
+    if (!subject.ok) return targetDenial(subject);
+    const comments = await readRows(ctx, {
+      method: 'GET',
+      url: subject.commentsPath,
+    });
+    if (!comments.ok) return targetDenial(comments);
+    const comment = comments.rows.find((row) => str(row['id']) === id);
+    if (!comment) return absentChild();
+    if (str(comment['authorId']) !== me) {
+      return {
+        ok: false,
+        message: "You can only delete your own comment; this one is someone else's.",
+      };
+    }
+    return {
+      ok: true,
+      kind: 'comment',
+      path: `${subject.basePath}/comments/${pathSegment(id)}`,
+      targetId: id,
+      subject: key,
+    };
+  }
+
+  if (args.kind === 'time_log') {
+    if (!key || !id)
+      return { ok: false, message: 'time_log needs key (the work item) and id (the log).' };
+    const item = await resolveWorkItem(ctx, key);
+    if (!item.ok) return targetDenial(item);
+    const logs = await readPage(ctx, {
+      method: 'GET',
+      url: `/v1/work-items/${pathSegment(item.id)}/time-logs`,
+      query: { page: 1, pageSize: 100 },
+    });
+    if (!logs.ok) return targetDenial(logs);
+    // Same rule as the task branch: one page is the whole set only when the server says so.
+    // Otherwise a caller's own log #101+ would answer alreadyDeleted and delete nothing.
+    if (logs.total === undefined || logs.total > logs.rows.length) {
+      return {
+        ok: false,
+        message: `${key} has more time logs than one page can show; use the web.`,
+      };
+    }
+    const log = logs.rows.find((row) => str(row['id']) === id);
+    if (!log) return absentChild();
+    if (str(log['userId']) !== me) {
+      return { ok: false, message: 'You can only delete your own time log.' };
+    }
+    return {
+      ok: true,
+      kind: 'time_log',
+      path: `/v1/work-items/${pathSegment(item.id)}/time-logs/${pathSegment(id)}`,
+      targetId: id,
+      subject: key,
+    };
+  }
+
+  if (args.kind === 'relation') {
+    if (!key || !id)
+      return { ok: false, message: 'relation needs key (the work item) and id (the relation).' };
+    const item = await resolveWorkItem(ctx, key);
+    if (!item.ok) return targetDenial(item);
+    const relations = await readRows(ctx, {
+      method: 'GET',
+      url: `/v1/work-items/${pathSegment(item.id)}/relations`,
+    });
+    if (!relations.ok) return targetDenial(relations);
+    const relation = relations.rows.find((row) => str(row['id']) === id);
+    // NOT alreadyDeleted: `admitRelationEnds` filters out a relation whose far end the caller
+    // cannot read, so an absent row may be a LIVE link on a work item they lost sight of. The
+    // generic answer is the only one true for both "gone" and "not visible".
+    if (!relation) return { ok: false, message: NOT_FOUND_OR_NOT_YOURS };
+    // "One thing the caller owns" has no exception: a link created by someone else is theirs to
+    // remove, even on an item the caller can edit.
+    if (str(relation['createdBy']) !== me) {
+      return { ok: false, message: 'You can only delete a relation you created.' };
+    }
+    return {
+      ok: true,
+      kind: 'relation',
+      path: `/v1/work-items/${pathSegment(item.id)}/relations/${pathSegment(id)}`,
+      targetId: id,
+      subject: key,
+    };
+  }
+
+  if (args.kind === 'test_result') {
+    if (!key || !id) {
+      return {
+        ok: false,
+        message: 'test_result needs key (the test case, e.g. TC-12) and id (the result).',
+      };
+    }
+    const testCase = await resolveTestCaseForDelete(ctx, key);
+    if (!testCase.ok) return targetDenial(testCase);
+    const results = await readRows(ctx, {
+      method: 'GET',
+      url: `/v1/test-cases/${pathSegment(testCase.id)}/test-results`,
+    });
+    if (!results.ok) return targetDenial(results);
+    const result = results.rows.find((row) => str(row['id']) === id);
+    if (!result) return absentChild();
+    // `created_by` is the RECORDER: REST stamps it from the authenticated caller, while
+    // `tester_id` may name a different person the result is about. Ownership follows the recorder.
+    if (str(result['createdBy']) !== me) {
+      return { ok: false, message: 'You can only delete a result you recorded.' };
+    }
+    const createdAt = Date.parse(str(result['createdAt']) ?? '');
+    if (!Number.isFinite(createdAt) || Date.now() - createdAt > TEST_RESULT_MAX_AGE_MS) {
+      return { ok: false, message: 'That result is more than 7 days old; use the web.' };
+    }
+    return {
+      ok: true,
+      kind: 'test_result',
+      path: `/v1/test-results/${pathSegment(id)}`,
+      targetId: id,
+      subject: key,
+    };
+  }
+
+  if (!key) return { ok: false, message: `${args.kind} needs the work item key.` };
+  if (id !== undefined) {
+    return { ok: false, message: `${args.kind} is identified by key alone; omit id.` };
+  }
+
+  const item = await fetchItem(ctx, key);
+  // A key is resolved in ONE read that the caller either may see or may not. A 403 (another
+  // project's item) and a 404 (gone, or never existed) must answer identically, so neither is
+  // reported as `alreadyDeleted`: that would confirm the row was once visible to this caller.
+  if (!item.ok) return targetDenial(item);
+  const itemId = String(item['id']);
+  const type = str(item['type']);
+
+  // The only key-only kind left is `task`. `work_item` (a story/defect) is DEFERRED to v2.1:
+  // REST deleteWorkItem cascades test cases and results, while the dependant feeds here are
+  // team-scoped, so a hidden dependant could pass the guard. Deleting a whole story from chat is
+  // rare; the UI keeps doing it.
+  if (type !== 'task') {
+    return { ok: false, message: `${key} is a ${type ?? 'work item'}, not a task.` };
+  }
+  if (str(item['createdBy']) !== me && str(item['assigneeId']) !== me) {
+    return { ok: false, message: 'A task may be deleted only by its creator or its owner.' };
+  }
+
+  const logs = await readPage(ctx, {
+    method: 'GET',
+    url: `/v1/work-items/${pathSegment(itemId)}/time-logs`,
+    query: { page: 1, pageSize: 100 },
+  });
+  if (!logs.ok) return targetDenial(logs);
+  // FAIL CLOSED: one page is the whole set only when the server says so. An absent total, or a
+  // total beyond the page, could hide a foreign log on page 2 — refuse rather than assume.
+  if (logs.total === undefined || logs.total > logs.rows.length) {
+    return {
+      ok: false,
+      message: `${key} has more time logs than one page can show; use the web.`,
+    };
+  }
+  const foreignLog = logs.rows.find((row) => str(row['userId']) !== me);
+  if (foreignLog) {
+    return {
+      ok: false,
+      message: `${key} carries time logged by someone else; use the web.`,
+    };
+  }
+
+  // Deleting a task soft-deletes its test cases AND every result under them, whoever recorded
+  // them. Any live test case therefore blocks the delete. The test-case list is scoped only by a
+  // readable parent (the task itself), so an empty page is proof. Comments and relations are
+  // RETAINED by REST (soft delete, no data loss), so refusing a VISIBLE foreign one is
+  // best-effort ownership hygiene, not a cascade guard. This relations feed also drops relations
+  // whose far end the caller cannot read, so a hidden foreign relation is NOT detected here — and
+  // that is harmless for data loss, because REST keeps it.
+  const [testCases, comments, relations] = await Promise.all([
+    readRows(ctx, {
+      method: 'GET',
+      url: `/v1/work-items/${pathSegment(itemId)}/test-cases`,
+      query: { limit: 1 },
+    }),
+    readRows(ctx, { method: 'GET', url: `/v1/work-items/${pathSegment(itemId)}/comments` }),
+    readRows(ctx, { method: 'GET', url: `/v1/work-items/${pathSegment(itemId)}/relations` }),
+  ]);
+  if (!testCases.ok) return targetDenial(testCases);
+  if (!comments.ok) return targetDenial(comments);
+  if (!relations.ok) return targetDenial(relations);
+  if (testCases.rows.length > 0) {
+    return { ok: false, message: `${key} has test cases; use the web.` };
+  }
+  if (comments.rows.some((row) => str(row['authorId']) !== me)) {
+    return { ok: false, message: `${key} has comments by other people; use the web.` };
+  }
+  if (relations.rows.some((row) => str(row['createdBy']) !== me)) {
+    return { ok: false, message: `${key} has relations by other people; use the web.` };
+  }
+
+  const parentId = str(item['parentId']);
+  return {
+    ok: true,
+    kind: 'task',
+    path: `/v1/work-items/${pathSegment(itemId)}`,
+    targetId: itemId,
+    subject: key,
+    ...(parentId ? { parentId } : {}),
+  };
+}
+
+/** A work-item or portfolio-item subject, with the path its comments hang from. */
+async function resolveAnyItem(
+  ctx: ToolContext,
+  key: string,
+): Promise<Lookup<{ ok: true; basePath: string; commentsPath: string }>> {
+  if (/^(EP|FE)[-_]/i.test(key)) {
+    const portfolio = await resolvePortfolioItem(ctx, key);
+    if (!portfolio.ok) return portfolio;
+    return {
+      ok: true,
+      basePath: `/v1/portfolio-items/${pathSegment(portfolio.id)}`,
+      commentsPath: `/v1/portfolio-items/${pathSegment(portfolio.id)}/comments`,
+    };
+  }
+  const item = await resolveWorkItem(ctx, key);
+  if (!item.ok) return item;
+  return {
+    ok: true,
+    basePath: `/v1/work-items/${pathSegment(item.id)}`,
+    commentsPath: `/v1/work-items/${pathSegment(item.id)}/comments`,
+  };
+}
+
+/** A test case by key (`GET /v1/test-cases/by-key/:key`). */
+async function resolveTestCaseForDelete(
+  ctx: ToolContext,
+  key: string,
+): Promise<Lookup<{ ok: true; id: string }>> {
+  const res = await ctx.callRest(ctx.principal, {
+    method: 'GET',
+    url: `/v1/test-cases/by-key/${pathSegment(key)}`,
+  });
+  if (res.statusCode >= 400) {
+    return { ok: false, statusCode: res.statusCode, json: res.json };
+  }
+  const id = str((res.json as Record<string, unknown> | null)?.['id']);
+  if (!id) return { ok: false, message: `No test case matches "${key}".` };
+  return { ok: true, id };
+}

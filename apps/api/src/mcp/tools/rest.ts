@@ -56,13 +56,16 @@ export type McpRestCaller = (
 /**
  * What a WRITE tool may report about its write for the audit line (design §6.7): ids/keys/field
  * NAMES only. `route.ts` sanitises it again before logging; a tool that passes a value or free
- * text loses it there.
+ * text loses it there. `reasonLength` is the one derived number a delete adds — the text itself
+ * stays out of telemetry.
  */
 export interface WriteAudit {
   targets?: string[];
   fields?: string[];
   count?: number;
   dryRun?: boolean;
+  /** Length of the caller's stated reason; the reason text is never logged. */
+  reasonLength?: number;
 }
 
 /** What register.ts hands every tool: the request's ONE principal and the caller. */
