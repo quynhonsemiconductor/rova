@@ -15,6 +15,8 @@ beforeEach(() => {
   ENV.API_BASE_URL = ''
   ENV.APP_ENV = 'development'
   ENV.DEV_LOGIN_ENABLED = false
+  ENV.APP_VERSION = undefined
+  ENV.APP_COMMIT = undefined
 })
 
 describe('configSchema', () => {
@@ -63,13 +65,61 @@ describe('loadConfig', () => {
   })
 
   it('applies the dev login switch', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(jsonResponse({ ...VALID, devLoginEnabled: true }))
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ...VALID, devLoginEnabled: true }))
 
     await loadConfig(fetchImpl as unknown as typeof fetch)
 
     expect(ENV.DEV_LOGIN_ENABLED).toBe(true)
+  })
+
+  it('applies the chart-rendered image tag and commit when the config carries them', async () => {
+    // qnsc-service >= 0.19.3 merges these into the ConfigMap from the web image tag. An older chart
+    // renders neither, and the schema must still accept the config (they are optional).
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ ...VALID, appVersion: 'sha-0123456789ab', appCommit: '0123456789ab' }),
+      )
+
+    await loadConfig(fetchImpl as unknown as typeof fetch)
+
+    expect(ENV.APP_VERSION).toBe('sha-0123456789ab')
+    expect(ENV.APP_COMMIT).toBe('0123456789ab')
+  })
+
+  it('leaves the version unknown rather than inventing one when the config omits it', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(VALID))
+
+    await loadConfig(fetchImpl as unknown as typeof fetch)
+
+    expect(ENV.APP_VERSION).toBeUndefined()
+    expect(ENV.APP_COMMIT).toBeUndefined()
+  })
+
+  it('treats an empty version and commit as unknown instead of failing the boot', async () => {
+    // A chart that renders "" (a digest-only pin, an unset value) must not put every reader on the
+    // startup error screen: the version line says "unknown", exactly as when the keys are absent.
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ ...VALID, appVersion: '', appCommit: '' }))
+
+    await expect(loadConfig(fetchImpl as unknown as typeof fetch)).resolves.toBeTruthy()
+
+    expect(ENV.APP_VERSION).toBeUndefined()
+    expect(ENV.APP_COMMIT).toBeUndefined()
+  })
+
+  it('keeps a non-commit appCommit out of the UI without failing the boot', () => {
+    for (const value of ['v0.1.2', 'sha-0123456789ab', 'prod', 'abc', '0123456789abzz']) {
+      const parsed = configSchema.safeParse({ ...VALID, appCommit: value })
+      expect(parsed.success, value).toBe(true)
+      expect(parsed.success && parsed.data.appCommit, value).toBeUndefined()
+    }
+  })
+
+  it('lowercases and trims a hex appCommit', () => {
+    const parsed = configSchema.safeParse({ ...VALID, appCommit: '  ABC1234 ' })
+    expect(parsed.success && parsed.data.appCommit).toBe('abc1234')
   })
 
   it('fails with the status when the file is missing', async () => {

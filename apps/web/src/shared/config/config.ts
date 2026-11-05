@@ -52,6 +52,32 @@ export const configSchema = z.object({
     ),
   appEnv: z.enum(['development', 'staging', 'production']),
   devLoginEnabled: z.boolean(),
+  /**
+   * The running web image tag, which qnsc-service >= 0.19.3 adds when it renders this file.
+   * Optional on purpose: an older chart renders no tag, and the version line then shows only what
+   * it knows. The chart's value wins over anything a product writes into the ConfigMap — the tag is
+   * the fact, a copied string drifts. An empty value means the same as an absent one: the chart can
+   * render `""` for a digest-only pin, and that must show "unknown", never fail the boot.
+   */
+  appVersion: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const version = (value ?? '').trim()
+      return version === '' ? undefined : version
+    }),
+  /**
+   * The commit a `sha-<commit>` web tag names; absent for a release tag or a digest-only pin.
+   * Only a hex commit counts — anything else (a tag, a URL, a truncated value) means unknown rather
+   * than an error screen, because the version line is a fact to display, not a reason to refuse boot.
+   */
+  appCommit: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const commit = (value ?? '').trim().toLowerCase()
+      return /^[0-9a-f]{7,40}$/.test(commit) ? commit : undefined
+    }),
 })
 
 export type AppConfig = z.infer<typeof configSchema>

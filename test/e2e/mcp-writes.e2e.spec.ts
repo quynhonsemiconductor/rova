@@ -300,25 +300,85 @@ describe('/mcp write tools (e2e)', () => {
     expect(viaMcpTask.body.error).toMatchObject({ error: { code: restTask.json().error.code } });
   });
 
-  it('an idempotent replay returns the SAME time-log id, not a duplicate', async () => {
+  it('a genuine repeat WITHOUT requestId is a second time log — a 2 h entry logged twice is two entries', async () => {
     people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
     const args = {
       key: NXP_STORY_1_ID,
       hours: 1.5,
       date: '2026-06-20',
-      description: `replay probe ${Date.now()}`,
+      description: `no-request-id ${Date.now()}`,
+    };
+    const first = await tool('rova_log_time', args);
+    const second = await tool('rova_log_time', args);
+    expect(first.isError, JSON.stringify(first.body)).toBeFalsy();
+    expect(second.isError, JSON.stringify(second.body)).toBeFalsy();
+    expect(second.body.timeLog.id).not.toBe(first.body.timeLog.id);
+    expect(second.body.replayed).toBe(false);
+    const [{ rows }] = await db
+      .select({ rows: sql<number>`count(*)::int` })
+      .from(timeLogs)
+      .where(eq(timeLogs.description, args.description));
+    expect(Number(rows)).toBe(2);
+  });
+
+  it('the SAME requestId replays the first time log: one row, same id, replayed', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const args = {
+      key: NXP_STORY_1_ID,
+      hours: 1.5,
+      date: '2026-06-20',
+      description: `request-id ${Date.now()}`,
+      requestId: `log-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     };
     const first = await tool('rova_log_time', args);
     const second = await tool('rova_log_time', args);
     expect(first.isError, JSON.stringify(first.body)).toBeFalsy();
     expect(second.isError, JSON.stringify(second.body)).toBeFalsy();
     expect(second.body.timeLog.id).toBe(first.body.timeLog.id);
-    // ONE row, not merely one id in the response: the replay must not have written twice.
+    expect(second.body.replayed).toBe(true);
     const [{ rows }] = await db
       .select({ rows: sql<number>`count(*)::int` })
       .from(timeLogs)
       .where(eq(timeLogs.description, args.description));
     expect(Number(rows)).toBe(1);
+  });
+
+  it('comments follow the same rule: no requestId is two comments, one requestId is one + replay', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const plainBody = `repeat comment ${Date.now()}`;
+    const a = await tool('rova_add_comment', { workItemKey: NXP_STORY_1_ID, body: plainBody });
+    const b = await tool('rova_add_comment', { workItemKey: NXP_STORY_1_ID, body: plainBody });
+    expect(a.isError, JSON.stringify(a.body)).toBeFalsy();
+    expect(b.isError, JSON.stringify(b.body)).toBeFalsy();
+    expect(b.body.comment.id).not.toBe(a.body.comment.id);
+    expect(b.body.replayed).toBe(false);
+    const [{ rows: plainRows }] = await db
+      .select({ rows: sql<number>`count(*)::int` })
+      .from(comments)
+      .where(eq(comments.body, plainBody));
+    expect(Number(plainRows)).toBe(2);
+
+    const keyedBody = `request-id comment ${Date.now()}`;
+    const requestId = `comment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const c = await tool('rova_add_comment', {
+      workItemKey: NXP_STORY_1_ID,
+      body: keyedBody,
+      requestId,
+    });
+    const d = await tool('rova_add_comment', {
+      workItemKey: NXP_STORY_1_ID,
+      body: keyedBody,
+      requestId,
+    });
+    expect(c.isError, JSON.stringify(c.body)).toBeFalsy();
+    expect(d.isError, JSON.stringify(d.body)).toBeFalsy();
+    expect(d.body.comment.id).toBe(c.body.comment.id);
+    expect(d.body.replayed).toBe(true);
+    const [{ rows: keyedRows }] = await db
+      .select({ rows: sql<number>`count(*)::int` })
+      .from(comments)
+      .where(eq(comments.body, keyedBody));
+    expect(Number(keyedRows)).toBe(1);
   });
 
   it('rova_add_comment refuses a replyTo from ANOTHER item (and REST refuses it too)', async () => {
@@ -382,12 +442,21 @@ describe('/mcp write tools (e2e)', () => {
     expect(ok.isError, JSON.stringify(ok.body)).toBeFalsy();
   });
 
-  it('rova_add_comment replays to the SAME comment id on a work item and on a portfolio item', async () => {
+  it('rova_add_comment replays the SAME comment id for the same requestId, on a work item and a portfolio item', async () => {
     people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
 
     const itemBody = `replay item comment ${Date.now()}`;
-    const first = await tool('rova_add_comment', { workItemKey: NXP_STORY_1_ID, body: itemBody });
-    const second = await tool('rova_add_comment', { workItemKey: NXP_STORY_1_ID, body: itemBody });
+    const itemRequest = `item-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const first = await tool('rova_add_comment', {
+      workItemKey: NXP_STORY_1_ID,
+      body: itemBody,
+      requestId: itemRequest,
+    });
+    const second = await tool('rova_add_comment', {
+      workItemKey: NXP_STORY_1_ID,
+      body: itemBody,
+      requestId: itemRequest,
+    });
     expect(first.isError, JSON.stringify(first.body)).toBeFalsy();
     expect(second.body.comment.id).toBe(first.body.comment.id);
     const [{ n: itemRows }] = await db
@@ -410,8 +479,17 @@ describe('/mcp write tools (e2e)', () => {
     expect(key).toBeTruthy();
 
     const portfolioBody = `replay portfolio comment ${Date.now()}`;
-    const p1 = await tool('rova_add_comment', { portfolioItemKey: key, body: portfolioBody });
-    const p2 = await tool('rova_add_comment', { portfolioItemKey: key, body: portfolioBody });
+    const portfolioRequest = `portfolio-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const p1 = await tool('rova_add_comment', {
+      portfolioItemKey: key,
+      body: portfolioBody,
+      requestId: portfolioRequest,
+    });
+    const p2 = await tool('rova_add_comment', {
+      portfolioItemKey: key,
+      body: portfolioBody,
+      requestId: portfolioRequest,
+    });
     expect(p1.isError, JSON.stringify(p1.body)).toBeFalsy();
     expect(p2.body.comment.id).toBe(p1.body.comment.id);
     const [{ n: portfolioRows }] = await db
@@ -485,6 +563,7 @@ describe('/mcp write tools (e2e)', () => {
       title: `mcp create probe ${Date.now()}`,
       iteration: iterationName as string,
       release: releaseName as string,
+      requestId: `create-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     };
     const first = await tool('rova_create_work_item', args);
     const second = await tool('rova_create_work_item', args);

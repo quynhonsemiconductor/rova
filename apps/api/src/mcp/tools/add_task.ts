@@ -16,7 +16,7 @@ export function registerAddTask(server: McpServer, ctx: ToolContext) {
     {
       title: 'Add task',
       description:
-        "WRITES a task under a story or defect as you, and must be used only on the user's explicit request. The task inherits its iteration from the parent; `parentKey` is the work item key (e.g. US-412) or id. An identical request within 10 minutes returns the first result (`replayed: true`).",
+        "WRITES a task under a story or defect as you, and must be used only on the user's explicit request. The task inherits its iteration from the parent; `parentKey` is the work item key (e.g. US-412) or id. DUPLICATES: a create is deduplicated ONLY by `requestId` — generate one per user request and reuse the SAME value when retrying that request; without one a retry may create a duplicate. A reused `requestId` replays the first record for 24 h; during a Valkey outage a retry may create a duplicate.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -24,6 +24,14 @@ export function registerAddTask(server: McpServer, ctx: ToolContext) {
         openWorldHint: false,
       },
       inputSchema: {
+        requestId: z
+          .string()
+          .min(1)
+          .max(64)
+          .optional()
+          .describe(
+            'A create-only retry guard: generate once per user request and reuse the SAME value when retrying that request. A repeat with the same id returns the first record; omit it and a retry may create a duplicate.',
+          ),
         parentKey: z.string().min(1).max(64).describe('The parent story/defect key or id'),
         title: z.string().min(1).max(500).describe('The task title'),
         description: z.string().max(50_000).optional(),
@@ -50,7 +58,7 @@ export function registerAddTask(server: McpServer, ctx: ToolContext) {
           `"${args.parentKey}" is a ${parent.type}; a task can only be added under a story or defect.`,
         );
       }
-      if (!ctx.idempotencyKey) return toolError('Writes are not enabled on this endpoint.');
+      if (!ctx.clientIdempotencyKey) return toolError('Writes are not enabled on this endpoint.');
 
       const body: Record<string, unknown> = { title: args.title };
       if (args.description !== undefined) body['description'] = args.description;
@@ -74,12 +82,15 @@ export function registerAddTask(server: McpServer, ctx: ToolContext) {
       if (args.estimateHours !== undefined) body['estimateHours'] = args.estimateHours;
       if (args.todoHours !== undefined) body['todoHours'] = args.todoHours;
 
-      const idempotencyKey = ctx.idempotencyKey('rova_add_task', args);
+      const idempotencyKey =
+        args.requestId !== undefined
+          ? ctx.clientIdempotencyKey('rova_add_task', { requestId: args.requestId })
+          : undefined;
       const res = await ctx.callRest(ctx.principal, {
         method: 'POST',
         url: `/v1/work-items/${pathSegment(parent.id)}/tasks`,
         body,
-        idempotencyKey,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
       });
       const createdId = (res.json as Record<string, unknown>)['id'];
       ctx.noteWrite?.({

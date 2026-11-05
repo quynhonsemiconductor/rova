@@ -32,6 +32,7 @@ import { AuthApiErrorFilter } from '@quynhonsemiconductor/identity/nest';
 import { HttpLoggingInterceptor } from '@platform/http/http-logging.interceptor';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
+import { MetaController } from './meta/meta.controller';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
     ScmModule,
     TestCasesModule,
   ],
+  controllers: [MetaController],
   providers: [
     // Global exception filter → stable RFC-9457-style error envelope
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
