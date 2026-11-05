@@ -28,10 +28,10 @@ export interface DeletePlan {
 
 export type DeleteRefusal = LookupFailure & {
   /**
-   * The 404 was the TARGET itself (its key no longer resolves), which is what a retry after a
-   * successful delete sees. The caller is already known and a plain lookup has no ownership to
-   * judge, so the tool reports the retry as `alreadyDeleted` — the same answer a stranger's
-   * 404 gets, revealing nothing about whether the row ever existed.
+   * The caller CAN see the parent and the CHILD (comment, time log, relation, test result) is
+   * gone — what a retry after a successful delete sees. A missing parent, or a 403/404 on a
+   * target read, is never marked: 403 and 404 must answer identically so neither is an existence
+   * oracle.
    */
   targetMissing?: true;
 };
@@ -112,6 +112,25 @@ const str = (value: unknown): string | undefined =>
   typeof value === 'string' && value.length > 0 ? value : undefined;
 
 /**
+ * ONE answer for a 403 and a 404 on any target read. Relaying the status would let a chat user
+ * probe keys in projects they cannot see: a foreign item answers 403, a missing one 404, and the
+ * difference is an existence oracle. The caller learns only "not found, or not yours".
+ */
+const NOT_FOUND_OR_NOT_YOURS = 'That record was not found, or it is not yours.';
+
+function targetDenial(failure: LookupFailure): DeleteRefusal {
+  if ('statusCode' in failure && (failure.statusCode === 403 || failure.statusCode === 404)) {
+    return { ok: false, message: NOT_FOUND_OR_NOT_YOURS };
+  }
+  return failure;
+}
+
+/** The caller can see the parent, and the CHILD is gone: the retry of a delete that landed. */
+function childMissing(message: string): DeleteRefusal {
+  return { ok: false, message, targetMissing: true };
+}
+
+/**
  * The §5 guard: every condition is checked BEFORE the REST delete, and each refusal says what is
  * holding the record. On TOCTOU the REST rules still hold — this only ever NARROWS what a chat
  * user may do, never widens it.
@@ -128,16 +147,14 @@ export async function planDelete(
     if (!key || !id)
       return { ok: false, message: 'comment needs key (the item) and id (the comment).' };
     const subject = await resolveAnyItem(ctx, key);
-    if (!subject.ok) return subject;
+    if (!subject.ok) return targetDenial(subject);
     const comments = await readRows(ctx, {
       method: 'GET',
       url: subject.commentsPath,
     });
-    if (!comments.ok) return comments;
+    if (!comments.ok) return targetDenial(comments);
     const comment = comments.rows.find((row) => str(row['id']) === id);
-    if (!comment) {
-      return { ok: false, message: `No comment ${id} on ${key}.` };
-    }
+    if (!comment) return childMissing(`No comment ${id} on ${key}.`);
     if (str(comment['authorId']) !== me) {
       return {
         ok: false,
@@ -157,15 +174,15 @@ export async function planDelete(
     if (!key || !id)
       return { ok: false, message: 'time_log needs key (the work item) and id (the log).' };
     const item = await resolveWorkItem(ctx, key);
-    if (!item.ok) return item;
+    if (!item.ok) return targetDenial(item);
     const logs = await readRows(ctx, {
       method: 'GET',
       url: `/v1/work-items/${pathSegment(item.id)}/time-logs`,
       query: { page: 1, pageSize: 100 },
     });
-    if (!logs.ok) return logs;
+    if (!logs.ok) return targetDenial(logs);
     const log = logs.rows.find((row) => str(row['id']) === id);
-    if (!log) return { ok: false, message: `No time log ${id} on ${key}.` };
+    if (!log) return childMissing(`No time log ${id} on ${key}.`);
     if (str(log['userId']) !== me) {
       return { ok: false, message: 'You can only delete your own time log.' };
     }
@@ -182,14 +199,14 @@ export async function planDelete(
     if (!key || !id)
       return { ok: false, message: 'relation needs key (the work item) and id (the relation).' };
     const item = await resolveWorkItem(ctx, key);
-    if (!item.ok) return item;
+    if (!item.ok) return targetDenial(item);
     const relations = await readRows(ctx, {
       method: 'GET',
       url: `/v1/work-items/${pathSegment(item.id)}/relations`,
     });
-    if (!relations.ok) return relations;
+    if (!relations.ok) return targetDenial(relations);
     const relation = relations.rows.find((row) => str(row['id']) === id);
-    if (!relation) return { ok: false, message: `No relation ${id} touches ${key}.` };
+    if (!relation) return childMissing(`No relation ${id} touches ${key}.`);
     // "One thing the caller owns" has no exception: a link created by someone else is theirs to
     // remove, even on an item the caller can edit.
     if (str(relation['createdBy']) !== me) {
@@ -212,14 +229,14 @@ export async function planDelete(
       };
     }
     const testCase = await resolveTestCaseForDelete(ctx, key);
-    if (!testCase.ok) return testCase;
+    if (!testCase.ok) return targetDenial(testCase);
     const results = await readRows(ctx, {
       method: 'GET',
       url: `/v1/test-cases/${pathSegment(testCase.id)}/test-results`,
     });
-    if (!results.ok) return results;
+    if (!results.ok) return targetDenial(results);
     const result = results.rows.find((row) => str(row['id']) === id);
-    if (!result) return { ok: false, message: `No result ${id} on ${key}.` };
+    if (!result) return childMissing(`No result ${id} on ${key}.`);
     // `created_by` is the RECORDER: REST stamps it from the authenticated caller, while
     // `tester_id` may name a different person the result is about. Ownership follows the recorder.
     if (str(result['createdBy']) !== me) {
@@ -244,14 +261,10 @@ export async function planDelete(
   }
 
   const item = await fetchItem(ctx, key);
-  if (!item.ok) {
-    // The key no longer resolves: a retry of a delete that already landed. Mark it so the tool
-    // can answer idempotently instead of turning a success into a refusal.
-    if ('statusCode' in item && item.statusCode === 404) {
-      return { ...item, targetMissing: true };
-    }
-    return item;
-  }
+  // A key is resolved in ONE read that the caller either may see or may not. A 403 (another
+  // project's item) and a 404 (gone, or never existed) must answer identically, so neither is
+  // reported as `alreadyDeleted`: that would confirm the row was once visible to this caller.
+  if (!item.ok) return targetDenial(item);
   const itemId = String(item['id']);
   const type = str(item['type']);
 
@@ -268,10 +281,10 @@ export async function planDelete(
       url: `/v1/work-items/${pathSegment(itemId)}/time-logs`,
       query: { page: 1, pageSize: 100 },
     });
-    if (!logs.ok) return logs;
-    // One page is only the whole set when the server says it is. A 101st row on page 2 could be
-    // someone else's, and this guard must never let it be hidden behind a page boundary.
-    if (logs.total !== undefined && logs.total > logs.rows.length) {
+    if (!logs.ok) return targetDenial(logs);
+    // FAIL CLOSED: one page is the whole set only when the server says so. An absent total, or a
+    // total beyond the page, could hide a foreign log on page 2 — refuse rather than assume.
+    if (logs.total === undefined || logs.total > logs.rows.length) {
       return {
         ok: false,
         message: `${key} has more time logs than one page can show; use the web.`,
@@ -331,7 +344,7 @@ export async function planDelete(
     readRows(ctx, { method: 'GET', url: `/v1/work-items/${pathSegment(itemId)}/relations` }),
   ]);
   for (const feed of [tasks, testCases, timeLogs, comments, relations]) {
-    if (!feed.ok) return feed;
+    if (!feed.ok) return targetDenial(feed);
   }
   if (tasks.ok && tasks.rows.length > 0) {
     return { ok: false, message: `${key} has tasks; use the web.` };
@@ -355,7 +368,7 @@ export async function planDelete(
   const iterationId = str(item['iterationId']);
   if (iterationId) {
     const state = await iterationState(ctx, str(item['projectId']) ?? '', iterationId);
-    if (!state.ok) return state;
+    if (!state.ok) return targetDenial(state);
     if (state.state === 'committed' || state.state === 'accepted') {
       return {
         ok: false,
@@ -451,7 +464,7 @@ async function parentAutoCompleteWarning(
     method: 'GET',
     url: `/v1/work-items/${pathSegment(parentId)}/tasks`,
   });
-  if (!siblings.ok) return siblings;
+  if (!siblings.ok) return targetDenial(siblings);
   const others = siblings.rows.filter((row) => String(row['id']) !== String(item['id']));
   if (others.length === 0) return undefined;
   const allCompleted = others.every((row) => str(row['scheduleState']) === 'Completed');
