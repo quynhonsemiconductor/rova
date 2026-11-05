@@ -27,7 +27,8 @@ authenticated user is therefore one of three things:
 - a **genuine burst far above normal use** (the measured peak was 103 requests/min for one person;
   `DEFAULT` is 1,200/min);
 - **misconfiguration or a broken refund** — a signed-in request is spending the shared per-address
-  PRE_AUTH bucket, or a deployment still runs an older limit.
+  PRE_AUTH bucket, or a deployment still runs an older limit. Admitted signed-in requests leave no
+  PRE_AUTH slot; the ones refused by their own user tier keep it.
 
 ## First checks
 
@@ -64,8 +65,9 @@ authenticated user is therefore one of three things:
 3. **Was the request authenticated?** `keyed_by="user"` means the principal was known. A
    `PRE_AUTH:ip:` key on normal signed-in traffic means the refund did not run.
 
-4. **Did a deploy just land?** Check the Deploys annotation. #905 changed the tiers; a pod still on
-   an older image runs the old 100/min `DEFAULT` ceiling and produces refusals this alert will see.
+4. **Did a deploy just land?** Check the Deploys annotation. #905 changed the tiers: `v0.8.8` ran
+   `DEFAULT` 100/min, `v0.8.9` raised it to 600/min, and `v0.8.10` (#905) to 1,200/min. A pod still
+   on an older image produces refusals this alert will see.
 
 5. **Check the refund path** if the tier is `PRE_AUTH`: search logs for
    `Rate limit slot not refunded`. That line means Valkey refused the refund, so every later request
