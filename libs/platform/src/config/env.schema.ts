@@ -281,6 +281,19 @@ export const EnvSchema = z
     /** The release (image tag), injected into the OTEL resource, Pino logs and the MCP server version. */
     SERVICE_VERSION: z.string().default('dev'),
     /**
+     * What is actually running, as qnsc-service >= 0.19.3 injects it: the API image tag —
+     * `vX.Y.Z` on a release, `sha-<commit>` on a dev build. Read by `GET /v1/meta`; absent (a
+     * digest-only pin, or a laptop) means unknown, and the endpoint then falls back to
+     * `SERVICE_VERSION` and finally to `dev`.
+     */
+    APP_VERSION: z.string().optional(),
+    /**
+     * The commit an image tag names, when it names one. The chart sets it only for a
+     * `sha-<commit>` tag; a release tag names no commit. `null` in `/v1/meta` means unknown,
+     * never "dev".
+     */
+    APP_COMMIT: z.string().optional(),
+    /**
      * Deployment identity for telemetry (`deployment.environment.name`) — NOT the
      * same thing as `NODE_ENV`.
      *

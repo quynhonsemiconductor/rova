@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+  '/v1/meta': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Return the API version, commit and deployment environment */
+    get: operations['MetaController_getMeta']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/config': {
     parameters: {
       query?: never
@@ -3392,6 +3409,14 @@ export interface paths {
 export type webhooks = Record<string, never>
 export interface components {
   schemas: {
+    MetaResponseDto: {
+      /** @description The API image tag, or `dev` when the deployment injected none. */
+      version: string
+      /** @description The commit behind a `sha-<commit>` tag; `null` for a release tag or an unknown tag. */
+      commit: string | null
+      /** @description The deployment environment (`dev` | `prod` …) from `DEPLOYMENT_ENV`; never `NODE_ENV`. */
+      env: string
+    }
     CreateApiTokenDto: {
       /** @description Human label, shown in the token list */
       name: string
@@ -7275,6 +7300,25 @@ export interface components {
 }
 export type $defs = Record<string, never>
 export interface operations {
+  MetaController_getMeta: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MetaResponseDto']
+        }
+      }
+    }
+  }
   PublicConfigController_publicConfig: {
     parameters: {
       query?: never

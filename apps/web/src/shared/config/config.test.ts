@@ -15,6 +15,8 @@ beforeEach(() => {
   ENV.API_BASE_URL = ''
   ENV.APP_ENV = 'development'
   ENV.DEV_LOGIN_ENABLED = false
+  ENV.APP_VERSION = undefined
+  ENV.APP_COMMIT = undefined
 })
 
 describe('configSchema', () => {
@@ -63,13 +65,35 @@ describe('loadConfig', () => {
   })
 
   it('applies the dev login switch', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(jsonResponse({ ...VALID, devLoginEnabled: true }))
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ...VALID, devLoginEnabled: true }))
 
     await loadConfig(fetchImpl as unknown as typeof fetch)
 
     expect(ENV.DEV_LOGIN_ENABLED).toBe(true)
+  })
+
+  it('applies the chart-rendered image tag and commit when the config carries them', async () => {
+    // qnsc-service >= 0.19.3 merges these into the ConfigMap from the web image tag. An older chart
+    // renders neither, and the schema must still accept the config (they are optional).
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ ...VALID, appVersion: 'sha-0123456789ab', appCommit: '0123456789ab' }),
+      )
+
+    await loadConfig(fetchImpl as unknown as typeof fetch)
+
+    expect(ENV.APP_VERSION).toBe('sha-0123456789ab')
+    expect(ENV.APP_COMMIT).toBe('0123456789ab')
+  })
+
+  it('leaves the version unknown rather than inventing one when the config omits it', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(VALID))
+
+    await loadConfig(fetchImpl as unknown as typeof fetch)
+
+    expect(ENV.APP_VERSION).toBeUndefined()
+    expect(ENV.APP_COMMIT).toBeUndefined()
   })
 
   it('fails with the status when the file is missing', async () => {
