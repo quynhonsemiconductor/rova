@@ -70,8 +70,9 @@ authenticated user is therefore one of three things:
    on an older image produces refusals this alert will see.
 
 5. **Check the refund path** if the tier is `PRE_AUTH`: search logs for
-   `Rate limit slot not refunded`. That line means Valkey refused the refund, so every later request
-   from that address keeps consuming the shared bucket. Treat it as an incident, not a limit tune.
+   `Rate limit slot not refunded`. That line means the refund call THREW (a Valkey error or timeout),
+   so every later request from that address keeps consuming the shared bucket. Treat it as an
+   incident, not a limit tune.
 
 6. **Confirm the client honours `Retry-After`.** The SPA retries a GET 429 up to twice using the
    server's wait and never shows a toast; a sustained refusal means those retries were exhausted.
