@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.10](https://github.com/quynhonsemiconductor/rova/compare/v0.8.9...v0.8.10) (2026-11-05)
+
+
+### ✨ Features
+
+* **rate-limit:** generous per-user limits, signals on 429 to staff ([#905](https://github.com/quynhonsemiconductor/rova/issues/905)) ([1fcd213](https://github.com/quynhonsemiconductor/rova/commit/1fcd2130feba5730efa3ad494a0832a3662806c9))
+
 ## [0.8.9](https://github.com/quynhonsemiconductor/rova/compare/v0.8.8...v0.8.9) (2026-11-05)
 
 
