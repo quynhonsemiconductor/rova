@@ -289,10 +289,17 @@ export const EnvSchema = z
     APP_VERSION: z.string().optional(),
     /**
      * The commit an image tag names, when it names one. The chart sets it only for a
-     * `sha-<commit>` tag; a release tag names no commit. `null` in `/v1/meta` means unknown,
-     * never "dev".
+     * `sha-<commit>` tag; a release tag names no commit. Only a hex commit counts: anything else
+     * (a release tag, a URL, a truncated value) means unknown, not a boot failure. `null` in
+     * `/v1/meta` means unknown, never "dev".
      */
-    APP_COMMIT: z.string().optional(),
+    APP_COMMIT: z
+      .string()
+      .optional()
+      .transform((value) => {
+        const commit = (value ?? '').trim().toLowerCase();
+        return /^[0-9a-f]{7,40}$/.test(commit) ? commit : undefined;
+      }),
     /**
      * Deployment identity for telemetry (`deployment.environment.name`) — NOT the
      * same thing as `NODE_ENV`.

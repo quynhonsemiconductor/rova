@@ -96,6 +96,32 @@ describe('loadConfig', () => {
     expect(ENV.APP_COMMIT).toBeUndefined()
   })
 
+  it('treats an empty version and commit as unknown instead of failing the boot', async () => {
+    // A chart that renders "" (a digest-only pin, an unset value) must not put every reader on the
+    // startup error screen: the version line says "unknown", exactly as when the keys are absent.
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ ...VALID, appVersion: '', appCommit: '' }))
+
+    await expect(loadConfig(fetchImpl as unknown as typeof fetch)).resolves.toBeTruthy()
+
+    expect(ENV.APP_VERSION).toBeUndefined()
+    expect(ENV.APP_COMMIT).toBeUndefined()
+  })
+
+  it('keeps a non-commit appCommit out of the UI without failing the boot', () => {
+    for (const value of ['v0.1.2', 'sha-0123456789ab', 'prod', 'abc', '0123456789abzz']) {
+      const parsed = configSchema.safeParse({ ...VALID, appCommit: value })
+      expect(parsed.success, value).toBe(true)
+      expect(parsed.success && parsed.data.appCommit, value).toBeUndefined()
+    }
+  })
+
+  it('lowercases and trims a hex appCommit', () => {
+    const parsed = configSchema.safeParse({ ...VALID, appCommit: '  ABC1234 ' })
+    expect(parsed.success && parsed.data.appCommit).toBe('abc1234')
+  })
+
   it('fails with the status when the file is missing', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('not found', { status: 404 }))
 
