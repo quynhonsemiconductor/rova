@@ -19,7 +19,7 @@ export function registerDelete(server: McpServer, ctx: ToolContext) {
     {
       title: 'Delete one thing you own',
       description:
-        "DELETES one thing as you, and must be used only on the user's explicit request. Kinds: your own comment (`key` = the work item or portfolio item, `id` = comment), your own time log (`key` = work item, `id` = log), a relation YOU created (`key` = work item, `id` = relation), a test result YOU recorded within 7 days (`key` = test case, e.g. TC-12, `id` = result), one task you created or own (`key` = task), or a story/defect you created in the last 24 hours with no tasks, test cases, time logs, others' comments, relations or committed/accepted iteration (`key` = story/defect). Anything with dependants is refused — tell the user to use the web. A retry of a deleted comment, time log or test result answers `alreadyDeleted: true`; a work item, task or relation answers the generic 'not found or not yours' (a relation is listed only while its far end is readable, so 'gone' cannot be told from 'not visible').",
+        "DELETES one thing as you, and must be used only on the user's explicit request. Kinds: your own comment (`key` = the work item or portfolio item, `id` = comment), your own time log (`key` = work item, `id` = log), a relation YOU created (`key` = work item, `id` = relation), a test result YOU recorded within 7 days (`key` = test case, e.g. TC-12, `id` = result), or one task you created or own (`key` = task). Deleting a whole story or defect is NOT supported; tell the user to use the web for that. Anything with dependants on a task is refused. A retry of a deleted comment, time log or test result answers `alreadyDeleted: true`; a task or relation answers the generic 'not found or not yours' (a relation is listed only while its far end is readable, so 'gone' cannot be told from 'not visible').",
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
@@ -96,7 +96,6 @@ export function registerDelete(server: McpServer, ctx: ToolContext) {
           kind: plan.kind,
           id: plan.targetId,
           subject: plan.subject,
-          ...(plan.warning ? { warning: plan.warning } : {}),
         },
         ...(args.reason !== undefined ? { reason: args.reason } : {}),
       });

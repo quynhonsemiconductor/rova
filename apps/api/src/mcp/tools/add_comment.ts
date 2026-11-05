@@ -37,7 +37,7 @@ export function registerAddComment(server: McpServer, ctx: ToolContext) {
           .min(1)
           .max(64)
           .optional()
-          .describe('The Epic/Feature key (e.g. F-12)'),
+          .describe('The Epic/Feature key (e.g. FE-12)'),
         body: z.string().min(1).max(50_000).describe('The comment text (plain text/Markdown)'),
         replyTo: z.uuid().optional().describe('Parent comment id, for a reply'),
         mention: z

@@ -3,16 +3,9 @@ import { pathSegment } from './rest';
 import { resolvePortfolioItem, resolveWorkItem, type Lookup, type LookupFailure } from './lookups';
 
 /** The kinds §5 of the MCP v2 design allows a chat user to delete, and nothing else. */
-export type DeleteKind = 'comment' | 'time_log' | 'relation' | 'test_result' | 'task' | 'work_item';
+export type DeleteKind = 'comment' | 'time_log' | 'relation' | 'test_result' | 'task';
 
-export const DELETE_KINDS = [
-  'comment',
-  'time_log',
-  'relation',
-  'test_result',
-  'task',
-  'work_item',
-] as const;
+export const DELETE_KINDS = ['comment', 'time_log', 'relation', 'test_result', 'task'] as const;
 
 /** What the tool needs to perform exactly one REST delete, and what to echo back. */
 export interface DeletePlan {
@@ -22,8 +15,6 @@ export interface DeletePlan {
   targetId: string;
   /** The subject key/id the caller named, echoed so the result is self-contained. */
   subject: string;
-  /** A consequence of the delete the caller must see (currently only a parent auto-complete). */
-  warning?: string;
 }
 
 export type DeleteRefusal = LookupFailure & {
@@ -39,17 +30,6 @@ export type DeleteRefusal = LookupFailure & {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TEST_RESULT_MAX_AGE_MS = 7 * DAY_MS;
-
-/**
- * The DONE schedule states, lowercase as the API sends them. Mirrors
- * `COMPLETED_SCHEDULE_STATES`/`isCompletedScheduleState` (db/schema/enums); a tool may not import
- * the DB schema (the MCP ratchet), so the list is restated here — comparing `'Completed'` matched
- * nothing and silently disabled the parent-completion warning.
- */
-const COMPLETED_SCHEDULE_STATES = new Set(['completed', 'accepted', 'release']);
-
-const isCompletedScheduleState = (state: string | undefined): boolean =>
-  state !== undefined && COMPLETED_SCHEDULE_STATES.has(state);
 
 /** A full work-item record (the detail's `item`), not the narrow lookup projection. */
 async function fetchItem(
@@ -295,118 +275,42 @@ export async function planDelete(
   const itemId = String(item['id']);
   const type = str(item['type']);
 
-  if (args.kind === 'task') {
-    if (type !== 'task') {
-      return { ok: false, message: `${key} is a ${type ?? 'work item'}, not a task.` };
-    }
-    if (str(item['createdBy']) !== me && str(item['assigneeId']) !== me) {
-      return { ok: false, message: 'A task may be deleted only by its creator or its owner.' };
-    }
-
-    const logs = await readPage(ctx, {
-      method: 'GET',
-      url: `/v1/work-items/${pathSegment(itemId)}/time-logs`,
-      query: { page: 1, pageSize: 100 },
-    });
-    if (!logs.ok) return targetDenial(logs);
-    // FAIL CLOSED: one page is the whole set only when the server says so. An absent total, or a
-    // total beyond the page, could hide a foreign log on page 2 — refuse rather than assume.
-    if (logs.total === undefined || logs.total > logs.rows.length) {
-      return {
-        ok: false,
-        message: `${key} has more time logs than one page can show; use the web.`,
-      };
-    }
-    const foreignLog = logs.rows.find((row) => str(row['userId']) !== me);
-    if (foreignLog) {
-      return {
-        ok: false,
-        message: `${key} carries time logged by someone else; use the web.`,
-      };
-    }
-
-    const warning = await parentAutoCompleteWarning(ctx, item);
-    if (typeof warning === 'object') return warning;
-    return {
-      ok: true,
-      kind: 'task',
-      path: `/v1/work-items/${pathSegment(itemId)}`,
-      targetId: itemId,
-      subject: key,
-      ...(warning ? { warning } : {}),
-    };
+  // The only key-only kind left is `task`. `work_item` (a story/defect) is DEFERRED to v2.1:
+  // REST deleteWorkItem cascades test cases and results, while the dependant feeds here are
+  // team-scoped, so a hidden dependant could pass the guard. Deleting a whole story from chat is
+  // rare; the UI keeps doing it.
+  if (type !== 'task') {
+    return { ok: false, message: `${key} is a ${type ?? 'work item'}, not a task.` };
+  }
+  if (str(item['createdBy']) !== me && str(item['assigneeId']) !== me) {
+    return { ok: false, message: 'A task may be deleted only by its creator or its owner.' };
   }
 
-  // kind === 'work_item': the strict "a duplicate I just created" case.
-  if (type !== 'story' && type !== 'defect') {
+  const logs = await readPage(ctx, {
+    method: 'GET',
+    url: `/v1/work-items/${pathSegment(itemId)}/time-logs`,
+    query: { page: 1, pageSize: 100 },
+  });
+  if (!logs.ok) return targetDenial(logs);
+  // FAIL CLOSED: one page is the whole set only when the server says so. An absent total, or a
+  // total beyond the page, could hide a foreign log on page 2 — refuse rather than assume.
+  if (logs.total === undefined || logs.total > logs.rows.length) {
     return {
       ok: false,
-      message: `${key} is a ${type ?? 'work item'}; only a story or defect may use this kind.`,
+      message: `${key} has more time logs than one page can show; use the web.`,
     };
   }
-  if (str(item['createdBy']) !== me) {
-    return { ok: false, message: 'You can only delete a story/defect you created.' };
-  }
-  const createdAt = Date.parse(str(item['createdAt']) ?? '');
-  if (!Number.isFinite(createdAt) || Date.now() - createdAt > DAY_MS) {
+  const foreignLog = logs.rows.find((row) => str(row['userId']) !== me);
+  if (foreignLog) {
     return {
       ok: false,
-      message: 'A story/defect may be deleted only within 24 hours of creation; use the web.',
+      message: `${key} carries time logged by someone else; use the web.`,
     };
-  }
-
-  const [tasks, testCases, timeLogs, comments, relations] = await Promise.all([
-    readRows(ctx, { method: 'GET', url: `/v1/work-items/${pathSegment(itemId)}/tasks` }),
-    readRows(ctx, {
-      method: 'GET',
-      url: `/v1/work-items/${pathSegment(itemId)}/test-cases`,
-      query: { limit: 1 },
-    }),
-    readRows(ctx, {
-      method: 'GET',
-      url: `/v1/work-items/${pathSegment(itemId)}/time-logs`,
-      query: { page: 1, pageSize: 1 },
-    }),
-    readRows(ctx, { method: 'GET', url: `/v1/work-items/${pathSegment(itemId)}/comments` }),
-    readRows(ctx, { method: 'GET', url: `/v1/work-items/${pathSegment(itemId)}/relations` }),
-  ]);
-  for (const feed of [tasks, testCases, timeLogs, comments, relations]) {
-    if (!feed.ok) return targetDenial(feed);
-  }
-  if (tasks.ok && tasks.rows.length > 0) {
-    return { ok: false, message: `${key} has tasks; use the web.` };
-  }
-  if (testCases.ok && testCases.rows.length > 0) {
-    return { ok: false, message: `${key} has test cases; use the web.` };
-  }
-  if (timeLogs.ok && timeLogs.rows.length > 0) {
-    return { ok: false, message: `${key} has time logs; use the web.` };
-  }
-  const foreignComment = comments.ok
-    ? comments.rows.find((row) => str(row['authorId']) !== me)
-    : undefined;
-  if (foreignComment) {
-    return { ok: false, message: `${key} has comments by other people; use the web.` };
-  }
-  if (relations.ok && relations.rows.length > 0) {
-    return { ok: false, message: `${key} is linked to other items; use the web.` };
-  }
-
-  const iterationId = str(item['iterationId']);
-  if (iterationId) {
-    const state = await iterationState(ctx, str(item['projectId']) ?? '', iterationId);
-    if (!state.ok) return targetDenial(state);
-    if (state.state === 'committed' || state.state === 'accepted') {
-      return {
-        ok: false,
-        message: `${key} is in a ${state.state} iteration; use the web.`,
-      };
-    }
   }
 
   return {
     ok: true,
-    kind: 'work_item',
+    kind: 'task',
     path: `/v1/work-items/${pathSegment(itemId)}`,
     targetId: itemId,
     subject: key,
@@ -451,51 +355,4 @@ async function resolveTestCaseForDelete(
   const id = str((res.json as Record<string, unknown> | null)?.['id']);
   if (!id) return { ok: false, message: `No test case matches "${key}".` };
   return { ok: true, id };
-}
-
-/** The iteration's state, from the reference feed an Editor can read (`iteration:view`). */
-async function iterationState(
-  ctx: ToolContext,
-  projectId: string,
-  iterationId: string,
-): Promise<Lookup<{ ok: true; state: string | null }>> {
-  const res = await ctx.callRest(ctx.principal, {
-    method: 'GET',
-    url: '/v1/iterations/options',
-    query: { projectId },
-  });
-  if (res.statusCode >= 400) {
-    return { ok: false, statusCode: res.statusCode, json: res.json };
-  }
-  const rows = rowsOf(res.json) ?? [];
-  const row = rows.find((candidate) => str(candidate['id']) === iterationId);
-  if (!row) {
-    return { ok: false, message: 'Could not confirm the item iteration; use the web.' };
-  }
-  return { ok: true, state: str(row['state']) ?? null };
-}
-
-/**
- * Deleting a task reconciles the parent from its remaining task set. When every OTHER task is
- * already Completed, this delete completes the parent too — a consequence worth saying out loud.
- * No other task at all is NOT that case: `reconcileParentScheduleState` leaves a parent with no
- * live tasks untouched.
- */
-async function parentAutoCompleteWarning(
-  ctx: ToolContext,
-  item: Record<string, unknown>,
-): Promise<string | undefined | DeleteRefusal> {
-  const parentId = str(item['parentId']);
-  if (!parentId) return undefined;
-  const siblings = await readRows(ctx, {
-    method: 'GET',
-    url: `/v1/work-items/${pathSegment(parentId)}/tasks`,
-  });
-  if (!siblings.ok) return targetDenial(siblings);
-  const others = siblings.rows.filter((row) => String(row['id']) !== String(item['id']));
-  if (others.length === 0) return undefined;
-  const allCompleted = others.every((row) => isCompletedScheduleState(str(row['scheduleState'])));
-  return allCompleted
-    ? 'This is the parent’s last open task: deleting it will mark the parent Completed.'
-    : undefined;
 }

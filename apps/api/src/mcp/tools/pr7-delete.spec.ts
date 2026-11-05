@@ -16,11 +16,9 @@ const LOG = U(31);
 const RELATION = U(32);
 const RESULT = U(33);
 const TEST_CASE = U(34);
-const ITERATION = U(40);
-const PARENT = U(41);
+const EPIC = U(42);
 
 const now = () => new Date().toISOString();
-const old = () => new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
 
 function item(over: Record<string, unknown> = {}) {
   return {
@@ -94,6 +92,15 @@ function feeds(overrides: {
       // Both record routes answer the FLATTENED detail DTO — not `{ item }`. The guard once
       // read `body.item`, so a mock in that shape kept a production bug green.
       return { statusCode: 200, json: overrides.item ?? item() };
+    }
+    if (call.url === '/v1/portfolio-items') {
+      return {
+        statusCode: 200,
+        json: {
+          data: [{ id: EPIC, itemKey: 'EP-3', name: 'Platform', projectId: PROJECT }],
+          pageInfo: {},
+        },
+      };
     }
     if (call.url.endsWith('/comments')) return { statusCode: 200, json: overrides.comments ?? [] };
     if (call.url.endsWith('/time-logs')) {
@@ -297,68 +304,34 @@ describe('rova_delete guard (§5)', () => {
     expect(deleteCalls(manyLogs.calls)).toHaveLength(0);
   });
 
-  it('warns when deleting the parent’s last open task, because the parent auto-completes', async () => {
-    const { ctx } = context(
-      feeds({
-        item: item({ id: TASK, type: 'task', createdBy: ME, parentId: PARENT }),
-        tasks: [
-          { id: TASK, scheduleState: 'in_progress' },
-          { id: U(60), scheduleState: 'completed' },
-        ],
-      }),
+  it('deletes a task you created, echoing the subject and recording the reason', async () => {
+    const { ctx, calls, notes } = context(
+      feeds({ item: item({ id: TASK, type: 'task', createdBy: ME }) }),
     );
-    const { isError, body } = await call(ctx, { kind: 'task', key: 'TA-9' });
-    expect(isError, JSON.stringify(body)).toBeFalsy();
-    expect(body['deleted']).toMatchObject({
-      kind: 'task',
-      warning: expect.stringMatching(/last open task/),
-    });
-  });
-
-  it('refuses a story/defect with dependants, an old one, or one in a committed iteration', async () => {
-    const withTask = context(feeds({ tasks: [{ id: TASK }] }));
-    expect((await call(withTask.ctx, { kind: 'work_item', key: 'US-500' })).isError).toBe(true);
-    expect(deleteCalls(withTask.calls)).toHaveLength(0);
-
-    const withForeignComment = context(feeds({ comments: [{ id: COMMENT, authorId: OTHER }] }));
-    const commentRes = await call(withForeignComment.ctx, { kind: 'work_item', key: 'US-500' });
-    expect(commentRes.isError).toBe(true);
-    expect(commentRes.body['error']).toMatch(/comments by other people/);
-
-    const tooOld = context(feeds({ item: item({ createdAt: old() }) }));
-    const ageRes = await call(tooOld.ctx, { kind: 'work_item', key: 'US-500' });
-    expect(ageRes.isError).toBe(true);
-    expect(ageRes.body['error']).toMatch(/24 hours/);
-
-    const committed = context(
-      feeds({
-        item: item({ iterationId: ITERATION }),
-        iterations: [{ id: ITERATION, state: 'committed' }],
-      }),
-    );
-    const iterRes = await call(committed.ctx, { kind: 'work_item', key: 'US-500' });
-    expect(iterRes.isError).toBe(true);
-    expect(iterRes.body['error']).toMatch(/committed/);
-    expect(deleteCalls(committed.calls)).toHaveLength(0);
-  });
-
-  it('deletes a fresh story you created with no dependants, echoing only the subject and reason', async () => {
-    const { ctx, calls, notes } = context(feeds({}));
     const { isError, body } = await call(ctx, {
-      kind: 'work_item',
-      key: 'US-500',
-      reason: 'duplicate I just made',
+      kind: 'task',
+      key: 'TA-9',
+      reason: 'finished by mistake',
     });
     expect(isError, JSON.stringify(body)).toBeFalsy();
-    expect(deleteCalls(calls)[0]?.url).toBe(`/v1/work-items/${STORY}`);
+    expect(deleteCalls(calls)[0]?.url).toBe(`/v1/work-items/${TASK}`);
     expect(body).toEqual({
-      deleted: { kind: 'work_item', id: STORY, subject: 'US-500' },
-      reason: 'duplicate I just made',
+      deleted: { kind: 'task', id: TASK, subject: 'TA-9' },
+      reason: 'finished by mistake',
     });
     // The audit line names the target and the KIND, and records the stated reason.
     expect(notes).toEqual([
-      { targets: [STORY], fields: ['work_item'], count: 1, reason: 'duplicate I just made' },
+      { targets: [TASK], fields: ['task'], count: 1, reason: 'finished by mistake' },
     ]);
+  });
+
+  it('deletes your own comment on a PORTFOLIO item (the EP-/FE- branch)', async () => {
+    const { ctx, calls } = context(
+      feeds({ comments: [{ id: COMMENT, authorId: ME, body: 'mine' }] }),
+    );
+    const { isError, body } = await call(ctx, { kind: 'comment', key: 'EP-3', id: COMMENT });
+    expect(isError, JSON.stringify(body)).toBeFalsy();
+    expect(deleteCalls(calls)[0]?.url).toBe(`/v1/portfolio-items/${EPIC}/comments/${COMMENT}`);
   });
 
   it('answers a 403 and a 404 on a target read with byte-identical output', async () => {
@@ -371,7 +344,6 @@ describe('rova_delete guard (§5)', () => {
           : { statusCode: 204, json: null },
       );
     const cases: Array<[string, Record<string, unknown>]> = [
-      ['work_item', { kind: 'work_item', key: 'US-500' }],
       ['task', { kind: 'task', key: 'TA-9' }],
       ['comment', { kind: 'comment', key: 'US-500', id: COMMENT }],
       ['time_log', { kind: 'time_log', key: 'US-500', id: LOG }],
@@ -428,21 +400,31 @@ describe('rova_delete guard (§5)', () => {
     const { ctx } = context((call) =>
       call.method === 'DELETE'
         ? { statusCode: 403, json: { error: { code: 'FORBIDDEN' } } }
-        : feeds({})(call),
+        : feeds({ item: item({ id: TASK, type: 'task', createdBy: ME }) })(call),
     );
-    const { isError, body } = await call(ctx, { kind: 'work_item', key: 'US-500' });
+    const { isError, body } = await call(ctx, { kind: 'task', key: 'TA-9' });
     expect(isError).toBe(true);
     expect(body).toMatchObject({ statusCode: 403 });
   });
 
   it('the guard itself answers a plan, not a deletion, when called directly', async () => {
-    const { ctx } = context(feeds({}));
-    const plan = await planDelete(ctx, { kind: 'work_item', key: 'US-500' });
+    const { ctx } = context(feeds({ item: item({ id: TASK, type: 'task', createdBy: ME }) }));
+    const plan = await planDelete(ctx, { kind: 'task', key: 'TA-9' });
     expect(plan).toMatchObject({
       ok: true,
-      kind: 'work_item',
-      targetId: STORY,
-      path: `/v1/work-items/${STORY}`,
+      kind: 'task',
+      targetId: TASK,
+      path: `/v1/work-items/${TASK}`,
     });
+  });
+
+  it('no longer accepts the work_item kind (deferred to v2.1)', () => {
+    type Fields = { shape: Record<string, { safeParse: (v: unknown) => { success: boolean } }> };
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const { ctx } = context(feeds({}));
+    const tool = registerDelete(server, ctx) as unknown as { inputSchema: Fields };
+    const kind = tool.inputSchema.shape['kind'];
+    expect(kind.safeParse('task').success).toBe(true);
+    expect(kind.safeParse('work_item').success).toBe(false);
   });
 });
