@@ -8,6 +8,7 @@ import { bearerValue, isApiTokenValue } from '../auth/api-token-principal';
 import { RateLimitedException } from '../errors/exceptions';
 import { MCP_CALL_TOKEN_HEADER, peekMcpCallToken } from '../mcp-call-token';
 import { RATE_LIMIT_TIERS, SKIP_RATE_LIMIT_KEY } from './rate-limit.constants';
+import { RateLimitMetrics, rateLimitRouteLabel } from './rate-limit.metrics';
 
 /** The slot this guard took for one request, and whether it has been given back. */
 export interface PreAuthReservation {
@@ -16,17 +17,17 @@ export interface PreAuthReservation {
   settled: boolean;
 }
 
-/** Where the reservation rides on the request so the post-auth guard can settle it. */
-export const PRE_AUTH_RESERVATION = Symbol('rova:PRE_AUTH_RESERVATION');
+/** Where the reservations ride on the request so the post-auth guard can settle them. */
+export const PRE_AUTH_RESERVATIONS = Symbol('rova:PRE_AUTH_RESERVATIONS');
 
 /**
- * Gives back the address slot a SIGNED-IN request took before identity ran, once.
+ * Gives back every address/token slot a SIGNED-IN request took before identity ran, once per slot.
  *
  * Called by `RateLimitGuard` only when a principal exists: an authenticated request then leaves
- * no trace on the shared address, so an office behind one public IP never fills PRE_AUTH with
- * its own normal traffic. Every request that never proves who it is keeps its slot (a failed
- * login, a forged cookie, a route answered 401 before the principal was written). A refund that
- * fails is logged; the request has already been answered.
+ * no trace on the shared address, so an office or CI runner behind one public IP never fills
+ * PRE_AUTH with its own normal traffic. Every request that never proves who it is keeps its slot
+ * (a failed login, a forged cookie, a route answered 401 before the principal was written). A
+ * refund that fails is logged; the request has already been answered.
  */
 export async function refundPreAuthReservation(
   cache: CacheService,
@@ -34,19 +35,21 @@ export async function refundPreAuthReservation(
   req: FastifyRequest,
 ): Promise<void> {
   const holder = req as unknown as Record<symbol, unknown>;
-  const reservation = holder[PRE_AUTH_RESERVATION] as PreAuthReservation | undefined;
-  if (!reservation || reservation.settled) return;
-  reservation.settled = true;
-  try {
-    // AWAITED, deliberately: the caller then answers with the address bucket already settled, so
-    // no request after it depends on a refund that is still in flight. One extra Valkey round
-    // trip on an authenticated request, and a failure is logged, never fatal to the request.
-    await cache.refundRateLimit(reservation.key, reservation.id);
-  } catch (err) {
-    logger.error(
-      failOpenLog('rate_limit', { err, key: reservation.key }),
-      'Rate limit slot not refunded',
-    );
+  const reservations = (holder[PRE_AUTH_RESERVATIONS] as PreAuthReservation[] | undefined) ?? [];
+  for (const reservation of reservations) {
+    if (reservation.settled) continue;
+    reservation.settled = true;
+    try {
+      // AWAITED, deliberately: the caller then answers with the address bucket already settled, so
+      // no request after it depends on a refund that is still in flight. A few extra Valkey round
+      // trips on an authenticated request, and a failure is logged, never fatal to the request.
+      await cache.refundRateLimit(reservation.key, reservation.id);
+    } catch (err) {
+      logger.error(
+        failOpenLog('rate_limit', { err, key: reservation.key }),
+        'Rate limit slot not refunded',
+      );
+    }
   }
 }
 
@@ -75,6 +78,7 @@ export class PreAuthRateLimitGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly cache: CacheService,
     private readonly securityMetrics: SecurityMetrics,
+    private readonly rateLimitMetrics: RateLimitMetrics,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -120,20 +124,27 @@ export class PreAuthRateLimitGuard implements CanActivate {
       if (!outcome.allowed) {
         const retryAfter = Math.max(outcome.resetAt - Math.floor(Date.now() / 1000), 1);
         void reply.header('Retry-After', String(retryAfter));
-        this.logger.warn({ key, tier, ip }, 'Rate limit exceeded');
+        const route = rateLimitRouteLabel(req);
+        this.rateLimitMetrics.recordRejected({
+          tier,
+          route,
+          keyedBy: mcpPeer ? 'user' : 'address',
+        });
+        this.logger.warn({ key, tier, ip, userId: mcpPeer?.userId, route }, 'Rate limit exceeded');
         throw new RateLimitedException(
           `Rate limit exceeded (${tier}). Retry after ${retryAfter}s.`,
         );
       }
-      // PRE_AUTH is the address floor: reserve THIS slot so the post-auth guard can give it back
-      // once identity has verified the caller. PRE_AUTH_TOKEN is deliberately not refundable —
-      // presenting a token is the thing that bucket counts, whether it turns out valid or not.
-      if (tier === 'PRE_AUTH' && outcome.id !== undefined) {
-        (req as unknown as Record<symbol, unknown>)[PRE_AUTH_RESERVATION] = {
-          key,
-          id: outcome.id,
-          settled: false,
-        };
+      // Both slots are refundable once identity verifies the caller: PRE_AUTH is the address floor
+      // and PRE_AUTH_TOKEN the cost of presenting a token, but a request that AUTHENTICATES is
+      // normal user traffic and must not consume a shared per-IP bucket. A guess that never
+      // authenticates keeps its slot, which is the whole point of counting it here.
+      if (outcome.id !== undefined) {
+        const holder = req as unknown as Record<symbol, unknown>;
+        const reservations =
+          (holder[PRE_AUTH_RESERVATIONS] as PreAuthReservation[] | undefined) ?? [];
+        reservations.push({ key, id: outcome.id, settled: false });
+        holder[PRE_AUTH_RESERVATIONS] = reservations;
       }
     }
     return true;

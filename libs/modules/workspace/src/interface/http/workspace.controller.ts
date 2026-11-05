@@ -560,7 +560,6 @@ export class InvitationController {
   )
   @Auth()
   @HttpCode(204)
-  @RateLimit('STRICT')
   @ApiOperation({ summary: 'Accept a workspace invitation (authenticated user only)' })
   @ApiBearerAuth('access-token')
   @ApiResponse({ status: 204, description: 'Invitation accepted' })

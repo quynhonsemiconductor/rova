@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PreAuthRateLimitGuard,
-  PRE_AUTH_RESERVATION,
+  PRE_AUTH_RESERVATIONS,
   refundPreAuthReservation,
   type PreAuthReservation,
 } from './pre-auth-rate-limit.guard';
@@ -26,6 +26,7 @@ const ctx = (
         const defaultReq = {
           headers: { 'cf-connecting-ip': '203.0.113.7', ...headers },
           ip: '10.0.0.1',
+          url: '/v1/bff/dev-login',
           socket: {},
         };
         // With a caller-supplied request, mutate THAT object: the reservation is written back.
@@ -39,6 +40,7 @@ const ctx = (
 describe('PreAuthRateLimitGuard', () => {
   let buckets: Map<string, number>;
   let consume: ReturnType<typeof vi.fn>;
+  let rejected: ReturnType<typeof vi.fn>;
   let guard: PreAuthRateLimitGuard;
 
   beforeEach(() => {
@@ -55,12 +57,14 @@ describe('PreAuthRateLimitGuard', () => {
         id: `slot-${++slot}`,
       });
     });
+    rejected = vi.fn();
     guard = new PreAuthRateLimitGuard(
       new Reflector(),
       { consumeRateLimit: consume } as never,
       {
         recordFailOpen: vi.fn(),
       } as never,
+      { recordRejected: rejected } as never,
     );
   });
   afterEach(() => vi.restoreAllMocks());
@@ -143,9 +147,10 @@ describe('PreAuthRateLimitGuard', () => {
     const req: Record<symbol, unknown> = {};
     await guard.canActivate(ctx({}, false, req));
 
-    const reservation = req[PRE_AUTH_RESERVATION] as PreAuthReservation;
-    expect(reservation).toMatchObject({ key: 'PRE_AUTH:ip:203.0.113.7', settled: false });
-    expect(typeof reservation.id).toBe('string');
+    const reservations = req[PRE_AUTH_RESERVATIONS] as PreAuthReservation[];
+    expect(reservations).toHaveLength(1);
+    expect(reservations[0]).toMatchObject({ key: 'PRE_AUTH:ip:203.0.113.7', settled: false });
+    expect(typeof reservations[0].id).toBe('string');
 
     const refund = vi.fn().mockResolvedValue(undefined);
     const log = { error: vi.fn() };
@@ -160,14 +165,48 @@ describe('PreAuthRateLimitGuard', () => {
       req as never,
     );
     expect(refund).toHaveBeenCalledTimes(1);
-    expect(refund).toHaveBeenCalledWith('PRE_AUTH:ip:203.0.113.7', reservation.id);
+    expect(refund).toHaveBeenCalledWith('PRE_AUTH:ip:203.0.113.7', reservations[0].id);
+  });
+
+  it('a valid token presentation reserves BOTH slots, and a signed-in call gives both back', async () => {
+    const req: Record<symbol, unknown> = {};
+    await guard.canActivate(ctx({ authorization: 'Bearer rly_abcdefgh_secret' }, false, req));
+
+    const reservations = req[PRE_AUTH_RESERVATIONS] as PreAuthReservation[];
+    expect(reservations.map((r) => r.key)).toEqual([
+      'PRE_AUTH:ip:203.0.113.7',
+      'PRE_AUTH_TOKEN:ip:203.0.113.7',
+    ]);
+
+    const refund = vi.fn().mockResolvedValue(undefined);
+    await refundPreAuthReservation(
+      { refundRateLimit: refund } as never,
+      { error: vi.fn() } as never,
+      req as never,
+    );
+    expect(refund.mock.calls).toEqual([
+      ['PRE_AUTH:ip:203.0.113.7', reservations[0].id],
+      ['PRE_AUTH_TOKEN:ip:203.0.113.7', reservations[1].id],
+    ]);
+    expect(reservations.every((r) => r.settled)).toBe(true);
+  });
+
+  it('counts a refusal as the tier and route template, keyed by address before sign-in', async () => {
+    const withToken = ctx({ authorization: 'Bearer rly_zzzzzzzz_guess' });
+    for (let i = 0; i < 300; i++) await guard.canActivate(withToken);
+    await expect(guard.canActivate(withToken)).rejects.toThrow(/Rate limit exceeded/);
+    expect(rejected).toHaveBeenCalledWith({
+      tier: 'PRE_AUTH_TOKEN',
+      route: '/v1/bff/dev-login',
+      keyedBy: 'address',
+    });
   });
 
   it('a cache that returns no slot id leaves nothing to refund (DISABLE-style cache)', async () => {
     consume.mockResolvedValue({ allowed: true, remaining: 0, resetAt: 0 });
     const req: Record<symbol, unknown> = {};
     await guard.canActivate(ctx({}, false, req));
-    expect(req[PRE_AUTH_RESERVATION]).toBeUndefined();
+    expect(req[PRE_AUTH_RESERVATIONS]).toBeUndefined();
   });
 
   it('DISABLE_RATE_LIMIT skips the floor entirely (dev/CI)', async () => {
@@ -176,6 +215,7 @@ describe('PreAuthRateLimitGuard', () => {
       new Reflector(),
       { consumeRateLimit: consume } as never,
       { recordFailOpen: vi.fn() } as never,
+      { recordRejected: rejected } as never,
     );
     expect(await disabledGuard.canActivate(ctx({}))).toBe(true);
     expect(consume).not.toHaveBeenCalled();

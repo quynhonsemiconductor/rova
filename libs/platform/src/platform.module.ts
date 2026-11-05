@@ -31,6 +31,7 @@ import { PublicConfigController } from './observability/public-config.controller
 import { IdempotencyInterceptor } from './http/idempotency.interceptor';
 import { HttpLoggingInterceptor } from './http/http-logging.interceptor';
 import { ResilienceModule } from './resilience/resilience.module';
+import { RateLimitMetrics } from './rate-limit/rate-limit.metrics';
 import { StorageService } from './storage/storage.service';
 
 @Global()
@@ -60,6 +61,7 @@ import { StorageService } from './storage/storage.service';
     QueueMetrics,
     DbPoolMetrics,
     SecurityMetrics,
+    RateLimitMetrics,
     // `auth_login_total{method,outcome}`: the sign-in counter the `auth-login-failure-rate` alert and the dashboard read. Fed by
     // the identity module's security-event sink (a sign-in no longer passes through a controller of ours).
     AuthMetrics,
@@ -124,6 +126,7 @@ import { StorageService } from './storage/storage.service';
     QueueMetrics,
     DbPoolMetrics,
     SecurityMetrics,
+    RateLimitMetrics,
     AuthMetrics,
     SessionAuthGuard,
     OutboxService,
