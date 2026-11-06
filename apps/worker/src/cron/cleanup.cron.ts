@@ -76,48 +76,32 @@ export class CleanupCronService {
 
   @Cron('0 1 * * *', { name: 'daily-cleanup', timeZone: 'UTC' })
   async runCleanup(): Promise<void> {
-    if (!this.config.get('RETENTION_SWEEP_ENABLED')) {
-      this.logger.log('Retention sweep disabled');
-      return;
-    }
     // Stop well before the ExclusiveJob lock expires, even if a table needs more passes.
     this.deadline = Date.now() + this.LOCK_TTL_MS - 5 * 60 * 1_000;
-    const dryRun = this.config.get('RETENTION_DRY_RUN');
-    // ExclusiveJob owns the lock, the job context (a correlationId, which cron work has
-    // nothing to inherit) and the duration/outcome metrics. This class used to hand-roll
-    // all three, as did SnapshotCronService — identically, which is why they now share it.
-    await this.exclusive.run('daily-cleanup', this.LOCK_TTL_MS, () =>
-      dryRun ? this.reportOnly() : this.purgeStaleData(),
-    );
+    // The EXISTING cleanups (sessions, invitations, storage, SCM inbox) always run: they
+    // were live before the retention sweep existed. The kill switch and dry run gate only
+    // the NEW sweep tables. ExclusiveJob owns the lock, the job context and the metrics.
+    await this.exclusive.run('daily-cleanup', this.LOCK_TTL_MS, () => this.purgeStaleData());
+  }
+
+  /** The in-app eligibility predicate, shared by the count and the delete. */
+  private inAppEligible(): ReturnType<typeof sql> {
+    return sql`
+      (is_read = true
+        AND COALESCE(read_at, created_at)
+          < NOW() - (${this.IN_APP_READ_RETENTION_DAYS} || ' days')::interval)
+      OR created_at < NOW() - (${this.IN_APP_ANY_RETENTION_DAYS} || ' days')::interval
+    `;
   }
 
   /** Count-only first run: no writes, no object deletion, no status changes. */
-  private async reportOnly(): Promise<void> {
+  private async reportNewSweep(): Promise<void> {
     const count = async (statement: ReturnType<typeof sql>): Promise<number> => {
       const result = await this.db.execute(statement);
       const rows = (result as unknown as { rows?: Array<{ n: number | string }> }).rows ?? [];
       return Number(rows[0]?.n ?? 0);
     };
-    const older = this.config.get('SESSION_CLEANUP_OLDER_THAN_DAYS');
     const counts = {
-      auth_sessions: await count(sql`
-        SELECT count(*) AS n FROM identity.auth_sessions
-        WHERE is_revoked = true
-          AND expires_at < NOW() - (${older} || ' days')::interval
-      `),
-      invitations: await count(sql`
-        SELECT count(*) AS n FROM workspace.workspace_invitations
-        WHERE status = 'pending' AND expires_at < NOW()
-      `),
-      scm_inbox: await count(sql`
-        SELECT count(*) AS n FROM scm.webhook_inbox
-        WHERE (status IN ('processed', 'ignored')
-          AND COALESCE(processed_at, received_at)
-            < NOW() - (${this.SCM_INBOX_HANDLED_RETENTION_DAYS} || ' days')::interval)
-        OR (status = 'failed'
-          AND received_at
-            < NOW() - (${this.SCM_INBOX_FAILED_RETENTION_DAYS} || ' days')::interval)
-      `),
       email_outbox: await count(sql`
         SELECT count(*) AS n FROM messaging.email_outbox
         WHERE (status = 'sent'
@@ -144,9 +128,7 @@ export class CleanupCronService {
       `),
       in_app_notifications: await count(sql`
         SELECT count(*) AS n FROM notifications.in_app_notifications
-        WHERE (is_read = true
-          AND created_at < NOW() - (${this.IN_APP_READ_RETENTION_DAYS} || ' days')::interval)
-        OR created_at < NOW() - (${this.IN_APP_ANY_RETENTION_DAYS} || ' days')::interval
+        WHERE ${this.inAppEligible()}
       `),
       api_tokens: await count(sql`
         SELECT count(*) AS n FROM identity.api_tokens
@@ -164,7 +146,10 @@ export class CleanupCronService {
             < NOW() - (${this.SCM_BACKFILL_RETENTION_DAYS} || ' days')::interval
       `),
     };
-    this.logger.log({ dryRun: true, counts }, 'Retention sweep (count-only)');
+    this.logger.log(
+      { dryRun: true, counts },
+      'Retention sweep (count-only; existing cleanups already ran live)',
+    );
   }
 
   private async purgeStaleData(): Promise<void> {
@@ -294,8 +279,10 @@ export class CleanupCronService {
     // 'pending'), so this scans — which is the right trade for a once-daily sweep
     // over a table this keeps small, rather than paying index maintenance on every
     // webhook insert to speed up a job nothing waits on.
-    const inboxResult = await this.db.execute(
-      sql`
+    const inboxResult = await this.db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL statement_timeout = '60s'`);
+      return tx.execute(
+        sql`
         DELETE FROM scm.webhook_inbox
         WHERE id IN (
           SELECT id FROM scm.webhook_inbox
@@ -310,12 +297,36 @@ export class CleanupCronService {
           LIMIT ${this.SCM_INBOX_SWEEP_LIMIT}
         )
       `,
-    );
+      );
+    });
     this.logger.log(
       { deleted: (inboxResult as { rowCount?: number }).rowCount },
       'Purged terminal SCM webhook inbox rows',
     );
 
+    // The kill switch and the dry run gate ONLY the new sweep tables. Everything above
+    // ran on every deploy before this feature existed and must keep running.
+    if (!this.config.get('RETENTION_SWEEP_ENABLED')) {
+      this.logger.log('New retention sweep disabled; existing cleanup ran');
+      return;
+    }
+    if (this.config.get('RETENTION_DRY_RUN')) {
+      await this.reportNewSweep();
+      return;
+    }
+
+    // Index reality for the rules below (confirmed against db/schema):
+    //  - email_outbox has no (status, terminal ts) index: sent/failed scans the table.
+    //    Expected size is tens of thousands today; 5k passes + a 60 s statement timeout.
+    //  - notification_outbox and guest_invite_outbox partial indexes cover only
+    //    status='pending', so their terminal rows scan. Same expected scale.
+    //  - in_app_notifications has (recipient_id, created_at), not a global created_at
+    //    index; a user's rows are small, a global sweep scans. Same scale.
+    //  - api_tokens has no expires_at index, identity."session" no expires_at index,
+    //    scm.backfill_jobs only a pending index. All are small tables.
+    // Nothing here is indexed on (status, terminal ts). The per-statement timeout and
+    // the pass cap keep a first sweep inside the lock deadline.
+    //
     // 5. The other append-only tables. Each statement is bounded by a primary-key
     // subquery and the terminal timestamp is the clock, not created_at.
     await this.purgeBatched(
@@ -331,6 +342,8 @@ export class CleanupCronService {
             )
             OR (
               status = 'failed'
+              -- No failed_at column exists (YAGNI: no schema change); created_at is the
+              -- only terminal age available.
               AND created_at
                 < NOW() - (${this.EMAIL_OUTBOX_FAILED_RETENTION_DAYS} || ' days')::interval
             )
@@ -365,6 +378,8 @@ export class CleanupCronService {
             )
             OR (
               status = 'failed'
+              -- No failed_at column exists (YAGNI: no schema change); created_at is the
+              -- only terminal age available.
               AND created_at
                 < NOW() - (${this.GUEST_INVITE_FAILED_RETENTION_DAYS} || ' days')::interval
             )
@@ -378,12 +393,7 @@ export class CleanupCronService {
         DELETE FROM notifications.in_app_notifications
         WHERE id IN (
           SELECT id FROM notifications.in_app_notifications
-          WHERE (
-              is_read = true
-              AND COALESCE(read_at, created_at)
-                < NOW() - (${this.IN_APP_READ_RETENTION_DAYS} || ' days')::interval
-            )
-            OR created_at < NOW() - (${this.IN_APP_ANY_RETENTION_DAYS} || ' days')::interval
+          WHERE ${this.inAppEligible()}
           LIMIT ${limit}
         )
       `,
@@ -443,8 +453,13 @@ export class CleanupCronService {
         this.logger.warn({ deleted: total }, `${message}: stopped at the lock deadline`);
         break;
       }
-      const result = await this.db.execute(statement(this.RETENTION_SWEEP_LIMIT));
-      const deleted = (result as { rowCount?: number }).rowCount ?? 0;
+      // One statement per transaction so SET LOCAL applies to this connection; a 60 s
+      // statement_timeout keeps one slow scan inside the 5-minute deadline margin.
+      const deleted = await this.db.transaction(async (tx) => {
+        await tx.execute(sql`SET LOCAL statement_timeout = '60s'`);
+        const result = await tx.execute(statement(this.RETENTION_SWEEP_LIMIT));
+        return (result as { rowCount?: number }).rowCount ?? 0;
+      });
       total += deleted;
       if (deleted < this.RETENTION_SWEEP_LIMIT) break;
     }

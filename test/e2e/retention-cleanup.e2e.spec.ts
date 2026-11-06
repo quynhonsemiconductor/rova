@@ -17,23 +17,29 @@ import * as schema from '../../db/schema';
 // database, and it must never fall back to the migration role/URL.
 const url = process.env['TEST_DATABASE_URL'];
 if (!url) throw new Error('this spec needs TEST_DATABASE_URL (a dedicated test database)');
-const databaseName = new URL(url).pathname.replace(/^\//, '');
-if (!databaseName.toLowerCase().includes('test')) {
-  throw new Error(`refusing to run retention cleanup against non-test database ${databaseName}`);
+const parsedUrl = new URL(url);
+const databaseName = parsedUrl.pathname.replace(/^\//, '');
+const allowedHosts = new Set(['localhost', '127.0.0.1', '::1', 'postgres']);
+if (!/_test$/i.test(databaseName) || !allowedHosts.has(parsedUrl.hostname)) {
+  throw new Error(
+    `refusing retention cleanup against ${parsedUrl.hostname}/${databaseName}: ` +
+      'require a local/CI host and a database name ending in _test',
+  );
 }
 
 const auditId = randomUUID();
 const outboxId = randomUUID();
 const sentEmailId = randomUUID();
 const bouncedEmailId = randomUUID();
+const dryEmailId = randomUUID();
 let pool: Pool;
 
-function service(db: unknown) {
+function service(db: unknown, dryRun = false) {
   return new CleanupCronService(
     db as never,
     {
       get: (key: string) =>
-        key === 'SESSION_CLEANUP_OLDER_THAN_DAYS' ? 7 : key === 'RETENTION_DRY_RUN' ? false : true,
+        key === 'SESSION_CLEANUP_OLDER_THAN_DAYS' ? 7 : key === 'RETENTION_DRY_RUN' ? dryRun : true,
     } as never,
     { deleteObject: async () => undefined } as never,
     { run: (_name: string, _ttl: number, fn: () => Promise<void>) => fn() } as never,
@@ -93,7 +99,7 @@ describe('daily retention cleanup (real Postgres)', () => {
     await pool.query('DELETE FROM audit.audit_logs WHERE id = $1', [auditId]);
     await pool.query('DELETE FROM messaging.outbox_events WHERE id = $1', [outboxId]);
     await pool.query('DELETE FROM messaging.email_outbox WHERE id = ANY($1::uuid[])', [
-      [sentEmailId, bouncedEmailId],
+      [sentEmailId, bouncedEmailId, dryEmailId],
     ]);
     await pool.end();
   });
@@ -118,5 +124,23 @@ describe('daily retention cleanup (real Postgres)', () => {
     // Sent email past retention goes; bounced/complained are read by invitation status.
     expect(sent.rowCount).toBe(0);
     expect(bounced.rowCount).toBe(1);
+  });
+
+  it('dry run leaves the new sweep tables alone while the existing cleanup still runs', async () => {
+    const db = drizzle(pool, { schema });
+    await db.insert(schema.emailOutbox).values({
+      id: dryEmailId,
+      to: 'retention-dry@qnsc.vn',
+      template: 'retention-test',
+      status: 'sent',
+      sentAt: new Date('2020-01-01T00:00:00Z'),
+      createdAt: new Date('2020-01-01T00:00:00Z'),
+      scheduledAt: new Date('2020-01-01T00:00:00Z'),
+    });
+    await service(db, true).runCleanup();
+    const dry = await pool.query('SELECT 1 FROM messaging.email_outbox WHERE id = $1', [
+      dryEmailId,
+    ]);
+    expect(dry.rowCount).toBe(1);
   });
 });
