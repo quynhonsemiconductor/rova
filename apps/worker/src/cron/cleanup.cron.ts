@@ -44,6 +44,28 @@ export class CleanupCronService {
   private readonly SCM_INBOX_FAILED_RETENTION_DAYS = 180;
   private readonly SCM_INBOX_SWEEP_LIMIT = 5_000;
 
+  /**
+   * Retention for the other append-only tables. Security audit and product activity
+   * history are the long ones: one year, never less (SOC2 / incident review). Terminal
+   * messaging rows and read notifications go sooner; expired credentials get the same
+   * seven-day grace as sessions. `failed` outbox rows are dead-letter records and are
+   * kept far longer than successful ones.
+   */
+  private readonly AUDIT_RETENTION_DAYS = 365;
+  private readonly ACTIVITY_RETENTION_DAYS = 365;
+  private readonly OUTBOX_PUBLISHED_RETENTION_DAYS = 30;
+  private readonly OUTBOX_FAILED_RETENTION_DAYS = 180;
+  private readonly EMAIL_OUTBOX_RETENTION_DAYS = 30;
+  private readonly EMAIL_OUTBOX_FAILED_RETENTION_DAYS = 90;
+  private readonly NOTIFICATION_OUTBOX_RETENTION_DAYS = 30;
+  private readonly GUEST_INVITE_RETENTION_DAYS = 30;
+  private readonly GUEST_INVITE_FAILED_RETENTION_DAYS = 180;
+  private readonly IN_APP_READ_RETENTION_DAYS = 90;
+  private readonly IN_APP_ANY_RETENTION_DAYS = 365;
+  private readonly CREDENTIAL_GRACE_DAYS = 7;
+  private readonly SCM_BACKFILL_RETENTION_DAYS = 90;
+  private readonly RETENTION_SWEEP_LIMIT = 5_000;
+
   constructor(
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly config: AppConfigService,
@@ -207,5 +229,165 @@ export class CleanupCronService {
       { deleted: (inboxResult as { rowCount?: number }).rowCount },
       'Purged terminal SCM webhook inbox rows',
     );
+
+    // 5. The other append-only tables. Each statement is bounded by a primary-key
+    // subquery so a first sweep over a long-neglected table cannot become one huge
+    // transaction; the loop runs until a pass removes fewer than the limit.
+    await this.purgeBatched(
+      'Purged old audit logs',
+      (limit) => sql`
+        DELETE FROM audit.audit_logs
+        WHERE id IN (
+          SELECT id FROM audit.audit_logs
+          WHERE occurred_at < NOW() - (${this.AUDIT_RETENTION_DAYS} || ' days')::interval
+          LIMIT ${limit}
+        )
+      `,
+    );
+    await this.purgeBatched(
+      'Purged old product activity history',
+      (limit) => sql`
+        DELETE FROM work.activity_logs
+        WHERE id IN (
+          SELECT id FROM work.activity_logs
+          WHERE created_at < NOW() - (${this.ACTIVITY_RETENTION_DAYS} || ' days')::interval
+          LIMIT ${limit}
+        )
+      `,
+    );
+    await this.purgeBatched(
+      'Purged published outbox events',
+      (limit) => sql`
+        DELETE FROM messaging.outbox_events
+        WHERE id IN (
+          SELECT id FROM messaging.outbox_events
+          WHERE (
+              status = 'published'
+              AND created_at < NOW() - (${this.OUTBOX_PUBLISHED_RETENTION_DAYS} || ' days')::interval
+            )
+            OR (
+              status = 'failed'
+              AND created_at < NOW() - (${this.OUTBOX_FAILED_RETENTION_DAYS} || ' days')::interval
+            )
+          LIMIT ${limit}
+        )
+      `,
+    );
+    await this.purgeBatched(
+      'Purged terminal email outbox rows',
+      (limit) => sql`
+        DELETE FROM messaging.email_outbox
+        WHERE id IN (
+          SELECT id FROM messaging.email_outbox
+          WHERE (
+              status IN ('sent', 'bounced', 'complained')
+              AND created_at < NOW() - (${this.EMAIL_OUTBOX_RETENTION_DAYS} || ' days')::interval
+            )
+            OR (
+              status = 'failed'
+              AND created_at < NOW() - (${this.EMAIL_OUTBOX_FAILED_RETENTION_DAYS} || ' days')::interval
+            )
+          LIMIT ${limit}
+        )
+      `,
+    );
+    await this.purgeBatched(
+      'Purged terminal notification outbox rows',
+      (limit) => sql`
+        DELETE FROM messaging.notification_outbox
+        WHERE id IN (
+          SELECT id FROM messaging.notification_outbox
+          WHERE status IN ('sent', 'failed')
+            AND created_at < NOW() - (${this.NOTIFICATION_OUTBOX_RETENTION_DAYS} || ' days')::interval
+          LIMIT ${limit}
+        )
+      `,
+    );
+    await this.purgeBatched(
+      'Purged terminal guest-invite outbox rows',
+      (limit) => sql`
+        DELETE FROM messaging.guest_invite_outbox
+        WHERE id IN (
+          SELECT id FROM messaging.guest_invite_outbox
+          WHERE (
+              status = 'sent'
+              AND created_at < NOW() - (${this.GUEST_INVITE_RETENTION_DAYS} || ' days')::interval
+            )
+            OR (
+              status = 'failed'
+              AND created_at < NOW() - (${this.GUEST_INVITE_FAILED_RETENTION_DAYS} || ' days')::interval
+            )
+          LIMIT ${limit}
+        )
+      `,
+    );
+    await this.purgeBatched(
+      'Purged old in-app notifications',
+      (limit) => sql`
+        DELETE FROM notifications.in_app_notifications
+        WHERE id IN (
+          SELECT id FROM notifications.in_app_notifications
+          WHERE (
+              is_read = true
+              AND created_at < NOW() - (${this.IN_APP_READ_RETENTION_DAYS} || ' days')::interval
+            )
+            OR created_at < NOW() - (${this.IN_APP_ANY_RETENTION_DAYS} || ' days')::interval
+          LIMIT ${limit}
+        )
+      `,
+    );
+    await this.purgeBatched(
+      'Purged expired API tokens',
+      (limit) => sql`
+        DELETE FROM identity.api_tokens
+        WHERE id IN (
+          SELECT id FROM identity.api_tokens
+          WHERE expires_at < NOW() - (${this.CREDENTIAL_GRACE_DAYS} || ' days')::interval
+             OR revoked_at < NOW() - (${this.CREDENTIAL_GRACE_DAYS} || ' days')::interval
+          LIMIT ${limit}
+        )
+      `,
+    );
+    // identity 8's session table is unused until the cutover; clean it anyway so the
+    // first logged-in day after cutover does not inherit an unbounded table.
+    await this.purgeBatched(
+      'Purged expired identity sessions',
+      (limit) => sql`
+        DELETE FROM identity."session"
+        WHERE id IN (
+          SELECT id FROM identity."session"
+          WHERE expires_at < NOW() - (${this.CREDENTIAL_GRACE_DAYS} || ' days')::interval
+          LIMIT ${limit}
+        )
+      `,
+    );
+    await this.purgeBatched(
+      'Purged finished SCM backfill jobs',
+      (limit) => sql`
+        DELETE FROM scm.backfill_jobs
+        WHERE id IN (
+          SELECT id FROM scm.backfill_jobs
+          WHERE status IN ('done', 'failed')
+            AND COALESCE(finished_at, requested_at)
+              < NOW() - (${this.SCM_BACKFILL_RETENTION_DAYS} || ' days')::interval
+          LIMIT ${limit}
+        )
+      `,
+    );
+  }
+
+  /** Delete in bounded passes until a pass removes fewer than the limit. */
+  private async purgeBatched(
+    message: string,
+    statement: (limit: number) => ReturnType<typeof sql>,
+  ): Promise<void> {
+    let total = 0;
+    for (;;) {
+      const result = await this.db.execute(statement(this.RETENTION_SWEEP_LIMIT));
+      const deleted = (result as { rowCount?: number }).rowCount ?? 0;
+      total += deleted;
+      if (deleted < this.RETENTION_SWEEP_LIMIT) break;
+    }
+    if (total > 0) this.logger.log({ deleted: total }, message);
   }
 }
