@@ -327,6 +327,10 @@ export const EnvSchema = z
     // TTL knobs — defaults match SRS but allow ops to tune without code change
     INVITATION_TTL_DAYS: z.coerce.number().int().positive().default(7),
     SESSION_CLEANUP_OLDER_THAN_DAYS: z.coerce.number().int().positive().default(7),
+    // Daily retention sweep. Dry-run is the default until the owner reads the first
+    // count-only run; the kill switch stops every delete without a deploy.
+    RETENTION_SWEEP_ENABLED: booleanish(true),
+    RETENTION_DRY_RUN: booleanish(true),
 
     // SSO — Microsoft Entra ID. The sign-in app registration (a confidential client, single-tenant). The API signs
     // people in with it (`ENTRA_CLIENT_SECRET` in the code exchange); the worker reuses the same registration for the

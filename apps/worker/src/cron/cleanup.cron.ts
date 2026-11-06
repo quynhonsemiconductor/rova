@@ -45,16 +45,12 @@ export class CleanupCronService {
   private readonly SCM_INBOX_SWEEP_LIMIT = 5_000;
 
   /**
-   * Retention for the other append-only tables. Security audit and product activity
-   * history are the long ones: one year, never less (SOC2 / incident review). Terminal
-   * messaging rows and read notifications go sooner; expired credentials get the same
-   * seven-day grace as sessions. `failed` outbox rows are dead-letter records and are
-   * kept far longer than successful ones.
+   * Retention for the other append-only tables. Audit and activity history are NOT
+   * capped (owner decision, RETENTION.md §5/§6): tiny volume, revisit with numbers.
+   * Terminal messaging rows and read notifications go sooner; expired credentials get
+   * the same seven-day grace as sessions. `failed` outbox rows are dead-letter records
+   * and are kept far longer than successful ones.
    */
-  private readonly AUDIT_RETENTION_DAYS = 365;
-  private readonly ACTIVITY_RETENTION_DAYS = 365;
-  private readonly OUTBOX_PUBLISHED_RETENTION_DAYS = 30;
-  private readonly OUTBOX_FAILED_RETENTION_DAYS = 180;
   private readonly EMAIL_OUTBOX_RETENTION_DAYS = 30;
   private readonly EMAIL_OUTBOX_FAILED_RETENTION_DAYS = 90;
   private readonly NOTIFICATION_OUTBOX_RETENTION_DAYS = 30;
@@ -65,6 +61,9 @@ export class CleanupCronService {
   private readonly CREDENTIAL_GRACE_DAYS = 7;
   private readonly SCM_BACKFILL_RETENTION_DAYS = 90;
   private readonly RETENTION_SWEEP_LIMIT = 5_000;
+  private readonly RETENTION_MAX_PASSES = 20;
+  /** Set by runCleanup; purgeBatched stops cleanly before the ExclusiveJob lock expires. */
+  private deadline = 0;
 
   constructor(
     @InjectDrizzle() private readonly db: DrizzleDB,
@@ -75,10 +74,95 @@ export class CleanupCronService {
 
   @Cron('0 1 * * *', { name: 'daily-cleanup', timeZone: 'UTC' })
   async runCleanup(): Promise<void> {
+    if (!this.config.get('RETENTION_SWEEP_ENABLED')) {
+      this.logger.log('Retention sweep disabled');
+      return;
+    }
+    // Stop well before the ExclusiveJob lock expires, even if a table needs more passes.
+    this.deadline = Date.now() + this.LOCK_TTL_MS - 5 * 60 * 1_000;
+    const dryRun = this.config.get('RETENTION_DRY_RUN');
     // ExclusiveJob owns the lock, the job context (a correlationId, which cron work has
     // nothing to inherit) and the duration/outcome metrics. This class used to hand-roll
     // all three, as did SnapshotCronService — identically, which is why they now share it.
-    await this.exclusive.run('daily-cleanup', this.LOCK_TTL_MS, () => this.purgeStaleData());
+    await this.exclusive.run('daily-cleanup', this.LOCK_TTL_MS, () =>
+      dryRun ? this.reportOnly() : this.purgeStaleData(),
+    );
+  }
+
+  /** Count-only first run: no writes, no object deletion, no status changes. */
+  private async reportOnly(): Promise<void> {
+    const count = async (statement: ReturnType<typeof sql>): Promise<number> => {
+      const result = await this.db.execute(statement);
+      const rows = (result as unknown as { rows?: Array<{ n: number | string }> }).rows ?? [];
+      return Number(rows[0]?.n ?? 0);
+    };
+    const older = this.config.get('SESSION_CLEANUP_OLDER_THAN_DAYS');
+    const counts = {
+      auth_sessions: await count(sql`
+        SELECT count(*) AS n FROM identity.auth_sessions
+        WHERE is_revoked = true
+          AND expires_at < NOW() - (${older} || ' days')::interval
+      `),
+      invitations: await count(sql`
+        SELECT count(*) AS n FROM workspace.workspace_invitations
+        WHERE status = 'pending' AND expires_at < NOW()
+      `),
+      scm_inbox: await count(sql`
+        SELECT count(*) AS n FROM scm.webhook_inbox
+        WHERE (status IN ('processed', 'ignored')
+          AND COALESCE(processed_at, received_at)
+            < NOW() - (${this.SCM_INBOX_HANDLED_RETENTION_DAYS} || ' days')::interval)
+        OR (status = 'failed'
+          AND received_at
+            < NOW() - (${this.SCM_INBOX_FAILED_RETENTION_DAYS} || ' days')::interval)
+      `),
+      email_outbox: await count(sql`
+        SELECT count(*) AS n FROM messaging.email_outbox
+        WHERE (status = 'sent'
+          AND COALESCE(sent_at, created_at)
+            < NOW() - (${this.EMAIL_OUTBOX_RETENTION_DAYS} || ' days')::interval)
+        OR (status = 'failed'
+          AND created_at
+            < NOW() - (${this.EMAIL_OUTBOX_FAILED_RETENTION_DAYS} || ' days')::interval)
+      `),
+      notification_outbox: await count(sql`
+        SELECT count(*) AS n FROM messaging.notification_outbox
+        WHERE status IN ('sent', 'failed')
+          AND COALESCE(dispatched_at, created_at)
+            < NOW() - (${this.NOTIFICATION_OUTBOX_RETENTION_DAYS} || ' days')::interval
+      `),
+      guest_invite_outbox: await count(sql`
+        SELECT count(*) AS n FROM messaging.guest_invite_outbox
+        WHERE (status = 'sent'
+          AND COALESCE(sent_at, created_at)
+            < NOW() - (${this.GUEST_INVITE_RETENTION_DAYS} || ' days')::interval)
+        OR (status = 'failed'
+          AND created_at
+            < NOW() - (${this.GUEST_INVITE_FAILED_RETENTION_DAYS} || ' days')::interval)
+      `),
+      in_app_notifications: await count(sql`
+        SELECT count(*) AS n FROM notifications.in_app_notifications
+        WHERE (is_read = true
+          AND created_at < NOW() - (${this.IN_APP_READ_RETENTION_DAYS} || ' days')::interval)
+        OR created_at < NOW() - (${this.IN_APP_ANY_RETENTION_DAYS} || ' days')::interval
+      `),
+      api_tokens: await count(sql`
+        SELECT count(*) AS n FROM identity.api_tokens
+        WHERE expires_at < NOW() - (${this.CREDENTIAL_GRACE_DAYS} || ' days')::interval
+           OR revoked_at < NOW() - (${this.CREDENTIAL_GRACE_DAYS} || ' days')::interval
+      `),
+      identity_sessions: await count(sql`
+        SELECT count(*) AS n FROM identity."session"
+        WHERE expires_at < NOW() - (${this.CREDENTIAL_GRACE_DAYS} || ' days')::interval
+      `),
+      scm_backfill_jobs: await count(sql`
+        SELECT count(*) AS n FROM scm.backfill_jobs
+        WHERE status IN ('done', 'failed')
+          AND COALESCE(finished_at, requested_at)
+            < NOW() - (${this.SCM_BACKFILL_RETENTION_DAYS} || ' days')::interval
+      `),
+    };
+    this.logger.log({ dryRun: true, counts }, 'Retention sweep (count-only)');
   }
 
   private async purgeStaleData(): Promise<void> {
@@ -231,48 +315,7 @@ export class CleanupCronService {
     );
 
     // 5. The other append-only tables. Each statement is bounded by a primary-key
-    // subquery so a first sweep over a long-neglected table cannot become one huge
-    // transaction; the loop runs until a pass removes fewer than the limit.
-    await this.purgeBatched(
-      'Purged old audit logs',
-      (limit) => sql`
-        DELETE FROM audit.audit_logs
-        WHERE id IN (
-          SELECT id FROM audit.audit_logs
-          WHERE occurred_at < NOW() - (${this.AUDIT_RETENTION_DAYS} || ' days')::interval
-          LIMIT ${limit}
-        )
-      `,
-    );
-    await this.purgeBatched(
-      'Purged old product activity history',
-      (limit) => sql`
-        DELETE FROM work.activity_logs
-        WHERE id IN (
-          SELECT id FROM work.activity_logs
-          WHERE created_at < NOW() - (${this.ACTIVITY_RETENTION_DAYS} || ' days')::interval
-          LIMIT ${limit}
-        )
-      `,
-    );
-    await this.purgeBatched(
-      'Purged published outbox events',
-      (limit) => sql`
-        DELETE FROM messaging.outbox_events
-        WHERE id IN (
-          SELECT id FROM messaging.outbox_events
-          WHERE (
-              status = 'published'
-              AND created_at < NOW() - (${this.OUTBOX_PUBLISHED_RETENTION_DAYS} || ' days')::interval
-            )
-            OR (
-              status = 'failed'
-              AND created_at < NOW() - (${this.OUTBOX_FAILED_RETENTION_DAYS} || ' days')::interval
-            )
-          LIMIT ${limit}
-        )
-      `,
-    );
+    // subquery and the terminal timestamp is the clock, not created_at.
     await this.purgeBatched(
       'Purged terminal email outbox rows',
       (limit) => sql`
@@ -280,17 +323,20 @@ export class CleanupCronService {
         WHERE id IN (
           SELECT id FROM messaging.email_outbox
           WHERE (
-              status IN ('sent', 'bounced', 'complained')
-              AND created_at < NOW() - (${this.EMAIL_OUTBOX_RETENTION_DAYS} || ' days')::interval
+              status = 'sent'
+              AND COALESCE(sent_at, created_at)
+                < NOW() - (${this.EMAIL_OUTBOX_RETENTION_DAYS} || ' days')::interval
             )
             OR (
               status = 'failed'
-              AND created_at < NOW() - (${this.EMAIL_OUTBOX_FAILED_RETENTION_DAYS} || ' days')::interval
+              AND created_at
+                < NOW() - (${this.EMAIL_OUTBOX_FAILED_RETENTION_DAYS} || ' days')::interval
             )
           LIMIT ${limit}
         )
       `,
     );
+    // bounced/complained are never deleted: the workspace invitation status reads them.
     await this.purgeBatched(
       'Purged terminal notification outbox rows',
       (limit) => sql`
@@ -298,7 +344,8 @@ export class CleanupCronService {
         WHERE id IN (
           SELECT id FROM messaging.notification_outbox
           WHERE status IN ('sent', 'failed')
-            AND created_at < NOW() - (${this.NOTIFICATION_OUTBOX_RETENTION_DAYS} || ' days')::interval
+            AND COALESCE(dispatched_at, created_at)
+              < NOW() - (${this.NOTIFICATION_OUTBOX_RETENTION_DAYS} || ' days')::interval
           LIMIT ${limit}
         )
       `,
@@ -311,11 +358,13 @@ export class CleanupCronService {
           SELECT id FROM messaging.guest_invite_outbox
           WHERE (
               status = 'sent'
-              AND created_at < NOW() - (${this.GUEST_INVITE_RETENTION_DAYS} || ' days')::interval
+              AND COALESCE(sent_at, created_at)
+                < NOW() - (${this.GUEST_INVITE_RETENTION_DAYS} || ' days')::interval
             )
             OR (
               status = 'failed'
-              AND created_at < NOW() - (${this.GUEST_INVITE_FAILED_RETENTION_DAYS} || ' days')::interval
+              AND created_at
+                < NOW() - (${this.GUEST_INVITE_FAILED_RETENTION_DAYS} || ' days')::interval
             )
           LIMIT ${limit}
         )
@@ -329,7 +378,8 @@ export class CleanupCronService {
           SELECT id FROM notifications.in_app_notifications
           WHERE (
               is_read = true
-              AND created_at < NOW() - (${this.IN_APP_READ_RETENTION_DAYS} || ' days')::interval
+              AND COALESCE(read_at, created_at)
+                < NOW() - (${this.IN_APP_READ_RETENTION_DAYS} || ' days')::interval
             )
             OR created_at < NOW() - (${this.IN_APP_ANY_RETENTION_DAYS} || ' days')::interval
           LIMIT ${limit}
@@ -376,13 +426,21 @@ export class CleanupCronService {
     );
   }
 
-  /** Delete in bounded passes until a pass removes fewer than the limit. */
+  /**
+   * Delete in bounded passes until a pass removes fewer than the limit, the pass cap is
+   * reached, or the ExclusiveJob deadline is close. Stopping early is a clean partial
+   * sweep: the next daily run starts where this one left off.
+   */
   private async purgeBatched(
     message: string,
     statement: (limit: number) => ReturnType<typeof sql>,
   ): Promise<void> {
     let total = 0;
-    for (;;) {
+    for (let pass = 0; pass < this.RETENTION_MAX_PASSES; pass += 1) {
+      if (Date.now() >= this.deadline) {
+        this.logger.warn({ deleted: total }, `${message}: stopped at the lock deadline`);
+        break;
+      }
       const result = await this.db.execute(statement(this.RETENTION_SWEEP_LIMIT));
       const deleted = (result as { rowCount?: number }).rowCount ?? 0;
       total += deleted;

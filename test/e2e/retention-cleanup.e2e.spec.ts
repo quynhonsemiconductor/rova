@@ -13,17 +13,28 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CleanupCronService } from '../../apps/worker/src/cron/cleanup.cron';
 import * as schema from '../../db/schema';
 
-const url = process.env['DATABASE_MIGRATION_URL'] ?? process.env['DATABASE_URL'];
-if (!url) throw new Error('this spec needs DATABASE_URL (or DATABASE_MIGRATION_URL)');
+// Deliberately strict: this spec DELETES rows. It must never run against a shared
+// database, and it must never fall back to the migration role/URL.
+const url = process.env['TEST_DATABASE_URL'];
+if (!url) throw new Error('this spec needs TEST_DATABASE_URL (a dedicated test database)');
+const databaseName = new URL(url).pathname.replace(/^\//, '');
+if (!databaseName.toLowerCase().includes('test')) {
+  throw new Error(`refusing to run retention cleanup against non-test database ${databaseName}`);
+}
 
 const auditId = randomUUID();
 const outboxId = randomUUID();
+const sentEmailId = randomUUID();
+const bouncedEmailId = randomUUID();
 let pool: Pool;
 
 function service(db: unknown) {
   return new CleanupCronService(
     db as never,
-    { get: () => 7 } as never,
+    {
+      get: (key: string) =>
+        key === 'SESSION_CLEANUP_OLDER_THAN_DAYS' ? 7 : key === 'RETENTION_DRY_RUN' ? false : true,
+    } as never,
     { deleteObject: async () => undefined } as never,
     { run: (_name: string, _ttl: number, fn: () => Promise<void>) => fn() } as never,
   );
@@ -57,9 +68,33 @@ describe('daily retention cleanup (real Postgres)', () => {
       createdAt: new Date('2020-01-01T00:00:00Z'),
       scheduledAt: new Date('2020-01-01T00:00:00Z'),
     });
+    await db.insert(schema.emailOutbox).values([
+      {
+        id: sentEmailId,
+        to: 'retention@qnsc.vn',
+        template: 'retention-test',
+        status: 'sent',
+        sentAt: new Date('2020-01-01T00:00:00Z'),
+        createdAt: new Date('2020-01-01T00:00:00Z'),
+        scheduledAt: new Date('2020-01-01T00:00:00Z'),
+      },
+      {
+        id: bouncedEmailId,
+        to: 'retention-bounce@qnsc.vn',
+        template: 'retention-test',
+        status: 'bounced',
+        createdAt: new Date('2020-01-01T00:00:00Z'),
+        scheduledAt: new Date('2020-01-01T00:00:00Z'),
+      },
+    ]);
   });
 
   afterAll(async () => {
+    await pool.query('DELETE FROM audit.audit_logs WHERE id = $1', [auditId]);
+    await pool.query('DELETE FROM messaging.outbox_events WHERE id = $1', [outboxId]);
+    await pool.query('DELETE FROM messaging.email_outbox WHERE id = ANY($1::uuid[])', [
+      [sentEmailId, bouncedEmailId],
+    ]);
     await pool.end();
   });
 
@@ -71,7 +106,17 @@ describe('daily retention cleanup (real Postgres)', () => {
     const outbox = await pool.query('SELECT 1 FROM messaging.outbox_events WHERE id = $1', [
       outboxId,
     ]);
-    expect(audit.rowCount).toBe(0);
-    expect(outbox.rowCount).toBe(0);
+    const sent = await pool.query('SELECT 1 FROM messaging.email_outbox WHERE id = $1', [
+      sentEmailId,
+    ]);
+    const bounced = await pool.query('SELECT 1 FROM messaging.email_outbox WHERE id = $1', [
+      bouncedEmailId,
+    ]);
+    // Audit and published outbox are the audit trail / re-projection source: never capped.
+    expect(audit.rowCount).toBe(1);
+    expect(outbox.rowCount).toBe(1);
+    // Sent email past retention goes; bounced/complained are read by invitation status.
+    expect(sent.rowCount).toBe(0);
+    expect(bounced.rowCount).toBe(1);
   });
 });
