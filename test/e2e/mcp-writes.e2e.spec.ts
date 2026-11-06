@@ -161,7 +161,9 @@ describe('/mcp write tools (e2e)', () => {
       serverVersion: 'e2e',
       writesEnabled: true,
       idempotencySecret: 'x'.repeat(32),
-      rateLimitDisabled: process.env['DISABLE_RATE_LIMIT'] === 'true',
+      // This file exercises write behaviour, not the /mcp POST budget; the suite's many calls from
+      // one admin would otherwise cross 60/min and answer a body-less 429.
+      rateLimitDisabled: true,
     });
     await app.init();
     await fastify.ready();
@@ -1435,5 +1437,266 @@ describe('/mcp write tools (e2e)', () => {
       .from(testResults)
       .where(eq(testResults.build, deniedBuild));
     expect(deniedResults[0].n, 'a refused record must not leave a row').toBe(0);
+  });
+  // ── PR6: portfolio item and iteration saves ─────────────────────────────────
+
+  it('rova_save_portfolio_item and rova_save_iteration: admin happy path, Editor 403 equals REST', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+
+    const epicName = `mcp epic ${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const epic = await tool('rova_save_portfolio_item', {
+      project: 'NXP',
+      type: 'epic',
+      name: epicName,
+    });
+    expect(epic.isError, JSON.stringify(epic.body)).toBeFalsy();
+    const epicKey = (epic.body.portfolioItem as Record<string, unknown>)['itemKey'] as string;
+    expect(epicKey).toMatch(/^EP-/);
+
+    const edited = await tool('rova_save_portfolio_item', {
+      key: epicKey,
+      description: 'edited by mcp',
+    });
+    expect(edited.isError, JSON.stringify(edited.body)).toBeFalsy();
+    expect(edited.body.changed).toEqual(['description']);
+
+    const iterationName = `mcp iter ${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const iteration = await tool('rova_save_iteration', {
+      project: 'NXP',
+      name: iterationName,
+    });
+    expect(iteration.isError, JSON.stringify(iteration.body)).toBeFalsy();
+    const iterationId = (iteration.body.iteration as Record<string, unknown>)['id'] as string;
+
+    const goal = await tool('rova_save_iteration', { iteration: iterationId, goal: 'ship it' });
+    expect(goal.isError, JSON.stringify(goal.body)).toBeFalsy();
+    expect(goal.body.changed).toEqual(['goal']);
+
+    // An Editor (dev) holds neither portfolio:create nor iteration:create. MCP relays the REST
+    // refusal byte for byte — same status and body.
+    people.set(TOKEN, { userId: devId, workspaceId: WORKSPACE_ID });
+    const restPortfolio = await app.inject({
+      method: 'POST',
+      url: '/v1/portfolio-items',
+      headers: { cookie: devCsrf.cookie, [CSRF_HEADER]: devCsrf.token },
+      payload: { projectId: NXP, type: 'epic', name: `${epicName} rest` },
+    });
+    const mcpPortfolio = await tool('rova_save_portfolio_item', {
+      project: 'NXP',
+      type: 'epic',
+      name: `${epicName} mcp`,
+    });
+    expect(restPortfolio.statusCode, restPortfolio.body).toBe(403);
+    expect(mcpPortfolio.isError).toBe(true);
+    expect(mcpPortfolio.body.statusCode).toBe(restPortfolio.statusCode);
+    expect(mcpPortfolio.body.error.error.code).toBe(restPortfolio.json().error.code);
+
+    const restIteration = await app.inject({
+      method: 'POST',
+      url: '/v1/iterations',
+      headers: { cookie: devCsrf.cookie, [CSRF_HEADER]: devCsrf.token },
+      payload: { projectId: NXP, name: `${iterationName} rest` },
+    });
+    const mcpIteration = await tool('rova_save_iteration', {
+      project: 'NXP',
+      name: `${iterationName} mcp`,
+    });
+    expect(restIteration.statusCode, restIteration.body).toBe(403);
+    expect(mcpIteration.isError).toBe(true);
+    expect(mcpIteration.body.statusCode).toBe(restIteration.statusCode);
+    expect(mcpIteration.body.error.error.code).toBe(restIteration.json().error.code);
+  });
+
+  // ── PR7: rova_delete, per kind ─────────────────────────────────────────────
+
+  it('rova_delete: own comment and time log delete; a repeat is the generic refusal, another person’s is refused', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const commentBody = `delete me ${Date.now()}`;
+    const comment = await adminRest('POST', `/work-items/${NXP_STORY_1_ID}/comments`, {
+      body: commentBody,
+    });
+    expect(comment.statusCode, comment.body).toBe(201);
+    const commentId = comment.json().id as string;
+
+    const deleted = await tool('rova_delete', {
+      kind: 'comment',
+      key: NXP_STORY_1_ID,
+      id: commentId,
+    });
+    expect(deleted.isError, JSON.stringify(deleted.body)).toBeFalsy();
+    expect(deleted.body.deleted).toMatchObject({ kind: 'comment', id: commentId });
+
+    const retried = await tool('rova_delete', {
+      kind: 'comment',
+      key: NXP_STORY_1_ID,
+      id: commentId,
+    });
+    // A retry of a delete that already landed is the same generic refusal any missing id gets;
+    // #918 deliberately does not distinguish "already deleted" from "not yours".
+    expect(retried.isError).toBe(true);
+    expect(retried.body.error).toMatch(/not found, or it is not yours/);
+
+    // Someone else's comment: the guard narrows below the API (both people can edit the item).
+    const theirComment = await app.inject({
+      method: 'POST',
+      url: `/v1/work-items/${NXP_STORY_1_ID}/comments`,
+      headers: { cookie: devCsrf.cookie, [CSRF_HEADER]: devCsrf.token },
+      payload: { body: `not yours ${Date.now()}` },
+    });
+    expect(theirComment.statusCode, theirComment.body).toBe(201);
+    const refused = await tool('rova_delete', {
+      kind: 'comment',
+      key: NXP_STORY_1_ID,
+      id: theirComment.json().id as string,
+    });
+    expect(refused.isError).toBe(true);
+    expect(refused.body.error).toMatch(/your own comment/);
+
+    // A time log follows the same rule.
+    const story = await freshStory();
+    const logged = await tool('rova_log_time', {
+      key: story,
+      hours: 1,
+      date: '2026-11-05',
+      description: `delete log ${Date.now()}`,
+    });
+    expect(logged.isError, JSON.stringify(logged.body)).toBeFalsy();
+    const logId = (logged.body.timeLog as Record<string, unknown>)['id'] as string;
+    const logDeleted = await tool('rova_delete', { kind: 'time_log', key: story, id: logId });
+    expect(logDeleted.isError, JSON.stringify(logDeleted.body)).toBeFalsy();
+    const logRetry = await tool('rova_delete', { kind: 'time_log', key: story, id: logId });
+    expect(logRetry.isError).toBe(true);
+    expect(logRetry.body.error).toMatch(/not found, or it is not yours/);
+  });
+
+  it('rova_delete: a relation you did not create is refused; a repeat is the generic refusal', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const target = await freshStory();
+    const relation = await adminRest('POST', `/work-items/${NXP_STORY_1_ID}/relations`, {
+      targetId: target,
+      relationType: 'relates_to',
+    });
+    expect(relation.statusCode, relation.body).toBe(201);
+    const relations = await adminRest('GET', `/work-items/${NXP_STORY_1_ID}/relations`);
+    const rows = relations.json<{ id: string; relatedItem: { id: string } }[]>();
+    const created = rows.find((row) => row.relatedItem?.id === target);
+    expect(created, 'the new relation is in the list').toBeTruthy();
+
+    // dev can EDIT the item but did not create this link.
+    people.set(TOKEN, { userId: devId, workspaceId: WORKSPACE_ID });
+    const refused = await tool('rova_delete', {
+      kind: 'relation',
+      key: NXP_STORY_1_ID,
+      id: created!.id,
+    });
+    expect(refused.isError).toBe(true);
+    expect(refused.body.error).toMatch(/relation you created/);
+
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const deleted = await tool('rova_delete', {
+      kind: 'relation',
+      key: NXP_STORY_1_ID,
+      id: created!.id,
+    });
+    expect(deleted.isError, JSON.stringify(deleted.body)).toBeFalsy();
+
+    const retry = await tool('rova_delete', {
+      kind: 'relation',
+      key: NXP_STORY_1_ID,
+      id: created!.id,
+    });
+    expect(retry.isError).toBe(true);
+    expect(retry.body.error).toMatch(/not found, or it is not yours/);
+  });
+
+  it('rova_delete: a test result recorded by someone else is refused; your own deletes, a repeat is the generic refusal', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    await ensureTestCaseType();
+    const story = await freshStory();
+    const testCase = await adminRest('POST', `/work-items/${story}/test-cases`, {
+      name: `delete result case ${Date.now()}`,
+    });
+    expect(testCase.statusCode, testCase.body).toBe(201);
+    const testCaseKey = testCase.json().testCaseKey as string;
+    const build = `delete-result-${Date.now()}`;
+    const recorded = await tool('rova_record_test_results', {
+      build,
+      runDate: '2026-11-05',
+      results: [{ testCaseKey, verdict: 'pass' }],
+    });
+    expect(recorded.isError, JSON.stringify(recorded.body)).toBeFalsy();
+    const resultId = (recorded.body.results as Array<Record<string, unknown>>)[0]['id'] as string;
+    expect(resultId).toBeTruthy();
+
+    people.set(TOKEN, { userId: devId, workspaceId: WORKSPACE_ID });
+    const refused = await tool('rova_delete', {
+      kind: 'test_result',
+      key: testCaseKey,
+      id: resultId,
+    });
+    expect(refused.isError).toBe(true);
+    expect(refused.body.error).toMatch(/recorded/);
+
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const deleted = await tool('rova_delete', {
+      kind: 'test_result',
+      key: testCaseKey,
+      id: resultId,
+    });
+    expect(deleted.isError, JSON.stringify(deleted.body)).toBeFalsy();
+    const retry = await tool('rova_delete', {
+      kind: 'test_result',
+      key: testCaseKey,
+      id: resultId,
+    });
+    expect(retry.isError).toBe(true);
+    expect(retry.body.error).toMatch(/not found, or it is not yours/);
+  });
+
+  it("rova_delete: someone else's time log is refused, even on an item you can edit", async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const story = await freshStory();
+    const logged = await tool('rova_log_time', {
+      key: story,
+      hours: 2,
+      date: '2026-11-05',
+      description: `their log ${Date.now()}`,
+    });
+    expect(logged.isError, JSON.stringify(logged.body)).toBeFalsy();
+    const logId = (logged.body.timeLog as Record<string, unknown>)['id'] as string;
+
+    people.set(TOKEN, { userId: devId, workspaceId: WORKSPACE_ID });
+    const refused = await tool('rova_delete', { kind: 'time_log', key: story, id: logId });
+    expect(refused.isError).toBe(true);
+    expect(refused.body.error).toMatch(/your own time log/);
+  });
+
+  it('rova_delete: a task deletes', async () => {
+    people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
+    const title = `delete story ${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const created = await adminRest('POST', '/work-items', {
+      projectId: NXP,
+      type: 'story',
+      title,
+      teamId: TEAM_ALPHA_ID,
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const story = created.json().id as string;
+    const task = await tool('rova_add_task', {
+      parentKey: story,
+      title: `doomed task ${Date.now()}`,
+    });
+    expect(task.isError, JSON.stringify(task.body)).toBeFalsy();
+    const taskItem = task.body.workItem as Record<string, unknown>;
+    const taskKey = taskItem['itemKey'] as string;
+    const taskId = taskItem['id'] as string;
+
+    const taskDeleted = await tool('rova_delete', { kind: 'task', key: taskKey });
+    expect(taskDeleted.isError, JSON.stringify(taskDeleted.body)).toBeFalsy();
+    expect(taskDeleted.body.deleted).toMatchObject({ kind: 'task', id: taskId });
+
+    const taskRetry = await tool('rova_delete', { kind: 'task', key: taskKey });
+    expect(taskRetry.isError).toBe(true);
+    expect(taskRetry.body.error).toMatch(/not found, or it is not yours/);
   });
 });
