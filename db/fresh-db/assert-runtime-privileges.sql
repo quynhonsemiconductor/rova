@@ -100,6 +100,10 @@ BEGIN
         JOIN pg_namespace n ON n.oid = c.relnamespace
        WHERE n.nspname = ANY(app_schemas)
          AND c.relkind IN ('r', 'p')
+         -- audit_logs is append-only from the worker: migration 0140 revokes DELETE,
+         -- and the sweep deliberately never touches audit.
+         AND NOT (r = 'rova_worker' AND p = 'DELETE'
+                  AND n.nspname = 'audit' AND c.relname = 'audit_logs')
          AND NOT has_table_privilege(r, c.oid, p);
       IF cardinality(missing) > 0 THEN
         RAISE EXCEPTION '% lacks % on % table(s): %', r, p, cardinality(missing), missing;
