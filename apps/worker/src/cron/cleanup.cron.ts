@@ -66,6 +66,8 @@ export class CleanupCronService {
   private readonly RETENTION_MAX_PASSES = 20;
   /** Set by runCleanup; purgeBatched stops cleanly before the ExclusiveJob lock expires. */
   private deadline = 0;
+  /** Tables whose purge threw this run; reported in the summary, never fatal to other tables. */
+  private failedTables: Record<string, string> = {};
 
   constructor(
     @InjectDrizzle() private readonly db: DrizzleDB,
@@ -78,6 +80,7 @@ export class CleanupCronService {
   async runCleanup(): Promise<void> {
     // Stop well before the ExclusiveJob lock expires, even if a table needs more passes.
     this.deadline = Date.now() + this.LOCK_TTL_MS - 5 * 60 * 1_000;
+    this.failedTables = {};
     // The EXISTING cleanups (sessions, invitations, storage, SCM inbox) always run: they
     // were live before the retention sweep existed. The kill switch and dry run gate only
     // the NEW sweep tables. ExclusiveJob owns the lock, the job context and the metrics.
@@ -436,6 +439,7 @@ export class CleanupCronService {
         )
       `,
     );
+    this.logger.log({ failed: this.failedTables }, 'Retention sweep summary');
   }
 
   /**
@@ -448,21 +452,27 @@ export class CleanupCronService {
     statement: (limit: number) => ReturnType<typeof sql>,
   ): Promise<void> {
     let total = 0;
-    for (let pass = 0; pass < this.RETENTION_MAX_PASSES; pass += 1) {
-      if (Date.now() >= this.deadline) {
-        this.logger.warn({ deleted: total }, `${message}: stopped at the lock deadline`);
-        break;
+    try {
+      for (let pass = 0; pass < this.RETENTION_MAX_PASSES; pass += 1) {
+        if (Date.now() >= this.deadline) {
+          this.logger.warn({ deleted: total }, `${message}: stopped at the lock deadline`);
+          break;
+        }
+        // One statement per transaction so SET LOCAL applies to this connection; a 60 s
+        // statement_timeout keeps one slow scan inside the 5-minute deadline margin.
+        const deleted = await this.db.transaction(async (tx) => {
+          await tx.execute(sql`SET LOCAL statement_timeout = '60s'`);
+          const result = await tx.execute(statement(this.RETENTION_SWEEP_LIMIT));
+          return (result as { rowCount?: number }).rowCount ?? 0;
+        });
+        total += deleted;
+        if (deleted < this.RETENTION_SWEEP_LIMIT) break;
       }
-      // One statement per transaction so SET LOCAL applies to this connection; a 60 s
-      // statement_timeout keeps one slow scan inside the 5-minute deadline margin.
-      const deleted = await this.db.transaction(async (tx) => {
-        await tx.execute(sql`SET LOCAL statement_timeout = '60s'`);
-        const result = await tx.execute(statement(this.RETENTION_SWEEP_LIMIT));
-        return (result as { rowCount?: number }).rowCount ?? 0;
-      });
-      total += deleted;
-      if (deleted < this.RETENTION_SWEEP_LIMIT) break;
+      if (total > 0) this.logger.log({ deleted: total }, message);
+    } catch (err) {
+      // ONE table must not stop the rest of the night's sweep.
+      this.failedTables[message] = String(err);
+      this.logger.error({ table: message, error: String(err) }, 'Retention purge failed');
     }
-    if (total > 0) this.logger.log({ deleted: total }, message);
   }
 }

@@ -17,6 +17,10 @@ import * as schema from '../../db/schema';
 // database, and it must never fall back to the migration role/URL.
 const url = process.env['TEST_DATABASE_URL'];
 if (!url) throw new Error('this spec needs TEST_DATABASE_URL (a dedicated test database)');
+// Admin/superuser connection: only for the append-only audit row the worker must not
+// be able to delete, and for the privilege assertion below.
+const adminUrl = process.env['TEST_ADMIN_DATABASE_URL'];
+if (!adminUrl) throw new Error('this spec needs TEST_ADMIN_DATABASE_URL (a test-DB owner)');
 const parsedUrl = new URL(url);
 const databaseName = parsedUrl.pathname.replace(/^\//, '');
 const allowedHosts = new Set(['localhost', '127.0.0.1', '::1', 'postgres']);
@@ -33,6 +37,8 @@ const sentEmailId = randomUUID();
 const bouncedEmailId = randomUUID();
 const dryEmailId = randomUUID();
 let pool: Pool;
+let adminPool: Pool;
+let adminDb: ReturnType<typeof drizzle<typeof schema>>;
 
 function service(db: unknown, dryRun = false) {
   return new CleanupCronService(
@@ -49,9 +55,12 @@ function service(db: unknown, dryRun = false) {
 describe('daily retention cleanup (real Postgres)', () => {
   beforeAll(async () => {
     pool = new Pool({ connectionString: url, max: 2 });
+    adminPool = new Pool({ connectionString: adminUrl, max: 1 });
+    adminDb = drizzle(adminPool, { schema });
     const db = drizzle(pool, { schema });
     // One old audit row and one old terminal outbox row. Both are well past retention.
-    await db.insert(schema.auditLogs).values({
+    // The audit row is inserted by the ADMIN connection; rova_worker is append-only there.
+    await adminDb.insert(schema.auditLogs).values({
       id: auditId,
       workspaceId: randomUUID(),
       action: 'retention.test',
@@ -96,12 +105,20 @@ describe('daily retention cleanup (real Postgres)', () => {
   });
 
   afterAll(async () => {
-    await pool.query('DELETE FROM audit.audit_logs WHERE id = $1', [auditId]);
+    await adminPool.query('DELETE FROM audit.audit_logs WHERE id = $1', [auditId]);
     await pool.query('DELETE FROM messaging.outbox_events WHERE id = $1', [outboxId]);
     await pool.query('DELETE FROM messaging.email_outbox WHERE id = ANY($1::uuid[])', [
       [sentEmailId, bouncedEmailId, dryEmailId],
     ]);
     await pool.end();
+    await adminPool.end();
+  });
+
+  it('rova_worker cannot delete audit rows', async () => {
+    const result = await adminPool.query<{ allowed: boolean }>(
+      "SELECT has_table_privilege('rova_worker', 'audit.audit_logs', 'DELETE') AS allowed",
+    );
+    expect(result.rows[0]?.allowed).toBe(false);
   });
 
   it('executes every statement and removes rows past retention', async () => {
