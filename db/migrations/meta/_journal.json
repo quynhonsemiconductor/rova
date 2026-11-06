@@ -988,6 +988,13 @@
       "when": 1793973299834,
       "tag": "0139_mcp_access_subject",
       "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1793985387297,
+      "tag": "0140_revoke_worker_audit_delete",
+      "breakpoints": true
     }
   ]
 }

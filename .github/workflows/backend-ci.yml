@@ -326,6 +326,22 @@ jobs:
           ENTRA_TENANT_ID: dev-tenant
           SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
 
+      # The retention spec DELETES rows. It gets its own database, migrated here, so it
+      # can never delete from the shared rova_test DB the other e2e specs use. The name
+      # must contain "test": the spec refuses anything else.
+      - name: Create the dedicated retention e2e database
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'CREATE DATABASE rova_retention_test'
+          pnpm db:migrate
+          pnpm db:roles:enable
+        env:
+          DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_retention_test?sslmode=disable
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_retention_test?sslmode=disable
+          DATABASE_WORKER_PASSWORD: rova_worker
+          ENTRA_TENANT_ID: dev-tenant
+          SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
+
       # Prove the least-privilege grants from migration 0068 are COMPLETE, by
       # running the whole e2e suite as `rova_app` instead of the superuser.
       #
@@ -353,6 +369,12 @@ jobs:
           # the same split infra/modules/stack/main.tf gets at cutover.
           DATABASE_URL: postgresql://rova_app:rova_app@localhost:5432/rova_test?sslmode=disable
           DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
+          # Dedicated, deletion-safe database for the retention e2e, created above.
+          # rova_worker, not postgres: this exercises the DELETE grants the sweep uses
+          # in production.
+          TEST_DATABASE_URL: postgresql://rova_worker:rova_worker@localhost:5432/rova_retention_test?sslmode=disable
+          # Owner connection for the append-only audit row + the privilege assertion.
+          TEST_ADMIN_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_retention_test?sslmode=disable
           REDIS_URL: redis://localhost:6379
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
           COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
