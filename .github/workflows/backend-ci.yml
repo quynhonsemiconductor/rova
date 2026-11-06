@@ -333,10 +333,10 @@ jobs:
         run: |
           PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -c 'CREATE DATABASE rova_retention_test'
-          DATABASE_MIGRATION_URL=postgresql://postgres:postgres@localhost:5432/rova_retention_test?sslmode=disable \
-            DATABASE_URL=postgresql://postgres:postgres@localhost:5432/rova_retention_test?sslmode=disable \
-            pnpm db:migrate
+          pnpm db:migrate
         env:
+          DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_retention_test?sslmode=disable
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_retention_test?sslmode=disable
           ENTRA_TENANT_ID: dev-tenant
           SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
 
