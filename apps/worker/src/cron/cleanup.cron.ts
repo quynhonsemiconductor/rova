@@ -45,11 +45,13 @@ export class CleanupCronService {
   private readonly SCM_INBOX_SWEEP_LIMIT = 5_000;
 
   /**
-   * Retention for the other append-only tables. Audit and activity history are NOT
-   * capped (owner decision, RETENTION.md §5/§6): tiny volume, revisit with numbers.
-   * Terminal messaging rows and read notifications go sooner; expired credentials get
-   * the same seven-day grace as sessions. `failed` outbox rows are dead-letter records
-   * and are kept far longer than successful ones.
+   * Retention for the other append-only tables.
+   *
+   * Owner decision 2026-11-06: audit and activity history are NOT capped. Volumes are
+   * tiny today; revisit with the counts from the dry-run reports, not a guess. Terminal
+   * messaging rows and read notifications go sooner; expired credentials get the same
+   * seven-day grace as sessions. `failed` outbox rows are dead-letter records and are
+   * kept far longer than successful ones.
    */
   private readonly EMAIL_OUTBOX_RETENTION_DAYS = 30;
   private readonly EMAIL_OUTBOX_FAILED_RETENTION_DAYS = 90;
