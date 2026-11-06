@@ -39,6 +39,9 @@ export const users = identitySchema.table(
     locale: varchar('locale', { length: 10 }).notNull().default('en'),
     timezone: varchar('timezone', { length: 64 }).notNull().default('UTC'),
     phone: varchar('phone', { length: 32 }),
+    //: First verified Cloudflare Access `sub` bound to this account. Nullable and unique:
+    //: an email can be reassigned, so the account follows the ACCESS IDENTITY, not the mailbox.
+    accessSubject: varchar('access_subject', { length: 255 }),
     sessionVersion: integer('session_version').notNull().default(1),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -49,6 +52,9 @@ export const users = identitySchema.table(
     emailIdx: uniqueIndex('uq_users_email')
       .on(t.email)
       .where(sql`deleted_at IS NULL`),
+    accessSubjectIdx: uniqueIndex('uq_users_access_subject')
+      .on(t.accessSubject)
+      .where(sql`access_subject IS NOT NULL`),
   }),
 );
 

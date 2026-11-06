@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import {
   AccessJwtError,
   type AccessPrincipal,
@@ -30,7 +30,11 @@ import type { McpAccessPrincipal, McpAccessVerifier } from './access-verifier';
  *    the key;
  *  - an unknown or offboarded employee is a uniform 403 ({@link McpAccessDeniedError}), logged
  *    with the Access `sub` and a stable reason code — never the email, never distinguishing
- *    unknown from offboarded, and NEVER auto-provisioned from an MCP call.
+ *    unknown from offboarded, and NEVER auto-provisioned from an MCP call;
+ *  - the account is bound to the FIRST verified Access `sub` it sees. An email can be
+ *    reassigned, so a later token for the same email with a different Access identity is a
+ *    403, not a new session for the old account. An administrator clears `access_subject`
+ *    to rebind.
  */
 export class McpAccessDeniedError extends Error {
   constructor() {
@@ -40,7 +44,14 @@ export class McpAccessDeniedError extends Error {
 }
 
 /** Stable refusal reasons for the log (never the email, never unknown-vs-offboarded). */
-type DenyReason = 'no_email_claim' | 'no_active_employee' | 'no_workspace' | 'ambiguous_workspace';
+type DenyReason =
+  | 'no_email_claim'
+  | 'no_active_employee'
+  | 'ambiguous_email'
+  | 'access_subject_mismatch'
+  | 'access_subject_taken'
+  | 'no_workspace'
+  | 'ambiguous_workspace';
 
 export interface McpAccessJwtAdapterOptions {
   db: DrizzleDB;
@@ -49,6 +60,78 @@ export interface McpAccessJwtAdapterOptions {
   /** The MCP Access application's AUD tag. */
   audience: string;
   logger?: Logger;
+}
+
+interface EmployeeRow {
+  id: string;
+  status: string;
+  emailVerified: boolean;
+  accessSubject: string | null;
+}
+
+/**
+ * Resolve one account by email, deterministically.
+ *
+ * The exact address runs first, so a normal lower-case row (and `uq_users_email`) wins even if a
+ * case variant exists. Only a miss falls back to `lower(email)`; more than one match is an
+ * ambiguous data state and is refused, never resolved by picking a row or by letting the ORM
+ * throw on multiple results.
+ */
+async function findEmployee(
+  db: DrizzleDB,
+  email: string,
+): Promise<EmployeeRow | 'ambiguous' | null> {
+  const columns = {
+    id: identityUsers.id,
+    status: identityUsers.status,
+    emailVerified: identityUsers.emailVerified,
+    accessSubject: identityUsers.accessSubject,
+  } as const;
+  const [exact] = await db
+    .select(columns)
+    .from(identityUsers)
+    .where(and(eq(identityUsers.email, email), isNull(identityUsers.deletedAt)))
+    .limit(1);
+  if (exact) return exact;
+
+  const matches = await db
+    .select(columns)
+    .from(identityUsers)
+    .where(and(sql`lower(${identityUsers.email}) = ${email}`, isNull(identityUsers.deletedAt)))
+    .limit(2);
+  if (matches.length > 1) return 'ambiguous';
+  return matches[0] ?? null;
+}
+
+/**
+ * Bind the first Access `sub` to this account, atomically.
+ *
+ * `WHERE access_subject IS NULL RETURNING id` makes concurrent first logins race to one winner.
+ * A loser reads the persisted value: the same sub (another thread of the same person) is fine; a
+ * different sub is a refusal. A unique violation means the sub is already bound to another user.
+ */
+export async function bindAccessSubject(
+  db: DrizzleDB,
+  userId: string,
+  accessSubject: string,
+): Promise<'bound' | 'same' | 'mismatch'> {
+  const bound = await db
+    .update(identityUsers)
+    .set({ accessSubject })
+    .where(and(eq(identityUsers.id, userId), isNull(identityUsers.accessSubject)))
+    .returning({ id: identityUsers.id });
+  if (bound.length > 0) return 'bound';
+
+  const [current] = await db
+    .select({ accessSubject: identityUsers.accessSubject })
+    .from(identityUsers)
+    .where(eq(identityUsers.id, userId))
+    .limit(1);
+  return current?.accessSubject === accessSubject ? 'same' : 'mismatch';
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === '23505';
 }
 
 /**
@@ -82,19 +165,33 @@ export function createMcpAccessJwtAdapter(opts: McpAccessJwtAdapterOptions): Mcp
       // trim+lowercase normaliser as `UserDirectory.findByEmail`, so `uq_users_email` is hit.
       const email = principal.email?.trim().toLowerCase();
       if (!email) return deny(logger, principal.sub, 'no_email_claim');
-      const [employee] = await opts.db
-        .select({ id: identityUsers.id })
-        .from(identityUsers)
-        .where(
-          and(
-            eq(identityUsers.email, email),
-            eq(identityUsers.status, 'active'),
-            eq(identityUsers.emailVerified, true), // excludes B2B guests / unverified addresses
-            isNull(identityUsers.deletedAt),
-          ),
-        )
-        .limit(1);
-      if (!employee) return deny(logger, principal.sub, 'no_active_employee');
+      const employee = await findEmployee(opts.db, email);
+      if (employee === 'ambiguous') return deny(logger, principal.sub, 'ambiguous_email');
+      if (
+        !employee ||
+        employee.status !== 'active' ||
+        !employee.emailVerified // excludes B2B guests / unverified addresses
+      ) {
+        return deny(logger, principal.sub, 'no_active_employee');
+      }
+
+      if (employee.accessSubject !== null) {
+        if (employee.accessSubject !== principal.sub) {
+          return deny(logger, principal.sub, 'access_subject_mismatch');
+        }
+      } else {
+        try {
+          const binding = await bindAccessSubject(opts.db, employee.id, principal.sub);
+          if (binding === 'mismatch') {
+            return deny(logger, principal.sub, 'access_subject_mismatch');
+          }
+        } catch (err) {
+          if (isUniqueViolation(err)) {
+            return deny(logger, principal.sub, 'access_subject_taken');
+          }
+          throw err;
+        }
+      }
 
       // The workspace the MCP session is bound to: exactly ONE active membership in an active
       // workspace. Deterministic order so the ambiguity check is about the DATA, not the plan.

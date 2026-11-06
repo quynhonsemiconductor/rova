@@ -19,6 +19,11 @@ Claude Code opens the browser for the Cloudflare Access sign-in on first use and
 token silently afterwards. The connection is per-user — remove it with
 `claude mcp remove rova-dev` when you no longer need it.
 
+The account follows the person's Access identity, not their mailbox: the first verified Access
+`sub` is bound to the rova user, and a later token for the same email with a different `sub` is
+refused (403). An administrator clears `identity.users.access_subject` to rebind an account after
+a legitimate identity change.
+
 ## claude.ai (Team connector)
 
 The Team Owner (CEO) adds rova as a custom connector in the claude.ai Team settings
