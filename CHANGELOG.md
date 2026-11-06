@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.12](https://github.com/quynhonsemiconductor/rova/compare/v0.8.11...v0.8.12) (2026-11-05)
+
+
+### ✨ Features
+
+* **mcp:** guarded rova_delete (v2 PR7) ([#918](https://github.com/quynhonsemiconductor/rova/issues/918)) ([0a954ad](https://github.com/quynhonsemiconductor/rova/commit/0a954ad25b9f3bdaefa7450b9ee44ec314d04492))
+
 ## [0.8.11](https://github.com/quynhonsemiconductor/rova/compare/v0.8.10...v0.8.11) (2026-11-05)
 
 
