@@ -6,7 +6,7 @@ import {
   createAccessJwtVerifier,
   type AccessJwtVerifier,
 } from '@quynhonsemiconductor/identity/access-jwt';
-import type { DrizzleDB } from '@platform';
+import { isDuplicateKeyError, type DrizzleDB } from '@platform';
 import { users as identityUsers } from '@db/schema/identity';
 import { workspaceMembers, workspaces } from '@db/schema/workspace';
 import type { McpAccessPrincipal, McpAccessVerifier } from './access-verifier';
@@ -130,10 +130,6 @@ export async function bindAccessSubject(
   return current?.accessSubject === accessSubject ? 'same' : 'mismatch';
 }
 
-function isUniqueViolation(err: unknown): boolean {
-  return (err as { code?: string } | null)?.code === '23505';
-}
-
 /**
  * Builds the adapter: identity's verifier for the cryptography, one DB read per request for the
  * person, one for their workspace. Verifier construction fails fast on a bad config.
@@ -175,23 +171,8 @@ export function createMcpAccessJwtAdapter(opts: McpAccessJwtAdapterOptions): Mcp
         return deny(logger, principal.sub, 'no_active_employee');
       }
 
-      if (employee.accessSubject !== null) {
-        if (employee.accessSubject !== principal.sub) {
-          return deny(logger, principal.sub, 'access_subject_mismatch');
-        }
-      } else {
-        try {
-          const binding = await bindAccessSubject(opts.db, employee.id, principal.sub);
-          if (binding === 'mismatch') {
-            return deny(logger, principal.sub, 'access_subject_mismatch');
-          }
-        } catch (err) {
-          if (isUniqueViolation(err)) {
-            return deny(logger, principal.sub, 'access_subject_taken');
-          }
-          throw err;
-        }
-      }
+      // The bind happens ONLY after the workspace check (§ below): a request that is refused for
+      // having no workspace must not leave a permanent subject on the account.
 
       // The workspace the MCP session is bound to: exactly ONE active membership in an active
       // workspace. Deterministic order so the ambiguity check is about the DATA, not the plan.
@@ -215,6 +196,28 @@ export function createMcpAccessJwtAdapter(opts: McpAccessJwtAdapterOptions): Mcp
         );
       if (matches.length === 0) return deny(logger, principal.sub, 'no_workspace');
       if (matches.length > 1) return deny(logger, principal.sub, 'ambiguous_workspace');
+
+      // Bind the account to the FIRST verified Access sub only once every refusal above has
+      // passed. A denied request (no workspace, ambiguous workspace) must not bind permanently.
+      if (employee.accessSubject !== null) {
+        if (employee.accessSubject !== principal.sub) {
+          return deny(logger, principal.sub, 'access_subject_mismatch');
+        }
+      } else {
+        try {
+          const binding = await bindAccessSubject(opts.db, employee.id, principal.sub);
+          if (binding === 'mismatch') {
+            return deny(logger, principal.sub, 'access_subject_mismatch');
+          }
+        } catch (err) {
+          // Drizzle WRAPS driver errors in DrizzleQueryError, so the pg code is on `.cause`;
+          // @platform's recogniser walks the whole chain.
+          if (isDuplicateKeyError(err)) {
+            return deny(logger, principal.sub, 'access_subject_taken');
+          }
+          throw err;
+        }
+      }
 
       return { userId: employee.id, workspaceId: matches[0].workspaceId };
     },

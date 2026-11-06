@@ -1,6 +1,7 @@
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it, vi } from 'vitest';
 import type { DrizzleDB } from '@platform';
 import { createMcpAccessJwtAdapter, McpAccessDeniedError } from './access-jwt.adapter';
@@ -36,6 +37,7 @@ function paramsOf(node: unknown, out: unknown[] = []): unknown[] {
 /** A drizzle stand-in: each `select`/`update` consumes one queue entry (array or thrown Error). */
 function dbWith(queue: Array<unknown>) {
   const captured: unknown[][] = [];
+  let updates = 0;
   const next = () => {
     const value = queue.shift();
     if (value instanceof Error) throw value;
@@ -63,12 +65,15 @@ function dbWith(queue: Array<unknown>) {
     update: () => ({
       set: () => ({
         where: () => ({
-          returning: async () => next(),
+          returning: async () => {
+            updates += 1;
+            return next();
+          },
         }),
       }),
     }),
   };
-  return { db: db as never as DrizzleDB, captured };
+  return { db: db as never as DrizzleDB, captured, updates: () => updates };
 }
 
 const EMPLOYEE = {
@@ -257,8 +262,8 @@ describe('McpAccessJwtAdapter', () => {
     try {
       const { db } = dbWith([
         [employee({ accessSubject: null })],
-        [{ id: USER }], // UPDATE ... RETURNING id
         [{ workspaceId: WORKSPACE }],
+        [{ id: USER }], // UPDATE ... RETURNING id
       ]);
       const adapter = createMcpAccessJwtAdapter({
         db,
@@ -278,7 +283,10 @@ describe('McpAccessJwtAdapter', () => {
     const { privateKey, publicJwk } = await mintingKey();
     const { server, port } = await listen({ keys: [publicJwk] });
     try {
-      const { db } = dbWith([[employee({ accessSubject: 'someone-else' })]]);
+      const { db } = dbWith([
+        [employee({ accessSubject: 'someone-else' })],
+        [{ workspaceId: WORKSPACE }],
+      ]);
       const adapter = createMcpAccessJwtAdapter({
         db,
         teamDomain: TEAM(port),
@@ -352,6 +360,7 @@ describe('McpAccessJwtAdapter', () => {
     try {
       const { db } = dbWith([
         [employee({ accessSubject: null })],
+        [{ workspaceId: WORKSPACE }],
         [], // UPDATE matched zero rows: another session won
         [{ accessSubject: 'winner-sub' }],
       ]);
@@ -379,9 +388,9 @@ describe('McpAccessJwtAdapter', () => {
     try {
       const { db } = dbWith([
         [employee({ accessSubject: null })],
+        [{ workspaceId: WORKSPACE }],
         [], // UPDATE matched zero rows
         [{ accessSubject: 'access-sub-1' }], // the other thread wrote our sub
-        [{ workspaceId: WORKSPACE }],
       ]);
       const adapter = createMcpAccessJwtAdapter({
         db,
@@ -397,11 +406,39 @@ describe('McpAccessJwtAdapter', () => {
     }
   });
 
+  it('a request refused for NO workspace never binds a subject', async () => {
+    const { privateKey, publicJwk } = await mintingKey();
+    const { server, port } = await listen({ keys: [publicJwk] });
+    try {
+      const { db, updates } = dbWith([[employee({ accessSubject: null })], []]);
+      const adapter = createMcpAccessJwtAdapter({
+        db,
+        teamDomain: TEAM(port),
+        audience: AUD,
+        logger: logger as never,
+      });
+      await expect(
+        adapter.verify(await mint({ privateKey, team: TEAM(port), email: 'jane@qnsc.vn' })),
+      ).rejects.toThrow(McpAccessDeniedError);
+      expect(updates()).toBe(0);
+      expect(logger.warn).toHaveBeenCalledWith(
+        { accessSub: 'access-sub-1', reason: 'no_workspace' },
+        'MCP access denied',
+      );
+    } finally {
+      server.close();
+    }
+  });
+
   it('rethrows a non-unique database failure instead of turning it into a 403', async () => {
     const { privateKey, publicJwk } = await mintingKey();
     const { server, port } = await listen({ keys: [publicJwk] });
     try {
-      const { db } = dbWith([[employee({ accessSubject: null })], new Error('connection reset')]);
+      const { db } = dbWith([
+        [employee({ accessSubject: null })],
+        [{ workspaceId: WORKSPACE }],
+        new Error('connection reset'),
+      ]);
       const adapter = createMcpAccessJwtAdapter({
         db,
         teamDomain: TEAM(port),
@@ -420,8 +457,14 @@ describe('McpAccessJwtAdapter', () => {
     const { privateKey, publicJwk } = await mintingKey();
     const { server, port } = await listen({ keys: [publicJwk] });
     try {
-      const conflict = Object.assign(new Error('duplicate key'), { code: '23505' });
-      const { db } = dbWith([[employee({ accessSubject: null })], conflict]);
+      // Drizzle WRAPS the driver error: the pg code lives on `.cause`, never on the wrapper.
+      const pgErr = Object.assign(new Error('duplicate key'), { code: '23505' });
+      const conflict = new DrizzleQueryError('', [], pgErr);
+      const { db } = dbWith([
+        [employee({ accessSubject: null })],
+        [{ workspaceId: WORKSPACE }],
+        conflict,
+      ]);
       const adapter = createMcpAccessJwtAdapter({
         db,
         teamDomain: TEAM(port),
