@@ -6,8 +6,12 @@
 -- intended "administrator clears access_subject to rebind" path — but it is a security decision,
 -- not routine maintenance.
 
-SET LOCAL lock_timeout = '3s';
+-- SESSION-level, not LOCAL: this file is run by hand in psql's autocommit mode, where SET LOCAL
+-- has no transaction to bind to and only warns — the fail-fast guard would silently do nothing.
+SET lock_timeout = '3s';
 --> statement-breakpoint
 DROP INDEX IF EXISTS "identity"."uq_users_access_subject";
 --> statement-breakpoint
 ALTER TABLE "identity"."users" DROP COLUMN IF EXISTS "access_subject";
+--> statement-breakpoint
+RESET lock_timeout;
