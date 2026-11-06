@@ -1569,7 +1569,7 @@ describe('/mcp write tools (e2e)', () => {
     expect(logRetry.body.error).toMatch(/not found, or it is not yours/);
   });
 
-  it('rova_delete: a relation you did not create is refused; deleting your own and retrying is alreadyDeleted', async () => {
+  it('rova_delete: a relation you did not create is refused; a repeat is the generic refusal', async () => {
     people.set(TOKEN, { userId: adminId, workspaceId: WORKSPACE_ID });
     const target = await freshStory();
     const relation = await adminRest('POST', `/work-items/${NXP_STORY_1_ID}/relations`, {
@@ -1599,7 +1599,14 @@ describe('/mcp write tools (e2e)', () => {
       id: created!.id,
     });
     expect(deleted.isError, JSON.stringify(deleted.body)).toBeFalsy();
-    // A relation is HARD-deleted; `alreadyDeleted` is pinned on the child kinds below.
+
+    const retry = await tool('rova_delete', {
+      kind: 'relation',
+      key: NXP_STORY_1_ID,
+      id: created!.id,
+    });
+    expect(retry.isError).toBe(true);
+    expect(retry.body.error).toMatch(/not found, or it is not yours/);
   });
 
   it('rova_delete: a test result recorded by someone else is refused; your own deletes, a repeat is the generic refusal', async () => {
@@ -1680,12 +1687,16 @@ describe('/mcp write tools (e2e)', () => {
       title: `doomed task ${Date.now()}`,
     });
     expect(task.isError, JSON.stringify(task.body)).toBeFalsy();
-    const taskKey = (task.body.workItem as Record<string, unknown>)['itemKey'] as string;
+    const taskItem = task.body.workItem as Record<string, unknown>;
+    const taskKey = taskItem['itemKey'] as string;
+    const taskId = taskItem['id'] as string;
 
     const taskDeleted = await tool('rova_delete', { kind: 'task', key: taskKey });
     expect(taskDeleted.isError, JSON.stringify(taskDeleted.body)).toBeFalsy();
+    expect(taskDeleted.body.deleted).toMatchObject({ kind: 'task', id: taskId });
 
-    // The story itself is left for the Viewer test below: a soft-deleted work item still resolves
-    // by id for its creator, and the MCP contract promises `alreadyDeleted` only for child kinds.
+    const taskRetry = await tool('rova_delete', { kind: 'task', key: taskKey });
+    expect(taskRetry.isError).toBe(true);
+    expect(taskRetry.body.error).toMatch(/not found, or it is not yours/);
   });
 });
