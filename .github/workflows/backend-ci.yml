@@ -323,6 +323,9 @@ jobs:
         env:
           NODE_ENV: test
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
+          # The fixture reset TRUNCATEs and must connect as the owner, never as a
+          # runtime role (db/seeds/reset.ts refuses rova_app/rova_worker).
+          DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rova_test?sslmode=disable
           ENTRA_TENANT_ID: dev-tenant
           SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
 
@@ -590,6 +593,21 @@ jobs:
         run: |
           psql -h localhost -p 5432 -U postgres -d rova_fresh -v ON_ERROR_STOP=1 \
             -v creator=rova_migrator -f db/fresh-db/assert-runtime-privileges.sql
+
+      # Migration 0141: audit.audit_logs is APPEND-ONLY for both runtime roles.
+      # The privilege sweep above already requires SELECT/INSERT and exempts
+      # UPDATE/DELETE from the completeness set; this is the direct assertion the
+      # migration is named for, on the fresh (CNPG-shaped) database.
+      - name: audit.audit_logs is append-only for both runtime roles
+        run: |
+          for role in rova_app rova_worker; do
+            for privilege in UPDATE DELETE; do
+              allowed=$(psql -h localhost -p 5432 -U postgres -d rova_fresh -At -v ON_ERROR_STOP=1 \
+                -c "SELECT has_table_privilege('$role', 'audit.audit_logs', '$privilege')")
+              echo "$role $privilege on audit.audit_logs: $allowed (expected false)"
+              test "$allowed" = "f"
+            done
+          done
 
       # ── Scenario 2: the upgrade path, from a database that still has rally_* ─
       - name: Create the legacy database (owned by the master, as RDS was)

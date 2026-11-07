@@ -92,13 +92,39 @@ export const FIXTURE_TABLES = [
   'scm.webhook_inbox',
 ] as const;
 
-/** Truncate every fixture table. Takes a URL rather than a pool so callers need no drizzle setup. */
+/**
+ * Roles the reset must never run as. `TRUNCATE` is its own privilege, which neither
+ * runtime role holds, so a reset connecting as one fails anyway — but it fails as an
+ * opaque `permission denied for table …` halfway through the fixture path. Refusing up
+ * front turns that into "point DATABASE_MIGRATION_URL at the owner", which is the
+ * connection this helper is for. It also keeps the audit trail's append-only contract
+ * (migrations 0140/0141) from ever depending on a DELETE grant.
+ */
+const RUNTIME_ROLES = new Set(['rova_app', 'rova_worker']);
+
+/**
+ * Truncate every fixture table. Takes a URL rather than a pool so callers need no drizzle setup.
+ *
+ * The connection must be the database OWNER: `DATABASE_MIGRATION_URL` when set, the same
+ * precedence `db/migrate.ts` and the e2e global setup use. `DATABASE_URL` is only a
+ * local-dev fallback — in CI that is the restricted `rova_app`, which this refuses.
+ */
 export async function resetFixtureTables(connectionUrl?: string): Promise<void> {
   const url = connectionUrl ?? process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_URL;
-  if (!url) throw new Error('Fixture reset needs DATABASE_URL (or DATABASE_MIGRATION_URL).');
+  if (!url) {
+    throw new Error('Fixture reset needs DATABASE_MIGRATION_URL (the database owner connection).');
+  }
 
   const pool = new Pool(pgOptions(url));
   try {
+    const { rows } = await pool.query<{ current_user: string }>('SELECT current_user');
+    const role = rows[0]?.current_user;
+    if (role && RUNTIME_ROLES.has(role)) {
+      throw new Error(
+        `Fixture reset connected as the runtime role "${role}". It must run as the database ` +
+          'owner: set DATABASE_MIGRATION_URL to the owner connection (the app DATABASE_URL is not enough).',
+      );
+    }
     await pool.query(`TRUNCATE TABLE ${FIXTURE_TABLES.join(', ')} CASCADE`);
   } finally {
     await pool.end();
