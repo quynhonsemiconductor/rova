@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.13](https://github.com/quynhonsemiconductor/rova/compare/v0.8.12...v0.8.13) (2026-11-06)
+
+
+### ✨ Features
+
+* **retention:** bound rova's append-only tables in the daily cleanup ([#921](https://github.com/quynhonsemiconductor/rova/issues/921)) ([e293d3b](https://github.com/quynhonsemiconductor/rova/commit/e293d3bd43b22290db338fa00bb4b771f366514a))
+
+
+### 🐛 Bug Fixes
+
+* **mcp:** bind an account to its first verified Access sub ([#920](https://github.com/quynhonsemiconductor/rova/issues/920)) ([0d3f90d](https://github.com/quynhonsemiconductor/rova/commit/0d3f90d7db8705a24736c0919cd49bdf0d26c645))
+
 ## [0.8.12](https://github.com/quynhonsemiconductor/rova/compare/v0.8.11...v0.8.12) (2026-11-05)
 
 
