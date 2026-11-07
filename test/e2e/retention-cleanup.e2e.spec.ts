@@ -114,11 +114,16 @@ describe('daily retention cleanup (real Postgres)', () => {
     await adminPool.end();
   });
 
-  it('rova_worker cannot delete audit rows', async () => {
-    const result = await adminPool.query<{ allowed: boolean }>(
-      "SELECT has_table_privilege('rova_worker', 'audit.audit_logs', 'DELETE') AS allowed",
+  it('neither runtime role can update or delete audit rows', async () => {
+    const result = await adminPool.query<{ role_name: string; deny: string; allowed: boolean }>(
+      `SELECT role_name, deny,
+              has_table_privilege(role_name, 'audit.audit_logs', deny) AS allowed
+         FROM unnest(ARRAY['rova_app', 'rova_worker']) AS role_name
+        CROSS JOIN unnest(ARRAY['UPDATE', 'DELETE']) AS deny`,
     );
-    expect(result.rows[0]?.allowed).toBe(false);
+    for (const row of result.rows) {
+      expect(row.allowed, `${row.role_name} must not hold ${row.deny}`).toBe(false);
+    }
   });
 
   it('executes every statement and removes rows past retention', async () => {

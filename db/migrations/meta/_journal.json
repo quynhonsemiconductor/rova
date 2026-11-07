@@ -995,6 +995,13 @@
       "when": 1793985387297,
       "tag": "0140_revoke_worker_audit_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1794063176828,
+      "tag": "0141_audit_logs_append_only",
+      "breakpoints": true
     }
   ]
 }

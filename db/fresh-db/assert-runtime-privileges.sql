@@ -100,9 +100,10 @@ BEGIN
         JOIN pg_namespace n ON n.oid = c.relnamespace
        WHERE n.nspname = ANY(app_schemas)
          AND c.relkind IN ('r', 'p')
-         -- audit_logs is append-only from the worker: migration 0140 revokes DELETE,
-         -- and the sweep deliberately never touches audit.
-         AND NOT (r = 'rova_worker' AND p = 'DELETE'
+         -- audit.audit_logs is APPEND-ONLY for BOTH runtime roles (migrations
+         -- 0140/0141): UPDATE and DELETE are exempt from this completeness sweep
+         -- and REQUIRED to be absent by the check that follows the loop.
+         AND NOT (p IN ('UPDATE', 'DELETE')
                   AND n.nspname = 'audit' AND c.relname = 'audit_logs')
          AND NOT has_table_privilege(r, c.oid, p);
       IF cardinality(missing) > 0 THEN
@@ -140,6 +141,29 @@ BEGIN
       END IF;
     END LOOP;
   END LOOP;
+END $$;
+
+-- ── 1b. audit.audit_logs is APPEND-ONLY for BOTH runtime roles ──────────────
+-- The sweep above requires SELECT and INSERT here and exempts UPDATE/DELETE
+-- from its "must hold" list, so a missing privilege cannot pass. These two are
+-- the inverse: their PRESENCE is the failure. 0140 revoked DELETE from the
+-- worker only, which left the API free to rewrite the trail; 0141 revoked both
+-- from both roles.
+DO $$
+DECLARE
+  r text;
+  p text;
+BEGIN
+  FOREACH r IN ARRAY ARRAY['rova_app', 'rova_worker'] LOOP
+    FOREACH p IN ARRAY ARRAY['UPDATE', 'DELETE'] LOOP
+      IF has_table_privilege(r, 'audit.audit_logs', p) THEN
+        RAISE EXCEPTION
+          '% holds % on audit.audit_logs — the audit trail must be append-only for both runtime roles',
+          r, p;
+      END IF;
+    END LOOP;
+  END LOOP;
+  RAISE NOTICE '  both runtime roles are append-only on audit.audit_logs (no UPDATE, no DELETE)';
 END $$;
 
 -- ── 2. The grant set is USABLE: a real query as each role ────────────────────
